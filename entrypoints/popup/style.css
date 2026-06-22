@@ -1,0 +1,348 @@
+:root {
+  color: #f7f3ed;
+  background: #11100f;
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 390px;
+  min-height: 520px;
+  margin: 0;
+  background:
+    radial-gradient(circle at 90% 0%, rgb(244 117 33 / 18%), transparent 31%),
+    linear-gradient(145deg, #171513 0%, #0d0c0b 72%);
+}
+
+button {
+  font: inherit;
+}
+
+.shell {
+  min-height: 520px;
+  padding: 24px 20px 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background-image: repeating-linear-gradient(
+    120deg,
+    transparent 0 11px,
+    rgb(255 255 255 / 4%) 11px 12px
+  );
+}
+
+.masthead {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+
+.brand-mark {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px rgb(244 117 33 / 22%));
+}
+
+.eyebrow {
+  color: #f47521;
+  font-family: 'DIN Condensed', 'Avenir Next Condensed', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  margin: 0 0 2px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-family: 'DIN Condensed', 'Avenir Next Condensed', sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.count {
+  color: #4f4b46;
+  font-family: 'DIN Condensed', 'Avenir Next Condensed', sans-serif;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 30px 2px 10px;
+  position: relative;
+}
+
+.section-label span {
+  color: #9d9891;
+  font-family: 'DIN Condensed', 'Avenir Next Condensed', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.section-label button {
+  border: 0;
+  background: transparent;
+  color: #716c65;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 5px;
+}
+
+.section-label button:hover,
+.section-label button:focus-visible {
+  color: #f47521;
+}
+
+.bookmark-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+.bookmark-list li {
+  animation: arrive 340ms both;
+  animation-delay: calc(var(--index) * 55ms);
+  position: relative;
+}
+
+.bookmark-card {
+  width: 100%;
+  min-height: 94px;
+  display: grid;
+  grid-template-columns: 52px 1fr 34px;
+  align-items: center;
+  gap: 13px;
+  border: 1px solid #2a2724;
+  border-radius: 4px;
+  background: linear-gradient(100deg, #1c1917, #151311);
+  color: inherit;
+  cursor: pointer;
+  padding: 13px 42px 13px 12px;
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.bookmark-card:hover,
+.bookmark-card:focus-visible {
+  border-color: #f47521;
+  background: linear-gradient(100deg, #221b17, #171411);
+  outline: none;
+  transform: translateX(2px);
+}
+
+.episode-index {
+  color: #f47521;
+  font-family: 'DIN Condensed', 'Avenir Next Condensed', sans-serif;
+  font-size: 35px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
+.bookmark-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.bookmark-copy strong {
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metadata {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.metadata b {
+  color: #c4beb6;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.metadata i {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #f47521;
+}
+
+.episode-title {
+  overflow: hidden;
+  color: #77716b;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.play {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #3b3631;
+  border-radius: 50%;
+  color: #f47521;
+}
+
+.play svg,
+.remove svg {
+  width: 16px;
+  height: 16px;
+}
+
+.remove {
+  width: 28px;
+  height: 28px;
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #5e5852;
+  cursor: pointer;
+  opacity: 0;
+  transition: color 150ms ease, opacity 150ms ease;
+}
+
+.bookmark-list li:hover .remove,
+.remove:focus-visible {
+  opacity: 1;
+}
+
+.remove:hover,
+.remove:focus-visible {
+  color: #ef5f55;
+  outline: none;
+}
+
+.empty {
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  position: relative;
+  text-align: center;
+}
+
+.empty-orbit {
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+  border: 1px solid #3a3029;
+  border-radius: 50%;
+  color: #f47521;
+  position: relative;
+}
+
+.empty-orbit::before,
+.empty-orbit::after {
+  content: '';
+  position: absolute;
+  inset: 10px -17px;
+  border: 1px solid #2e2925;
+  border-radius: 50%;
+  transform: rotate(55deg);
+}
+
+.empty-orbit::after {
+  transform: rotate(-55deg);
+}
+
+.empty-orbit svg {
+  width: 34px;
+  height: 34px;
+}
+
+.empty h2 {
+  font-family: 'DIN Condensed', 'Avenir Next Condensed', sans-serif;
+  font-size: 22px;
+  text-transform: uppercase;
+}
+
+.empty p {
+  max-width: 255px;
+  margin-top: 9px;
+  color: #827c75;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 20px;
+  color: #5c5751;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  position: relative;
+}
+
+.pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #54ba69;
+  box-shadow: 0 0 0 4px rgb(84 186 105 / 10%);
+}
+
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
