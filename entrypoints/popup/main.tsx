@@ -1,6 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { normalizeBookmarkStore, sortBookmarks } from '../../src/domain/bookmarks';
+import {
+  bookmarkKey,
+  normalizeBookmarkStore,
+  sortBookmarks,
+} from '../../src/domain/bookmarks';
 import type { EpisodeBookmark } from '../../src/domain/types';
 import { BOOKMARKS_STORAGE_KEY } from '../../src/messages';
 import { App } from './App';
@@ -37,7 +41,7 @@ function Popup() {
     await browser.storage.local.set({
       [BOOKMARKS_STORAGE_KEY]: {
         version: 1,
-        bookmarks: Object.fromEntries(next.map((item) => [item.seriesId, item])),
+        bookmarks: Object.fromEntries(next.map((item) => [bookmarkKey(item), item])),
       },
     });
   };
@@ -62,4 +66,3 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <Popup />
   </React.StrictMode>,
 );
-

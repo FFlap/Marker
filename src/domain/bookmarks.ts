@@ -5,6 +5,10 @@ export const EMPTY_BOOKMARK_STORE: BookmarkStore = {
   bookmarks: {},
 };
 
+export function bookmarkKey(bookmark: Pick<EpisodeBookmark, 'platform' | 'seriesId'>) {
+  return `${bookmark.platform ?? 'crunchyroll'}:${bookmark.seriesId}`;
+}
+
 function isBookmark(value: unknown): value is EpisodeBookmark {
   if (!value || typeof value !== 'object') return false;
   const item = value as Record<string, unknown>;
@@ -43,11 +47,13 @@ export function mergeBookmark(
   store: BookmarkStore,
   bookmark: EpisodeBookmark,
 ): BookmarkStore {
+  const bookmarks = { ...store.bookmarks };
+  delete bookmarks[bookmark.seriesId];
   return {
     version: 1,
     bookmarks: {
-      ...store.bookmarks,
-      [bookmark.seriesId]: bookmark,
+      ...bookmarks,
+      [bookmarkKey(bookmark)]: bookmark,
     },
   };
 }
@@ -57,4 +63,3 @@ export function sortBookmarks(
 ): EpisodeBookmark[] {
   return Object.values(bookmarks).sort((left, right) => right.updatedAt - left.updatedAt);
 }
-

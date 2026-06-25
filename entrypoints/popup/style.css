@@ -44,9 +44,9 @@ button {
 
 .masthead {
   display: grid;
-  grid-template-columns: 42px 1fr auto;
+  grid-template-columns: 48px 1fr auto;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   position: relative;
 }
 
@@ -57,15 +57,6 @@ button {
   filter: drop-shadow(0 0 12px rgb(244 117 33 / 22%));
 }
 
-.eyebrow {
-  color: #f47521;
-  font-family: 'DIN Condensed', 'Avenir Next Condensed', sans-serif;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.24em;
-  margin: 0 0 2px;
-}
-
 h1,
 h2,
 p {
@@ -73,12 +64,13 @@ p {
 }
 
 h1 {
-  font-family: 'DIN Condensed', 'Avenir Next Condensed', sans-serif;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  text-transform: uppercase;
+  color: #fff7ed;
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+  font-size: 31px;
+  font-weight: 760;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+  text-shadow: 0 1px 14px rgb(255 247 237 / 8%);
 }
 
 .count {

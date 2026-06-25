@@ -33,8 +33,26 @@ describe('mergeBookmark', () => {
       mergeBookmark({ version: 1, bookmarks: { GYZJ43JMR: slimeEpisode1 } }, episode2),
     ).toEqual({
       version: 1,
-      bookmarks: { GYZJ43JMR: episode2 },
+      bookmarks: { 'crunchyroll:GYZJ43JMR': episode2 },
     });
+  });
+
+  it('keeps the same title separate across streaming platforms', () => {
+    const netflix = {
+      ...slimeEpisode1,
+      platform: 'netflix' as const,
+      seriesId: 'GYZJ43JMR',
+      updatedAt: 300,
+    };
+    const result = mergeBookmark(
+      { version: 1, bookmarks: { 'crunchyroll:GYZJ43JMR': slimeEpisode1 } },
+      netflix,
+    );
+
+    expect(Object.keys(result.bookmarks)).toEqual([
+      'crunchyroll:GYZJ43JMR',
+      'netflix:GYZJ43JMR',
+    ]);
   });
 
   it('preserves bookmarks for other series', () => {
@@ -44,7 +62,7 @@ describe('mergeBookmark', () => {
       slimeEpisode1,
     );
 
-    expect(Object.keys(result.bookmarks)).toEqual(['OTHER', 'GYZJ43JMR']);
+    expect(Object.keys(result.bookmarks)).toEqual(['OTHER', 'crunchyroll:GYZJ43JMR']);
   });
 });
 
@@ -69,4 +87,3 @@ describe('normalizeBookmarkStore', () => {
     expect(normalizeBookmarkStore(null)).toEqual({ version: 1, bookmarks: {} });
   });
 });
-

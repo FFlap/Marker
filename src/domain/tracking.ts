@@ -1,4 +1,4 @@
-import { mergeBookmark, normalizeBookmarkStore } from './bookmarks';
+import { bookmarkKey, mergeBookmark, normalizeBookmarkStore } from './bookmarks';
 import type { EpisodeBookmark } from './types';
 import { BOOKMARKS_STORAGE_KEY } from '../messages';
 
@@ -13,7 +13,9 @@ export async function persistDetectedEpisode(
 ): Promise<boolean> {
   const stored = await storage.get(BOOKMARKS_STORAGE_KEY);
   const current = normalizeBookmarkStore(stored[BOOKMARKS_STORAGE_KEY]);
-  const previous = current.bookmarks[bookmark.seriesId];
+  const previous =
+    current.bookmarks[bookmarkKey(bookmark)] ??
+    current.bookmarks[bookmark.seriesId];
 
   if (
     previous?.episodeId === bookmark.episodeId &&
@@ -28,4 +30,3 @@ export async function persistDetectedEpisode(
   });
   return true;
 }
-

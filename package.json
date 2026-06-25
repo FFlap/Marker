@@ -1,5 +1,5 @@
 {
-  "name": "crunchyroll-bookmark",
+  "name": "marker",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -29,4 +29,3 @@
     "wxt": "^0.20.6"
   }
 }
-

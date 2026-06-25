@@ -5,7 +5,7 @@ export default defineContentScript({
   matches: ['https://www.crunchyroll.com/*'],
   runAt: 'document_idle',
   main() {
-    document.documentElement.dataset.crunchyrollBookmark = 'loaded';
+    document.documentElement.dataset.markerCrunchyroll = 'loaded';
     let lastSentEpisodeId: string | null = null;
     let lastObservedUrl = location.href;
     let inspectionTimer: ReturnType<typeof setTimeout> | undefined;
@@ -25,14 +25,14 @@ export default defineContentScript({
       const bookmark = parseEpisodePage(document, new URL(location.href));
       if (bookmark && bookmark.episodeId !== lastSentEpisodeId) {
         saveInFlight = true;
-        document.documentElement.dataset.crunchyrollBookmark = 'saving';
+        document.documentElement.dataset.markerCrunchyroll = 'saving';
         try {
           await persistDetectedEpisode(browser.storage.local, bookmark);
           lastSentEpisodeId = bookmark.episodeId;
-          document.documentElement.dataset.crunchyrollBookmark = 'tracked';
+          document.documentElement.dataset.markerCrunchyroll = 'tracked';
         } catch (error: unknown) {
-          document.documentElement.dataset.crunchyrollBookmark = 'error';
-          console.error('[Crunchyroll Bookmark] Failed to save episode', error);
+          document.documentElement.dataset.markerCrunchyroll = 'error';
+          console.error('[Marker] Failed to save Crunchyroll episode', error);
         } finally {
           saveInFlight = false;
           if (inspectAgain) {
@@ -44,7 +44,7 @@ export default defineContentScript({
       }
 
       if (!bookmark) {
-        document.documentElement.dataset.crunchyrollBookmark = 'waiting';
+        document.documentElement.dataset.markerCrunchyroll = 'waiting';
       }
     };
 
@@ -62,13 +62,13 @@ export default defineContentScript({
       const original = history[methodName];
       history[methodName] = function (...args) {
         const result = original.apply(this, args);
-        window.dispatchEvent(new Event('crunchyroll-bookmark:navigation'));
+        window.dispatchEvent(new Event('marker:crunchyroll-navigation'));
         return result;
       };
     }
 
     window.addEventListener('popstate', handleNavigation);
-    window.addEventListener('crunchyroll-bookmark:navigation', handleNavigation);
+    window.addEventListener('marker:crunchyroll-navigation', handleNavigation);
 
     const observer = new MutationObserver(() => {
       if (parseWatchPath(location.pathname)) scheduleInspect();

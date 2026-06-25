@@ -1,4 +1,5 @@
 export interface EpisodeBookmark {
+  platform?: 'crunchyroll' | 'netflix';
   seriesId: string;
   seriesTitle: string;
   seriesUrl: string;
@@ -14,4 +15,3 @@ export interface BookmarkStore {
   version: 1;
   bookmarks: Record<string, EpisodeBookmark>;
 }
-

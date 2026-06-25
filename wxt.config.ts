@@ -6,10 +6,13 @@ export default defineConfig({
     plugins: [react()],
   }),
   manifest: {
-    name: 'Crunchyroll Bookmark',
-    description: 'Automatically remember the latest Crunchyroll episode opened for each series.',
+    name: 'Marker',
+    description: 'Automatically remember the latest episode opened on Crunchyroll and Netflix.',
     permissions: ['storage', 'tabs'],
-    host_permissions: ['https://www.crunchyroll.com/*'],
+    host_permissions: [
+      'https://www.crunchyroll.com/*',
+      'https://www.netflix.com/*',
+    ],
     icons: {
       16: 'icon/16.png',
       32: 'icon/32.png',

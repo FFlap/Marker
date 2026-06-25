@@ -27,7 +27,7 @@ describe('App', () => {
     );
 
     expect(screen.getByText('No episodes tracked yet')).toBeInTheDocument();
-    expect(screen.getByText(/Open any episode on Crunchyroll/i)).toBeInTheDocument();
+    expect(screen.getByText(/Open any episode on Crunchyroll or Netflix/i)).toBeInTheDocument();
   });
 
   it('renders series, season, episode, and episode title', () => {
@@ -58,6 +58,20 @@ describe('App', () => {
 
     expect(screen.getByText('Specials')).toBeInTheDocument();
     expect(screen.queryByText('Season Specials')).not.toBeInTheDocument();
+  });
+
+  it('does not render platform labels', () => {
+    render(
+      <App
+        bookmarks={[{ ...bookmark, platform: 'netflix' }]}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('Netflix')).not.toBeInTheDocument();
+    expect(screen.queryByText('Crunchyroll')).not.toBeInTheDocument();
   });
 
   it('opens the exact last watched episode from the card', () => {

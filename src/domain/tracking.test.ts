@@ -26,9 +26,9 @@ describe('persistDetectedEpisode', () => {
 
     expect(changed).toBe(true);
     expect(storage.set).toHaveBeenCalledWith({
-      crunchyrollBookmarks: {
+      markerBookmarks: {
         version: 1,
-        bookmarks: { GT00258001: episode },
+        bookmarks: { 'crunchyroll:GT00258001': episode },
       },
     });
   });
@@ -36,9 +36,9 @@ describe('persistDetectedEpisode', () => {
   it('does not rewrite an unchanged episode', async () => {
     const storage = {
       get: vi.fn().mockResolvedValue({
-        crunchyrollBookmarks: {
+        markerBookmarks: {
           version: 1,
-          bookmarks: { GT00258001: episode },
+          bookmarks: { 'crunchyroll:GT00258001': episode },
         },
       }),
       set: vi.fn().mockResolvedValue(undefined),
@@ -49,5 +49,5 @@ describe('persistDetectedEpisode', () => {
     expect(changed).toBe(false);
     expect(storage.set).not.toHaveBeenCalled();
   });
-});
 
+});

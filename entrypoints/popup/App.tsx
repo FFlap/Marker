@@ -35,8 +35,7 @@ export function App({ bookmarks, onOpen, onRemove, onClear }: AppProps) {
       <header className="masthead">
         <img className="brand-mark" src="/icon/128.png" alt="" aria-hidden="true" />
         <div>
-          <p className="eyebrow">WATCH LOG</p>
-          <h1>Crunchyroll Bookmark</h1>
+          <h1>Marker</h1>
         </div>
         <span className="count" aria-label={`${bookmarks.length} tracked series`}>
           {bookmarks.length.toString().padStart(2, '0')}
@@ -49,7 +48,7 @@ export function App({ bookmarks, onOpen, onRemove, onClear }: AppProps) {
             <PlayIcon />
           </div>
           <h2>No episodes tracked yet</h2>
-          <p>Open any episode on Crunchyroll. Your latest stop will appear here automatically.</p>
+          <p>Open any episode on Crunchyroll or Netflix. Your latest stop will appear here automatically.</p>
         </section>
       ) : (
         <>
@@ -98,7 +97,7 @@ export function App({ bookmarks, onOpen, onRemove, onClear }: AppProps) {
 
       <footer>
         <span className="pulse" />
-        Tracking Crunchyroll automatically
+        Tracking episodes automatically
       </footer>
     </main>
   );
