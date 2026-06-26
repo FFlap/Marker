@@ -58,47 +58,44 @@ export function App({ bookmarks, onOpen, onRemove, onClear }: AppProps) {
               Clear all
             </button>
           </div>
-          <ol className="bookmark-list">
-            {bookmarks.map((bookmark, index) => (
-              <li key={bookmark.seriesId} style={{ '--index': index } as React.CSSProperties}>
-                <button
-                  type="button"
-                  className="bookmark-card"
-                  aria-label={`Continue ${bookmark.seriesTitle}, ${seasonLabel(bookmark.seasonNumber)}, episode ${bookmark.episodeNumber}`}
-                  onClick={() => onOpen(bookmark.watchUrl)}
-                >
-                  <span className="episode-index">{bookmark.episodeNumber}</span>
-                  <span className="bookmark-copy">
-                    <strong>{bookmark.seriesTitle}</strong>
-                    <span className="metadata">
-                      <b>{seasonLabel(bookmark.seasonNumber)}</b>
-                      <i />
-                      <b>Episode {bookmark.episodeNumber}</b>
+          <div className="bookmark-scroll">
+            <ol className="bookmark-list">
+              {bookmarks.map((bookmark, index) => (
+                <li key={bookmark.seriesId} style={{ '--index': index } as React.CSSProperties}>
+                  <button
+                    type="button"
+                    className="bookmark-card"
+                    aria-label={`Continue ${bookmark.seriesTitle}, ${seasonLabel(bookmark.seasonNumber)}, episode ${bookmark.episodeNumber}`}
+                    onClick={() => onOpen(bookmark.watchUrl)}
+                  >
+                    <span className="episode-index">{bookmark.episodeNumber}</span>
+                    <span className="bookmark-copy">
+                      <strong>{bookmark.seriesTitle}</strong>
+                      <span className="metadata">
+                        <b>{seasonLabel(bookmark.seasonNumber)}</b>
+                        <i />
+                        <b>Episode {bookmark.episodeNumber}</b>
+                      </span>
+                      <span className="episode-title">{bookmark.episodeTitle}</span>
                     </span>
-                    <span className="episode-title">{bookmark.episodeTitle}</span>
-                  </span>
-                  <span className="play">
-                    <PlayIcon />
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="remove"
-                  aria-label={`Remove ${bookmark.seriesTitle}`}
-                  onClick={() => onRemove(bookmark.seriesId)}
-                >
-                  <TrashIcon />
-                </button>
-              </li>
-            ))}
-          </ol>
+                    <span className="play">
+                      <PlayIcon />
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="remove"
+                    aria-label={`Remove ${bookmark.seriesTitle}`}
+                    onClick={() => onRemove(bookmark.seriesId)}
+                  >
+                    <TrashIcon />
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </div>
         </>
       )}
-
-      <footer>
-        <span className="pulse" />
-        Tracking episodes automatically
-      </footer>
     </main>
   );
 }
