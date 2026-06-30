@@ -1,3 +1,5 @@
+<img width="128" height="128" alt="logo" src="https://github.com/user-attachments/assets/68f90aac-65c0-41ef-a7d0-54f9c8522c82" />
+
 # Marker
 
 A local-first Chrome extension built with WXT that remembers the latest episode you opened on Crunchyroll and Netflix.
