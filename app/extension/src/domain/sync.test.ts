@@ -1,0 +1,168 @@
+import { describe, expect, it, vi } from "vitest";
+import { buildWatchPayload, createOutboxManager, parseWatchPayload, SYNC_OUTBOX_KEY, SYNC_RETRY_ALARM, SYNC_RETRY_KEY } from "./sync";
+
+const payload = { service: "netflix" as const, seriesTitle: "Dark", seasonNumber: 1, episodeNumber: 2 };
+const bookmark = {
+  platform: "netflix" as const,
+  seriesId: "dark",
+  seriesTitle: "Dark",
+  seriesUrl: "https://www.netflix.com/title/dark",
+  seasonNumber: "1",
+  episodeNumber: "2",
+  episodeTitle: "",
+  episodeId: "episode-2",
+  watchUrl: "",
+  updatedAt: 1,
+};
+const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
+
+describe("background-owned sync outbox", () => {
+  it("builds supported watch payloads", () => {
+    expect(buildWatchPayload({ ...bookmark, seasonNumber: "Specials" })).toMatchObject({ seasonNumber: 0 });
+    expect(buildWatchPayload({
+      ...bookmark,
+      platform: "crunchyroll",
+      seriesTitle: "Rascal Does Not Dream Series",
+      seasonNumber: "  Rascal Does Not Dream of Bunny Girl Senpai  ",
+      episodeNumber: "1",
+      episodeTitle: "My Senpai is a Bunny Girl",
+    })).toEqual({
+      service: "crunchyroll",
+      seriesTitle: "Rascal Does Not Dream Series",
+      seasonTitle: "Rascal Does Not Dream of Bunny Girl Senpai",
+      episodeNumber: 1,
+      episodeTitle: "My Senpai is a Bunny Girl",
+    });
+    expect(buildWatchPayload({ ...bookmark, seasonNumber: " 2 " })).toEqual({
+      ...payload,
+      seasonNumber: 2,
+    });
+  });
+  it("prefers episode titles for specials and unreliable decimal labels", () => {
+    expect(buildWatchPayload({ ...bookmark, seasonNumber: "Specials", episodeTitle: "OVA" })).toEqual({ service: "netflix", seriesTitle: "Dark", episodeNumber: 2, episodeTitle: "OVA" });
+    expect(buildWatchPayload({ ...bookmark, episodeNumber: "2.5", episodeTitle: "Recap" })).toEqual({ service: "netflix", seriesTitle: "Dark", episodeTitle: "Recap" });
+    expect(buildWatchPayload({ ...bookmark, episodeNumber: "2.5" })).toBeNull();
+    expect(buildWatchPayload(bookmark)).toEqual(payload);
+  });
+  it("rejects payloads with unknown fields", () => {
+    expect(parseWatchPayload({
+      platform: "netflix",
+      seriesTitle: "Dark",
+      seasonNumber: 1,
+      episodeNumber: 2,
+      watchUrl: "https://www.netflix.com/watch/2",
+    })).toBeNull();
+    expect(parseWatchPayload({ ...payload, url: "javascript:alert(1)" })).toBeNull();
+    expect(parseWatchPayload({ ...payload, seriesTitle: "x".repeat(301) })).toBeNull();
+  });
+  it("deduplicates title-matched events by normalized episode title", async () => {
+    const values: Record<string, unknown> = {};
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    await manager.enqueue({ service: "netflix", seriesTitle: "Dark", episodeTitle: " Recap " });
+    await manager.enqueue({ service: "netflix", seriesTitle: "dark", episodeTitle: "recap" });
+    expect(values[SYNC_OUTBOX_KEY]).toHaveLength(1);
+  });
+  it("keeps distinct franchise season titles in the outbox", async () => {
+    const values: Record<string, unknown> = {};
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    await manager.enqueue({ service: "crunchyroll", seriesTitle: "Container", seasonTitle: "Show A", episodeNumber: 1, episodeTitle: "Pilot" });
+    await manager.enqueue({ service: "crunchyroll", seriesTitle: "Container", seasonTitle: "Show B", episodeNumber: 1, episodeTitle: "Pilot" });
+    expect(values[SYNC_OUTBOX_KEY]).toHaveLength(2);
+  });
+  it("preserves a stored season title when the outbox is flushed", async () => {
+    const titled = {
+      service: "crunchyroll" as const,
+      seriesTitle: "Container",
+      seasonTitle: "Show A",
+      episodeNumber: 1,
+      episodeTitle: "Pilot",
+    };
+    const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [titled] };
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const post = vi.fn(async () => ({ ok: true, retryable: false }));
+    await createOutboxManager(storage, post).flush();
+    expect(post).toHaveBeenCalledWith(titled);
+  });
+  it("preserves an event added by another context while a flush is in flight", async () => {
+    const next = { ...payload, episodeNumber: 3 };
+    const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload] };
+    const gate = deferred<void>();
+    const storage = {
+      get: vi.fn(async () => ({ ...values })),
+      set: vi.fn(async (items: Record<string, unknown>) => { Object.assign(values, items); }),
+    };
+    const flushing = createOutboxManager(storage, async () => {
+      await gate.promise;
+      return { ok: true, retryable: false };
+    }).flush();
+    await vi.waitFor(() => expect(storage.get).toHaveBeenCalled());
+    values[SYNC_OUTBOX_KEY] = [payload, next];
+    gate.resolve();
+    await flushing;
+    expect(values[SYNC_OUTBOX_KEY]).toEqual([next]);
+  });
+  it("deduplicates mixed stored numeric and title payloads by either identity", async () => {
+    const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [{ ...payload, episodeTitle: "Recap" }] };
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    await manager.enqueue({ service: "netflix", seriesTitle: "dark", episodeTitle: "Recap" });
+    expect(values[SYNC_OUTBOX_KEY]).toEqual([{ service: "netflix", seriesTitle: "dark", episodeTitle: "Recap" }]);
+  });
+  it("serializes cross-context enqueues and reads latest storage inside each operation", async () => {
+    const values: Record<string, unknown> = {};
+    const gate = deferred<void>(); let gets = 0;
+    const storage = {
+      get: vi.fn(async () => { if (++gets === 1) await gate.promise; return { ...values }; }),
+      set: vi.fn(async (next: Record<string, unknown>) => { Object.assign(values, next); }),
+    };
+    const post = vi.fn(async () => ({ ok: false, retryable: true }));
+    const manager = createOutboxManager(storage, post);
+    const first = manager.enqueue(payload);
+    const secondPayload = { ...payload, episodeNumber: 3 };
+    const second = manager.enqueue(secondPayload);
+    gate.resolve(); await Promise.all([first, second]);
+    expect(values[SYNC_OUTBOX_KEY]).toEqual([payload, secondPayload]);
+  });
+  it("persists before attempting delivery", async () => {
+    const order: string[] = []; const values: Record<string, unknown> = {};
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { order.push("persist"); Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, async () => { order.push("deliver"); return { ok: true, retryable: false }; });
+    await manager.enqueue(payload);
+    expect(order.slice(0, 2)).toEqual(["persist", "deliver"]);
+  });
+  it("keeps retryable results queued and dequeues terminal results", async () => {
+    const values: Record<string, unknown> = {}; const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const retry = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    await retry.enqueue(payload); expect(values[SYNC_OUTBOX_KEY]).toEqual([payload]);
+    const terminal = createOutboxManager(storage, async () => ({ ok: false, reason: "rejected", retryable: false }));
+    await terminal.flush(); expect(values[SYNC_OUTBOX_KEY]).toEqual([]);
+  });
+  it("persists retry attempts and schedules bounded backoff", async () => {
+    const values: Record<string, unknown> = {};
+    const storage = { get: vi.fn(async () => ({ ...values })), set: vi.fn(async (next: Record<string, unknown>) => { Object.assign(values, next); }) };
+    const alarms = { schedule: vi.fn(), clear: vi.fn() };
+    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }), { now: () => 1_000, alarms });
+    await manager.enqueue(payload);
+    expect(values[SYNC_RETRY_KEY]).toEqual({ attempt: 1, nextRetryAt: 61_000 });
+    expect(alarms.schedule).toHaveBeenCalledWith(SYNC_RETRY_ALARM, 61_000);
+    await manager.flush();
+    expect(values[SYNC_RETRY_KEY]).toEqual({ attempt: 2, nextRetryAt: 301_000 });
+  });
+  it("clears retry scheduling after success", async () => {
+    const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload], [SYNC_RETRY_KEY]: { attempt: 2, nextRetryAt: 1000 } };
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const alarms = { schedule: vi.fn(), clear: vi.fn() };
+    await createOutboxManager(storage, async () => ({ ok: true, retryable: false }), { alarms }).flush();
+    expect(values[SYNC_RETRY_KEY]).toBeNull();
+    expect(alarms.clear).toHaveBeenCalledWith(SYNC_RETRY_ALARM);
+  });
+  it("flushes when a due retry alarm fires", async () => {
+    const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload], [SYNC_RETRY_KEY]: { attempt: 1, nextRetryAt: 1000 } };
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const post = vi.fn(async () => ({ ok: true, retryable: false }));
+    await createOutboxManager(storage, post, { now: () => 1000 }).alarmFired();
+    expect(post).toHaveBeenCalledWith(payload);
+  });
+});

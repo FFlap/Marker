@@ -1,0 +1,41 @@
+{
+  "name": "marker",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "audit:prod": "node scripts/audit-production.mjs",
+    "build:check": "WXT_CONVEX_URL=https://marker-check.convex.cloud WXT_WEBSITE_URL=https://marker.example.com WXT_CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsubWFya2VyLmV4YW1wbGUuY29tJA wxt build",
+    "check": "npm run typecheck && npm test && npm run build:check",
+    "zip": "wxt zip",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "WXT_CONVEX_URL=https://marker-check.convex.cloud WXT_WEBSITE_URL=https://marker.example.com WXT_CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsubWFya2VyLmV4YW1wbGUuY29tJA wxt prepare && tsc --noEmit"
+  },
+  "dependencies": {
+    "@clerk/chrome-extension": "3.1.63",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/chrome": "^0.0.329",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.5.2",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4",
+    "wxt": "^0.20.6"
+  },
+  "overrides": {
+    "@clerk/clerk-js": "6.25.12",
+    "@clerk/react": "6.12.9",
+    "@clerk/shared": "4.25.9",
+    "@clerk/ui": "1.27.1",
+    "shell-quote": "1.10.0"
+  }
+}
