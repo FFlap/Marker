@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { posterUrl } from "@/lib/utils";
 
 export type SearchResult = {
   id: number;
@@ -79,7 +79,6 @@ export function AddTitleDialog({
   initialSelection?: SearchResult;
   onAdded?: (itemId: string) => void;
 }) {
-  const demo = isDemoMode();
   const searchTitles = useAction(api.tmdb.searchMulti);
   const addItemAndMarkWatched = useAction(api.library.addItemAndMarkWatched);
   const addItem = useMutation(api.library.addItem);
@@ -106,7 +105,7 @@ export function AddTitleDialog({
   );
   const suggestions = useQuery(
     api.library.listTagSuggestions,
-    demo || !open || !selected ? "skip" : {},
+    !open || !selected ? "skip" : {},
   );
   const canonicalRuntime =
     resolvedTitle?.runtime ??
@@ -118,17 +117,17 @@ export function AddTitleDialog({
       : selected?.runtime);
 
   useEffect(() => {
-    if (!selected || demo) return;
+    if (!selected) return;
     void touchTitle({
       mediaType: selected.mediaType,
       tmdbId: selected.id,
       title: selected.title,
     }).catch(() => undefined);
-  }, [demo, selected, touchTitle]);
+  }, [selected, touchTitle]);
 
   const search = async (event: FormEvent) => {
     event.preventDefault();
-    if (demo || query.trim().length < 2) return;
+    if (query.trim().length < 2) return;
     dispatch({ type: "patch", value: { busy: true, error: "" } });
     try {
       dispatch({
@@ -146,7 +145,7 @@ export function AddTitleDialog({
   };
 
   const save = async () => {
-    if (!selected || demo) return;
+    if (!selected) return;
     const numericRating = rating === "" ? undefined : Number(rating);
     const numericTimesWatched = Number(timesWatched);
     if (
@@ -292,7 +291,7 @@ export function AddTitleDialog({
                   Back
                 </Button>
               )}
-              <Button onClick={() => void save()} disabled={busy || demo}>
+              <Button onClick={() => void save()} disabled={busy}>
                 <Check className="size-4" />{" "}
                 {busy ? "Adding…" : "Add to library"}
               </Button>
@@ -314,12 +313,11 @@ export function AddTitleDialog({
                   }
                   placeholder="Search TMDB"
                   className="pl-10"
-                  disabled={demo}
                 />
               </div>
               <Button
                 type="submit"
-                disabled={demo || busy || query.trim().length < 2}
+                disabled={busy || query.trim().length < 2}
               >
                 {busy ? "Searching…" : "Search"}
               </Button>

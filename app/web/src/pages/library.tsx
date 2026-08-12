@@ -10,8 +10,8 @@ import { AddTitleDialog } from "@/components/title-dialog";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { Page, SectionHeader } from "@/components/page";
-import { demoItems, type WebLibraryItem } from "@/lib/demo";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import type { WebLibraryItem } from "@/types";
+import { posterUrl } from "@/lib/utils";
 import { matchesMediaType } from "@/lib/library-filters";
 import { collectionGridWidth, collectionListType, collectionListWidth } from "@/lib/display-preferences";
 import { usePointerSortable, type SortableLocation } from "@/hooks/use-pointer-sortable";
@@ -95,12 +95,11 @@ function PosterItem({ item, index, ranked }: { item: WebLibraryItem; index: numb
 }
 
 export function LibraryPage() {
-  const demo = isDemoMode();
-  const queried = useQuery(api.library.listItems, demo ? "skip" : {});
-  const settings = useQuery(api.settings.getSettings, demo ? "skip" : {});
+  const queried = useQuery(api.library.listItems, {});
+  const settings = useQuery(api.settings.getSettings, {});
   const reorderItem = useMutation(api.library.reorderItem);
   const moveItemToWatched = useAction(api.library.moveItemToWatched);
-  const items = (demo ? demoItems : queried) as WebLibraryItem[] | undefined;
+  const items = queried as WebLibraryItem[] | undefined;
   const { view, setView } = useSessionLibraryView(
     settings?.defaultView ?? "list",
   );
@@ -149,12 +148,15 @@ export function LibraryPage() {
       .filter((item) => item.status === status)
       .toSorted((a, b) => a.rank - b.rank);
     const order = orders[status];
-    return order
-      ? section.toSorted(
-          (left, right) =>
-            order.indexOf(String(left._id)) - order.indexOf(String(right._id)),
-        )
-      : section;
+    if (!order) return section;
+    const position = (id: string) => {
+      const index = order.indexOf(id);
+      return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+    };
+    return section.toSorted(
+      (left, right) =>
+        position(String(left._id)) - position(String(right._id)) || left.rank - right.rank,
+    );
   };
   const move = async (
     status: WebLibraryItem["status"],
@@ -163,12 +165,12 @@ export function LibraryPage() {
     to: number,
   ) => {
     if (filtersActive || moving || from === to || to < 0 || to >= section.length) return;
+    setError("");
     const next = [...section];
     const [moved] = next.splice(from, 1);
     if (!moved) return;
     next.splice(to, 0, moved);
     setOrders((current) => ({ ...current, [status]: next.map((item) => String(item._id)) }));
-    if (demo) return;
     setMoving(String(moved._id));
     try {
       await reorderItem({
@@ -185,7 +187,7 @@ export function LibraryPage() {
     }
   };
   const moveStatus = async (item: WebLibraryItem, status: WebLibraryItem["status"], targetIndex?: number) => {
-    if (demo || filtersActive || moving || item.status === status) return;
+    if (filtersActive || moving || item.status === status) return;
     const target = (items ?? [])
       .filter((entry) => entry.status === status && entry._id !== item._id)
       .toSorted((left, right) => left.rank - right.rank);
@@ -274,7 +276,7 @@ export function LibraryPage() {
         </p>
       )}
 
-      {queried === undefined && !demo ? (
+      {queried === undefined ? (
         <div className="mt-12 grid gap-3">
           {["one", "two", "three", "four", "five", "six"].map((key) => (
             <div key={key} className="h-16 animate-pulse rounded-xl bg-card" />

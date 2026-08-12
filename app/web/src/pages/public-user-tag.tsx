@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { FilterDialog, type LibraryFilters } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
-import { Input } from "@/components/ui/input";
+import { SearchField } from "@/components/ui/search-field";
 import { collectionGridWidth } from "@/lib/display-preferences";
 import { matchesMediaType } from "@/lib/library-filters";
 import { posterUrl } from "@/lib/utils";
@@ -31,10 +31,11 @@ const labels = {
 };
 
 export function PublicUserTagPage() {
-  const { username, tag } = useParams({ from: "/app/u/$username/tags/$tag" });
+  const { username, tag } = useParams({ from: "/u/$username/tags/$tag" });
+  const { isAuthenticated } = useConvexAuth();
   const collection = useQuery(api.tags.publicByUser, { username, tag });
-  const library = useQuery(api.library.listItems, {});
-  const settings = useQuery(api.settings.getSettings, {});
+  const library = useQuery(api.library.listItems, isAuthenticated ? {} : "skip");
+  const settings = useQuery(api.settings.getSettings, isAuthenticated ? {} : "skip");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>({
     media: "all",
@@ -87,10 +88,10 @@ export function PublicUserTagPage() {
       <PageHeader
         title={collection?.tag ?? tag}
         back
-        backFallback={`/u/${username}`}
+        backFallback="/explore"
       />
       <div className="mt-6 flex gap-2">
-        <Input
+        <SearchField
           aria-label={`Search ${username}'s ${tag} tag`}
           value={search}
           onChange={(event) => setSearch(event.target.value)}

@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   add: vi.fn<(args: unknown) => Promise<void>>(),
@@ -21,9 +21,13 @@ vi.mock("convex/react", () => ({
   useMutation: (ref: string) => {
     if (ref === "profileFavorites.add") return mocks.add;
     if (ref === "profileFavorites.remove") return mocks.remove;
-    return mocks.reorder;
+    if (ref === "profileFavorites.reorder") return mocks.reorder;
+    throw new Error(`Unexpected mutation: ${ref}`);
   },
-  useQuery: () => mocks.eligible,
+  useQuery: (ref: string) => {
+    if (ref === "profileFavorites.eligible") return mocks.eligible;
+    throw new Error(`Unexpected query: ${ref}`);
+  },
 }));
 
 vi.mock("../../mobile/convex/_generated/api", () => ({
@@ -48,6 +52,7 @@ import { ProfileFavorites } from "@/components/profile-favorites";
 afterEach(cleanup);
 
 describe("profile favorites", () => {
+  beforeEach(() => vi.clearAllMocks());
   const favorites = [
     {
       _id: "favorite-tv",
@@ -114,5 +119,26 @@ describe("profile favorites", () => {
     expect(
       screen.queryByRole("button", { name: "Severance" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("persists favorite add, remove, and reorder actions", async () => {
+    const twoMovies = [
+      ...favorites,
+      { _id: "favorite-movie-2", title: "Arrival", mediaType: "movie" as const, isAnime: false, rank: 4 },
+    ];
+    render(<ProfileFavorites favorites={twoMovies} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open actions for Heat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move down" }));
+    await waitFor(() => expect(mocks.reorder).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Open actions for The Office" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove from favorites" }));
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith({ itemId: "favorite-tv" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add favorite TV show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Severance" }));
+    await waitFor(() => expect(mocks.add).toHaveBeenCalledWith({ itemId: "eligible-tv" }));
   });
 });

@@ -1,4 +1,4 @@
-import type { WebLibraryItem } from "@/lib/demo";
+import type { WebLibraryItem } from "@/types";
 import type { LibraryFilters } from "@/components/filter-dialog";
 
 export function matchesMediaType(

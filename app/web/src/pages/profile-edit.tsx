@@ -3,30 +3,22 @@ import { useNavigate } from "@tanstack/react-router";
 import { Camera, Globe2, LockKeyhole, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
 import { Page, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { isDemoMode } from "@/lib/utils";
-
-const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+import { useAvatarUpload } from "@/hooks/use-avatar-upload";
+import { USERNAME_PATTERN } from "@/lib/profile";
 
 export function ProfileEditPage() {
-  const demo = isDemoMode();
-  const profileQuery = useQuery(api.profiles.me, demo ? "skip" : {});
-  const profile = demo
-    ? { username: "demo_viewer", isPublic: true, avatarUrl: undefined }
-    : profileQuery;
+  const profile = useQuery(api.profiles.me, {});
   const save = useMutation(api.profiles.save);
-  const generateUploadUrl = useMutation(api.profiles.generateAvatarUploadUrl);
-  const setAvatar = useMutation(api.profiles.setAvatar);
-  const removeAvatar = useMutation(api.profiles.removeAvatar);
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [photoPending, setPhotoPending] = useState(false);
   const [error, setError] = useState("");
+  const { pending: photoPending, upload, clear: clearAvatar } =
+    useAvatarUpload(setError);
   const profileUsername = profile?.username;
   const profileIsPublic = profile?.isPublic;
 
@@ -38,8 +30,7 @@ export function ProfileEditPage() {
 
   const submit = async () => {
     const value = username.trim();
-    if (demo) return;
-    if (!/^[A-Za-z0-9_]{3,24}$/.test(value)) {
+    if (!USERNAME_PATTERN.test(value)) {
       setError("Use 3–24 letters, numbers, or underscores.");
       return;
     }
@@ -56,44 +47,6 @@ export function ProfileEditPage() {
       );
     } finally {
       setSaving(false);
-    }
-  };
-
-  const upload = async (file: File | undefined) => {
-    if (!file || demo) return;
-    if (file.size > MAX_AVATAR_BYTES) {
-      setError("Choose an image under 5 MB.");
-      return;
-    }
-    if (demo) return;
-    setPhotoPending(true);
-    setError("");
-    try {
-      const uploadUrl = await generateUploadUrl();
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type || "image/jpeg" },
-        body: file,
-      });
-      if (!response.ok) throw new Error("Upload failed");
-      const payload = (await response.json()) as { storageId?: string };
-      if (!payload.storageId) throw new Error("Upload failed");
-      await setAvatar({ storageId: payload.storageId as Id<"_storage"> });
-    } catch {
-      setError("Couldn’t update your profile photo.");
-    } finally {
-      setPhotoPending(false);
-    }
-  };
-
-  const clearAvatar = async () => {
-    setPhotoPending(true);
-    try {
-      await removeAvatar();
-    } catch {
-      setError("Couldn’t remove your profile photo.");
-    } finally {
-      setPhotoPending(false);
     }
   };
 
@@ -119,7 +72,11 @@ export function ProfileEditPage() {
                 accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                 className="sr-only"
                 disabled={photoPending}
-                onChange={(event) => void upload(event.target.files?.[0])}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  void upload(file);
+                }}
               />
             </label>
             <div>
@@ -190,8 +147,8 @@ export function ProfileEditPage() {
           </fieldset>
 
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          <Button disabled={demo || saving || photoPending || !username.trim()} onClick={() => void submit()}>
-            {saving ? "Saving…" : demo ? "Preview only" : "Save changes"}
+          <Button disabled={saving || photoPending || !username.trim()} onClick={() => void submit()}>
+            {saving ? "Saving…" : "Save changes"}
           </Button>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useUser } from "@clerk/react";
-import { CheckCircle2, ShieldCheck } from "lucide-react";
+import { Clock3, ShieldCheck } from "lucide-react";
 import { Brand } from "@/components/brand";
 
 export function ExtensionConnectPage() {
@@ -14,14 +14,14 @@ export function ExtensionConnectPage() {
       <section className="relative w-full max-w-lg rounded-3xl border border-border bg-background/92 p-7 text-center shadow-2xl backdrop-blur sm:p-12">
         <Brand className="justify-center" />
         <div className="mx-auto mt-12 grid size-16 place-items-center rounded-2xl border border-border bg-card">
-          <CheckCircle2 className="size-6" />
+          <Clock3 className="size-6" />
         </div>
         <h1 className="mt-7 text-4xl font-bold tracking-[-.04em]">
-          Extension connected.
+          You’re signed in.
         </h1>
         <p className="mx-auto mt-4 max-w-sm text-sm leading-6 text-muted-foreground">
-          Clerk has securely shared {account} with the Marker extension. You can
-          close this tab and reopen the extension popup.
+          Marker is signed in as {account}. Reopen the extension popup to let it
+          confirm the connection before syncing watched episodes.
         </p>
         <div className="mt-8 flex items-center justify-center gap-2 text-[10px] uppercase tracking-[.12em] text-muted-foreground">
           <ShieldCheck className="size-3.5" /> Managed by Clerk · no password

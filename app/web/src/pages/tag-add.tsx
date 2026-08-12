@@ -6,15 +6,14 @@ import { api } from "../../../mobile/convex/_generated/api";
 import type { Id } from "../../../mobile/convex/_generated/dataModel";
 import { Page, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { demoItems, type WebLibraryItem } from "@/lib/demo";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { SearchField } from "@/components/ui/search-field";
+import type { WebLibraryItem } from "@/types";
+import { posterUrl } from "@/lib/utils";
 
 export function TagAddPage() {
   const { tag } = useParams({ from: "/app/tags/$tag/add" });
-  const demo = isDemoMode();
-  const itemQuery = useQuery(api.library.listItems, demo ? "skip" : {});
-  const items = (demo ? demoItems : itemQuery) as WebLibraryItem[] | undefined;
+  const itemQuery = useQuery(api.library.listItems, {});
+  const items = itemQuery as WebLibraryItem[] | undefined;
   const addTagToItems = useMutation(api.library.addTagToItems);
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -41,7 +40,7 @@ export function TagAddPage() {
     });
   };
   const confirm = async () => {
-    if (demo || !selected.size || saving) return;
+    if (!selected.size || saving) return;
     setSaving(true);
     setError("");
     try {
@@ -61,8 +60,8 @@ export function TagAddPage() {
   };
   return (
     <Page width="compact">
-      <PageHeader title={`Add to ${tag}`} back backFallback={`/tags/${tag}`} />
-      <Input
+      <PageHeader title={`Add to ${tag}`} back backFallback="/tags" />
+      <SearchField
         aria-label="Search your library"
         value={search}
         onChange={(event) => setSearch(event.target.value)}
@@ -106,7 +105,7 @@ export function TagAddPage() {
                           ? `${item.title}, already in ${tag}`
                           : `${checked ? "Remove" : "Add"} ${item.title}`
                       }
-                      className="sr-only"
+                      className="peer sr-only"
                     />
                     <div className="aspect-[2/3] w-10 shrink-0 overflow-hidden rounded-md bg-card">
                       {item.posterPath && (
@@ -130,7 +129,7 @@ export function TagAddPage() {
                       </span>
                     </span>
                     <span
-                      className={`grid size-7 place-items-center rounded-full border ${checked ? "border-foreground bg-foreground text-background" : "border-border"}`}
+                      className={`grid size-7 place-items-center rounded-full border peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-background ${checked ? "border-foreground bg-foreground text-background" : "border-border"}`}
                     >
                       {checked && <Check className="size-4" />}
                     </span>
@@ -157,16 +156,10 @@ export function TagAddPage() {
           {selected.size} {selected.size === 1 ? "title" : "titles"} selected
         </span>
         <Button
-          disabled={demo || !selected.size || saving}
+          disabled={!selected.size || saving}
           onClick={() => void confirm()}
         >
-          {saving
-            ? "Adding…"
-            : demo
-              ? "Preview only"
-              : selected.size
-                ? `Add ${selected.size}`
-                : "Select titles"}
+          {saving ? "Adding…" : selected.size ? `Add ${selected.size}` : "Select titles"}
         </Button>
       </div>
       {error && (

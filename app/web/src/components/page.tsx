@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ChevronLeft } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter, type RegisteredRouter } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 export function Page({
@@ -28,24 +28,25 @@ export function Page({
 }
 
 function BackButton({
-  fallback = "/",
+  fallback = "/explore",
   label = "Go back",
 }: {
-  fallback?: string;
+  fallback?: keyof RegisteredRouter["routesByPath"] & string;
   label?: string;
 }) {
   const navigate = useNavigate();
+  const router = useRouter();
   return (
     <button
       type="button"
       aria-label={label}
       className="grid size-11 shrink-0 place-items-center rounded-full bg-transparent text-foreground transition hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-10"
       onClick={() => {
-        if (window.history.length > 1) {
-          window.history.back();
+        if (router.history.canGoBack()) {
+          router.history.back();
           return;
         }
-        void navigate({ to: fallback as never });
+        void navigate({ to: fallback });
       }}
     >
       <ChevronLeft className="size-5" strokeWidth={2.25} />
@@ -63,7 +64,7 @@ export function PageHeader({
   title: string;
   actions?: ReactNode;
   back?: boolean;
-  backFallback?: string;
+  backFallback?: keyof RegisteredRouter["routesByPath"] & string;
   className?: string;
 }) {
   return (

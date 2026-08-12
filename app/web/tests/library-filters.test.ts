@@ -15,7 +15,10 @@ describe("matchesMediaType", () => {
   });
 
   it("matches non-anime movies and TV shows normally", () => {
+    expect(matchesMediaType(animeSeries, "all")).toBe(true);
+    expect(matchesMediaType(liveActionMovie, "all")).toBe(true);
     expect(matchesMediaType(liveActionSeries, "tv")).toBe(true);
+    expect(matchesMediaType(liveActionSeries, "movie")).toBe(false);
     expect(matchesMediaType(liveActionMovie, "movie")).toBe(true);
   });
 });

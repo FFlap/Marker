@@ -10,7 +10,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { isDemoMode } from "@/lib/utils";
 
 export type EpisodeView = {
   itemId: string;
@@ -35,12 +34,11 @@ export function EpisodeDialog({
   children: ReactNode;
   episode: EpisodeView;
 }) {
-  const demo = isDemoMode();
   const setEpisodeState = useMutation(api.library.setEpisodeState);
   const [open, setOpen] = useState(false);
   const suggestions = useQuery(
     api.library.listTagSuggestions,
-    demo || !open ? "skip" : {},
+    !open ? "skip" : {},
   );
   const [rating, setRating] = useState<number | undefined>(
     () => episode.rating,
@@ -55,7 +53,6 @@ export function EpisodeDialog({
     tags?: string[];
     watched?: boolean;
   }) => {
-    if (demo) return;
     setBusy(true);
     setError("");
     try {
@@ -72,8 +69,10 @@ export function EpisodeDialog({
         ...patch,
       });
       if (patch.watched === false) setOpen(false);
+      return true;
     } catch {
       setError("Couldn’t update this episode. Please try again.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -94,14 +93,18 @@ export function EpisodeDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogTitle className="sr-only">Episode options</DialogTitle>
-        <div className={demo ? "pointer-events-none opacity-50" : undefined}>
+        <div>
           <RatingControl
             value={rating}
             onChange={(next) => {
+              const previous = rating;
               setRating(next);
               void mutate(
                 next === undefined ? { clearRating: true } : { rating: next },
-              );
+              ).then((saved) => {
+                if (!saved) setRating(previous);
+                return undefined;
+              });
             }}
           />
           <div className="mt-6">
@@ -109,8 +112,12 @@ export function EpisodeDialog({
               tags={tags}
               suggestions={suggestions ?? []}
               onChange={(next) => {
+                const previous = tags;
                 setTags(next);
-                void mutate({ tags: next });
+                void mutate({ tags: next }).then((saved) => {
+                  if (!saved) setTags(previous);
+                  return undefined;
+                });
               }}
             />
           </div>
@@ -124,7 +131,7 @@ export function EpisodeDialog({
           <Button
             variant="ghost"
             onClick={() => void mutate({ watched: false })}
-            disabled={busy || demo}
+            disabled={busy}
             className="justify-self-start"
           >
             {busy ? "Saving…" : "Mark episode unwatched"}

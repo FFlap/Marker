@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => {
       verifyEmailCode: vi.fn<(...args: unknown[]) => Promise<{ error: unknown | null }>>(),
     },
   };
-  return { signIn, signUp };
+  return { navigate: vi.fn<(...args: unknown[]) => Promise<void>>(), signIn, signUp };
 });
 
 vi.mock("@clerk/react", () => {
@@ -44,7 +44,7 @@ vi.mock("@clerk/react", () => {
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
-  useNavigate: () => vi.fn<() => void>(),
+  useNavigate: () => mocks.navigate,
   useSearch: () => ({}),
 }));
 
@@ -61,9 +61,20 @@ describe("login page", () => {
     for (const mock of [
       mocks.signIn.create,
       mocks.signIn.finalize,
+      mocks.signIn.password,
+      mocks.signIn.reset,
+      mocks.signIn.sso,
       mocks.signIn.resetPasswordEmailCode.sendCode,
       mocks.signIn.resetPasswordEmailCode.verifyCode,
       mocks.signIn.resetPasswordEmailCode.submitPassword,
+      mocks.signIn.mfa.sendEmailCode,
+      mocks.signIn.mfa.verifyEmailCode,
+      mocks.signUp.password,
+      mocks.signUp.finalize,
+      mocks.signUp.reset,
+      mocks.signUp.update,
+      mocks.signUp.verifications.sendEmailCode,
+      mocks.signUp.verifications.verifyEmailCode,
     ]) {
       mock.mockResolvedValue({ error: null });
     }
@@ -148,6 +159,28 @@ describe("login page", () => {
       }),
     );
     expect(mocks.signIn.finalize).toHaveBeenCalled();
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/" });
+  });
+
+  it("does not submit mismatched replacement passwords", async () => {
+    mocks.signIn.resetPasswordEmailCode.verifyCode.mockImplementation(async () => {
+      mocks.signIn.status = "needs_new_password";
+      return { error: null };
+    });
+    render(<LoginPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
+    fireEvent.change(screen.getByLabelText("Email or username"), { target: { value: "viewer@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send reset code" }));
+    await screen.findByLabelText("Verification code");
+    fireEvent.change(screen.getByLabelText("Verification code"), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Verify code" }));
+    await screen.findByLabelText("New password");
+    fireEvent.change(screen.getByLabelText("New password"), { target: { value: "first-password" } });
+    fireEvent.change(screen.getByLabelText("Confirm new password"), { target: { value: "second-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update password" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Those passwords do not match.");
+    expect(mocks.signIn.resetPasswordEmailCode.submitPassword).not.toHaveBeenCalled();
   });
 
   it.each([

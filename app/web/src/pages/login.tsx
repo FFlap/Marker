@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useSignIn, useSignUp } from "@clerk/react";
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, LogIn, UserPlus } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { isDemoMode, safeInternalPath } from "@/lib/utils";
+import { safeInternalPath } from "@/lib/utils";
 
 function GoogleIcon() {
   return (
@@ -71,8 +71,6 @@ function recoveryError(cause: unknown) {
 }
 
 export function LoginPage() {
-  const demo = isDemoMode();
-  const demoAvailable = import.meta.env.VITE_DEMO_MODE === "true";
   const search = useSearch({ strict: false }) as { next?: string };
   const next = safeInternalPath(search.next);
   const { signIn } = useSignIn();
@@ -133,60 +131,39 @@ export function LoginPage() {
     setNotice("");
     try {
       if (recovery === "identifier") {
-        if (demo) {
-          setCode("");
-          setRecovery("code");
-        } else {
-          throwIfError(await signIn.create({ identifier: identifier.trim() }));
-          throwIfError(await signIn.resetPasswordEmailCode.sendCode());
-          setCode("");
-          setRecovery("code");
-        }
+        throwIfError(await signIn.create({ identifier: identifier.trim() }));
+        throwIfError(await signIn.resetPasswordEmailCode.sendCode());
+        setCode("");
+        setRecovery("code");
       } else if (recovery === "code") {
-        if (demo) {
-          setCode("");
-          setPassword("");
-          setConfirmPassword("");
-          setRecovery("password");
-        } else {
-          throwIfError(
-            await signIn.resetPasswordEmailCode.verifyCode({
-              code: code.trim(),
-            }),
-          );
-          if (signIn.status !== "needs_new_password") {
-            throw new Error("Password reset verification is incomplete");
-          }
-          setCode("");
-          setPassword("");
-          setConfirmPassword("");
-          setRecovery("password");
+        throwIfError(
+          await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() }),
+        );
+        if (signIn.status !== "needs_new_password") {
+          throw new Error("Password reset verification is incomplete");
         }
+        setCode("");
+        setPassword("");
+        setConfirmPassword("");
+        setRecovery("password");
       } else if (recovery === "password") {
         if (password !== confirmPassword)
           throw new Error("Passwords do not match");
-        if (demo) {
+        throwIfError(
+          await signIn.resetPasswordEmailCode.submitPassword({
+            password,
+            signOutOfOtherSessions: true,
+          }),
+        );
+        if (signIn.status === "complete") {
+          throwIfError(await signIn.finalize());
+          await navigate({ to: next });
+        } else if (signIn.status === "needs_client_trust") {
+          throwIfError(await signIn.mfa.sendEmailCode());
           setRecovery(null);
-          setPassword("");
-          setConfirmPassword("");
-          setNotice("Password updated. Sign in with your new password.");
+          setVerification("clientTrust");
         } else {
-          throwIfError(
-            await signIn.resetPasswordEmailCode.submitPassword({
-              password,
-              signOutOfOtherSessions: true,
-            }),
-          );
-          if (signIn.status === "complete") {
-            throwIfError(await signIn.finalize());
-            await navigate({ to: next });
-          } else if (signIn.status === "needs_client_trust") {
-            throwIfError(await signIn.mfa.sendEmailCode());
-            setRecovery(null);
-            setVerification("clientTrust");
-          } else {
-            throw new Error("Additional sign-in verification is required");
-          }
+          throw new Error("Additional sign-in verification is required");
         }
       } else if (verification === "oauthUsername") {
         throwIfError(await signUp.update({ username: username.trim() }));
@@ -601,20 +578,7 @@ export function LoginPage() {
           )}
           <p className="mt-12 text-[10px] leading-5 text-muted-foreground">
             By continuing, you agree to keep your watchlist exceptionally well
-            curated
-            {demoAvailable ? (
-              <>
-                {" "}
-                <Link
-                  to="/"
-                  search={{ demo: 1 }}
-                  className="underline hover:text-foreground"
-                >
-                  Preview the web app
-                </Link>
-              </>
-            ) : null}
-            .
+            curated.
           </p>
         </div>
       </section>

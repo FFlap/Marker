@@ -3,29 +3,33 @@ import { Camera, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { safeInternalPath } from "@/lib/utils";
+import { useAvatarUpload } from "@/hooks/use-avatar-upload";
+import { USERNAME_PATTERN } from "@/lib/profile";
 
 export function ProfileSetupPage() {
   const profile = useQuery(api.profiles.me, {});
   const save = useMutation(api.profiles.save);
-  const generateUploadUrl = useMutation(api.profiles.generateAvatarUploadUrl);
-  const setAvatar = useMutation(api.profiles.setAvatar);
-  const removeAvatar = useMutation(api.profiles.removeAvatar);
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { next?: string };
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [photoPending, setPhotoPending] = useState(false);
+  const { pending: photoPending, upload, clear: clearAvatar } =
+    useAvatarUpload(setError);
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    const value = username.trim();
+    if (!USERNAME_PATTERN.test(value)) {
+      setError("Choose 3–24 letters, numbers, or underscores.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      await save({ username: username.trim(), isPublic: profile?.isPublic ?? false });
+      await save({ username: value, isPublic: profile?.isPublic ?? false });
       await navigate({ to: safeInternalPath(search.next) });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "";
@@ -38,42 +42,6 @@ export function ProfileSetupPage() {
       );
     } finally {
       setBusy(false);
-    }
-  };
-  const upload = async (file: File | undefined) => {
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Choose an image under 5 MB.");
-      return;
-    }
-    setPhotoPending(true);
-    setError("");
-    try {
-      const uploadUrl = await generateUploadUrl();
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type || "image/jpeg" },
-        body: file,
-      });
-      if (!response.ok) throw new Error("Upload failed");
-      const payload = (await response.json()) as { storageId?: string };
-      if (!payload.storageId) throw new Error("Upload failed");
-      await setAvatar({ storageId: payload.storageId as Id<"_storage"> });
-    } catch {
-      setError("Couldn’t update your profile photo.");
-    } finally {
-      setPhotoPending(false);
-    }
-  };
-  const clearAvatar = async () => {
-    setPhotoPending(true);
-    setError("");
-    try {
-      await removeAvatar();
-    } catch {
-      setError("Couldn’t remove your profile photo.");
-    } finally {
-      setPhotoPending(false);
     }
   };
   return (
@@ -100,7 +68,11 @@ export function ProfileSetupPage() {
                 accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                 className="sr-only"
                 disabled={photoPending}
-                onChange={(event) => void upload(event.target.files?.[0])}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  void upload(file);
+                }}
               />
             </label>
             <div>

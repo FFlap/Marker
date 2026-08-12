@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
-import { Input } from "@/components/ui/input";
+import { SearchField } from "@/components/ui/search-field";
 import { collectionGridWidth } from "@/lib/display-preferences";
 import { posterUrl } from "@/lib/utils";
 
@@ -18,10 +18,11 @@ type PublicTitle = {
 };
 
 export function PublicTagPage() {
-  const { tag } = useParams({ from: "/app/tag/$tag" });
+  const { tag } = useParams({ from: "/tag/$tag" });
+  const { isAuthenticated } = useConvexAuth();
   const collection = useQuery(api.tags.publicDetails, { tag });
-  const library = useQuery(api.library.listItems, {});
-  const settings = useQuery(api.settings.getSettings, {});
+  const library = useQuery(api.library.listItems, isAuthenticated ? {} : "skip");
+  const settings = useQuery(api.settings.getSettings, isAuthenticated ? {} : "skip");
   const [search, setSearch] = useState("");
   const gridColumns = settings?.gridColumns ?? 3;
   const existing = useMemo(
@@ -44,7 +45,7 @@ export function PublicTagPage() {
   return (
     <Page width="wide" className="max-w-4xl">
       <PageHeader title={collection?.tag ?? tag} back backFallback="/explore" />
-      <Input
+      <SearchField
         aria-label={`Search public ${tag} titles`}
         value={search}
         onChange={(event) => setSearch(event.target.value)}
@@ -70,12 +71,14 @@ export function PublicTagPage() {
       ) : (
         <>
           <p className="mt-4 text-xs text-muted-foreground">
-            {collection.titles.length}{" "}
-            {collection.titles.length === 1 ? "title" : "titles"} from{" "}
+            {titles.length}{" "}
+            {titles.length === 1 ? "title" : "titles"} from{" "}
             {collection.contributorCount}{" "}
             {collection.contributorCount === 1 ? "person" : "people"}
           </p>
-          <div className="mt-8 grid gap-12">
+          {!titles.length ? (
+            <div className="mt-16 text-center text-sm text-muted-foreground">No matching titles.</div>
+          ) : <div className="mt-8 grid gap-12">
             {(["movie", "tv"] as const).map((mediaType) => {
               const entries = titles.filter(
                 (title) => title.mediaType === mediaType,
@@ -165,7 +168,7 @@ export function PublicTagPage() {
                 </section>
               );
             })}
-          </div>
+          </div>}
         </>
       )}
     </Page>

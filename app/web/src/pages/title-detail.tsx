@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import {
@@ -10,7 +10,7 @@ import { api } from "../../../mobile/convex/_generated/api";
 import { AddTitleDialog, type SearchResult } from "@/components/title-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { posterUrl } from "@/lib/utils";
 
 type Detail = SearchResult & {
   tmdbId?: number;
@@ -49,10 +49,31 @@ function parsePreview(value: string | undefined): SearchResult | undefined {
       (parsed.mediaType !== "movie" && parsed.mediaType !== "tv")
     )
       return undefined;
-    return parsed as SearchResult;
+    return {
+      id: parsed.id,
+      title: parsed.title,
+      mediaType: parsed.mediaType,
+      ...(typeof parsed.posterPath === "string" && { posterPath: parsed.posterPath }),
+      ...(typeof parsed.overview === "string" && { overview: parsed.overview }),
+      ...(typeof parsed.releaseDate === "string" && { releaseDate: parsed.releaseDate }),
+      ...(typeof parsed.runtime === "number" && Number.isFinite(parsed.runtime) && { runtime: parsed.runtime }),
+      ...(Array.isArray(parsed.genres) && parsed.genres.every((genre) => typeof genre === "string") && { genres: parsed.genres }),
+    };
   } catch {
     return undefined;
   }
+}
+
+function TrackTitleDialog({
+  selection,
+  onAdded,
+  children,
+}: {
+  selection: SearchResult;
+  onAdded: (itemId: string) => void;
+  children: ReactNode;
+}) {
+  return <AddTitleDialog initialSelection={selection} onAdded={onAdded}>{children}</AddTitleDialog>;
 }
 
 export function TitleDetailPage() {
@@ -63,7 +84,9 @@ export function TitleDetailPage() {
     from: "/app/title/$mediaType/$tmdbId",
   });
   const navigate = useNavigate();
-  const demo = isDemoMode();
+  const handleAdded = (itemId: string) => {
+    void navigate({ to: "/item/$itemId", params: { itemId } });
+  };
   const mediaType =
     rawMediaType === "movie" || rawMediaType === "tv"
       ? rawMediaType
@@ -78,15 +101,15 @@ export function TitleDetailPage() {
   }, [mediaType, rawPreview, tmdbId]);
   const existing = useConvexQuery(
     api.library.getOwnedItemByTmdb,
-    !demo && mediaType && valid ? { mediaType, tmdbId } : "skip",
+    mediaType && valid ? { mediaType, tmdbId } : "skip",
   );
   const titleView = useConvexQuery(
     api.resolvedMetadata.getTitleView,
-    !demo && mediaType && valid ? { mediaType, tmdbId } : "skip",
+    mediaType && valid ? { mediaType, tmdbId } : "skip",
   );
   const titleRequestState = useConvexQuery(
     api.resolvedMetadata.getTitleRequestState,
-    !demo && mediaType && valid ? { mediaType, tmdbId } : "skip",
+    mediaType && valid ? { mediaType, tmdbId } : "skip",
   );
   const touchTitle = useMutation(api.resolvedMetadata.touchTitle);
   const detail = titleView?.title as Detail | null | undefined;
@@ -96,13 +119,13 @@ export function TitleDetailPage() {
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const seasonView = usePaginatedQuery(
     api.resolvedMetadata.getSeasonView,
-    !demo && mediaType === "tv" && valid ? { tmdbId, season } : "skip",
+    mediaType === "tv" && valid ? { tmdbId, season } : "skip",
     { initialNumItems: 1 },
   );
   const seasonPages = seasonView.results as SeasonPage[];
   const seasonRequestState = useConvexQuery(
     api.resolvedMetadata.getSeasonRequestState,
-    !demo && mediaType === "tv" && valid ? { tmdbId, season } : "skip",
+    mediaType === "tv" && valid ? { tmdbId, season } : "skip",
   );
   const episodes = useMemo(
     () =>
@@ -114,15 +137,21 @@ export function TitleDetailPage() {
   );
 
   useEffect(() => {
-    if (!mediaType || !valid || demo) return;
+    if (!mediaType || !valid) return undefined;
+    let active = true;
     setTouchError(false);
     void touchTitle({
       mediaType,
       tmdbId,
       ...(preview?.title && { title: preview.title }),
       ...(mediaType === "tv" && { season }),
-    }).catch(() => setTouchError(true));
-  }, [demo, mediaType, preview?.title, season, tmdbId, touchTitle, valid]);
+    }).catch(() => {
+      if (active) setTouchError(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [mediaType, preview?.title, season, tmdbId, touchTitle, valid]);
 
   useEffect(() => {
     if (existing) {
@@ -280,16 +309,11 @@ export function TitleDetailPage() {
                 This title isn’t in your library yet.
               </p>
               {selection && (
-                <AddTitleDialog
-                  initialSelection={selection}
-                  onAdded={(itemId) =>
-                    void navigate({ to: "/item/$itemId", params: { itemId } })
-                  }
-                >
-                  <Button variant="outline" disabled={demo}>
+                <TrackTitleDialog selection={selection} onAdded={handleAdded}>
+                  <Button variant="outline">
                     Add Entry
                   </Button>
-                </AddTitleDialog>
+                </TrackTitleDialog>
               )}
             </div>
           </section>
@@ -341,19 +365,11 @@ export function TitleDetailPage() {
                   </select>
                   <div className="mt-4 flex justify-end">
                     {selection && (
-                      <AddTitleDialog
-                        initialSelection={selection}
-                        onAdded={(itemId) =>
-                          void navigate({
-                            to: "/item/$itemId",
-                            params: { itemId },
-                          })
-                        }
-                      >
-                        <Button variant="outline" disabled={demo}>
+                      <TrackTitleDialog selection={selection} onAdded={handleAdded}>
+                        <Button variant="outline">
                           Add to track
                         </Button>
-                      </AddTitleDialog>
+                      </TrackTitleDialog>
                     )}
                   </div>
                 </>
@@ -392,6 +408,10 @@ export function TitleDetailPage() {
                       className="h-20 animate-pulse rounded-xl bg-card"
                     />
                   ))}
+                </div>
+              ) : !episodes.length ? (
+                <div className="mt-8 rounded-xl border border-dashed border-border p-8 text-center">
+                  <p className="text-sm font-semibold">No episodes available</p>
                 </div>
               ) : (
                 <div className="mt-2 divide-y divide-border">
@@ -441,25 +461,16 @@ export function TitleDetailPage() {
                             ) : null}
                           </button>
                           {selection ? (
-                            <AddTitleDialog
-                              initialSelection={selection}
-                              onAdded={(itemId) =>
-                                void navigate({
-                                  to: "/item/$itemId",
-                                  params: { itemId },
-                                })
-                              }
-                            >
+                            <TrackTitleDialog selection={selection} onAdded={handleAdded}>
                               <Button
                                 variant="outline"
                                 size="icon"
-                                disabled={demo}
                                 aria-label={`Add title to track episode ${episode.episode}`}
                                 className="rounded-full text-muted-foreground"
                               >
                                 +
                               </Button>
-                            </AddTitleDialog>
+                            </TrackTitleDialog>
                           ) : (
                             <span className="grid size-10 place-items-center rounded-full border border-border text-muted-foreground">
                               +
@@ -477,23 +488,14 @@ export function TitleDetailPage() {
                               episodes watched.
                             </p>
                             {selection && (
-                              <AddTitleDialog
-                                initialSelection={selection}
-                                onAdded={(itemId) =>
-                                  void navigate({
-                                    to: "/item/$itemId",
-                                    params: { itemId },
-                                  })
-                                }
-                              >
+                              <TrackTitleDialog selection={selection} onAdded={handleAdded}>
                                 <Button
                                   variant="outline"
                                   className="mt-3"
-                                  disabled={demo}
                                 >
                                   Add Entry
                                 </Button>
-                              </AddTitleDialog>
+                              </TrackTitleDialog>
                             )}
                           </div>
                         )}

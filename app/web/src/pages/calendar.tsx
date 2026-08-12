@@ -3,7 +3,6 @@ import { ChevronLeft, ChevronRight, Film, Tv2 } from "lucide-react";
 import { useAction } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader } from "@/components/page";
-import { isDemoMode } from "@/lib/utils";
 
 type CalendarEvent = {
   id: string;
@@ -101,12 +100,15 @@ const addDays = (date: Date, days: number) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
 function regionFromLocale() {
-  const part = navigator.language.split("-").at(-1)?.toUpperCase();
-  return part && /^[A-Z]{2}$/.test(part) ? part : "US";
+  try {
+    const region = new Intl.Locale(navigator.language).maximize().region;
+    return region && /^[A-Z]{2}$/u.test(region) ? region : "US";
+  } catch {
+    return "US";
+  }
 }
 
 export function CalendarPage() {
-  const demo = isDemoMode();
   const fetchUpcoming = useAction(api.calendar.upcoming);
   const [month, setMonth] = useState(() => monthStart(new Date()));
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
@@ -126,101 +128,6 @@ export function CalendarPage() {
     let ignore = false;
     const load = async () => {
       await Promise.resolve();
-      if (demo) {
-        const demoStart = new Date(`${startDate}T00:00:00`);
-        if (!ignore)
-          setEvents([
-            {
-              id: "demo-1",
-              date: dateKey(addDays(demoStart, 5)),
-              kind: "episode",
-              title: "Severance",
-              season: 3,
-              episode: 2,
-              episodeName: "The After Hours",
-              status: "watching",
-            },
-            {
-              id: "demo-1b",
-              date: dateKey(addDays(demoStart, 5)),
-              kind: "episode",
-              title: "Shōgun",
-              season: 2,
-              episode: 1,
-              episodeName: "A Dream of a Dream",
-              status: "watchlist",
-            },
-            {
-              id: "demo-1c",
-              date: dateKey(addDays(demoStart, 5)),
-              kind: "episode",
-              title: "The Bear",
-              season: 5,
-              episode: 3,
-              status: "watching",
-            },
-            {
-              id: "demo-1d",
-              date: dateKey(addDays(demoStart, 5)),
-              kind: "episode",
-              title: "Andor",
-              season: 2,
-              episode: 7,
-              status: "watching",
-            },
-            {
-              id: "demo-1e",
-              date: dateKey(addDays(demoStart, 5)),
-              kind: "episode",
-              title: "The Last of Us",
-              season: 3,
-              episode: 4,
-              status: "watchlist",
-            },
-            {
-              id: "demo-1f",
-              date: dateKey(addDays(demoStart, 5)),
-              kind: "episode",
-              title: "Slow Horses",
-              season: 6,
-              episode: 2,
-              status: "watching",
-            },
-            {
-              id: "demo-1g",
-              date: dateKey(addDays(demoStart, 5)),
-              kind: "movie",
-              title: "Mickey 17",
-              status: "watchlist",
-            },
-            {
-              id: "demo-1h",
-              date: dateKey(addDays(demoStart, 5)),
-              kind: "episode",
-              title: "Poker Face",
-              season: 3,
-              episode: 5,
-              status: "watching",
-            },
-            {
-              id: "demo-2",
-              date: dateKey(addDays(demoStart, 13)),
-              kind: "movie",
-              title: "The Boy and the Heron",
-              status: "watchlist",
-            },
-            {
-              id: "demo-3",
-              date: dateKey(addDays(demoStart, 20)),
-              kind: "episode",
-              title: "Frieren: Beyond Journey’s End",
-              season: 2,
-              episode: 4,
-              status: "watching",
-            },
-          ]);
-        return;
-      }
       try {
         const result = await fetchUpcoming({
           startDate,
@@ -228,6 +135,7 @@ export function CalendarPage() {
           region: regionFromLocale(),
         });
         if (!ignore) {
+          setError("");
           setEvents(result.events as CalendarEvent[]);
           setPartialFailure(
             result.failedTitles.count > 0
@@ -246,7 +154,7 @@ export function CalendarPage() {
     return () => {
       ignore = true;
     };
-  }, [demo, endDate, fetchUpcoming, startDate]);
+  }, [endDate, fetchUpcoming, startDate]);
 
   const changeMonth = (next: Date) => {
     const nextMonth = monthStart(next);

@@ -7,14 +7,22 @@ const storageKey = "marker-library-view";
 export function useSessionLibraryView(defaultView: LibraryView) {
   const [override, setOverride] = useState<LibraryView | undefined>(() => {
     if (typeof window === "undefined") return undefined;
-    const stored = window.sessionStorage.getItem(storageKey);
-    return stored === "list" || stored === "posters" ? stored : undefined;
+    try {
+      const stored = window.sessionStorage.getItem(storageKey);
+      return stored === "list" || stored === "posters" ? stored : undefined;
+    } catch {
+      return undefined;
+    }
   });
 
   return {
     view: override ?? defaultView,
     setView: (view: LibraryView) => {
-      window.sessionStorage.setItem(storageKey, view);
+      try {
+        window.sessionStorage.setItem(storageKey, view);
+      } catch {
+        // Keep the selected view in memory when browser storage is unavailable.
+      }
       setOverride(view);
     },
   };

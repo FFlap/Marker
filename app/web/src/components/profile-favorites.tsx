@@ -14,7 +14,7 @@ import {
   usePointerSortable,
   type SortableLocation,
 } from "@/hooks/use-pointer-sortable";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { posterUrl } from "@/lib/utils";
 
 type MediaType = "movie" | "tv";
 type FavoriteSection = MediaType | "anime";
@@ -52,10 +52,9 @@ export function ProfileFavorites({
   favorites: Favorite[];
   interactive?: boolean;
 }) {
-  const demo = isDemoMode();
   const eligible = useQuery(
     api.profileFavorites.eligible,
-    demo || !interactive ? "skip" : {},
+    !interactive ? "skip" : {},
   );
   const addFavorite = useMutation(api.profileFavorites.add);
   const removeFavorite = useMutation(api.profileFavorites.remove);
@@ -90,7 +89,7 @@ export function ProfileFavorites({
 
   const move = async (section: FavoriteSection, from: number, to: number) => {
     const displayed = displayedFor(section);
-    if (demo || pending || from === to || to < 0 || to >= displayed.length)
+    if (pending || from === to || to < 0 || to >= displayed.length)
       return;
     const next = [...displayed];
     const [moved] = next.splice(from, 1);
@@ -117,7 +116,7 @@ export function ProfileFavorites({
   };
 
   const remove = async (favorite: Favorite) => {
-    if (demo || pending) return;
+    if (pending) return;
     setPending(favorite._id);
     setError("");
     try {
@@ -134,7 +133,7 @@ export function ProfileFavorites({
   };
 
   const add = async (itemId: Id<"items">) => {
-    if (demo || pending || !pickerType) return;
+    if (pending || !pickerType) return;
     setPending(String(itemId));
     setError("");
     try {
@@ -188,7 +187,6 @@ export function ProfileFavorites({
                   variant="ghost"
                   size="sm"
                   aria-label={`Add favorite ${singular}`}
-                  disabled={demo}
                   onClick={() => setPickerType(section)}
                   className="h-11 px-2.5 text-xs sm:h-8"
                 >
@@ -227,11 +225,11 @@ export function ProfileFavorites({
                       {interactive && (
                         <div className="absolute inset-x-1 top-1 flex justify-between">
                           <SortableHandle
-                            disabled={demo || Boolean(pending)}
+                            disabled={Boolean(pending)}
                             label={`Drag ${favorite.title}`}
                             pointerProps={sortable.handleProps(
                               { group: section, id: favorite._id, index },
-                              demo || Boolean(pending),
+                              Boolean(pending),
                             )}
                             onKeyDown={(event) => {
                               if (!event.altKey) return;
@@ -248,7 +246,7 @@ export function ProfileFavorites({
                           />
                           <SortableItemActions
                             title={favorite.title}
-                            disabled={demo || Boolean(pending)}
+                            disabled={Boolean(pending)}
                             canMoveUp={index > 0}
                             canMoveDown={index < displayed.length - 1}
                             onMoveUp={() =>
@@ -302,7 +300,7 @@ export function ProfileFavorites({
           <DialogTitle>
             Add {pickerType ? sectionLabel(pickerType) : "favorite"}
           </DialogTitle>
-          {eligible === undefined && !demo ? (
+          {eligible === undefined ? (
             <div className="h-40 animate-pulse rounded-lg bg-card" />
           ) : pickerItems?.length ? (
             <div className="grid max-h-[60vh] gap-1 overflow-y-auto">
@@ -332,7 +330,8 @@ export function ProfileFavorites({
             </div>
           ) : (
             <p className="py-8 text-sm text-muted-foreground">
-              No more watched {pickerType === "tv" ? "TV shows" : pickerType}{" "}
+              No more watched{" "}
+              {sections.find((entry) => entry.section === pickerType)?.title.toLowerCase() ?? "titles"}{" "}
               are available.
             </p>
           )}

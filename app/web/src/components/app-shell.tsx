@@ -23,7 +23,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { isDemoMode } from "@/lib/utils";
 
 const destinations = [
   { to: "/", label: "Library", icon: Library },
@@ -89,9 +88,11 @@ function Navigation({
                     ? "absolute right-1 top-1 size-2 rounded-full bg-destructive"
                     : "ml-auto grid min-w-5 place-items-center rounded-full bg-destructive px-1.5 text-[10px] leading-5 text-white"
                 }
-                aria-label={`${requestCount} follower ${requestCount === 1 ? "request" : "requests"}`}
               >
-                {!collapsed && Math.min(requestCount, 99)}
+                <span className="sr-only">
+                  {requestCount} follower {requestCount === 1 ? "request" : "requests"}
+                </span>
+                {!collapsed && (requestCount > 99 ? "99+" : requestCount)}
               </span>
             )}
             {compact && active && (
@@ -112,10 +113,9 @@ function Navigation({
 }
 
 export function AppShell() {
-  const demo = isDemoMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const profile = useQuery(api.profiles.me, demo ? "skip" : {});
-  const requests = useQuery(api.profiles.followRequests, demo ? "skip" : {});
+  const profile = useQuery(api.profiles.me, {});
+  const requests = useQuery(api.profiles.followRequests, {});
   return (
     <div className="min-h-[100dvh]">
       <aside
@@ -159,12 +159,12 @@ export function AppShell() {
                     className="size-full object-cover"
                   />
                 ) : (
-                  (demo ? "D" : (profile?.username?.[0] ?? "M")).toUpperCase()
+                  (profile?.username?.[0] ?? "M").toUpperCase()
                 )}
               </div>
               <div className={sidebarCollapsed ? "sr-only" : "min-w-0"}>
                 <p className="truncate text-xs font-semibold">
-                  @{demo ? "demo_viewer" : (profile?.username ?? "profile")}
+                  @{profile?.username ?? "profile"}
                 </p>
                 <p className="text-[10px] font-semibold text-muted-foreground">
                   View Profile

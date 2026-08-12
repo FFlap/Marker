@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { posterUrl } from "@/lib/utils";
 
 type Activity = {
   id: string;
@@ -19,37 +19,6 @@ type Activity = {
   episode?: number;
   occurredAt: number;
 };
-
-const demoActivity: Activity[] = [
-  {
-    id: "a",
-    actorUsername: "mika",
-    kind: "rating",
-    title: "Perfect Days",
-    rating: 9.4,
-    occurredAt: Date.now() - 42 * 60_000,
-    posterPath: "/mjEk5Wwx6TYVqw29zSaUHclMIgp.jpg",
-  },
-  {
-    id: "b",
-    actorUsername: "noah",
-    kind: "status",
-    status: "watching",
-    title: "Severance",
-    occurredAt: Date.now() - 4 * 3_600_000,
-    posterPath: "/pPHpeI2X1qEd1CS1SeyrdhZ4qnT.jpg",
-  },
-  {
-    id: "c",
-    actorUsername: "mika",
-    kind: "episode",
-    title: "Frieren: Beyond Journey’s End",
-    season: 1,
-    episode: 18,
-    occurredAt: Date.now() - 28 * 3_600_000,
-    posterPath: "/dqZENchTd7lp5zht7BdlqM7RBhD.jpg",
-  },
-];
 
 function relativeTime(value: number) {
   const seconds = Math.max(1, Math.floor((Date.now() - value) / 1000));
@@ -77,21 +46,23 @@ function activityText(activity: Activity) {
       </>
     );
   if (activity.kind === "finished") return <>finished {activity.title}</>;
+  const episodeLabel = activity.season !== undefined && activity.episode !== undefined
+    ? ` · S${activity.season} E${activity.episode}`
+    : "";
   return (
     <>
-      watched {activity.title} · S{activity.season} E{activity.episode}
+      watched {activity.title}{episodeLabel}
     </>
   );
 }
 
 export function NotificationsPage() {
-  const demo = isDemoMode();
-  const requests = useQuery(api.profiles.followRequests, demo ? "skip" : {});
-  const queriedActivity = useQuery(api.notifications.feed, demo ? "skip" : {});
+  const requests = useQuery(api.profiles.followRequests, {});
+  const queriedActivity = useQuery(api.notifications.feed, {});
   const respond = useMutation(api.profiles.respondToFollow);
   const [pending, setPending] = useState<string>();
   const [error, setError] = useState("");
-  const activity = demo ? demoActivity : queriedActivity;
+  const activity = queriedActivity;
   const handleRequest = async (username: string, accept: boolean) => {
     setPending(username);
     setError("");
@@ -106,7 +77,7 @@ export function NotificationsPage() {
   return (
     <Page width="compact">
       <PageHeader title="Notifications" />
-      {!demo && requests === undefined ? (
+      {requests === undefined ? (
         <div className="mt-6 h-20 animate-pulse rounded-xl bg-card" />
       ) : (
         Boolean(requests?.length) && (
@@ -175,7 +146,7 @@ export function NotificationsPage() {
             </span>
           }
         />
-        {queriedActivity === undefined && !demo ? (
+        {queriedActivity === undefined ? (
           <div className="mt-4 grid gap-2">
             {[0, 1, 2].map((key) => (
               <div

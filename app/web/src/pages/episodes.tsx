@@ -14,8 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { SearchField } from "@/components/ui/search-field";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { demoEpisodes } from "@/lib/demo";
-import { isDemoMode } from "@/lib/utils";
 
 type Episode = EpisodeView & {
   posterPath?: string;
@@ -65,11 +63,10 @@ function useLocalToday() {
 }
 
 export function EpisodesPage() {
-  const demo = isDemoMode();
   const today = useLocalToday();
-  const queried = useQuery(api.episodeHub.overview, demo ? "skip" : { today });
+  const queried = useQuery(api.episodeHub.overview, { today });
   const setEpisode = useMutation(api.library.setEpisodeState);
-  const data = (demo ? demoEpisodes : queried) as
+  const data = queried as
     { watching: Episode[]; favorites: Episode[] } | undefined;
   const [tab, setTab] = useState<"watching" | "favorites">("watching");
   const [search, setSearch] = useState("");
@@ -77,11 +74,12 @@ export function EpisodesPage() {
   const [minimumRating, setMinimumRating] = useState(0);
   const [tag, setTag] = useState("all");
   const [pending, setPending] = useState("");
+  const [error, setError] = useState("");
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const favoriteTags = useMemo(
     () =>
       [
-        ...new Set((data?.favorites ?? []).flatMap((episode) => episode.tags)),
+        ...new Set((data?.favorites ?? []).flatMap((episode) => episode.tags.map((entry) => entry.toLocaleLowerCase()))),
       ].toSorted((a, b) => a.localeCompare(b)),
     [data],
   );
@@ -284,9 +282,10 @@ export function EpisodesPage() {
                   <button
                     type="button"
                     aria-label={`Mark ${episode.title} episode ${episode.episode} watched`}
-                    disabled={demo || pending === key}
+                    disabled={pending === key}
                     onClick={() => {
                       setPending(key);
+                      setError("");
                       void setEpisode({
                         itemId: episode.itemId as Id<"items">,
                         season: episode.season,
@@ -306,7 +305,9 @@ export function EpisodesPage() {
                           airDate: episode.airDate,
                         }),
                         watched: true,
-                      }).finally(() => setPending(""));
+                      })
+                        .catch(() => setError("Couldn’t mark that episode watched."))
+                        .finally(() => setPending(""));
                     }}
                     className="grid size-11 place-items-center rounded-full border border-border transition hover:bg-foreground hover:text-background disabled:opacity-50 sm:size-8"
                   >
@@ -349,7 +350,8 @@ export function EpisodesPage() {
             </div>
           );
         })}
-        {!demo && queried === undefined ? (
+        {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+        {queried === undefined ? (
           ["one", "two", "three", "four"].map((key) => (
             <div key={key} className="h-20 animate-pulse rounded-2xl bg-card" />
           ))

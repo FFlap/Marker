@@ -3,9 +3,9 @@ import { Link } from "@tanstack/react-router";
 import { Tags as TagsIcon } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import { Input } from "@/components/ui/input";
+import { SearchField } from "@/components/ui/search-field";
 import { Page, PageHeader } from "@/components/page";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { posterUrl } from "@/lib/utils";
 
 type TagPreview = {
   tag: string;
@@ -13,47 +13,10 @@ type TagPreview = {
   posters: Array<{ itemId: string; title: string; posterPath?: string }>;
 };
 
-const demoTags: TagPreview[] = [
-  {
-    tag: "Anime",
-    count: 2,
-    posters: [
-      {
-        itemId: "2",
-        title: "Frieren: Beyond Journey’s End",
-        posterPath: "/dqZENchTd7lp5zht7BdlqM7RBhD.jpg",
-      },
-    ],
-  },
-  {
-    tag: "Quiet",
-    count: 1,
-    posters: [
-      {
-        itemId: "1",
-        title: "Perfect Days",
-        posterPath: "/mjEk5Wwx6TYVqw29zSaUHclMIgp.jpg",
-      },
-    ],
-  },
-  {
-    tag: "Sci-fi",
-    count: 1,
-    posters: [
-      {
-        itemId: "3",
-        title: "Severance",
-        posterPath: "/pPHpeI2X1qEd1CS1SeyrdhZ4qnT.jpg",
-      },
-    ],
-  },
-];
-
 export function TagsPage() {
-  const demo = isDemoMode();
-  const queried = useQuery(api.tags.mine, demo ? "skip" : {});
+  const queried = useQuery(api.tags.mine, {});
   const [search, setSearch] = useState("");
-  const collections = (demo ? demoTags : queried) as TagPreview[] | undefined;
+  const collections = queried as TagPreview[] | undefined;
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return (collections ?? []).filter(
@@ -63,14 +26,14 @@ export function TagsPage() {
   return (
     <Page width="wide" className="max-w-4xl">
       <PageHeader title="Tags" />
-      <Input
+      <SearchField
         className="mt-6 h-11 border-0 bg-card text-sm sm:h-9"
         aria-label="Search your tags"
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         placeholder="Search your tags"
       />
-      {queried === undefined && !demo ? (
+      {queried === undefined ? (
         <div className="mt-4 grid grid-cols-2 gap-5 sm:grid-cols-3">
           {[0, 1, 2].map((key) => (
             <div key={key} className="h-56 animate-pulse rounded-xl bg-card" />

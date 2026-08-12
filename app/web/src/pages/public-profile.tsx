@@ -3,33 +3,24 @@ import { Link, useParams } from "@tanstack/react-router";
 import { ChartNoAxesColumn, Library } from "lucide-react";
 import { LockKeyhole } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
-import { ProfileFavorites } from "@/components/profile-favorites";
+import { ProfileFavorites, type Favorite } from "@/components/profile-favorites";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { posterUrl } from "@/lib/utils";
 
-type Stats = {
-  totalWatchMinutes: number;
-  episodesWatched: number;
-  moviesWatched: number;
-  showsWatched: number;
-  totalItems: number;
-  avgRating: number;
-  favorites: Array<{
-    _id: string;
-    title: string;
-    mediaType: "movie" | "tv";
-    isAnime: boolean;
-    posterPath?: string;
-    rank: number;
-  }>;
-  topTags: Array<{ tag: string; count: number }>;
+type PublicProfileResult = Exclude<
+  FunctionReturnType<typeof api.profiles.publicProfile>,
+  null
+>;
+type Stats = Extract<PublicProfileResult, { stats: unknown }>["stats"] & {
+  favorites: Favorite[];
 };
 
 export function PublicProfilePage() {
-  const { username } = useParams({ from: "/app/u/$username" });
+  const { username } = useParams({ from: "/u/$username" });
   const result = useQuery(api.profiles.publicProfile, { username });
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
@@ -54,7 +45,7 @@ export function PublicProfilePage() {
       </Page>
     );
   }
-  const stats = "stats" in result ? (result.stats as Stats) : undefined;
+  const stats: Stats | undefined = "stats" in result ? result.stats : undefined;
   const relationship = result.relationship;
   const followLabel =
     relationship === "accepted"
@@ -172,11 +163,9 @@ export function PublicProfilePage() {
             <ChartNoAxesColumn className="size-4" /> Stats
           </TabsTrigger>
         </TabsList>
-      </Tabs>
-
       {stats ? (
         tab === "collection" ? (
-          <div className="mt-10 grid gap-12">
+          <TabsContent value="collection" className="mt-10 grid gap-12">
             <ProfileFavorites favorites={stats.favorites} interactive={false} />
             <section>
               <SectionHeader title="Top tags" />
@@ -201,9 +190,9 @@ export function PublicProfilePage() {
               username={result.profile.username}
               tags={result.publicTags}
             />
-          </div>
+          </TabsContent>
         ) : (
-          <div className="mt-8 grid grid-cols-2 gap-x-[4%] gap-y-1">
+          <TabsContent value="stats" className="mt-8 grid grid-cols-2 gap-x-[4%] gap-y-1">
             {cards.map(({ label, value, detail }) => (
               <div
                 key={label}
@@ -222,7 +211,7 @@ export function PublicProfilePage() {
                 )}
               </div>
             ))}
-          </div>
+          </TabsContent>
         )
       ) : tab === "collection" && result.publicTags.length ? (
         <div className="mt-10">
@@ -249,6 +238,7 @@ export function PublicProfilePage() {
           </p>
         </div>
       )}
+      </Tabs>
     </Page>
   );
 }

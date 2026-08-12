@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useConvexAuth, useMutation } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 
@@ -8,6 +8,8 @@ export function useMarkerAccount() {
   const [state, setState] = useState<"idle" | "linking" | "ready" | "error">(
     "idle",
   );
+  const [attempt, setAttempt] = useState(0);
+  const retryAccountLink = useCallback(() => setAttempt((value) => value + 1), []);
 
   useEffect(() => {
     let active = true;
@@ -24,11 +26,12 @@ export function useMarkerAccount() {
     return () => {
       active = false;
     };
-  }, [auth.isAuthenticated, ensureCurrentUser]);
+  }, [attempt, auth.isAuthenticated, ensureCurrentUser]);
 
   return {
     ...auth,
     accountReady: !auth.isAuthenticated || state === "ready",
     accountError: state === "error",
+    retryAccountLink,
   };
 }

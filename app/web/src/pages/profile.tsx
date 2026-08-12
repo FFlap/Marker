@@ -12,42 +12,20 @@ import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { ProfileFavorites } from "@/components/profile-favorites";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { posterUrl } from "@/lib/utils";
 
 export function ProfilePage() {
-  const demo = isDemoMode();
-  const profile = useQuery(api.profiles.me, demo ? "skip" : {});
-  const stats = useQuery(api.stats.profile, demo ? "skip" : {});
-  const publicTags = useQuery(api.tags.myPublic, demo ? "skip" : {});
-  const requests = useQuery(api.profiles.followRequests, demo ? "skip" : {});
+  const profile = useQuery(api.profiles.me, {});
+  const stats = useQuery(api.stats.profile, {});
+  const publicTags = useQuery(api.tags.myPublic, {});
+  const requests = useQuery(api.profiles.followRequests, {});
   const respond = useMutation(api.profiles.respondToFollow);
   const [requestPending, setRequestPending] = useState<string>();
   const [requestError, setRequestError] = useState("");
   const [tab, setTab] = useState<"collection" | "stats">("collection");
-  const identity = demo
-    ? {
-        username: "demo_viewer",
-        isPublic: true,
-        followerCount: 128,
-        followingCount: 74,
-      }
-    : profile;
-  const metrics = demo
-    ? {
-        totalWatchMinutes: 18420,
-        episodesWatched: 624,
-        moviesWatched: 146,
-        showsWatched: 38,
-        totalItems: 212,
-        avgRating: 8.3,
-        topTags: [
-          { tag: "Anime", count: 44 },
-          { tag: "Quiet", count: 29 },
-        ],
-        favorites: [],
-      }
-    : stats;
+  const identity = profile;
+  const metrics = stats;
   const cards = [
     {
       label: "Watch time",
@@ -119,7 +97,6 @@ export function ProfilePage() {
                 <ChartNoAxesColumn className="size-4" /> Stats
               </TabsTrigger>
             </TabsList>
-          </Tabs>
 
           {requests?.length ? (
             <section className="mt-9 border-b border-border pb-8">
@@ -169,7 +146,7 @@ export function ProfilePage() {
           ) : null}
 
           {tab === "collection" ? (
-            <div className="mt-10 grid gap-12">
+            <TabsContent value="collection" className="mt-10 grid gap-12">
               <ProfileFavorites favorites={metrics.favorites} />
               <section>
                 <SectionHeader title="Top tags" />
@@ -217,9 +194,9 @@ export function ProfilePage() {
                   </div>
                 </section>
               ) : null}
-            </div>
+            </TabsContent>
           ) : (
-            <div className="mt-8 grid grid-cols-2 gap-x-[4%] gap-y-1">
+            <TabsContent value="stats" className="mt-8 grid grid-cols-2 gap-x-[4%] gap-y-1">
               {cards.map(({ label, value, detail }) => (
                 <div key={label} className="min-h-[110px] border-b border-border py-[18px]">
                   <strong className="block text-[25px] font-bold tabular-nums">{value}</strong>
@@ -229,8 +206,9 @@ export function ProfilePage() {
                   {detail && <span className="mt-1 block text-[11px] text-muted-foreground">{detail}</span>}
                 </div>
               ))}
-            </div>
+            </TabsContent>
           )}
+          </Tabs>
         </>
       )}
     </Page>

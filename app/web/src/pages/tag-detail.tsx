@@ -1,8 +1,10 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { Link, useParams } from "@tanstack/react-router";
@@ -23,9 +25,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { demoItems, type WebLibraryItem } from "@/lib/demo";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { SearchField } from "@/components/ui/search-field";
+import type { WebLibraryItem } from "@/types";
+import { posterUrl } from "@/lib/utils";
 import { matchesMediaType } from "@/lib/library-filters";
 import {
   collectionGridWidth,
@@ -85,18 +87,21 @@ function VisibilityDialog({
   tag: string;
   onError: (message: string) => void;
 }) {
-  const demo = isDemoMode();
-  const visibility = useQuery(api.tags.visibility, demo ? "skip" : { tag });
+  const visibility = useQuery(api.tags.visibility, { tag });
   const setVisibility = useMutation(api.tags.setVisibility);
   const [pending, setPending] = useState(false);
+  const [dialogError, setDialogError] = useState("");
   const update = async (isPublic: boolean) => {
-    if (demo || pending || visibility?.isPublic === isPublic) return;
+    if (pending || visibility?.isPublic === isPublic) return;
     setPending(true);
     onError("");
+    setDialogError("");
     try {
       await setVisibility({ tag, isPublic });
     } catch {
-      onError("Couldn’t update tag visibility.");
+      const message = "Couldn’t update tag visibility.";
+      onError(message);
+      setDialogError(message);
     } finally {
       setPending(false);
     }
@@ -113,7 +118,8 @@ function VisibilityDialog({
         <div className="grid gap-2">
           <button
             type="button"
-            disabled={pending || demo}
+            aria-pressed={visibility?.isPublic === true}
+            disabled={pending}
             onClick={() => void update(true)}
             className={`flex min-h-16 items-center gap-4 rounded-xl border p-4 text-left ${visibility?.isPublic ? "border-foreground bg-card" : "border-border"}`}
           >
@@ -127,7 +133,8 @@ function VisibilityDialog({
           </button>
           <button
             type="button"
-            disabled={pending || demo}
+            aria-pressed={visibility?.isPublic === false}
+            disabled={pending}
             onClick={() => void update(false)}
             className={`flex min-h-16 items-center gap-4 rounded-xl border p-4 text-left ${visibility?.isPublic === false ? "border-foreground bg-card" : "border-border"}`}
           >
@@ -139,6 +146,7 @@ function VisibilityDialog({
               </span>
             </span>
           </button>
+          {dialogError ? <p role="alert" className="text-xs text-destructive">{dialogError}</p> : null}
         </div>
       </DialogContent>
     </Dialog>
@@ -147,15 +155,13 @@ function VisibilityDialog({
 
 export function TagDetailPage() {
   const { tag } = useParams({ from: "/app/tags/$tag" });
-  const demo = isDemoMode();
-  const libraryQuery = useQuery(api.library.listItems, demo ? "skip" : {});
-  const rankQuery = useQuery(api.library.listTagRanks, demo ? "skip" : { tag });
-  const settings = useQuery(api.settings.getSettings, demo ? "skip" : {});
+  const libraryQuery = useQuery(api.library.listItems, {});
+  const rankQuery = useQuery(api.library.listTagRanks, { tag });
+  const settings = useQuery(api.settings.getSettings, {});
   const reorderTagItem = useMutation(api.library.reorderTagItem);
   const reorderItem = useMutation(api.library.reorderItem);
   const moveItemToWatched = useAction(api.library.moveItemToWatched);
-  const library = (demo ? demoItems : libraryQuery) as
-    WebLibraryItem[] | undefined;
+  const library = libraryQuery as WebLibraryItem[] | undefined;
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>({
     media: "all",
@@ -167,6 +173,7 @@ export function TagDetailPage() {
     Partial<Record<(typeof statuses)[number], string[]>>
   >({});
   const [moving, setMoving] = useState<string>();
+  const movePending = useRef(false);
   const [error, setError] = useState("");
   const { view } = useSessionLibraryView(settings?.defaultView ?? "list");
   const gridColumns = settings?.gridColumns ?? 3;
@@ -213,12 +220,15 @@ export function TagDetailPage() {
   const sectionItems = (status: (typeof statuses)[number]) => {
     const items = filtered.filter((item) => item.status === status);
     const order = orders[status];
-    return order
-      ? [...items].toSorted(
-          (left, right) =>
-            order.indexOf(String(left._id)) - order.indexOf(String(right._id)),
-        )
-      : items;
+    if (!order) return items;
+    const position = (id: string) => {
+      const index = order.indexOf(id);
+      return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+    };
+    return [...items].toSorted(
+      (left, right) =>
+        position(String(left._id)) - position(String(right._id)) || left.rank - right.rank,
+    );
   };
 
   const move = async (
@@ -227,7 +237,7 @@ export function TagDetailPage() {
     from: number,
     to: number,
   ) => {
-    if (filtersActive || moving || to < 0 || to >= items.length || from === to)
+    if (filtersActive || movePending.current || moving || to < 0 || to >= items.length || from === to)
       return;
     const next = [...items];
     const [moved] = next.splice(from, 1);
@@ -237,7 +247,7 @@ export function TagDetailPage() {
       ...current,
       [status]: next.map((item) => String(item._id)),
     }));
-    if (demo) return;
+    movePending.current = true;
     setMoving(String(moved._id));
     setError("");
     try {
@@ -255,6 +265,7 @@ export function TagDetailPage() {
       setOrders((current) => ({ ...current, [status]: undefined }));
       setError("Couldn’t save the tag order.");
     } finally {
+      movePending.current = false;
       setMoving(undefined);
     }
   };
@@ -263,10 +274,11 @@ export function TagDetailPage() {
     item: RankedItem,
     status: (typeof statuses)[number],
   ) => {
-    if (demo || filtersActive || moving || item.status === status) return;
+    if (filtersActive || movePending.current || moving || item.status === status) return;
     const target = (library ?? [])
       .filter((entry) => entry.status === status && entry._id !== item._id)
       .toSorted((left, right) => left.rank - right.rank);
+    movePending.current = true;
     setMoving(String(item._id));
     setError("");
     try {
@@ -284,6 +296,7 @@ export function TagDetailPage() {
           : "Couldn’t move this title.",
       );
     } finally {
+      movePending.current = false;
       setMoving(undefined);
     }
   };
@@ -293,8 +306,7 @@ export function TagDetailPage() {
     filters.media !== "all" ||
     filters.status !== "all" ||
     filters.minimum > 0;
-  const loading =
-    !demo && (libraryQuery === undefined || rankQuery === undefined);
+  const loading = libraryQuery === undefined || rankQuery === undefined;
   const sortable = usePointerSortable({
     onMove: (source: SortableLocation, target: SortableLocation) => {
       if (source.group !== target.group) return;
@@ -305,7 +317,7 @@ export function TagDetailPage() {
   });
 
   const keyboardMove = (
-    event: React.KeyboardEvent<HTMLButtonElement>,
+    event: KeyboardEvent<HTMLButtonElement>,
     status: (typeof statuses)[number],
     items: RankedItem[],
     index: number,
@@ -326,7 +338,7 @@ export function TagDetailPage() {
         actions={<VisibilityDialog tag={tag} onError={setError} />}
       />
       <div className="sticky top-[calc(4rem+env(safe-area-inset-top))] z-20 -mx-2 mt-3 flex gap-2 bg-background/90 px-2 py-3 backdrop-blur-xl lg:top-0">
-        <Input
+        <SearchField
           aria-label={`Search titles in ${tag}`}
           value={search}
           onChange={(event) => setSearch(event.target.value)}

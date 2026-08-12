@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Navigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import { isDemoMode, safeInternalPath } from "@/lib/utils";
+import { safeInternalPath } from "@/lib/utils";
 import { useMarkerAccount } from "@/hooks/use-marker-account";
 
 export function AuthGate({
@@ -12,21 +12,18 @@ export function AuthGate({
   children: ReactNode;
   setup?: boolean;
 }) {
-  const demo = isDemoMode();
-  const { isAuthenticated, isLoading, accountReady, accountError } =
+  const { isAuthenticated, isLoading, accountReady, accountError, retryAccountLink } =
     useMarkerAccount();
   const profile = useQuery(
     api.profiles.me,
-    demo || !isAuthenticated || !accountReady ? "skip" : {},
+    !isAuthenticated || !accountReady ? "skip" : {},
   );
   const location = useRouterState({ select: (state) => state.location });
 
-  if (demo) return children;
   if (accountError) {
     return (
       <div className="grid min-h-screen place-items-center px-6 text-center text-sm text-destructive">
-        We couldn’t link this Clerk account to Marker. Please sign out and try
-        again.
+        <div>We couldn’t link this account to Marker.<button type="button" className="mt-3 block w-full underline" onClick={retryAccountLink}>Try again</button></div>
       </div>
     );
   }

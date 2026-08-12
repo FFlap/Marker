@@ -13,7 +13,6 @@ const upcoming = vi.fn<
 vi.mock("convex/react", () => ({ useAction: () => upcoming }));
 vi.mock("@/lib/utils", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/utils")>()),
-  isDemoMode: () => false,
 }));
 
 import { CalendarPage } from "@/pages/calendar";

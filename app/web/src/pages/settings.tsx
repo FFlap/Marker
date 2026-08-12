@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
-import { isDemoMode } from "@/lib/utils";
 
 type Preferences = {
   defaultView: "list" | "posters";
@@ -97,8 +96,7 @@ function Toggle({
 }
 
 export function SettingsPage() {
-  const demo = isDemoMode();
-  const stored = useQuery(api.settings.getSettings, demo ? "skip" : {});
+  const stored = useQuery(api.settings.getSettings, {});
   const save = useMutation(api.settings.setSettings);
   const { signOut } = useClerk();
   const [overrides, setOverrides] = useState<Partial<Preferences>>({});
@@ -111,7 +109,6 @@ export function SettingsPage() {
     value: Preferences[K],
   ) => {
     setOverrides((old) => ({ ...old, [key]: value }));
-    if (demo) return;
     setSaving(key);
     setError("");
     try {
@@ -270,7 +267,6 @@ export function SettingsPage() {
             <Button
               variant="destructive"
               onClick={() => void signOut()}
-              disabled={demo}
             >
               Sign out
             </Button>

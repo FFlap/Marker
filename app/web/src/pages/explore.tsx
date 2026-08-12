@@ -8,7 +8,7 @@ import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isDemoMode, posterUrl } from "@/lib/utils";
+import { posterUrl } from "@/lib/utils";
 
 type Filter = "all" | "movie" | "tv" | "people" | "tags";
 type MediaResult = SearchResult & { voteAverage?: number };
@@ -69,7 +69,14 @@ function MediaRow({
     <Link
       to="/title/$mediaType/$tmdbId"
       params={{ mediaType: item.mediaType, tmdbId: String(item.id) }}
-      search={{ preview: JSON.stringify(item) }}
+      search={{ preview: JSON.stringify({
+        id: item.id,
+        mediaType: item.mediaType,
+        title: item.title,
+        posterPath: item.posterPath,
+        overview: item.overview,
+        releaseDate: item.releaseDate,
+      }) }}
       className={className}
     >
       {content}
@@ -175,7 +182,6 @@ function TagRow({ tag }: { tag: PublicTag }) {
 }
 
 export function ExplorePage() {
-  const demo = isDemoMode();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -186,16 +192,16 @@ export function ExplorePage() {
   const searchMedia = useAction(api.tmdb.searchMulti);
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
-  const library = useQuery(api.library.listItems, demo ? "skip" : {});
+  const library = useQuery(api.library.listItems, {});
   const people = useQuery(
     api.profiles.search,
-    !demo && debounced.length >= 2 && (filter === "all" || filter === "people")
+    debounced.length >= 2 && (filter === "all" || filter === "people")
       ? { query: debounced }
       : "skip",
   ) as Person[] | undefined;
   const publicTags = useQuery(
     api.tags.searchPublic,
-    !demo && debounced.length >= 2 && (filter === "all" || filter === "tags")
+    debounced.length >= 2 && (filter === "all" || filter === "tags")
       ? { query: debounced }
       : "skip",
   ) as PublicTag[] | undefined;
@@ -205,8 +211,10 @@ export function ExplorePage() {
     return () => window.clearTimeout(timer);
   }, [query]);
 
+  const needsMedia = debounced.length >= 2 && filter !== "people" && filter !== "tags";
+
   useEffect(() => {
-    if (demo || debounced.length < 2 || filter === "people" || filter === "tags") {
+    if (!needsMedia) {
       setMedia([]);
       setMediaLoading(false);
       return undefined;
@@ -232,7 +240,7 @@ export function ExplorePage() {
     return () => {
       ignore = true;
     };
-  }, [debounced, demo, filter, searchMedia]);
+  }, [debounced, needsMedia, searchMedia]);
 
   const existingByMedia = useMemo(
     () =>
@@ -267,6 +275,8 @@ export function ExplorePage() {
     try {
       if (person.relationship === "none") await follow({ username: person.username });
       else await unfollow({ username: person.username });
+    } catch {
+      setError("Couldn’t update that follow right now.");
     } finally {
       setPendingPeople((current) => {
         const next = new Set(current);
@@ -316,22 +326,21 @@ export function ExplorePage() {
       </div>
 
       <div className="mt-8" aria-live="polite">
+        {error && hasResults ? (
+          <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>
+        ) : null}
         {!ready ? (
           <div className="py-20 text-center">
             <p className="text-sm font-semibold">Search all of Marker</p>
             <p className="mt-2 text-xs text-muted-foreground">Find movies, TV shows, people, or public tags.</p>
           </div>
-        ) : demo ? (
-          <p className="py-20 text-center text-sm text-muted-foreground">
-            Search is unavailable in the read-only preview.
-          </p>
         ) : loading ? (
           <div className="grid gap-2">
             {[0, 1, 2, 3].map((key) => (
               <div key={key} className="h-24 animate-pulse rounded-xl bg-card" />
             ))}
           </div>
-        ) : error ? (
+        ) : error && !hasResults ? (
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>

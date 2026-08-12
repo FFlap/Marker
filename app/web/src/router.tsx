@@ -36,7 +36,7 @@ const protectedLayout = createRoute({
     </AuthGate>
   ),
 });
-const routes = [
+const protectedRoutes = [
   createRoute({
     getParentRoute: () => protectedLayout,
     path: "/",
@@ -99,26 +99,28 @@ const routes = [
   }),
   createRoute({
     getParentRoute: () => protectedLayout,
-    path: "/tag/$tag",
-    component: PublicTagPage,
-  }),
-  createRoute({
-    getParentRoute: () => protectedLayout,
-    path: "/u/$username",
-    component: PublicProfilePage,
-  }),
-  createRoute({
-    getParentRoute: () => protectedLayout,
-    path: "/u/$username/tags/$tag",
-    component: PublicUserTagPage,
-  }),
-  createRoute({
-    getParentRoute: () => protectedLayout,
     path: "/title/$mediaType/$tmdbId",
     validateSearch: (search: Record<string, unknown>) => ({
       preview: typeof search.preview === "string" ? search.preview : undefined,
     }),
     component: TitleDetailPage,
+  }),
+];
+const publicRoutes = [
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/tag/$tag",
+    component: PublicTagPage,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/u/$username",
+    component: PublicProfilePage,
+  }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/u/$username/tags/$tag",
+    component: PublicUserTagPage,
   }),
 ];
 const loginRoute = createRoute({
@@ -151,7 +153,8 @@ const extensionRoute = createRoute({
   ),
 });
 const routeTree = rootRoute.addChildren([
-  protectedLayout.addChildren(routes),
+  protectedLayout.addChildren(protectedRoutes),
+  ...publicRoutes,
   loginRoute,
   setupRoute,
   extensionRoute,
@@ -159,6 +162,29 @@ const routeTree = rootRoute.addChildren([
 export const router = createRouter({
   routeTree,
   defaultPreload: "intent",
+  defaultNotFoundComponent: () => (
+    <main className="grid min-h-screen place-items-center p-6 text-center">
+      <div>
+        <h1 className="text-2xl font-bold">Page not found</h1>
+        <a className="mt-4 inline-block underline" href="/">
+          Back to Marker
+        </a>
+      </div>
+    </main>
+  ),
+  defaultErrorComponent: () => (
+    <main className="grid min-h-screen place-items-center p-6 text-center">
+      <div>
+        <h1 className="text-2xl font-bold">This page couldn’t open</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Refresh the page or return to Marker.
+        </p>
+        <a className="mt-4 inline-block underline" href="/">
+          Back to Marker
+        </a>
+      </div>
+    </main>
+  ),
   scrollRestoration: true,
 });
 declare module "@tanstack/react-router" {

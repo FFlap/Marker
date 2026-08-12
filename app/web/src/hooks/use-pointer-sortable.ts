@@ -27,14 +27,13 @@ function locationFromElement(element: Element | null): SortableLocation | undefi
 }
 
 function locationAtPoint(x: number, y: number): SortableLocation | undefined {
-  const direct = document
-    .elementsFromPoint(x, y)
+  const elements = document.elementsFromPoint(x, y);
+  const direct = elements
     .map((element) => locationFromElement(element))
     .find((location) => location !== undefined);
   if (direct) return direct;
 
-  const group = document
-    .elementsFromPoint(x, y)
+  const group = elements
     .map((element) => element.closest<HTMLElement>(groupSelector))
     .find((element) => element !== null);
   if (!group?.dataset.pointerSortableGroup) return undefined;
