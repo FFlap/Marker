@@ -161,6 +161,33 @@ describe('parseNetflixPage', () => {
     });
   });
 
+  it('falls back to embedded cache when bridged metadata omits its id', () => {
+    const document = makeDocument(`
+      <html data-netflix-video-summary='{"type":"episode","episode":2,"season":1}'>
+        <body>
+          <script>
+            netflix.falcorCache = {
+              "videos": {
+                "222": {
+                  "summary": {
+                    "value": { "type": "episode", "id": 222, "episode": 3, "season": 1 }
+                  }
+                }
+              }
+            };
+          </script>
+          <div data-uia="video-title">
+            <h4>Example Show</h4><span>E3</span><span>New Episode</span>
+          </div>
+        </body>
+      </html>
+    `);
+
+    expect(
+      parseNetflixPage(document, new URL('https://www.netflix.com/watch/222')),
+    ).toMatchObject({ episodeNumber: '3', episodeTitle: 'New Episode' });
+  });
+
   it('preserves episode zero from structured metadata', () => {
     const document = makeDocument(`
       <html data-netflix-video-summary='{"type":"episode","id":222,"episode":0,"season":1}'>

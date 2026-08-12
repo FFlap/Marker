@@ -1,19 +1,31 @@
 import type { SessionStorage } from "./session";
 import {
+  createBookmarkOperations,
+  validateBookmark,
+} from "./bookmarks";
+import type { EpisodeBookmark } from "./types";
+import { BOOKMARKS_STORAGE_KEY } from "../messages";
+import {
   createOutboxManager,
   parseWatchPayload,
   SYNC_LAST_RESULT_KEY,
+  SYNC_OUTBOX_KEY,
+  SYNC_RETRY_ALARM,
+  SYNC_RETRY_KEY,
   type AlarmScheduler,
   type SyncResult,
   type WatchPayload,
 } from "./sync";
 
-export type SyncMessage =
+export type BackgroundMessage =
   | { type: "sync/connect" }
   | { type: "sync/signOut" }
   | { type: "sync/status" }
   | { type: "sync/enqueue"; payload: WatchPayload }
-  | { type: "sync/flushNow" };
+  | { type: "sync/flushNow" }
+  | { type: "bookmark/save"; bookmark: EpisodeBookmark }
+  | { type: "bookmark/remove"; key: string }
+  | { type: "bookmark/clear" };
 
 type ErrorLike = {
   data?: { code?: unknown };
@@ -62,7 +74,7 @@ export function classifyDeliveryError(error: unknown): DeliveryClassification {
   return "terminal";
 }
 
-function isSyncMessage(value: unknown): value is SyncMessage {
+function isBackgroundMessage(value: unknown): value is BackgroundMessage {
   if (typeof value !== "object" || value === null) return false;
   const message = value as Record<string, unknown>;
   switch (message.type) {
@@ -70,9 +82,14 @@ function isSyncMessage(value: unknown): value is SyncMessage {
     case "sync/signOut":
     case "sync/status":
     case "sync/flushNow":
+    case "bookmark/clear":
       return true;
     case "sync/enqueue":
       return typeof message.payload === "object" && message.payload !== null;
+    case "bookmark/save":
+      return typeof message.bookmark === "object" && message.bookmark !== null;
+    case "bookmark/remove":
+      return typeof message.key === "string";
     default:
       return false;
   }
@@ -87,7 +104,6 @@ export function createMessageHandler(
     const current = await client.getSession();
     if (!current)
       return { ok: false, reason: "not-signed-in", retryable: true };
-    let result: SyncResult;
     try {
       const result = (await client.record(current.token, { ...payload })) as {
         ok?: unknown;
@@ -111,10 +127,10 @@ export function createMessageHandler(
       );
     } catch (error) {
       const classification = classifyDeliveryError(error);
-      if (classification === "auth")
-        result = { ok: false, reason: "not-signed-in", retryable: true };
-      else
-        result =
+      const result: SyncResult =
+        classification === "auth"
+          ? { ok: false, reason: "not-signed-in", retryable: true }
+          :
           classification === "retryable"
             ? { ok: false, retryable: true }
             : { ok: false, reason: "rejected", retryable: false };
@@ -134,8 +150,9 @@ export function createMessageHandler(
     return result;
   };
   const outbox = createOutboxManager(storage, deliver, options);
+  const bookmarks = createBookmarkOperations(storage, BOOKMARKS_STORAGE_KEY);
   const handler = async (message: unknown) => {
-    if (!isSyncMessage(message))
+    if (!isBackgroundMessage(message))
       return { ok: false, reason: "invalid-message", retryable: false };
     switch (message.type) {
       case "sync/connect": {
@@ -155,6 +172,10 @@ export function createMessageHandler(
       }
       case "sync/signOut":
         await client.signOut();
+        await storage.remove(SYNC_OUTBOX_KEY);
+        await storage.remove(SYNC_RETRY_KEY);
+        await storage.remove(SYNC_LAST_RESULT_KEY);
+        await options.alarms?.clear(SYNC_RETRY_ALARM);
         return { signedIn: false };
       case "sync/status": {
         const current = await client.getSession();
@@ -171,6 +192,37 @@ export function createMessageHandler(
       }
       case "sync/flushNow":
         await outbox.flush();
+        return { ok: true };
+      case "bookmark/save": {
+        const bookmark = validateBookmark(message.bookmark);
+        if (!bookmark) {
+          const incoming = message.bookmark as unknown as Record<
+            string,
+            unknown
+          >;
+          const seriesTitle =
+            typeof incoming.seriesTitle === "string" &&
+            incoming.seriesTitle.trim() &&
+            incoming.seriesTitle.length <= 300
+              ? incoming.seriesTitle.trim()
+              : undefined;
+          await storage.set({
+            [SYNC_LAST_RESULT_KEY]: {
+              ok: false,
+              at: Date.now(),
+              reason: "unsupported-episode",
+              ...(seriesTitle ? { seriesTitle } : {}),
+            },
+          });
+          return { changed: false, reason: "unsupported-episode" };
+        }
+        return { changed: await bookmarks.save(bookmark) };
+      }
+      case "bookmark/remove":
+        await bookmarks.remove(message.key);
+        return { ok: true };
+      case "bookmark/clear":
+        await bookmarks.clear();
         return { ok: true };
     }
   };

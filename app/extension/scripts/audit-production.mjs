@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { isAuditCommandFailure } from "./audit-report.mjs";
 
 const allowedAdvisories = new Set([
   "GHSA-5p2g-fcmc-qvqq",
@@ -19,6 +20,11 @@ try {
 } catch {
   process.stderr.write(result.stderr || result.stdout);
   throw new Error("npm audit did not return valid JSON");
+}
+
+if (isAuditCommandFailure(result.status, report)) {
+  process.stderr.write(result.stderr || result.stdout);
+  throw new Error("npm audit failed before returning a vulnerability report");
 }
 
 const advisories = Object.values(report.vulnerabilities ?? {}).flatMap(

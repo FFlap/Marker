@@ -497,4 +497,23 @@ describe("parseEpisodePage", () => {
       ),
     ).toBeNull();
   });
+
+  it("rejects valid-looking episode metadata on a non-Crunchyroll page", () => {
+    const document = makeDocument(
+      `
+        <a href="https://www.crunchyroll.com/series/GYZJ43JMR/example-show">
+          Example Show
+        </a>
+        <h1>E1 - Pilot</h1>
+      `,
+      "Season 1 Pilot - Watch on Crunchyroll",
+    );
+
+    expect(
+      parseEpisodePage(
+        document,
+        new URL("https://example.com/watch/GRQW9GW7R/pilot"),
+      ),
+    ).toBeNull();
+  });
 });

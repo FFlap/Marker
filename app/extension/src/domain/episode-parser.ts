@@ -74,7 +74,7 @@ function parseStructuredEpisode(document: Document): StructuredEpisode | null {
           .exec(structuredName)?.[1]
           ?.trim();
         const episodeFromName = nameAfterSeparator
-          ? (/^E[A-Z0-9.-]+\s*-\s*(.+)$/i.exec(nameAfterSeparator)?.[1] ??
+          ? (EPISODE_HEADING.exec(nameAfterSeparator)?.[2] ??
             nameAfterSeparator)
           : undefined;
 

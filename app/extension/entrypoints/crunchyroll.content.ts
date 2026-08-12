@@ -30,10 +30,7 @@ export default defineContentScript({
         saveInFlight = true;
         document.documentElement.dataset.markerCrunchyroll = "saving";
         try {
-          const changed = await persistDetectedEpisode(
-            browser.storage.local,
-            bookmark,
-          );
+          const changed = await persistDetectedEpisode(bookmark);
           if (changed)
             void syncDetectedEpisode(browser.storage.local, bookmark);
           lastSentEpisodeId = bookmark.episodeId;

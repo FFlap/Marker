@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
-  createBookmarkOperations,
   normalizeBookmarkStore,
   sortBookmarks,
   validatedProviderUrl,
@@ -36,12 +35,8 @@ export function openPersistedWatchUrl(url: string) {
 
 export function Popup() {
   const hydrationRevision = React.useRef(0);
-  const bookmarkOperations = React.useMemo(
-    () =>
-      createBookmarkOperations(browser.storage.local, BOOKMARKS_STORAGE_KEY),
-    [],
-  );
   const [bookmarks, setBookmarks] = React.useState<EpisodeBookmark[]>([]);
+  const [bookmarkError, setBookmarkError] = React.useState<string>();
   const [sync, setSync] = React.useState({
     signedIn: false,
     accountLabel: undefined as string | undefined,
@@ -61,7 +56,7 @@ export function Popup() {
         if (isCurrent()) setBookmarks(next);
       })
       .catch(() => {
-        if (isCurrent()) setSyncError("Couldn’t read saved episodes");
+        if (isCurrent()) setBookmarkError("Couldn’t read saved episodes");
       });
     void browser.storage.local
       .get([SYNC_LAST_RESULT_KEY])
@@ -147,15 +142,36 @@ export function Popup() {
   return (
     <App
       bookmarks={bookmarks}
+      bookmarkError={bookmarkError}
       onOpen={(url) => {
+        setBookmarkError(undefined);
         if (!openPersistedWatchUrl(url)) {
-          setSyncError("Saved episode link is invalid");
+          setBookmarkError("Saved episode link is invalid");
         }
       }}
-      onRemove={(key) => {
-        void bookmarkOperations.remove(key);
+      onRemove={async (key) => {
+        setBookmarkError(undefined);
+        try {
+          const response = (await browser.runtime.sendMessage({
+            type: "bookmark/remove",
+            key,
+          })) as { ok?: unknown };
+          if (response?.ok !== true) throw new Error("Remove failed");
+        } catch {
+          setBookmarkError("Couldn’t remove the saved episode");
+        }
       }}
-      onClear={() => void bookmarkOperations.clear()}
+      onClear={async () => {
+        setBookmarkError(undefined);
+        try {
+          const response = (await browser.runtime.sendMessage({
+            type: "bookmark/clear",
+          })) as { ok?: unknown };
+          if (response?.ok !== true) throw new Error("Clear failed");
+        } catch {
+          setBookmarkError("Couldn’t clear saved episodes");
+        }
+      }}
       sync={{
         ...sync,
         error: syncError,

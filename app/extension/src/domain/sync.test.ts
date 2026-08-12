@@ -55,6 +55,17 @@ describe("background-owned sync outbox", () => {
     expect(parseWatchPayload({ ...payload, url: "javascript:alert(1)" })).toBeNull();
     expect(parseWatchPayload({ ...payload, seriesTitle: "x".repeat(301) })).toBeNull();
   });
+  it("preserves and accepts a valid HTTPS watch URL", () => {
+    const url = "https://www.netflix.com/watch/2";
+    expect(buildWatchPayload({ ...bookmark, watchUrl: url })).toEqual({
+      ...payload,
+      url,
+    });
+    expect(parseWatchPayload({ ...payload, url })).toEqual({
+      ...payload,
+      url,
+    });
+  });
   it("deduplicates title-matched events by normalized episode title", async () => {
     const values: Record<string, unknown> = {};
     const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
@@ -150,6 +161,22 @@ describe("background-owned sync outbox", () => {
     await manager.flush();
     expect(values[SYNC_RETRY_KEY]).toEqual({ attempt: 2, nextRetryAt: 301_000 });
   });
+  it("repairs non-positive stored retry attempts", async () => {
+    const values: Record<string, unknown> = {
+      [SYNC_OUTBOX_KEY]: [payload],
+      [SYNC_RETRY_KEY]: { attempt: -2, nextRetryAt: 0 },
+    };
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    await createOutboxManager(
+      storage,
+      async () => ({ ok: false, retryable: true }),
+      { now: () => 1_000 },
+    ).flush();
+    expect(values[SYNC_RETRY_KEY]).toEqual({
+      attempt: 1,
+      nextRetryAt: 61_000,
+    });
+  });
   it("clears retry scheduling after success", async () => {
     const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload], [SYNC_RETRY_KEY]: { attempt: 2, nextRetryAt: 1000 } };
     const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
@@ -164,5 +191,17 @@ describe("background-owned sync outbox", () => {
     const post = vi.fn(async () => ({ ok: true, retryable: false }));
     await createOutboxManager(storage, post, { now: () => 1000 }).alarmFired();
     expect(post).toHaveBeenCalledWith(payload);
+  });
+  it("does not flush before a retry alarm is due", async () => {
+    const values: Record<string, unknown> = {
+      [SYNC_OUTBOX_KEY]: [payload],
+      [SYNC_RETRY_KEY]: { attempt: 1, nextRetryAt: 2_000 },
+    };
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const post = vi.fn(async () => ({ ok: true, retryable: false }));
+    await expect(
+      createOutboxManager(storage, post, { now: () => 1_000 }).alarmFired(),
+    ).resolves.toBe(false);
+    expect(post).not.toHaveBeenCalled();
   });
 });

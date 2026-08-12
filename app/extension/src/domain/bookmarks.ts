@@ -130,8 +130,15 @@ export function normalizeBookmarkStore(value: unknown): BookmarkStore {
   for (const [key, bookmark] of Object.entries(
     candidate.bookmarks as Record<string, unknown>,
   )) {
-    if (isBookmark(bookmark) && key === bookmarkKey(bookmark))
-      bookmarks[key] = bookmark;
+    const migrated =
+      bookmark &&
+      typeof bookmark === "object" &&
+      !Array.isArray(bookmark) &&
+      (bookmark as Record<string, unknown>).platform === undefined
+        ? { platform: "crunchyroll", ...bookmark }
+        : bookmark;
+    if (isBookmark(migrated) && key === bookmarkKey(migrated))
+      bookmarks[key] = migrated;
   }
   return { version: 1, bookmarks };
 }
@@ -159,7 +166,7 @@ export function sortBookmarks(
   );
 }
 
-type BookmarkStorage = {
+export type BookmarkStorage = {
   get(key: string): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
 };
@@ -169,23 +176,51 @@ export function createBookmarkOperations(
   storageKey: string,
 ) {
   let pending = Promise.resolve();
-  const update = (transform: (store: BookmarkStore) => BookmarkStore) => {
+  const update = <T>(
+    transform: (store: BookmarkStore) => { store: BookmarkStore; result: T },
+  ) => {
     const operation = pending.then(async () => {
       const stored = await storage.get(storageKey);
+      const next = transform(normalizeBookmarkStore(stored[storageKey]));
       await storage.set({
-        [storageKey]: transform(normalizeBookmarkStore(stored[storageKey])),
+        [storageKey]: next.store,
       });
+      return next.result;
     });
-    pending = operation.catch(() => undefined);
+    pending = operation.then(
+      () => undefined,
+      () => undefined,
+    );
     return operation;
   };
   return {
+    save: (value: unknown) =>
+      update((store) => {
+        const bookmark = validateBookmark(value);
+        if (!bookmark) return { store, result: false };
+        const previous = store.bookmarks[bookmarkKey(bookmark)];
+        const unchanged =
+          previous?.episodeId === bookmark.episodeId &&
+          previous.seasonNumber === bookmark.seasonNumber &&
+          previous.episodeNumber === bookmark.episodeNumber;
+        return {
+          store: unchanged ? store : mergeBookmark(store, bookmark),
+          result: !unchanged,
+        };
+      }),
     remove: (key: string) =>
       update((store) => {
         const bookmarks = { ...store.bookmarks };
         delete bookmarks[key];
-        return { version: 1, bookmarks };
+        return {
+          store: { version: 1, bookmarks },
+          result: undefined,
+        };
       }),
-    clear: () => update(() => ({ version: 1, bookmarks: {} })),
+    clear: () =>
+      update(() => ({
+        store: { version: 1, bookmarks: {} },
+        result: undefined,
+      })),
   };
 }

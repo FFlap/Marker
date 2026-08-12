@@ -8,14 +8,15 @@ import {
 import { createMessageHandler } from "../src/domain/background";
 import { SYNC_RETRY_ALARM } from "../src/domain/sync";
 
-export default defineBackground(async () => {
-  const clerk = await createClerkClient({
+export default defineBackground(() => {
+  const clerkPromise = createClerkClient({
     publishableKey: CLERK_PUBLISHABLE_KEY,
     syncHost: CLERK_SYNC_HOST,
     background: true,
   });
 
   const getSession = async () => {
+    const clerk = await clerkPromise;
     const session = clerk.session;
     const user = clerk.user;
     if (!session || !user) return null;
@@ -50,7 +51,13 @@ export default defineBackground(async () => {
       Object.assign(error, { status: response.status });
       throw error;
     }
-    return response.json() as Promise<Record<string, unknown>>;
+    try {
+      return (await response.json()) as Record<string, unknown>;
+    } catch {
+      const error = new Error("Sync returned an invalid response");
+      Object.assign(error, { status: 502 });
+      throw error;
+    }
   };
 
   const background = createMessageHandler(
@@ -62,7 +69,7 @@ export default defineBackground(async () => {
         url.searchParams.set("next", "/extension/connect");
         await browser.tabs.create({ url: url.toString() });
       },
-      signOut: () => clerk.signOut(),
+      signOut: async () => (await clerkPromise).signOut(),
       record: (token, payload) =>
         authenticatedPost("/extension/watch", token, payload),
     },
@@ -74,12 +81,26 @@ export default defineBackground(async () => {
     },
   );
 
-  browser.runtime.onMessage.addListener((message: unknown) =>
-    background.handler(message),
+  browser.runtime.onMessage.addListener(
+    (message: unknown, _sender, sendResponse) => {
+      void background.handler(message).then(sendResponse).catch(() => {
+        sendResponse({
+          ok: false,
+          reason: "background-error",
+          retryable: true,
+        });
+      });
+      return true;
+    },
   );
   browser.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === SYNC_RETRY_ALARM) void background.alarmFired();
+    if (alarm.name === SYNC_RETRY_ALARM)
+      void background.alarmFired().catch(() => undefined);
   });
-  clerk.addListener(() => void background.flush());
-  void background.flush();
+  void clerkPromise
+    .then((clerk) => {
+      clerk.addListener(() => void background.flush().catch(() => undefined));
+      return background.flush();
+    })
+    .catch(() => undefined);
 });

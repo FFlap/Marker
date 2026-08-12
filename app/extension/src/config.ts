@@ -13,15 +13,21 @@ const requiredBuildValue = (
   throw new Error(`${name} is required in production extension bundles`);
 };
 
-const CONVEX_URL = requiredBuildValue(
+export function convexSiteOrigin(value: string) {
+  const convexUrl = new URL(value);
+  return `${convexUrl.protocol}//${convexUrl.hostname.replace(
+    /\.convex\.cloud$/u,
+    ".convex.site",
+  )}${convexUrl.port ? `:${convexUrl.port}` : ""}`;
+}
+
+const convexUrl = new URL(requiredBuildValue(
   "WXT_CONVEX_URL",
   import.meta.env.WXT_CONVEX_URL,
   CHECKED_IN_CONVEX_URL,
-);
-export const CONVEX_SITE_URL = CONVEX_URL.replace(
-  /\.convex\.cloud$/u,
-  ".convex.site",
-);
+));
+const CONVEX_URL = convexUrl.origin;
+export const CONVEX_SITE_URL = convexSiteOrigin(CONVEX_URL);
 export const CLERK_PUBLISHABLE_KEY = requiredBuildValue(
   "WXT_CLERK_PUBLISHABLE_KEY",
   import.meta.env.WXT_CLERK_PUBLISHABLE_KEY,

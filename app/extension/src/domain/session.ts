@@ -1,5 +1,5 @@
-export interface SessionStorage {
-  get(key: string | string[]): Promise<Record<string, unknown>>;
-  set(values: Record<string, unknown>): Promise<void>;
+import type { SyncStorage } from "./sync";
+
+export interface SessionStorage extends SyncStorage {
   remove(key: string): Promise<void>;
 }

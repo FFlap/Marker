@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { classifyDeliveryError, createMessageHandler } from "./background";
 import { SYNC_OUTBOX_KEY } from "./sync";
+import { normalizeBookmarkStore } from "./bookmarks";
+import { BOOKMARKS_STORAGE_KEY } from "../messages";
 
 const payload = {
   service: "netflix" as const,
@@ -84,12 +86,68 @@ describe("background delivery classification", () => {
     {},
     { type: "unknown" },
     { type: "sync/signIn", email: "a@b.com" },
-  ])("returns a terminal error for malformed messages", async (message) => {
+  ])("returns a terminal error for malformed message %o", async (message) => {
     await expect(setup().background.handler(message)).resolves.toEqual({
       ok: false,
       reason: "invalid-message",
       retryable: false,
     });
+  });
+  it("clears queued watch data and retry state when signing out", async () => {
+    const x = setup();
+    x.values["sync.outbox"] = [payload];
+    x.values["sync.outboxRetry"] = { attempt: 1, nextRetryAt: 1000 };
+    x.values["sync.lastResult"] = {
+      ok: false,
+      at: 1,
+      seriesTitle: "Dark",
+    };
+    const alarms = { schedule: vi.fn(), clear: vi.fn() };
+    const background = createMessageHandler(x.storage, x.client, { alarms });
+
+    await expect(background.handler({ type: "sync/signOut" })).resolves.toEqual({
+      signedIn: false,
+    });
+    expect(x.values["sync.outbox"]).toBeUndefined();
+    expect(x.values["sync.outboxRetry"]).toBeUndefined();
+    expect(x.values["sync.lastResult"]).toBeUndefined();
+    expect(alarms.clear).toHaveBeenCalledWith("sync.outboxRetry");
+  });
+  it("serializes bookmark saves and removals through one background queue", async () => {
+    const x = setup();
+    const first = {
+      platform: "netflix" as const,
+      seriesId: "first",
+      seriesTitle: "First",
+      seriesUrl: "https://www.netflix.com/title/first",
+      seasonNumber: "1",
+      episodeNumber: "1",
+      episodeTitle: "Pilot",
+      episodeId: "first-1",
+      watchUrl: "https://www.netflix.com/watch/first-1",
+      updatedAt: 1,
+    };
+    const second = {
+      ...first,
+      seriesId: "second",
+      seriesTitle: "Second",
+      episodeId: "second-1",
+      seriesUrl: "https://www.netflix.com/title/second",
+      watchUrl: "https://www.netflix.com/watch/second-1",
+    };
+    x.values[BOOKMARKS_STORAGE_KEY] = {
+      version: 1,
+      bookmarks: { "netflix:first": first },
+    };
+
+    await Promise.all([
+      x.background.handler({ type: "bookmark/remove", key: "netflix:first" }),
+      x.background.handler({ type: "bookmark/save", bookmark: second }),
+    ]);
+
+    expect(
+      normalizeBookmarkStore(x.values[BOOKMARKS_STORAGE_KEY]).bookmarks,
+    ).toEqual({ "netflix:second": second });
   });
   it("returns a structured response when website connection fails", async () => {
     const x = setup();

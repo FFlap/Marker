@@ -42,4 +42,17 @@ describe("extension build configuration", () => {
     expect(result.websiteOrigin).toBe("http://localhost:4173");
     expect(result.hostPermissions).toContain("http://localhost/*");
   });
+
+  it("normalizes Convex trailing slashes and preserves explicit ports", () => {
+    const result = resolveExtensionBuild("production", {
+      ...productionEnvironment,
+      WXT_CONVEX_URL: "https://marker-production.convex.cloud:8443/",
+    });
+    expect(result.convexOrigin).toBe(
+      "https://marker-production.convex.cloud:8443",
+    );
+    expect(result.convexSiteOrigin).toBe(
+      "https://marker-production.convex.site:8443",
+    );
+  });
 });

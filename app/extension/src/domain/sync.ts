@@ -73,7 +73,7 @@ export function buildWatchPayload(
   return {
     service: bookmark.platform,
     seriesTitle,
-    ...(seasonTitle && seasonTitle.length <= 300 ? { seasonTitle } : {}),
+    ...(seasonTitle && seasonTitle.length <= TEXT_MAX ? { seasonTitle } : {}),
     ...(reliableNumbers ? { seasonNumber, episodeNumber } : episodeNumber !== undefined ? { episodeNumber } : {}),
     ...(episodeTitle ? { episodeTitle } : {}),
     ...(url ? { url } : {}),
@@ -141,7 +141,8 @@ export function parseWatchPayload(value: unknown): WatchPayload | null {
   };
 }
 
-const normalizeIdentity = (value: string) => value.normalize("NFKC").trim().toLocaleLowerCase();
+const normalizeIdentity = (value: string) =>
+  value.normalize("NFKC").trim().toLowerCase();
 const outboxKeys = (payload: WatchPayload) => {
   const prefix = `${payload.service}:${normalizeIdentity(payload.seriesTitle)}${
     payload.seasonTitle ? `:season-title:${normalizeIdentity(payload.seasonTitle)}` : ""
@@ -224,7 +225,10 @@ export function createOutboxManager(
     }
     const stored = await storage.get(SYNC_RETRY_KEY);
     const previous = stored[SYNC_RETRY_KEY] as Partial<RetryState> | null;
-    const attempt = !resetAttempt && typeof previous?.attempt === "number" ? previous.attempt + 1 : 1;
+    const attempt =
+      !resetAttempt && typeof previous?.attempt === "number"
+        ? Math.max(1, previous.attempt + 1)
+        : 1;
     const delay = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!;
     const retry = { attempt, nextRetryAt: now() + delay };
     await storage.set({ [SYNC_RETRY_KEY]: retry });

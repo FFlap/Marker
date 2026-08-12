@@ -4,6 +4,7 @@ import React from "react";
 
 interface AppProps {
   bookmarks: EpisodeBookmark[];
+  bookmarkError?: string;
   onOpen: (url: string) => void;
   onRemove: (key: string) => void;
   onClear: () => void;
@@ -40,7 +41,14 @@ function TrashIcon() {
 const seasonLabel = (value: string) =>
   /^\d+(?:\.\d+)?$/.test(value) ? `Season ${value}` : value;
 
-export function App({ bookmarks, onOpen, onRemove, onClear, sync }: AppProps) {
+export function App({
+  bookmarks,
+  bookmarkError,
+  onOpen,
+  onRemove,
+  onClear,
+  sync,
+}: AppProps) {
   const [saving, setSaving] = React.useState(false);
   const syncResultText = sync?.lastResult && (() => {
     const title = sync.lastResult.seriesTitle?.trim();
@@ -104,6 +112,12 @@ export function App({ bookmarks, onOpen, onRemove, onClear, sync }: AppProps) {
           </div>
         </div>
       </details>
+
+      {bookmarkError && (
+        <p className="sync-error" role="alert">
+          {bookmarkError}
+        </p>
+      )}
 
       {bookmarks.length === 0 ? (
         <section className="empty">

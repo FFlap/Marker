@@ -13,6 +13,7 @@ let sendMessage: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   sendMessage = vi.fn(async (message: { type: string }) => {
     if (message.type === "sync/status") return { signedIn: false };
+    if (message.type.startsWith("bookmark/")) return { ok: true };
     return undefined;
   });
   vi.stubGlobal("browser", {
@@ -52,6 +53,42 @@ describe("popup entrypoint sync integration", () => {
       false,
     );
     expect(browser.tabs.create).not.toHaveBeenCalled();
+  });
+
+  it("shows bookmark failures without requiring the Sync panel", async () => {
+    const bookmark = {
+      platform: "netflix",
+      seriesId: "dark",
+      seriesTitle: "Dark",
+      seriesUrl: "https://www.netflix.com/title/dark",
+      seasonNumber: "1",
+      episodeNumber: "2",
+      episodeTitle: "Lies",
+      episodeId: "dark-2",
+      watchUrl: "https://www.netflix.com/watch/dark-2",
+      updatedAt: 1,
+    };
+    vi.mocked(browser.storage.local.get).mockImplementation(async (key) =>
+      typeof key === "string"
+        ? { [key]: { version: 1, bookmarks: { "netflix:dark": bookmark } } }
+        : {},
+    );
+    sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === "sync/status") return { signedIn: false };
+      if (message.type === "bookmark/remove")
+        throw new Error("storage unavailable");
+      return { ok: true };
+    });
+
+    render(<Popup />);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove Dark" }));
+
+    expect(
+      await screen.findByText("Couldn’t remove the saved episode"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Sync").closest("details")).not.toHaveAttribute(
+      "open",
+    );
   });
 
   it("routes website connection to the background and updates the UI on success", async () => {

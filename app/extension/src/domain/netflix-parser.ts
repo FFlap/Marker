@@ -5,7 +5,7 @@ const EPISODE_LABEL = /^E(\d+(?:\.\d+)?)$/i;
 
 interface NetflixVideoSummary {
   type: 'episode' | 'movie';
-  id?: number | string;
+  id: number | string;
   seriesId?: number | string;
   episode?: number;
   season?: number;
@@ -34,11 +34,7 @@ function asSummary(value: unknown): NetflixVideoSummary | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
   if (record.type !== 'episode' && record.type !== 'movie') return null;
-  if (
-    record.id !== undefined &&
-    typeof record.id !== 'number' &&
-    typeof record.id !== 'string'
-  ) {
+  if (typeof record.id !== 'number' && typeof record.id !== 'string') {
     return null;
   }
   if (
@@ -50,7 +46,7 @@ function asSummary(value: unknown): NetflixVideoSummary | null {
   if (record.type === 'episode' && typeof record.season !== 'number') return null;
   return {
     type: record.type,
-    id: record.id as number | string | undefined,
+    id: record.id,
     seriesId: record.seriesId as number | string | undefined,
     episode: record.episode as number | undefined,
     season: record.season as number | undefined,
@@ -66,9 +62,9 @@ function parseEmbeddedSummary(
     try {
       const summary = asSummary(JSON.parse(bridged));
       if (!summary) throw new Error('Unexpected summary shape');
-      if (summary.id !== undefined && String(summary.id) !== videoId) {
+      if (String(summary.id) !== videoId) {
         return summary.type === 'episode'
-          ? { type: 'episode', season: summary.season, stale: true }
+          ? { type: 'episode', id: summary.id, season: summary.season, stale: true }
           : null;
       }
       return summary;
