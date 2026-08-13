@@ -127,7 +127,6 @@ export function CalendarPage() {
   useEffect(() => {
     let ignore = false;
     const load = async () => {
-      await Promise.resolve();
       try {
         const result = await fetchUpcoming({
           startDate,

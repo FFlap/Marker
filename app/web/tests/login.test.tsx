@@ -32,7 +32,12 @@ const mocks = vi.hoisted(() => {
       verifyEmailCode: vi.fn<(...args: unknown[]) => Promise<{ error: unknown | null }>>(),
     },
   };
-  return { navigate: vi.fn<(...args: unknown[]) => Promise<void>>(), signIn, signUp };
+  return {
+    navigate: vi.fn<(...args: unknown[]) => Promise<void>>(),
+    searchNext: undefined as string | undefined,
+    signIn,
+    signUp,
+  };
 });
 
 vi.mock("@clerk/react", () => {
@@ -45,7 +50,7 @@ vi.mock("@clerk/react", () => {
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
   useNavigate: () => mocks.navigate,
-  useSearch: () => ({}),
+  useSearch: () => ({ next: mocks.searchNext }),
 }));
 
 import { LoginPage } from "@/pages/login";
@@ -58,6 +63,7 @@ describe("login page", () => {
     mocks.signIn.status = null;
     mocks.signUp.status = null;
     mocks.signUp.missingFields = [];
+    mocks.searchNext = undefined;
     for (const mock of [
       mocks.signIn.create,
       mocks.signIn.finalize,
@@ -88,6 +94,26 @@ describe("login page", () => {
     expect(screen.getByRole("button", { name: "Log in" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign up" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+  });
+
+  it("blocks an external post-login redirect", async () => {
+    mocks.searchNext = "https://attacker.example";
+    mocks.signIn.password.mockImplementation(async () => {
+      mocks.signIn.status = "complete";
+      return { error: null };
+    });
+    render(<LoginPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.change(screen.getByLabelText("Username or email"), {
+      target: { value: "viewer@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "long-enough-password" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: "/" }));
   });
 
   it("reveals the custom Clerk account-creation form", () => {

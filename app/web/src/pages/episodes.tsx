@@ -3,6 +3,7 @@ import { Check, EllipsisVertical, SlidersHorizontal, Star } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import type { Id } from "../../../mobile/convex/_generated/dataModel";
+import { ChipGroup } from "@/components/chip-group";
 import { EpisodeDialog, type EpisodeView } from "@/components/episode-dialog";
 import { Page } from "@/components/page";
 import { Button } from "@/components/ui/button";
@@ -21,10 +22,6 @@ type Episode = EpisodeView & {
   isAnime: boolean;
   tags: string[];
 };
-
-const chipClass = (selected: boolean) =>
-  `min-h-11 rounded-full border px-3 py-1.5 text-sm font-semibold transition sm:min-h-9 ${selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground"}`;
-const filterLabelClass = "mb-3 text-xs font-semibold text-muted-foreground";
 
 const localDateKey = (date = new Date()) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -73,23 +70,27 @@ export function EpisodesPage() {
   const [showType, setShowType] = useState<"all" | "anime" | "other">("all");
   const [minimumRating, setMinimumRating] = useState(0);
   const [tag, setTag] = useState("all");
-  const [pending, setPending] = useState("");
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const [error, setError] = useState("");
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
-  const favoriteTags = useMemo(
-    () =>
-      [
-        ...new Set((data?.favorites ?? []).flatMap((episode) => episode.tags.map((entry) => entry.toLocaleLowerCase()))),
-      ].toSorted((a, b) => a.localeCompare(b)),
-    [data],
-  );
+  const favoriteTags = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const episode of data?.favorites ?? [])
+      for (const entry of episode.tags) {
+        const key = entry.toLocaleLowerCase();
+        if (!byKey.has(key)) byKey.set(key, entry);
+      }
+    return [...byKey.entries()]
+      .map(([key, label]) => ({ key, label }))
+      .toSorted((left, right) => left.label.localeCompare(right.label));
+  }, [data]);
   const episodes = useMemo(
     () =>
       (data?.[tab] ?? []).filter(
         (episode) =>
           `${episode.title} ${episode.name}`
             .toLocaleLowerCase()
-            .includes(search.toLocaleLowerCase()) &&
+            .includes(search.trim().toLocaleLowerCase()) &&
           (showType === "all" ||
             (showType === "anime" ? episode.isAnime : !episode.isAnime)) &&
           (tab !== "favorites" || (episode.rating ?? 0) >= minimumRating) &&
@@ -131,64 +132,43 @@ export function EpisodesPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogTitle>Episode filters</DialogTitle>
-            <section>
-              <p className={filterLabelClass}>Show type</p>
-              <div className="flex flex-wrap gap-2">
-                {(["all", "anime", "other"] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={chipClass(showType === value)}
-                    onClick={() => setShowType(value)}
-                  >
-                    {value === "all"
-                      ? "All"
-                      : value === "anime"
-                        ? "Anime"
-                        : "Other TV"}
-                  </button>
-                ))}
-              </div>
-            </section>
+            <ChipGroup
+              label="Show type"
+              options={(["all", "anime", "other"] as const).map((value) => ({
+                value,
+                label:
+                  value === "all"
+                    ? "All"
+                    : value === "anime"
+                      ? "Anime"
+                      : "Other TV",
+              }))}
+              value={showType}
+              onChange={setShowType}
+            />
             {tab === "favorites" && (
               <>
-                <section>
-                  <p className={filterLabelClass}>Minimum rating</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[0, 8, 9, 10].map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        className={chipClass(minimumRating === value)}
-                        onClick={() => setMinimumRating(value)}
-                      >
-                        {value ? `${value}+` : "Any"}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-                <section>
-                  <p className={filterLabelClass}>Tags</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      "all",
-                      ...favoriteTags.map((entry) => entry.toLocaleLowerCase()),
-                    ].map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        className={chipClass(tag === value)}
-                        onClick={() => setTag(value)}
-                      >
-                        {value === "all"
-                          ? "All tags"
-                          : favoriteTags.find(
-                              (entry) => entry.toLocaleLowerCase() === value,
-                            )}
-                      </button>
-                    ))}
-                  </div>
-                </section>
+                <ChipGroup
+                  label="Minimum rating"
+                  options={[0, 8, 9, 10].map((value) => ({
+                    value,
+                    label: value ? `${value}+` : "Any",
+                  }))}
+                  value={minimumRating}
+                  onChange={setMinimumRating}
+                />
+                <ChipGroup
+                  label="Tags"
+                  options={[
+                    { value: "all", label: "All tags" },
+                    ...favoriteTags.map(({ key, label }) => ({
+                      value: key,
+                      label,
+                    })),
+                  ]}
+                  value={tag}
+                  onChange={setTag}
+                />
               </>
             )}
             {filtersActive && (
@@ -282,9 +262,9 @@ export function EpisodesPage() {
                   <button
                     type="button"
                     aria-label={`Mark ${episode.title} episode ${episode.episode} watched`}
-                    disabled={pending === key}
+                    disabled={pending.has(key)}
                     onClick={() => {
-                      setPending(key);
+                      setPending((current) => new Set(current).add(key));
                       setError("");
                       void setEpisode({
                         itemId: episode.itemId as Id<"items">,
@@ -307,7 +287,13 @@ export function EpisodesPage() {
                         watched: true,
                       })
                         .catch(() => setError("Couldn’t mark that episode watched."))
-                        .finally(() => setPending(""));
+                        .finally(() =>
+                          setPending((current) => {
+                            const next = new Set(current);
+                            next.delete(key);
+                            return next;
+                          }),
+                        );
                     }}
                     className="grid size-11 place-items-center rounded-full border border-border transition hover:bg-foreground hover:text-background disabled:opacity-50 sm:size-8"
                   >

@@ -98,7 +98,7 @@ export function PublicProfilePage() {
         },
         {
           label: "Average Rating",
-          value: stats.avgRating ? stats.avgRating.toFixed(1) : "—",
+          value: stats.avgRating !== undefined ? stats.avgRating.toFixed(1) : "—",
           detail: undefined,
         },
       ]
@@ -243,7 +243,7 @@ export function PublicProfilePage() {
   );
 }
 
-function PublicTags({
+export function PublicTags({
   username,
   tags,
 }: {

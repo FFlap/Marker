@@ -111,8 +111,6 @@ function EntryDialog({
     setBusy("save");
     setError("");
     try {
-      if (item.mediaType === "tv" && draft.status === "watched")
-        await moveItemToWatched({ itemId: item._id as Id<"items"> });
       await updateItem({
         itemId: item._id as Id<"items">,
         ...(item.mediaType !== "tv" || draft.status !== "watched"
@@ -124,6 +122,8 @@ function EntryDialog({
           : { rating: draft.rating }),
         tags: draft.tags,
       });
+      if (item.mediaType === "tv" && draft.status === "watched")
+        await moveItemToWatched({ itemId: item._id as Id<"items"> });
       setOpen(false);
     } catch {
       setError("Couldn’t save this entry. Try again.");
@@ -147,7 +147,13 @@ function EntryDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (busy && !next) return;
+        setOpen(next);
+      }}
+    >
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogTitle>Edit entry</DialogTitle>
@@ -273,7 +279,8 @@ export function ItemDetailPage() {
   }, [season, touchItemId, touchItemView, touchMediaType]);
 
   useEffect(() => {
-    const first = seasons.find((entry) => entry.season > 0)?.season;
+    const first =
+      seasons.find((entry) => entry.season > 0)?.season ?? seasons[0]?.season;
     if (
       first !== undefined &&
       !seasons.some((entry) => entry.season === season)
@@ -281,7 +288,7 @@ export function ItemDetailPage() {
       setSeason(first);
   }, [season, seasons]);
 
-  if (itemView === undefined && listQuery === undefined) {
+  if (itemView === undefined || (!item && listQuery === undefined)) {
     return (
       <Page width="compact">
         <PageHeader title="Details" back />

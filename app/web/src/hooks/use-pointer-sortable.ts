@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type PointerEventHandler } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEventHandler,
+} from "react";
 
 export type SortableLocation = {
   group: string;
@@ -58,7 +64,9 @@ export function usePointerSortable({
   const onMoveRef = useRef(onMove);
   const [activeId, setActiveId] = useState<string>();
   const [overId, setOverId] = useState<string>();
-  onMoveRef.current = onMove;
+  useLayoutEffect(() => {
+    onMoveRef.current = onMove;
+  }, [onMove]);
 
   const stopAutoScroll = () => {
     if (autoScrollFrame.current !== undefined) {
@@ -129,6 +137,7 @@ export function usePointerSortable({
     onPointerDown: (event) => {
       if (disabled || event.button !== 0 || drag.current) return;
       event.preventDefault();
+      event.currentTarget.focus();
       try {
         event.currentTarget.setPointerCapture?.(event.pointerId);
       } catch {

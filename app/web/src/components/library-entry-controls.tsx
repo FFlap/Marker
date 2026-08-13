@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ export function RatingControl({
   value?: number;
   onChange: (value?: number) => void;
 }) {
+  const groupName = useId();
   const starValue = (value ?? 0) / 2;
   return (
     <div>
@@ -62,7 +63,7 @@ export function RatingControl({
               ) : null}
               <input
                 type="radio"
-                name="entry-rating"
+                name={groupName}
                 aria-label={`Rate ${halfRating} stars`}
                 checked={starValue === halfRating}
                 onChange={() => onChange(halfRating * 2)}
@@ -70,7 +71,7 @@ export function RatingControl({
               />
               <input
                 type="radio"
-                name="entry-rating"
+                name={groupName}
                 aria-label={`Rate ${wholeRating} ${wholeRating === 1 ? "star" : "stars"}`}
                 checked={starValue === wholeRating}
                 onChange={() => onChange(wholeRating * 2)}
@@ -167,6 +168,7 @@ export function LibraryEntryControls({
   suggestions?: string[];
   onChange: (value: EntryDraft) => void;
 }) {
+  const statusGroupName = useId();
   const updateStatus = (status: EntryStatus) =>
     onChange({
       ...value,
@@ -194,7 +196,7 @@ export function LibraryEntryControls({
             <label key={option.value} className="relative cursor-pointer">
               <input
                 type="radio"
-                name="entry-status"
+                name={statusGroupName}
                 value={option.value}
                 checked={value.status === option.value}
                 onChange={() => updateStatus(option.value)}

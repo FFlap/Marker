@@ -7,22 +7,19 @@ import {
   LockKeyhole,
   Pencil,
 } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { ProfileFavorites } from "@/components/profile-favorites";
+import { FollowRequestList } from "@/components/follow-request-list";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { posterUrl } from "@/lib/utils";
+import { PublicTags } from "@/pages/public-profile";
 
 export function ProfilePage() {
   const profile = useQuery(api.profiles.me, {});
   const stats = useQuery(api.stats.profile, {});
   const publicTags = useQuery(api.tags.myPublic, {});
-  const requests = useQuery(api.profiles.followRequests, {});
-  const respond = useMutation(api.profiles.respondToFollow);
-  const [requestPending, setRequestPending] = useState<string>();
-  const [requestError, setRequestError] = useState("");
   const [tab, setTab] = useState<"collection" | "stats">("collection");
   const identity = profile;
   const metrics = stats;
@@ -38,20 +35,8 @@ export function ProfilePage() {
     { label: "Movies Watched", value: metrics?.moviesWatched.toLocaleString() ?? "—", detail: undefined },
     { label: "Shows Watched", value: metrics?.showsWatched.toLocaleString() ?? "—", detail: undefined },
     { label: "Library Items", value: metrics?.totalItems.toLocaleString() ?? "—", detail: undefined },
-    { label: "Average Rating", value: metrics?.avgRating ? metrics.avgRating.toFixed(1) : "—", detail: undefined },
+    { label: "Average Rating", value: metrics?.avgRating !== undefined ? metrics.avgRating.toFixed(1) : "—", detail: undefined },
   ];
-
-  const handleRequest = async (username: string, accept: boolean) => {
-    setRequestPending(username);
-    setRequestError("");
-    try {
-      await respond({ username, accept });
-    } catch {
-      setRequestError("Couldn’t update that follow request.");
-    } finally {
-      setRequestPending(undefined);
-    }
-  };
 
   return (
     <Page width="wide" className="max-w-4xl">
@@ -98,52 +83,7 @@ export function ProfilePage() {
               </TabsTrigger>
             </TabsList>
 
-          {requests?.length ? (
-            <section className="mt-9 border-b border-border pb-8">
-              <SectionHeader title="Follow requests" />
-              <div className="mt-2 divide-y divide-border">
-                {requests.map((request) => (
-                  <div key={request.username} className="flex min-h-16 items-center gap-3 py-3">
-                    <Link
-                      to="/u/$username"
-                      params={{ username: request.username }}
-                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-card text-xs font-bold">
-                        {request.avatarUrl ? (
-                          <img src={request.avatarUrl} alt="" className="size-full object-cover" />
-                        ) : (
-                          request.username[0]?.toUpperCase()
-                        )}
-                      </div>
-                      <span className="min-w-0">
-                        <strong className="block truncate text-sm">@{request.username}</strong>
-                        <span className="text-xs text-muted-foreground">
-                          {request.followerCount.toLocaleString()} follower{request.followerCount === 1 ? "" : "s"}
-                        </span>
-                      </span>
-                    </Link>
-                    <Button
-                      variant="ghost"
-                      aria-label={`Decline @${request.username}`}
-                      disabled={requestPending === request.username}
-                      onClick={() => void handleRequest(request.username, false)}
-                    >
-                      Decline
-                    </Button>
-                    <Button
-                      aria-label={`Accept @${request.username}`}
-                      disabled={requestPending === request.username}
-                      onClick={() => void handleRequest(request.username, true)}
-                    >
-                      Accept
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              {requestError && <p role="alert" className="mt-3 text-xs text-destructive">{requestError}</p>}
-            </section>
-          ) : null}
+          <FollowRequestList />
 
           {tab === "collection" ? (
             <TabsContent value="collection" className="mt-10 grid gap-12">
@@ -163,36 +103,8 @@ export function ProfilePage() {
                   )) : <span className="text-sm text-muted-foreground">No tags yet.</span>}
                 </div>
               </section>
-              {identity.username && publicTags?.length ? (
-                <section>
-                  <SectionHeader title="Public tags" />
-                  <div className="mt-[18px] grid grid-cols-2 gap-x-[4%] gap-y-[30px]">
-                    {publicTags.map((tag) => (
-                      <Link
-                        key={tag.tag}
-                        to="/u/$username/tags/$tag"
-                        params={{ username: identity.username!, tag: tag.tag }}
-                        className="min-w-0 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      >
-                        <div className="flex h-[198px] w-full items-end justify-center overflow-hidden rounded-2xl bg-card">
-                          <div className="flex h-[198px] w-full max-w-[220px] items-end justify-center">
-                          {tag.posters.slice(0, 3).map((poster, index) => (
-                            <div
-                              key={`${poster.title}:${poster.posterPath ?? "none"}`}
-                              className={`aspect-[2/3] w-[60%] max-w-[132px] overflow-hidden rounded-xl border-2 border-background bg-card shadow-xl ${index ? "-ml-[40%]" : ""}`}
-                            >
-                              {poster.posterPath && (
-                                <img src={posterUrl(poster.posterPath)} alt="" className="size-full object-cover" />
-                              )}
-                            </div>
-                          ))}
-                          </div>
-                        </div>
-                        <strong className="mt-1 block truncate text-base">{tag.tag}</strong>
-                      </Link>
-                    ))}
-                  </div>
-                </section>
+              {identity.username ? (
+                <PublicTags username={identity.username} tags={publicTags ?? []} />
               ) : null}
             </TabsContent>
           ) : (

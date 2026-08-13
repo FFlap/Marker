@@ -117,13 +117,13 @@ export function AddTitleDialog({
       : selected?.runtime);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!open || !selected) return;
     void touchTitle({
       mediaType: selected.mediaType,
       tmdbId: selected.id,
       title: selected.title,
     }).catch(() => undefined);
-  }, [selected, touchTitle]);
+  }, [open, selected, touchTitle]);
 
   const search = async (event: FormEvent) => {
     event.preventDefault();
@@ -214,6 +214,7 @@ export function AddTitleDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (busy && !next) return;
         setOpen(next);
         dispatch({
           type: "reset",

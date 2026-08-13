@@ -4,7 +4,7 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { SearchField } from "@/components/ui/search-field";
-import { collectionGridWidth } from "@/lib/display-preferences";
+import { gridWidth } from "@/lib/display-preferences";
 import { posterUrl } from "@/lib/utils";
 
 type PublicTitle = {
@@ -126,8 +126,8 @@ export function PublicTagPage() {
                           params={{ itemId }}
                           className={className}
                           style={{
-                            width: collectionGridWidth[gridColumns],
-                            flexBasis: collectionGridWidth[gridColumns],
+                            width: gridWidth(gridColumns),
+                            flexBasis: gridWidth(gridColumns),
                             flexGrow: 0,
                             flexShrink: 0,
                           }}
@@ -154,8 +154,8 @@ export function PublicTagPage() {
                           }}
                           className={className}
                           style={{
-                            width: collectionGridWidth[gridColumns],
-                            flexBasis: collectionGridWidth[gridColumns],
+                            width: gridWidth(gridColumns),
+                            flexBasis: gridWidth(gridColumns),
                             flexGrow: 0,
                             flexShrink: 0,
                           }}

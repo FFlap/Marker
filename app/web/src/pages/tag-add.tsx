@@ -43,18 +43,26 @@ export function TagAddPage() {
     if (!selected.size || saving) return;
     setSaving(true);
     setError("");
+    let savedCount = 0;
     try {
       const ids = [...selected] as Id<"items">[];
       const batches = Array.from(
         { length: Math.ceil(ids.length / 100) },
         (_, index) => ids.slice(index * 100, index * 100 + 100),
       );
-      await Promise.all(
-        batches.map((itemIds) => addTagToItems({ tag, itemIds })),
-      );
+      for (const itemIds of batches) {
+        // Convex batches update the same tag records and must run in order.
+        // eslint-disable-next-line no-await-in-loop
+        await addTagToItems({ tag, itemIds });
+        savedCount += itemIds.length;
+      }
       void navigate({ to: "/tags/$tag", params: { tag } });
     } catch {
-      setError(`Couldn’t add titles to ${tag}.`);
+      setError(
+        savedCount
+          ? `${savedCount} ${savedCount === 1 ? "title was" : "titles were"} added to ${tag}, but the rest could not be saved.`
+          : `Couldn’t add titles to ${tag}.`,
+      );
       setSaving(false);
     }
   };

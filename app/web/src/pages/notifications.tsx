@@ -1,24 +1,12 @@
-import { useState } from "react";
-import { Bell, Check, Clock3, Eye, Star, X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { Bell, Clock3, Eye, Star } from "lucide-react";
+import { useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../mobile/convex/_generated/api";
-import { Button } from "@/components/ui/button";
+import { FollowRequestList } from "@/components/follow-request-list";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { posterUrl } from "@/lib/utils";
 
-type Activity = {
-  id: string;
-  actorUsername: string;
-  avatarUrl?: string;
-  kind: "rating" | "status" | "finished" | "episode";
-  title: string;
-  posterPath?: string;
-  rating?: number;
-  status?: "watched" | "watching" | "watchlist" | "dropped";
-  season?: number;
-  episode?: number;
-  occurredAt: number;
-};
+type Activity = FunctionReturnType<typeof api.notifications.feed>[number];
 
 function relativeTime(value: number) {
   const seconds = Math.max(1, Math.floor((Date.now() - value) / 1000));
@@ -57,86 +45,12 @@ function activityText(activity: Activity) {
 }
 
 export function NotificationsPage() {
-  const requests = useQuery(api.profiles.followRequests, {});
   const queriedActivity = useQuery(api.notifications.feed, {});
-  const respond = useMutation(api.profiles.respondToFollow);
-  const [pending, setPending] = useState<string>();
-  const [error, setError] = useState("");
   const activity = queriedActivity;
-  const handleRequest = async (username: string, accept: boolean) => {
-    setPending(username);
-    setError("");
-    try {
-      await respond({ username, accept });
-    } catch {
-      setError("Couldn’t update that follow request.");
-    } finally {
-      setPending(undefined);
-    }
-  };
   return (
     <Page width="compact">
       <PageHeader title="Notifications" />
-      {requests === undefined ? (
-        <div className="mt-6 h-20 animate-pulse rounded-xl bg-card" />
-      ) : (
-        Boolean(requests?.length) && (
-          <section className="mt-6 border-b border-border pb-8">
-            <SectionHeader title="Follow requests" />
-            <div className="mt-2">
-              {requests?.map((request) => (
-                <div
-                  key={request.username}
-                  className="flex min-h-16 items-center gap-3 py-3"
-                >
-                  <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-foreground text-xs font-bold text-background">
-                    {request.avatarUrl ? (
-                      <img
-                        src={request.avatarUrl}
-                        alt=""
-                        className="size-full object-cover"
-                      />
-                    ) : (
-                      request.username[0]?.toUpperCase()
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <strong className="block truncate text-sm">
-                      @{request.username}
-                    </strong>
-                    <span className="text-[10px] text-muted-foreground">
-                      {request.followerCount} follower
-                      {request.followerCount === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  <Button
-                    aria-label={`Decline @${request.username}`}
-                    variant="ghost"
-                    size="icon"
-                    disabled={pending === request.username}
-                    onClick={() => void handleRequest(request.username, false)}
-                  >
-                    <X className="size-4" />
-                  </Button>
-                  <Button
-                    aria-label={`Accept @${request.username}`}
-                    size="icon"
-                    disabled={pending === request.username}
-                    onClick={() => void handleRequest(request.username, true)}
-                  >
-                    <Check className="size-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-            {error && (
-              <p role="alert" className="mt-3 text-xs text-destructive">
-                {error}
-              </p>
-            )}
-          </section>
-        )
-      )}
+      <FollowRequestList compact />
       <section className="mt-8">
         <SectionHeader
           title="FOLLOWING ACTIVITY"

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Grid3X3, List, Plus } from "lucide-react";
@@ -13,7 +13,7 @@ import { Page, SectionHeader } from "@/components/page";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
 import { matchesMediaType } from "@/lib/library-filters";
-import { collectionGridWidth, collectionListType, collectionListWidth } from "@/lib/display-preferences";
+import { gridWidth, listType, listWidth } from "@/lib/display-preferences";
 import { usePointerSortable, type SortableLocation } from "@/hooks/use-pointer-sortable";
 import { useSessionLibraryView } from "@/hooks/use-session-library-view";
 
@@ -41,7 +41,7 @@ function ListItem({
   ranked: boolean;
   contained: boolean;
 }) {
-  const typography = collectionListType[textSize];
+  const typography = listType(textSize);
   return (
     <Link
       to="/item/$itemId"
@@ -115,7 +115,9 @@ export function LibraryPage() {
   });
   const [orders, setOrders] = useState<Partial<Record<WebLibraryItem["status"], string[]>>>({});
   const [moving, setMoving] = useState<string>();
+  const movePending = useRef(false);
   const [error, setError] = useState("");
+  const [announcement, setAnnouncement] = useState("");
   const allTags = useMemo(
     () => [...new Set((items ?? []).flatMap((item) => item.tags))].toSorted((a, b) => a.localeCompare(b)),
     [items],
@@ -164,13 +166,17 @@ export function LibraryPage() {
     from: number,
     to: number,
   ) => {
-    if (filtersActive || moving || from === to || to < 0 || to >= section.length) return;
+    if (filtersActive || movePending.current || from === to || to < 0 || to >= section.length) return;
     setError("");
     const next = [...section];
     const [moved] = next.splice(from, 1);
     if (!moved) return;
     next.splice(to, 0, moved);
+    setAnnouncement(
+      `${moved.title} moved to position ${to + 1} of ${section.length} in ${statusLabels[status]}.`,
+    );
     setOrders((current) => ({ ...current, [status]: next.map((item) => String(item._id)) }));
+    movePending.current = true;
     setMoving(String(moved._id));
     try {
       await reorderItem({
@@ -179,21 +185,24 @@ export function LibraryPage() {
         ...(next[to - 1] && { beforeId: next[to - 1]._id as Id<"items"> }),
         ...(next[to + 1] && { afterId: next[to + 1]._id as Id<"items"> }),
       });
+      setOrders((current) => ({ ...current, [status]: undefined }));
     } catch {
       setOrders((current) => ({ ...current, [status]: undefined }));
       setError("Couldn’t save the new order.");
     } finally {
+      movePending.current = false;
       setMoving(undefined);
     }
   };
   const moveStatus = async (item: WebLibraryItem, status: WebLibraryItem["status"], targetIndex?: number) => {
-    if (filtersActive || moving || item.status === status) return;
+    if (filtersActive || movePending.current || item.status === status) return;
     const target = (items ?? [])
       .filter((entry) => entry.status === status && entry._id !== item._id)
       .toSorted((left, right) => left.rank - right.rank);
     const insertion = Math.max(0, Math.min(targetIndex ?? target.length, target.length));
     const placed = [...target];
     placed.splice(insertion, 0, item);
+    movePending.current = true;
     setMoving(String(item._id));
     setError("");
     try {
@@ -208,6 +217,7 @@ export function LibraryPage() {
     } catch {
       setError(status === "watched" ? "Couldn’t mark every episode watched." : "Couldn’t move this title.");
     } finally {
+      movePending.current = false;
       setMoving(undefined);
     }
   };
@@ -270,13 +280,16 @@ export function LibraryPage() {
         <FilterDialog value={filters} onChange={setFilters} availableTags={allTags} />
       </div>
       {error && <p role="alert" className="mt-3 text-xs text-destructive">{error}</p>}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
       {filtersActive && (
         <p className="mt-2 text-xs text-muted-foreground">
           {filtered.length} results · Clear filters to reorder
         </p>
       )}
 
-      {queried === undefined ? (
+      {queried === undefined || settings === undefined ? (
         <div className="mt-12 grid gap-3">
           {["one", "two", "three", "four", "five", "six"].map((key) => (
             <div key={key} className="h-16 animate-pulse rounded-xl bg-card" />
@@ -312,7 +325,7 @@ export function LibraryPage() {
                         key={item._id}
                         {...sortable.itemProps({ group: status, id: String(item._id), index })}
                         className="flex min-w-0 items-center rounded-lg"
-                        style={{ width: collectionListWidth[listColumns], flexBasis: collectionListWidth[listColumns], flexGrow: 0, flexShrink: 0 }}
+                        style={{ width: listWidth(listColumns), flexBasis: listWidth(listColumns), flexGrow: 0, flexShrink: 0 }}
                       >
                         <SortableHandle
                           disabled={filtersActive || Boolean(moving)}
@@ -351,7 +364,7 @@ export function LibraryPage() {
                         key={item._id}
                         {...sortable.itemProps({ group: status, id: String(item._id), index })}
                         className="relative min-w-0 rounded-xl"
-                        style={{ width: collectionGridWidth[gridColumns], flexBasis: collectionGridWidth[gridColumns], flexGrow: 0, flexShrink: 0 }}
+                        style={{ width: gridWidth(gridColumns), flexBasis: gridWidth(gridColumns), flexGrow: 0, flexShrink: 0 }}
                       >
                         <div className="absolute inset-x-1 top-1 z-10 flex justify-between">
                           <SortableHandle

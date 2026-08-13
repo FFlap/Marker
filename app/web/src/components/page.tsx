@@ -13,7 +13,7 @@ export function Page({
   width?: "compact" | "wide" | "full";
 }) {
   return (
-    <main
+    <div
       className={cn(
         "mx-auto min-h-[100dvh] w-full px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-8 sm:px-8 lg:px-12 lg:pb-28 lg:pt-12",
         width === "compact" && "max-w-3xl",
@@ -23,7 +23,7 @@ export function Page({
       )}
     >
       {children}
-    </main>
+    </div>
   );
 }
 

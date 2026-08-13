@@ -4,6 +4,7 @@ import { api } from "../../../mobile/convex/_generated/api";
 import { safeInternalPath } from "@/lib/utils";
 import { LoginPage } from "@/pages/login";
 import { useMarkerAccount } from "@/hooks/use-marker-account";
+import { AccountLinkError, AccountLoading } from "@/components/account-states";
 
 export function LoginGate() {
   const { isAuthenticated, isLoading, accountReady, accountError, retryAccountLink } =
@@ -20,22 +21,12 @@ export function LoginGate() {
   const next = safeInternalPath(search.next);
 
 
-  if (accountError) {
-    return (
-      <div className="grid min-h-screen place-items-center px-6 text-center text-sm text-destructive">
-        <div>We couldn’t link this account to Marker.<button type="button" className="mt-3 block w-full underline" onClick={retryAccountLink}>Try again</button></div>
-      </div>
-    );
-  }
+  if (accountError) return <AccountLinkError onRetry={retryAccountLink} />;
   if (
     isLoading ||
     (isAuthenticated && (!accountReady || profile === undefined))
   ) {
-    return (
-      <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">
-        Opening Marker…
-      </div>
-    );
+    return <AccountLoading />;
   }
   if (isAuthenticated && !profile?.username) {
     return <Navigate to="/setup" search={{ next }} replace />;

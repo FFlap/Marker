@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 export type LibraryView = "list" | "posters";
 
@@ -15,15 +15,16 @@ export function useSessionLibraryView(defaultView: LibraryView) {
     }
   });
 
-  return {
-    view: override ?? defaultView,
-    setView: (view: LibraryView) => {
+  const setView = useCallback((view: LibraryView) => {
+    if (typeof window !== "undefined") {
       try {
         window.sessionStorage.setItem(storageKey, view);
       } catch {
         // Keep the selected view in memory when browser storage is unavailable.
       }
-      setOverride(view);
-    },
-  };
+    }
+    setOverride(view);
+  }, []);
+
+  return { view: override ?? defaultView, setView };
 }

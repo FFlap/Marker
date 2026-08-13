@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
@@ -61,6 +61,7 @@ export function ProfileFavorites({
   const reorderFavorite = useMutation(api.profileFavorites.reorder);
   const [pickerType, setPickerType] = useState<FavoriteSection>();
   const [pending, setPending] = useState<string>();
+  const reorderPending = useRef(false);
   const [orders, setOrders] = useState<
     Partial<Record<FavoriteSection, string[]>>
   >({});
@@ -89,7 +90,7 @@ export function ProfileFavorites({
 
   const move = async (section: FavoriteSection, from: number, to: number) => {
     const displayed = displayedFor(section);
-    if (pending || from === to || to < 0 || to >= displayed.length)
+    if (pending || reorderPending.current || from === to || to < 0 || to >= displayed.length)
       return;
     const next = [...displayed];
     const [moved] = next.splice(from, 1);
@@ -99,6 +100,7 @@ export function ProfileFavorites({
       ...current,
       [section]: next.map((favorite) => favorite._id),
     }));
+    reorderPending.current = true;
     setPending(moved._id);
     setError("");
     try {
@@ -107,10 +109,12 @@ export function ProfileFavorites({
         ...(next[to - 1] && { beforeId: next[to - 1]._id as Id<"items"> }),
         ...(next[to + 1] && { afterId: next[to + 1]._id as Id<"items"> }),
       });
+      setOrders((current) => ({ ...current, [section]: undefined }));
     } catch {
       setOrders((current) => ({ ...current, [section]: undefined }));
       setError(`Couldn’t save the ${sectionLabel(section)} order.`);
     } finally {
+      reorderPending.current = false;
       setPending(undefined);
     }
   };

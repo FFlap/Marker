@@ -16,16 +16,23 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("convex/react", () => ({
-  useAction: (ref: string) =>
-    ref === "library.addItemAndMarkWatched"
-      ? mocks.addItemAndMarkWatched
-      : mocks.searchTitles,
-  useMutation: (ref: string) =>
-    ref === "library.addItem" ? mocks.addItem : mocks.touchTitle,
-  useQuery: (ref: string) =>
-    ref === "resolvedMetadata.getTitle"
-      ? { genres: ["Animation"], episodeRunTime: [24] }
-      : [],
+  useAction: (ref: string) => {
+    if (ref === "library.addItemAndMarkWatched")
+      return mocks.addItemAndMarkWatched;
+    if (ref === "tmdb.searchMulti") return mocks.searchTitles;
+    throw new Error(`Unexpected action: ${ref}`);
+  },
+  useMutation: (ref: string) => {
+    if (ref === "library.addItem") return mocks.addItem;
+    if (ref === "resolvedMetadata.touchTitle") return mocks.touchTitle;
+    throw new Error(`Unexpected mutation: ${ref}`);
+  },
+  useQuery: (ref: string) => {
+    if (ref === "resolvedMetadata.getTitle")
+      return { genres: ["Animation"], episodeRunTime: [24] };
+    if (ref === "library.listTagSuggestions") return [];
+    throw new Error(`Unexpected query: ${ref}`);
+  },
 }));
 
 vi.mock("../../mobile/convex/_generated/api", () => ({

@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { safeInternalPath } from "@/lib/utils";
 import { useMarkerAccount } from "@/hooks/use-marker-account";
+import { AccountLinkError, AccountLoading } from "@/components/account-states";
 
 export function AuthGate({
   children,
@@ -20,22 +21,12 @@ export function AuthGate({
   );
   const location = useRouterState({ select: (state) => state.location });
 
-  if (accountError) {
-    return (
-      <div className="grid min-h-screen place-items-center px-6 text-center text-sm text-destructive">
-        <div>We couldn’t link this account to Marker.<button type="button" className="mt-3 block w-full underline" onClick={retryAccountLink}>Try again</button></div>
-      </div>
-    );
-  }
+  if (accountError) return <AccountLinkError onRetry={retryAccountLink} />;
   if (
     isLoading ||
     (isAuthenticated && (!accountReady || profile === undefined))
   ) {
-    return (
-      <div className="grid min-h-screen place-items-center text-sm text-muted-foreground">
-        Opening Marker…
-      </div>
-    );
+    return <AccountLoading />;
   }
 
   const next = `${location.pathname}${location.searchStr}`;

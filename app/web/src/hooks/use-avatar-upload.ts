@@ -4,6 +4,7 @@ import { api } from "../../../mobile/convex/_generated/api";
 import type { Id } from "../../../mobile/convex/_generated/dataModel";
 
 export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const AVATAR_UPLOAD_TIMEOUT_MS = 30_000;
 
 export function useAvatarUpload(onError: (message: string) => void) {
   const generateUploadUrl = useMutation(api.profiles.generateAvatarUploadUrl);
@@ -25,6 +26,7 @@ export function useAvatarUpload(onError: (message: string) => void) {
         method: "POST",
         headers: { "Content-Type": file.type || "image/jpeg" },
         body: file,
+        signal: AbortSignal.timeout(AVATAR_UPLOAD_TIMEOUT_MS),
       });
       if (!response.ok) throw new Error("Upload failed");
       const payload = (await response.json()) as { storageId?: string };

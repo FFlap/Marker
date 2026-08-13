@@ -30,9 +30,9 @@ import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
 import { matchesMediaType } from "@/lib/library-filters";
 import {
-  collectionGridWidth,
-  collectionListType,
-  collectionListWidth,
+  gridWidth,
+  listType,
+  listWidth,
 } from "@/lib/display-preferences";
 import {
   usePointerSortable,
@@ -213,7 +213,13 @@ export function TagDetailPage() {
         (!query || item.title.toLocaleLowerCase().includes(query)) &&
         matchesMediaType(item, filters.media) &&
         (filters.status === "all" || item.status === filters.status) &&
-        (!filters.minimum || (item.rating ?? -1) >= filters.minimum),
+        (!filters.minimum || (item.rating ?? -1) >= filters.minimum) &&
+        filters.tags.every((filterTag) =>
+          item.tags.some(
+            (itemTag) =>
+              itemTag.toLocaleLowerCase() === filterTag.toLocaleLowerCase(),
+          ),
+        ),
     );
   }, [filters, ranked, search]);
 
@@ -261,6 +267,7 @@ export function TagDetailPage() {
           afterId: next[to + 1]._id as Id<"items">,
         }),
       });
+      setOrders((current) => ({ ...current, [status]: undefined }));
     } catch {
       setOrders((current) => ({ ...current, [status]: undefined }));
       setError("Couldn’t save the tag order.");
@@ -305,7 +312,18 @@ export function TagDetailPage() {
     Boolean(search.trim()) ||
     filters.media !== "all" ||
     filters.status !== "all" ||
-    filters.minimum > 0;
+    filters.minimum > 0 ||
+    filters.tags.length > 0;
+  const availableTags = useMemo(
+    () =>
+      [...new Set(ranked.flatMap((item) => item.tags))]
+        .filter(
+          (entry) =>
+            entry.trim().toLocaleLowerCase() !== tag.trim().toLocaleLowerCase(),
+        )
+        .toSorted((left, right) => left.localeCompare(right)),
+    [ranked, tag],
+  );
   const loading = libraryQuery === undefined || rankQuery === undefined;
   const sortable = usePointerSortable({
     onMove: (source: SortableLocation, target: SortableLocation) => {
@@ -345,7 +363,11 @@ export function TagDetailPage() {
           placeholder={`Search ${tag}`}
           className="h-11 flex-1 border-0 bg-card text-sm sm:h-9"
         />
-        <FilterDialog value={filters} onChange={setFilters} />
+        <FilterDialog
+          value={filters}
+          onChange={setFilters}
+          availableTags={availableTags}
+        />
       </div>
       {filtersActive && (
         <p className="mt-2 text-xs text-muted-foreground">
@@ -391,17 +413,17 @@ export function TagDetailPage() {
                           style={{
                             width:
                               view === "posters"
-                                ? collectionGridWidth[gridColumns]
-                                : collectionListWidth[listColumns],
+                                ? gridWidth(gridColumns)
+                                : listWidth(listColumns),
                             flexBasis:
                               view === "posters"
-                                ? collectionGridWidth[gridColumns]
-                                : collectionListWidth[listColumns],
+                                ? gridWidth(gridColumns)
+                                : listWidth(listColumns),
                             flexGrow: 0,
                             flexShrink: 0,
                             ...(view === "list" && {
                               minHeight:
-                                collectionListType[listTextSize].minHeight,
+                                listType(listTextSize).minHeight,
                             }),
                           }}
                         >
@@ -462,7 +484,7 @@ export function TagDetailPage() {
                             view={view}
                             style={{
                               minHeight:
-                                collectionListType[listTextSize].minHeight,
+                                listType(listTextSize).minHeight,
                             }}
                           >
                             {view === "posters" ? (
@@ -492,10 +514,8 @@ export function TagDetailPage() {
                                 style={
                                   view === "list"
                                     ? {
-                                        fontSize:
-                                          collectionListType[listTextSize]
-                                            .fontSize,
-                                        lineHeight: `${collectionListType[listTextSize].lineHeight}px`,
+                                        fontSize: listType(listTextSize).fontSize,
+                                        lineHeight: `${listType(listTextSize).lineHeight}px`,
                                       }
                                     : undefined
                                 }
@@ -512,9 +532,8 @@ export function TagDetailPage() {
                               <span
                                 className="w-[34px] shrink-0 text-right font-normal tabular-nums"
                                 style={{
-                                  fontSize:
-                                    collectionListType[listTextSize].fontSize,
-                                  lineHeight: `${collectionListType[listTextSize].lineHeight}px`,
+                                  fontSize: listType(listTextSize).fontSize,
+                                  lineHeight: `${listType(listTextSize).lineHeight}px`,
                                 }}
                               >
                                 {item.rating.toFixed(1)}

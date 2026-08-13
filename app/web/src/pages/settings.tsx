@@ -14,6 +14,9 @@ type Preferences = {
   activityWatching: boolean;
   activityWatched: boolean;
 };
+type FailedPreference = {
+  [K in keyof Preferences]: { key: K; value: Preferences[K] };
+}[keyof Preferences];
 
 const defaults: Preferences = {
   defaultView: "list",
@@ -102,6 +105,8 @@ export function SettingsPage() {
   const [overrides, setOverrides] = useState<Partial<Preferences>>({});
   const [saving, setSaving] = useState<keyof Preferences>();
   const [error, setError] = useState("");
+  const [failedPreference, setFailedPreference] =
+    useState<FailedPreference>();
   const current: Preferences = { ...defaults, ...stored, ...overrides };
 
   const update = async <K extends keyof Preferences>(
@@ -113,7 +118,9 @@ export function SettingsPage() {
     setError("");
     try {
       await save({ [key]: value });
+      setFailedPreference(undefined);
     } catch {
+      setFailedPreference({ key, value } as FailedPreference);
       setError(
         "Couldn’t save that preference. Your selection is kept locally so you can retry.",
       );
@@ -126,9 +133,21 @@ export function SettingsPage() {
     <Page width="compact">
       <PageHeader title="Settings" />
       {error && (
-        <p role="alert" className="mt-5 text-sm text-destructive">
-          {error}
-        </p>
+        <div role="alert" className="mt-5 text-sm text-destructive">
+          <p>{error}</p>
+          {failedPreference ? (
+            <button
+              type="button"
+              disabled={Boolean(saving)}
+              className="mt-2 underline disabled:opacity-50"
+              onClick={() =>
+                void update(failedPreference.key, failedPreference.value)
+              }
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
       )}
       <div className="mt-6">
         <section>

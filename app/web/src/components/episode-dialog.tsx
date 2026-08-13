@@ -83,7 +83,7 @@ export function EpisodeDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) {
+        if (next) {
           setRating(episode.rating);
           setTags(episode.tags ?? []);
           setError("");

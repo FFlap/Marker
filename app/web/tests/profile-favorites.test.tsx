@@ -130,7 +130,12 @@ describe("profile favorites", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open actions for Heat" }));
     fireEvent.click(screen.getByRole("button", { name: "Move down" }));
-    await waitFor(() => expect(mocks.reorder).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mocks.reorder).toHaveBeenCalledWith({
+        itemId: "favorite-movie",
+        beforeId: "favorite-movie-2",
+      }),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Open actions for The Office" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove from favorites" }));

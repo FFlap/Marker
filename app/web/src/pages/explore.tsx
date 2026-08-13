@@ -271,6 +271,7 @@ export function ExplorePage() {
 
   const updateFollow = async (person: Person) => {
     if (person.relationship === "self" || pendingPeople.has(person.username)) return;
+    setError("");
     setPendingPeople((current) => new Set(current).add(person.username));
     try {
       if (person.relationship === "none") await follow({ username: person.username });

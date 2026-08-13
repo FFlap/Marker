@@ -6,7 +6,7 @@ import { api } from "../../../mobile/convex/_generated/api";
 import { FilterDialog, type LibraryFilters } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { SearchField } from "@/components/ui/search-field";
-import { collectionGridWidth } from "@/lib/display-preferences";
+import { gridWidth } from "@/lib/display-preferences";
 import { matchesMediaType } from "@/lib/library-filters";
 import { posterUrl } from "@/lib/utils";
 
@@ -98,7 +98,7 @@ export function PublicUserTagPage() {
           placeholder={`Search ${tag}`}
           className="h-11 border-0 bg-card text-sm sm:h-9"
         />
-        <FilterDialog value={filters} onChange={setFilters} />
+        <FilterDialog value={filters} onChange={setFilters} showTags={false} />
       </div>
       {collection === undefined ? (
         <div className="mt-8 h-72 animate-pulse rounded-2xl bg-card" />
@@ -157,8 +157,8 @@ export function PublicUserTagPage() {
                             params={{ itemId }}
                             className="min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             style={{
-                              width: collectionGridWidth[gridColumns],
-                              flexBasis: collectionGridWidth[gridColumns],
+                              width: gridWidth(gridColumns),
+                              flexBasis: gridWidth(gridColumns),
                               flexGrow: 0,
                               flexShrink: 0,
                             }}
@@ -185,8 +185,8 @@ export function PublicUserTagPage() {
                             }}
                             className="min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             style={{
-                              width: collectionGridWidth[gridColumns],
-                              flexBasis: collectionGridWidth[gridColumns],
+                              width: gridWidth(gridColumns),
+                              flexBasis: gridWidth(gridColumns),
                               flexGrow: 0,
                               flexShrink: 0,
                             }}

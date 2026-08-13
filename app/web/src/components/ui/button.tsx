@@ -30,14 +30,25 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild, type, ...props }, ref) => {
+  ({ className, variant, size, asChild, type, disabled, onClick, ...props }, ref) => {
     const Comp = asChild ? Slot : 'button';
     return (
       <Comp
         ref={ref}
         className={cn(buttonVariants({ variant, size }), className)}
-        {...(!asChild && { type: type ?? 'button' })}
         {...props}
+        {...(asChild
+          ? {
+              'aria-disabled': disabled || undefined,
+              tabIndex: disabled ? -1 : props.tabIndex,
+              onClick: disabled
+                ? (event: React.MouseEvent<HTMLElement>) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }
+                : onClick,
+            }
+          : { type: type ?? 'button', disabled, onClick })}
       />
     );
   },
