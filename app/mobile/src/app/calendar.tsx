@@ -8,28 +8,14 @@ import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { api } from '../../convex/_generated/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { colors } from '@/constants/colors';
+import { type CalendarEvent, deviceRegion } from '@/lib/calendar';
 import { createStyles } from '@/lib/typography';
-
-type CalendarEvent = {
-  id: string;
-  date: string;
-  kind: 'movie' | 'episode';
-  title: string;
-  season?: number;
-  episode?: number;
-  episodeName?: string;
-};
 const keyFor = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
 const addDays = (date: Date, days: number) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-const deviceRegion = () => {
-  const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-  const region = new Intl.Locale(locale).region?.toUpperCase();
-  return region && /^[A-Z]{2}$/.test(region) ? region : 'US';
-};
 
 export default function CalendarScreen() {
   const upcoming = useAction(api.calendar.upcoming);

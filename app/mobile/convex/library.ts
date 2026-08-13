@@ -23,6 +23,7 @@ import {
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from './activityEvents';
 import { episodeValidator, itemValidator } from './publicValidators';
 import { refreshNextEpisode } from './nextEpisode';
+import { requestProfileStatsRefresh } from './profileStatsRefresh';
 
 const status = v.union(
   v.literal('watched'),
@@ -336,6 +337,7 @@ async function insertItem(ctx: MutationCtx, userId: Id<'users'>, args: AddItemAr
   });
   const item = await ctx.db.get(itemId);
   if (item) {
+    await requestProfileStatsRefresh(ctx, userId);
     await syncItemTagMemberships(ctx, item, normalizedTags);
     const events: ActivityEventWrite[] = [];
     if (item.rating !== undefined)
@@ -394,6 +396,7 @@ export const updateItem = mutation({
       patch.rank = await rankAtEnd(ctx, userId, args.status);
     }
     await ctx.db.patch(args.itemId, patch);
+    await requestProfileStatsRefresh(ctx, userId);
     if (nextTags !== undefined) await syncItemTagMemberships(ctx, item, nextTags);
     const nextRating = args.clearRating
       ? undefined
@@ -440,6 +443,7 @@ export const addTagToItems = mutation({
       await ctx.db.patch(update.item._id, { tags: update.tags, updatedAt });
       await syncItemTagMemberships(ctx, update.item, update.tags);
     }
+    await requestProfileStatsRefresh(ctx, userId);
     return { updated: updates.length };
   },
 });
@@ -453,7 +457,10 @@ export const removeItem = mutation({
     // A completed continuation is also a successful idempotent rerun.
     if (!item) return;
     if (item.userId !== userId) throw new Error('Item not found');
-    if (item.deletingAt === undefined) await ctx.db.patch(itemId, { deletingAt: Date.now() });
+    if (item.deletingAt === undefined) {
+      await ctx.db.patch(itemId, { deletingAt: Date.now() });
+      await requestProfileStatsRefresh(ctx, userId);
+    }
     await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
   },
 });
@@ -590,6 +597,7 @@ async function moveItemToSlot(ctx: MutationCtx, userId: Id<'users'>, args: MoveI
     }),
     updatedAt: Date.now(),
   });
+  await requestProfileStatsRefresh(ctx, userId);
   if (targetStatus !== item.status)
     await writeActivityEvents(ctx, [
       {
@@ -1046,8 +1054,8 @@ export const listEpisodeProgress = query({
       const resolved = seasonByNumber.get(summary.season);
       const active =
         resolved &&
-        mapping &&
-        resolved.orderEpoch === mapping.orderEpoch &&
+        (resolved.metadataProvider === 'tmdb' ||
+          (mapping !== null && resolved.orderEpoch === mapping.orderEpoch)) &&
         resolved.chunkCount !== undefined &&
         resolved.seasonVersion !== undefined &&
         resolved.chunksComplete === true
@@ -1466,7 +1474,10 @@ export const discardAddedItem = internalMutation({
   handler: async (ctx, { userId, itemId }) => {
     const item = await ctx.db.get(itemId);
     if (!item || item.userId !== userId) return;
-    if (item.deletingAt === undefined) await ctx.db.patch(itemId, { deletingAt: Date.now() });
+    if (item.deletingAt === undefined) {
+      await ctx.db.patch(itemId, { deletingAt: Date.now() });
+      await requestProfileStatsRefresh(ctx, userId);
+    }
     await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
   },
 });

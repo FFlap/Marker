@@ -379,7 +379,10 @@ export const publicProfile = query({
           .map(async (collection) => ({
             tag: collection.label,
             count: collection.memberCount,
-            posters: collection.previewPosters,
+            posters: collection.previewPosters.map(({ title, posterPath }) => ({
+              title,
+              posterPath,
+            })),
           })),
       )
     )

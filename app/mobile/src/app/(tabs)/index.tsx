@@ -69,6 +69,16 @@ import {
 import { LayoutGrid, List, Plus, SlidersHorizontal } from 'lucide-react-native';
 import { createStyles } from '@/lib/typography';
 import {
+  activateWebReorderSession,
+  clearWebReorderSession,
+  getWebReorderSession,
+  positionWebReorder,
+  scheduleWebReorder,
+  updateWebReorderAutoScroll,
+  webReorderIndexAtPoint,
+  webStatusDropZoneProps,
+} from '@/lib/webReorder';
+import {
   DEFAULT_DISPLAY_PREFERENCES,
   gridItemWidth,
   listItemWidth,
@@ -102,195 +112,6 @@ const NATIVE_DRAG_ANIMATION = {
   overshootClamping: true,
   reduceMotion: ReduceMotion.System,
 };
-type WebDragRect = {
-  height: number;
-  left: number;
-  top: number;
-  width: number;
-};
-type ActiveWebDrag = {
-  autoScrollFrame?: number;
-  dropped: boolean;
-  frame?: number;
-  from: number;
-  itemId: string;
-  nodes: HTMLElement[];
-  over: number;
-  pendingOver: number;
-  pointerX: number;
-  pointerY: number;
-  rects: WebDragRect[];
-  reducedMotion: boolean;
-  scrollElement: HTMLElement;
-  status: Status;
-  dropZone?: HTMLElement;
-};
-let activeWebDrag: ActiveWebDrag | undefined;
-const clearWebDragStyles = () => {
-  const session = activeWebDrag;
-  if (!session) return;
-  if (session.autoScrollFrame !== undefined) window.cancelAnimationFrame(session.autoScrollFrame);
-  if (session.frame !== undefined) window.cancelAnimationFrame(session.frame);
-  if (session.dropZone) {
-    session.dropZone.style.backgroundColor = '';
-    session.dropZone.style.boxShadow = '';
-    session.dropZone.style.borderRadius = '';
-  }
-  for (const node of session.nodes) {
-    node.style.backgroundColor = '';
-    node.style.borderRadius = '';
-    node.style.boxShadow = '';
-    node.style.opacity = '';
-    node.style.transform = '';
-    node.style.transition = '';
-    node.style.willChange = '';
-    node.style.zIndex = '';
-    node.removeAttribute('aria-grabbed');
-  }
-  activeWebDrag = undefined;
-};
-const runWebAutoScroll = () => {
-  const session = activeWebDrag;
-  if (!session) return;
-  session.autoScrollFrame = undefined;
-  const bounds = session.scrollElement.getBoundingClientRect();
-  const edgeSize = Math.min(84, bounds.height * 0.18);
-  const topDistance = session.pointerY - bounds.top;
-  const bottomDistance = bounds.bottom - session.pointerY;
-  let speed = 0;
-  if (topDistance < edgeSize) speed = -20 * Math.max(0, 1 - Math.max(0, topDistance) / edgeSize);
-  else if (bottomDistance < edgeSize)
-    speed = 20 * Math.max(0, 1 - Math.max(0, bottomDistance) / edgeSize);
-  if (!speed) return;
-  const before = session.scrollElement.scrollTop;
-  session.scrollElement.scrollTop += speed;
-  const delta = session.scrollElement.scrollTop - before;
-  if (!delta) return;
-  session.rects = session.rects.map((rect) => ({
-    ...rect,
-    top: rect.top - delta,
-  }));
-  const over = webDragIndexAtPoint(session.pointerX, session.pointerY);
-  if (over !== undefined) scheduleWebDrag(over);
-  session.autoScrollFrame = window.requestAnimationFrame(runWebAutoScroll);
-};
-const updateWebAutoScroll = (clientX: number, clientY: number) => {
-  const session = activeWebDrag;
-  if (!session) return;
-  session.pointerX = clientX;
-  session.pointerY = clientY;
-  if (session.autoScrollFrame === undefined)
-    session.autoScrollFrame = window.requestAnimationFrame(runWebAutoScroll);
-};
-const webDragIndexAtPoint = (clientX: number, clientY: number) => {
-  const session = activeWebDrag;
-  if (!session) return;
-  const columns = new Set(session.rects.map((rect) => Math.round(rect.left))).size;
-  let nearestIndex = session.over;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  for (const [index, rect] of session.rects.entries()) {
-    const xDistance =
-      columns > 1 ? (clientX - (rect.left + rect.width / 2)) / Math.max(rect.width, 1) : 0;
-    const yDistance = (clientY - (rect.top + rect.height / 2)) / Math.max(rect.height, 1);
-    const distance = xDistance * xDistance + yDistance * yDistance;
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestIndex = index;
-    }
-  }
-  return nearestIndex;
-};
-const positionWebDrag = (over: number) => {
-  const session = activeWebDrag;
-  if (!session) return;
-  session.over = over;
-  for (const [index, node] of session.nodes.entries()) {
-    let destination = index;
-    if (index === session.from) destination = over;
-    else if (session.from < over && index > session.from && index <= over) destination = index - 1;
-    else if (session.from > over && index >= over && index < session.from) destination = index + 1;
-    const fromRect = session.rects[index];
-    const toRect = session.rects[destination];
-    if (!fromRect || !toRect) continue;
-    const x = toRect.left - fromRect.left;
-    const y = toRect.top - fromRect.top;
-    node.style.transition = session.reducedMotion
-      ? 'none'
-      : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease-out, box-shadow 140ms ease-out';
-    node.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    node.style.willChange = 'transform';
-    if (index === session.from) {
-      node.style.opacity = '0';
-      node.setAttribute('aria-grabbed', 'true');
-    }
-  }
-};
-const scheduleWebDrag = (over: number) => {
-  const session = activeWebDrag;
-  if (!session) return;
-  session.pendingOver = over;
-  if (session.frame !== undefined) return;
-  session.frame = window.requestAnimationFrame(() => {
-    const current = activeWebDrag;
-    if (!current) return;
-    current.frame = undefined;
-    if (current.over !== current.pendingOver) positionWebDrag(current.pendingOver);
-  });
-};
-const statusDropZoneProps = (
-  disabled: boolean,
-  status: Status,
-  onCrossDrop: (itemId: string, status: Status) => void,
-) => ({
-  'data-status-drop-zone': status,
-  onDragEnter: (event: DragEvent<HTMLDivElement>) => {
-    const session = activeWebDrag;
-    if (disabled || !session) return;
-    if (session.status === status) {
-      if (session.dropZone) {
-        session.dropZone.style.backgroundColor = '';
-        session.dropZone.style.boxShadow = '';
-        session.dropZone.style.borderRadius = '';
-        session.dropZone = undefined;
-      }
-      return;
-    }
-    event.preventDefault();
-    if (session.dropZone && session.dropZone !== event.currentTarget) {
-      session.dropZone.style.backgroundColor = '';
-      session.dropZone.style.boxShadow = '';
-      session.dropZone.style.borderRadius = '';
-    }
-    session.dropZone = event.currentTarget;
-    event.currentTarget.style.backgroundColor = colors.surface;
-    event.currentTarget.style.borderRadius = '12px';
-    event.currentTarget.style.boxShadow = `inset 0 0 0 1px ${colors.text}`;
-  },
-  onDragOver: (event: DragEvent<HTMLDivElement>) => {
-    if (disabled || !activeWebDrag || activeWebDrag.status === status) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  },
-  onDragLeave: (event: DragEvent<HTMLDivElement>) => {
-    const next = event.relatedTarget;
-    if (next instanceof Node && event.currentTarget.contains(next)) return;
-    const session = activeWebDrag;
-    if (session?.dropZone !== event.currentTarget) return;
-    event.currentTarget.style.backgroundColor = '';
-    event.currentTarget.style.boxShadow = '';
-    event.currentTarget.style.borderRadius = '';
-    session.dropZone = undefined;
-  },
-  onDrop: (event: DragEvent<HTMLDivElement>) => {
-    const session = activeWebDrag;
-    if (disabled || !session || session.status === status) return;
-    event.preventDefault();
-    session.dropped = true;
-    const itemId = session.itemId;
-    clearWebDragStyles();
-    onCrossDrop(itemId, status);
-  },
-});
 const createDrawerEdgeSwipe = (drawer: AppDrawerHandle | null, isBlocked: () => boolean) =>
   PanResponder.create({
     // Let poster gestures claim the touch before considering the drawer edge.
@@ -344,7 +165,7 @@ function WebDraggable({
           (container.closest('[data-testid="library-scroll"]') as HTMLElement | null) ??
           (document.scrollingElement as HTMLElement | null);
         if (!scrollElement) return;
-        activeWebDrag = {
+        activateWebReorderSession({
           dropped: false,
           from: index,
           itemId,
@@ -365,45 +186,45 @@ function WebDraggable({
           reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
           scrollElement,
           status,
-        };
-        positionWebDrag(index);
+        });
+        positionWebReorder(index);
       },
       onDragEnter: (event: DragEvent<HTMLDivElement>) => {
-        if (disabled || activeWebDrag?.status !== status) return;
+        if (disabled || getWebReorderSession<Status>()?.status !== status) return;
         event.preventDefault();
-        updateWebAutoScroll(event.clientX, event.clientY);
-        const over = webDragIndexAtPoint(event.clientX, event.clientY);
-        if (over !== undefined) scheduleWebDrag(over);
+        updateWebReorderAutoScroll(event.clientX, event.clientY);
+        const over = webReorderIndexAtPoint(event.clientX, event.clientY);
+        if (over !== undefined) scheduleWebReorder(over);
       },
       onDragOver: (event: DragEvent<HTMLDivElement>) => {
         if (disabled) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
-        if (activeWebDrag?.status !== status) return;
-        updateWebAutoScroll(event.clientX, event.clientY);
-        const over = webDragIndexAtPoint(event.clientX, event.clientY);
-        if (over !== undefined) scheduleWebDrag(over);
+        if (getWebReorderSession<Status>()?.status !== status) return;
+        updateWebReorderAutoScroll(event.clientX, event.clientY);
+        const over = webReorderIndexAtPoint(event.clientX, event.clientY);
+        if (over !== undefined) scheduleWebReorder(over);
       },
       onDrop: (event: DragEvent<HTMLDivElement>) => {
         if (disabled) return;
         event.preventDefault();
-        const session = activeWebDrag;
+        const session = getWebReorderSession<Status>();
         if (!session || session.status !== status) return;
         session.dropped = true;
-        const pointedIndex = webDragIndexAtPoint(event.clientX, event.clientY);
+        const pointedIndex = webReorderIndexAtPoint(event.clientX, event.clientY);
         if (pointedIndex !== undefined && pointedIndex !== session.over)
-          positionWebDrag(pointedIndex);
+          positionWebReorder(pointedIndex);
         const from = session.from;
         const to = session.over;
         if (from === to) {
-          clearWebDragStyles();
+          clearWebReorderSession();
           return;
         }
-        clearWebDragStyles();
+        clearWebReorderSession();
         void onDrop(from, to);
       },
       onDragEnd: () => {
-        if (!activeWebDrag?.dropped) clearWebDragStyles();
+        if (!getWebReorderSession<Status>()?.dropped) clearWebReorderSession();
       },
       style: StyleSheet.flatten(style) as CSSProperties,
     },
@@ -435,7 +256,10 @@ function StatusDropZone({
   return createElement(
     'div',
     {
-      ...statusDropZoneProps(disabled, status, onCrossDrop),
+      ...webStatusDropZoneProps(disabled, status, onCrossDrop, {
+        backgroundColor: colors.surface,
+        borderColor: colors.text,
+      }),
       'data-status-drop-zone': status,
       style: StyleSheet.flatten(style) as CSSProperties,
     },

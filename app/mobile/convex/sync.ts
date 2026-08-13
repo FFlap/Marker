@@ -164,6 +164,11 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
     : {
         metadataProvider: activeProvider,
         seasonOrder: activeProvider === 'tvdb' ? seasonOrder : undefined,
+        ...(old &&
+          (old.metadataProvider !== activeProvider ||
+            old.seasonOrder !== (activeProvider === 'tvdb' ? seasonOrder : undefined)) && {
+            providerEpisodeId: undefined,
+          }),
       };
   const seasonName = activeTitle?.seasons.find((entry) => entry.season === a.season)?.name;
   const display = {

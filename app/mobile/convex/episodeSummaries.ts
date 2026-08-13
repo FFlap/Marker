@@ -4,6 +4,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import { EPISODES_PER_CHUNK } from './seasonStorage';
 import { refreshNextEpisode } from './nextEpisode';
+import { requestProfileStatsRefresh } from './profileStatsRefresh';
 
 type EpisodeSummaryDelta = {
   userId: Id<'users'>;
@@ -166,6 +167,7 @@ export async function applyEpisodeSummaryDelta(ctx: MutationCtx, delta: EpisodeS
     delta.tagDeltas.length === 0
   )
     return;
+  await requestProfileStatsRefresh(ctx, delta.userId);
   const summary = await ctx.db
     .query('episodeSummaries')
     .withIndex('by_item', (query) => query.eq('itemId', delta.itemId).eq('season', delta.season))

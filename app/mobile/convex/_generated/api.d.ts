@@ -25,6 +25,7 @@ import type * as notifications from "../notifications.js";
 import type * as profileFavorites from "../profileFavorites.js";
 import type * as profileRules from "../profileRules.js";
 import type * as profileStats from "../profileStats.js";
+import type * as profileStatsRefresh from "../profileStatsRefresh.js";
 import type * as profiles from "../profiles.js";
 import type * as providerHttp from "../providerHttp.js";
 import type * as providerSnapshots from "../providerSnapshots.js";
@@ -67,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   profileFavorites: typeof profileFavorites;
   profileRules: typeof profileRules;
   profileStats: typeof profileStats;
+  profileStatsRefresh: typeof profileStatsRefresh;
   profiles: typeof profiles;
   providerHttp: typeof providerHttp;
   providerSnapshots: typeof providerSnapshots;

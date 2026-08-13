@@ -83,7 +83,7 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('convex/react', () => ({
   useQuery: (ref: string) => {
-    if (ref === 'tags.mine') return mockTagPreviews;
+    if (ref === 'tags.mine') return { collections: mockTagPreviews };
     if (ref === 'library.listItems') return mockItems;
     if (ref === 'library.listTagRanks') return [];
     if (ref === 'settings.getSettings') return { defaultView: 'list' };

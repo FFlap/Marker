@@ -7,22 +7,8 @@ import { api } from '../../../convex/_generated/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { EmptyState } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
+import { type CalendarEvent, deviceRegion } from '@/lib/calendar';
 import { createStyles } from '@/lib/typography';
-
-type CalendarEvent = {
-  id: string;
-  date: string;
-  kind: 'movie' | 'episode';
-  title: string;
-  season?: number;
-  episode?: number;
-  episodeName?: string;
-};
-
-const deviceRegion = () => {
-  const part = Intl.DateTimeFormat().resolvedOptions().locale.split('-').at(-1)?.toUpperCase();
-  return part && /^[A-Z]{2}$/.test(part) ? part : 'US';
-};
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 

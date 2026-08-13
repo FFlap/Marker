@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
@@ -8,7 +8,7 @@ import { LibraryFiltersDrawer } from '@/components/LibraryFiltersDrawer';
 import { PinchDensity } from '@/components/PinchDensity';
 import { PosterGridSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
-import { EmptyState, Input } from '@/components/ui/primitives';
+import { Button, EmptyState, Input } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
 import { createStyles } from '@/lib/typography';
@@ -38,6 +38,14 @@ type PublicTitle = {
   genres?: string[];
   isAnime: boolean;
 };
+type PublicCollection = {
+  username: string;
+  tag: string;
+  isOwner: boolean;
+  isPublic: boolean;
+  titles: PublicTitle[];
+  nextCursor?: string;
+};
 
 export default function UserTagScreen() {
   const params = useLocalSearchParams<{
@@ -46,7 +54,64 @@ export default function UserTagScreen() {
   }>();
   const username = Array.isArray(params.username) ? params.username[0] : (params.username ?? '');
   const tag = Array.isArray(params.tag) ? params.tag[0] : (params.tag ?? '');
-  const collection = useQuery(api.tags.publicByUser, username && tag ? { username, tag } : 'skip');
+  const routeKey = `${username.toLocaleLowerCase()}:${tag.toLocaleLowerCase()}`;
+  const [pageCursor, setPageCursor] = useState<string>();
+  const [collectionPages, setCollectionPages] = useState<
+    { cursor?: string; value: PublicCollection | null }[]
+  >([]);
+  const [cachedRouteKey, setCachedRouteKey] = useState(routeKey);
+  const collectionPage = useQuery(
+    api.tags.publicByUser,
+    username && tag ? { username, tag, cursor: pageCursor } : 'skip',
+  ) as PublicCollection | null | undefined;
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPageCursor(undefined);
+      setCollectionPages([]);
+      setCachedRouteKey(routeKey);
+    });
+    return () => {
+      active = false;
+    };
+  }, [routeKey]);
+  useEffect(() => {
+    if (collectionPage === undefined) return;
+    if (
+      collectionPage !== null &&
+      (collectionPage.username.toLocaleLowerCase() !== username.toLocaleLowerCase() ||
+        collectionPage.tag.toLocaleLowerCase() !== tag.toLocaleLowerCase())
+    )
+      return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setCollectionPages((current) => {
+        const index = current.findIndex((page) => page.cursor === pageCursor);
+        const next = { cursor: pageCursor, value: collectionPage };
+        if (index < 0) return [...current, next];
+        if (JSON.stringify(current[index]?.value) === JSON.stringify(collectionPage))
+          return current;
+        return [...current.slice(0, index), next];
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [collectionPage, pageCursor, tag, username]);
+  const collection = useMemo(() => {
+    if (cachedRouteKey !== routeKey) return undefined;
+    const loaded = collectionPages.map((page) => page.value);
+    if (!loaded.length) return undefined;
+    const available = loaded.filter((page): page is PublicCollection => page !== null);
+    if (!available.length) return null;
+    const titles = new Map<string, PublicTitle>();
+    for (const page of available)
+      for (const title of page.titles) titles.set(`${title.mediaType}:${title.tmdbId}`, title);
+    return { ...available[0], titles: [...titles.values()] };
+  }, [cachedRouteKey, collectionPages, routeKey]);
+  const nextCursor = collectionPages.at(-1)?.value?.nextCursor;
   const library = useQuery(api.library.listItems);
   const settings = useQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);
@@ -68,10 +133,7 @@ export default function UserTagScreen() {
         [...(collection?.titles ?? [])]
           .filter((title: PublicTitle) => title.status === 'watched')
           .sort((left: PublicTitle, right: PublicTitle) => left.rank - right.rank)
-          .map((title: PublicTitle, index: number) => [
-            `${title.mediaType}:${title.tmdbId}`,
-            index + 1,
-          ]),
+          .map((title: PublicTitle) => [`${title.mediaType}:${title.tmdbId}`, title.rank]),
       ),
     [collection],
   );
@@ -215,6 +277,13 @@ export default function UserTagScreen() {
                 </View>
               );
             })}
+            {nextCursor && (
+              <Button
+                title="Load more titles"
+                variant="outline"
+                onPress={() => setPageCursor(nextCursor)}
+              />
+            )}
           </PinchDensity>
         )}
       </ScrollView>

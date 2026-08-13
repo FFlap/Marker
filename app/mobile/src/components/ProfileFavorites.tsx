@@ -64,7 +64,9 @@ function WebDraggable({
       onDrop: (event: DragEvent<HTMLDivElement>) => {
         if (!enabled) return;
         event.preventDefault();
-        const from = Number(event.dataTransfer.getData(`text/profile-favorite-${section}-index`));
+        const raw = event.dataTransfer.getData(`text/profile-favorite-${section}-index`);
+        if (raw === '') return;
+        const from = Number(raw);
         if (Number.isInteger(from)) onDrop(from, index);
       },
       style: { flexShrink: 0 },

@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
+import { resolvedEpisodeValidator } from './publicValidators';
 
 export const SNAPSHOT_TTL_MS = 15 * 60 * 1000;
 export const MAX_SNAPSHOT_BYTES = 700 * 1024;
@@ -16,16 +17,7 @@ const castMember = v.object({
   profilePath: v.optional(v.string()),
 });
 const season = v.object({ season: v.number(), name: v.string(), episodeCount: v.number() });
-const episode = v.object({
-  season: v.number(),
-  episode: v.number(),
-  name: v.string(),
-  overview: v.optional(v.string()),
-  runtime: v.optional(v.number()),
-  imageUrl: v.optional(v.string()),
-  airDate: v.optional(v.string()),
-  providerEpisodeId: v.optional(v.number()),
-});
+const episode = resolvedEpisodeValidator;
 const animeEpisode = v.object({ id: v.number(), ...episode.fields });
 const searchResults = v.array(
   v.object({

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth, useUser } from '@clerk/expo';
 import { useConvexAuth, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
@@ -12,17 +12,31 @@ export function useMarkerAccount() {
     userId: string;
     state: 'ready' | 'error';
   } | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
     if (!auth.isAuthenticated || !userId || !userLoaded) return;
+    const timeout = setTimeout(() => active && setResult({ userId, state: 'error' }), 15_000);
     void ensureCurrentUser({ username: user?.username ?? undefined })
-      .then(() => active && setResult({ userId, state: 'ready' }))
-      .catch(() => active && setResult({ userId, state: 'error' }));
+      .then(() => {
+        clearTimeout(timeout);
+        if (active) setResult({ userId, state: 'ready' });
+      })
+      .catch(() => {
+        clearTimeout(timeout);
+        if (active) setResult({ userId, state: 'error' });
+      });
     return () => {
       active = false;
+      clearTimeout(timeout);
     };
-  }, [auth.isAuthenticated, ensureCurrentUser, user?.username, userId, userLoaded]);
+  }, [attempt, auth.isAuthenticated, ensureCurrentUser, user?.username, userId, userLoaded]);
+
+  const retryAccount = useCallback(() => {
+    setResult(null);
+    setAttempt((value) => value + 1);
+  }, []);
 
   const currentResult = result && result.userId === userId ? result.state : null;
 
@@ -30,5 +44,6 @@ export function useMarkerAccount() {
     ...auth,
     accountReady: !auth.isAuthenticated || currentResult === 'ready',
     accountError: currentResult === 'error',
+    retryAccount,
   };
 }

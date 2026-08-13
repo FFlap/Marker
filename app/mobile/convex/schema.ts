@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { resolvedEpisodeValidator } from './publicValidators';
 
 const users = defineTable({
   clerkId: v.string(),
@@ -20,17 +21,7 @@ const users = defineTable({
   .index('by_username', ['normalizedUsername'])
   .searchIndex('search_username', { searchField: 'normalizedUsername' });
 
-const resolvedEpisode = v.object({
-  season: v.number(),
-  episode: v.number(),
-  name: v.string(),
-  overview: v.optional(v.string()),
-  runtime: v.optional(v.number()),
-  imageUrl: v.optional(v.string()),
-  stillPath: v.optional(v.string()),
-  airDate: v.optional(v.string()),
-  providerEpisodeId: v.optional(v.number()),
-});
+const resolvedEpisode = resolvedEpisodeValidator;
 
 const resolvedSeason = v.object({
   season: v.number(),
@@ -245,13 +236,45 @@ export default defineSchema({
     .index('by_user_rank', ['userId', 'rank'])
     .index('by_user_item', ['userId', 'itemId'])
     .index('by_item', ['itemId']),
+  profileStats: defineTable({
+    userId: v.id('users'),
+    totalWatchMinutes: v.number(),
+    episodesWatched: v.number(),
+    moviesWatched: v.number(),
+    showsWatched: v.number(),
+    totalItems: v.number(),
+    ratingTotal: v.number(),
+    ratingCount: v.number(),
+    topTags: v.array(watchedTagCount),
+    updatedAt: v.number(),
+  }).index('by_user', ['userId']),
+  profileStatsRefreshes: defineTable({
+    userId: v.id('users'),
+    phase: v.union(v.literal('items'), v.literal('summaries')),
+    cursor: v.optional(v.string()),
+    totalWatchMinutes: v.number(),
+    episodesWatched: v.number(),
+    moviesWatched: v.number(),
+    showsWatched: v.number(),
+    totalItems: v.number(),
+    ratingTotal: v.number(),
+    ratingCount: v.number(),
+    tagCounts: v.array(watchedTagCount),
+    restartRequested: v.boolean(),
+  }).index('by_user', ['userId']),
   tagCollections: defineTable({
     userId: v.id('users'),
     tagKey: v.string(),
     label: v.string(),
     isPublic: v.boolean(),
     memberCount: v.number(),
-    previewPosters: v.array(v.object({ title: v.string(), posterPath: v.optional(v.string()) })),
+    previewPosters: v.array(
+      v.object({
+        itemId: v.optional(v.id('items')),
+        title: v.string(),
+        posterPath: v.optional(v.string()),
+      }),
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

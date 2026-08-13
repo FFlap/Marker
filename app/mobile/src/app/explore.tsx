@@ -26,7 +26,7 @@ type Person = {
 };
 type PublicTag = {
   tag: string;
-  titleCount: number;
+  entryCount: number;
   contributorCount: number;
   posters: { title: string; posterPath?: string }[];
 };
@@ -278,8 +278,8 @@ function PublicTagResult({ tag }: { tag: PublicTag }) {
           {tag.tag}
         </Text>
         <Text style={s.resultMeta}>
-          {tag.titleCount} {tag.titleCount === 1 ? 'title' : 'titles'} · {tag.contributorCount}{' '}
-          {tag.contributorCount === 1 ? 'person' : 'people'}
+          {tag.entryCount} {tag.entryCount === 1 ? 'saved title' : 'saved titles'} ·{' '}
+          {tag.contributorCount} {tag.contributorCount === 1 ? 'person' : 'people'}
         </Text>
       </View>
       <ChevronRight size={17} color={colors.muted} strokeWidth={1.7} />

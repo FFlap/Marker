@@ -167,7 +167,7 @@ describe('Explore', () => {
     mockPublicTags = [
       {
         tag: 'wholesome',
-        titleCount: 7,
+        entryCount: 7,
         contributorCount: 3,
         posters: [],
       },
@@ -181,7 +181,7 @@ describe('Explore', () => {
     await act(async () => {
       await jest.advanceTimersByTimeAsync(350);
     });
-    expect(q.getByText('7 titles · 3 people')).toBeTruthy();
+    expect(q.getByText('7 saved titles · 3 people')).toBeTruthy();
     fireEvent.press(q.getByLabelText('Explore wholesome tag'));
     expect(jest.requireMock('expo-router').router.push).toHaveBeenCalledWith({
       pathname: '/tag/[tag]',

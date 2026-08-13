@@ -83,7 +83,10 @@ export const myPublic = query({
         .map(async (collection) => ({
           tag: collection.label,
           count: collection.memberCount,
-          posters: collection.previewPosters,
+          posters: collection.previewPosters.map(({ title, posterPath }) => ({
+            title,
+            posterPath,
+          })),
         })),
     );
     return previews
@@ -93,84 +96,49 @@ export const myPublic = query({
 });
 
 export const mine = query({
-  args: {},
-  returns: v.array(
-    v.object({
-      tag: v.string(),
-      count: v.number(),
-      posters: v.array(
-        v.object({
-          itemId: v.string(),
-          title: v.string(),
-          posterPath: v.optional(v.string()),
-        }),
-      ),
-    }),
-  ),
-  handler: async (ctx) => {
+  args: { cursor: v.optional(v.string()) },
+  returns: v.object({
+    collections: v.array(
+      v.object({
+        tag: v.string(),
+        count: v.number(),
+        posters: v.array(
+          v.object({
+            itemId: v.optional(v.string()),
+            title: v.string(),
+            posterPath: v.optional(v.string()),
+          }),
+        ),
+      }),
+    ),
+    nextCursor: v.optional(v.string()),
+  }),
+  handler: async (ctx, { cursor }) => {
     const userId = await requireUser(ctx);
-    const [items, memberships] = await Promise.all([
-      ctx.db
-        .query('items')
-        .withIndex('by_user', (q) => q.eq('userId', userId))
-        .filter((q) => q.eq(q.field('deletingAt'), undefined))
-        .take(2_001),
-      ctx.db
-        .query('tagMemberships')
-        .withIndex('by_user_tag_rank', (q) => q.eq('userId', userId))
-        .take(2_001),
-    ]);
-    if (items.length > 2_000 || memberships.length > 2_000) throw new Error('Too many tag entries');
-
-    const membershipRanks = new Map(
-      memberships.map((membership) => [
-        `${membership.tagKey}:${String(membership.itemId)}`,
-        membership.rank,
-      ]),
-    );
-    const grouped = new Map<string, { label: string; items: typeof items }>();
-    for (const item of items) {
-      for (const label of item.tags) {
-        const tagKey = normalizeTagKey(label);
-        if (!tagKey) continue;
-        const group = grouped.get(tagKey) ?? { label: label.trim(), items: [] };
-        group.items.push(item);
-        grouped.set(tagKey, group);
-      }
-    }
-
-    return [...grouped.entries()]
-      .map(([tagKey, group]) => {
-        const ordered = [...group.items].sort((left, right) => {
-          const leftKey = `${tagKey}:${String(left._id)}`;
-          const rightKey = `${tagKey}:${String(right._id)}`;
-          const leftRank = membershipRanks.get(leftKey);
-          const rightRank = membershipRanks.get(rightKey);
-          if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank;
-          if (leftRank !== undefined) return -1;
-          if (rightRank !== undefined) return 1;
-          return (
-            left.rank - right.rank ||
-            left._creationTime - right._creationTime ||
-            String(left._id).localeCompare(String(right._id))
-          );
-        });
-        return {
-          tag: group.label,
-          count: ordered.length,
-          posters: ordered.slice(0, 3).map((item) => ({
-            itemId: String(item._id),
-            title: item.title,
-            posterPath: item.posterPath,
+    const page = await ctx.db
+      .query('tagCollections')
+      .withIndex('by_user_tag', (q) => q.eq('userId', userId))
+      .paginate({ cursor: cursor ?? null, numItems: 100 });
+    return {
+      collections: page.page
+        .filter((collection) => collection.memberCount > 0)
+        .map((collection) => ({
+          tag: collection.label,
+          count: collection.memberCount,
+          posters: collection.previewPosters.map((poster) => ({
+            ...(poster.itemId && { itemId: String(poster.itemId) }),
+            title: poster.title,
+            posterPath: poster.posterPath,
           })),
-        };
-      })
-      .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
+        }))
+        .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag)),
+      ...(!page.isDone && { nextCursor: page.continueCursor }),
+    };
   },
 });
 
 export const publicByUser = query({
-  args: { username: v.string(), tag: v.string() },
+  args: { username: v.string(), tag: v.string(), cursor: v.optional(v.string()) },
   returns: v.union(
     v.null(),
     v.object({
@@ -178,6 +146,7 @@ export const publicByUser = query({
       tag: v.string(),
       isOwner: v.boolean(),
       isPublic: v.boolean(),
+      nextCursor: v.optional(v.string()),
       titles: v.array(
         v.object({
           ...publicTitleValidator.fields,
@@ -210,9 +179,9 @@ export const publicByUser = query({
     const memberships = await ctx.db
       .query('tagMemberships')
       .withIndex('by_collection_rank', (q) => q.eq('collectionId', collection._id))
-      .take(2_000);
+      .paginate({ cursor: args.cursor ?? null, numItems: 100 });
     const titles = await Promise.all(
-      memberships.map(async (membership) => {
+      memberships.page.map(async (membership) => {
         const item = await ctx.db.get(membership.itemId);
         if (!item || item.deletingAt !== undefined) return null;
         return {
@@ -230,6 +199,7 @@ export const publicByUser = query({
       tag: collection.label,
       isOwner,
       isPublic: collection.isPublic,
+      ...(!memberships.isDone && { nextCursor: memberships.continueCursor }),
       titles: titles.filter((title) => title !== null),
     };
   },
@@ -240,7 +210,7 @@ export const searchPublic = query({
   returns: v.array(
     v.object({
       tag: v.string(),
-      titleCount: v.number(),
+      entryCount: v.number(),
       contributorCount: v.number(),
       posters: v.array(v.object({ title: v.string(), posterPath: v.optional(v.string()) })),
     }),
@@ -260,64 +230,43 @@ export const searchPublic = query({
           .query('tagCollections')
           .withIndex('by_public_tag', (q) => q.eq('isPublic', true).eq('tagKey', tagKey))
           .take(20);
-        const memberships = (
-          await Promise.all(
-            owners.map((owner) =>
-              ctx.db
-                .query('tagMemberships')
-                .withIndex('by_collection_rank', (q) => q.eq('collectionId', owner._id))
-                .take(10),
-            ),
-          )
-        ).flat();
-        const titles = new Map<string, { title: string; posterPath?: string }>();
-        const contributors = new Set(owners.map((owner) => String(owner.userId)));
-        const uniqueMemberships = [
-          ...new Map(
-            memberships.map((membership) => [String(membership.itemId), membership]),
-          ).values(),
-        ].slice(0, 60);
-        const items = await Promise.all(
-          uniqueMemberships.map((membership) => ctx.db.get(membership.itemId)),
-        );
-        for (const item of items) {
-          if (!item || item.deletingAt !== undefined) continue;
-          const key = `${item.mediaType}:${item.tmdbId}`;
-          if (!titles.has(key))
-            titles.set(key, {
-              title: item.title,
-              ...(item.posterPath && { posterPath: item.posterPath }),
-            });
-        }
+        const populated = owners.filter((owner) => owner.memberCount > 0);
+        const posters = new Map<string, { title: string; posterPath?: string }>();
+        for (const owner of populated)
+          for (const poster of owner.previewPosters) {
+            const key = `${poster.title}:${poster.posterPath ?? ''}`;
+            if (!posters.has(key)) posters.set(key, poster);
+          }
         const label =
           collections.find((collection) => collection.tagKey === tagKey)?.label ?? tagKey;
         return {
           tag: label,
-          titleCount: titles.size,
-          contributorCount: contributors.size,
-          posters: [...titles.values()].filter((item) => item.posterPath).slice(0, 3),
+          entryCount: populated.reduce((total, owner) => total + owner.memberCount, 0),
+          contributorCount: populated.length,
+          posters: [...posters.values()].filter((item) => item.posterPath).slice(0, 3),
         };
       }),
     );
     return results
-      .filter((result) => result.titleCount > 0)
+      .filter((result) => result.entryCount > 0)
       .sort(
-        (left, right) => right.titleCount - left.titleCount || left.tag.localeCompare(right.tag),
+        (left, right) => right.entryCount - left.entryCount || left.tag.localeCompare(right.tag),
       );
   },
 });
 
 export const publicDetails = query({
-  args: { tag: v.string() },
+  args: { tag: v.string(), cursor: v.optional(v.string()) },
   returns: v.union(
     v.null(),
     v.object({
       tag: v.string(),
       contributorCount: v.number(),
+      nextCursor: v.optional(v.string()),
       titles: v.array(v.object({ ...publicTitleValidator.fields, contributorCount: v.number() })),
     }),
   ),
-  handler: async (ctx, { tag }) => {
+  handler: async (ctx, { tag, cursor }) => {
     await requireUser(ctx);
     const tagKey = normalizeTagKey(tag);
     if (!tagKey || tagKey.length > 40) return null;
@@ -325,47 +274,84 @@ export const publicDetails = query({
       .query('tagCollections')
       .withIndex('by_public_tag', (q) => q.eq('isPublic', true).eq('tagKey', tagKey))
       .take(20);
-    const memberships = (
-      await Promise.all(
-        collections.map((collection) =>
-          ctx.db
-            .query('tagMemberships')
-            .withIndex('by_collection_rank', (q) => q.eq('collectionId', collection._id))
-            .take(100),
-        ),
-      )
-    ).flat();
-    if (!memberships.length) return null;
-    const titles = new Map<string, ReturnType<typeof publicTitle> & { contributorCount: number }>();
-    const contributors = new Set(collections.map((collection) => String(collection.userId)));
-    const membershipCounts = new Map<string, number>();
-    for (const membership of memberships)
-      membershipCounts.set(
-        String(membership.itemId),
-        (membershipCounts.get(String(membership.itemId)) ?? 0) + 1,
+    const populatedCollections = collections.filter((collection) => collection.memberCount > 0);
+    if (!populatedCollections.length) return null;
+    let pageState: {
+      collectionId: string;
+      collectionCreatedAt: number;
+      cursor: string | null;
+    } = {
+      collectionId: String(populatedCollections[0]!._id),
+      collectionCreatedAt: populatedCollections[0]!._creationTime,
+      cursor: null,
+    };
+    if (cursor) {
+      try {
+        const parsed = JSON.parse(cursor) as typeof pageState;
+        if (
+          typeof parsed.collectionId === 'string' &&
+          typeof parsed.collectionCreatedAt === 'number' &&
+          (typeof parsed.cursor === 'string' || parsed.cursor === null)
+        )
+          pageState = parsed;
+      } catch {
+        return null;
+      }
+    }
+    let collectionIndex = populatedCollections.findIndex(
+      (collection) => String(collection._id) === pageState.collectionId,
+    );
+    const collectionStillExists = collectionIndex >= 0;
+    if (!collectionStillExists)
+      collectionIndex = populatedCollections.findIndex(
+        (collection) =>
+          collection._creationTime > pageState.collectionCreatedAt ||
+          (collection._creationTime === pageState.collectionCreatedAt &&
+            String(collection._id).localeCompare(pageState.collectionId) > 0),
       );
-    const uniqueMemberships = [
-      ...new Map(memberships.map((membership) => [String(membership.itemId), membership])).values(),
-    ].slice(0, 500);
+    if (collectionIndex < 0) return null;
+    const collection = populatedCollections[collectionIndex]!;
+    const memberships = await ctx.db
+      .query('tagMemberships')
+      .withIndex('by_collection_rank', (q) => q.eq('collectionId', collection._id))
+      .paginate({ cursor: collectionStillExists ? pageState.cursor : null, numItems: 100 });
+    const titles = new Map<string, ReturnType<typeof publicTitle> & { contributorCount: number }>();
+    const contributors = new Set(
+      populatedCollections.map((collection) => String(collection.userId)),
+    );
     const items = await Promise.all(
-      uniqueMemberships.map((membership) => ctx.db.get(membership.itemId)),
+      memberships.page.map((membership) => ctx.db.get(membership.itemId)),
     );
     for (const item of items) {
       if (!item || item.deletingAt !== undefined) continue;
       const key = `${item.mediaType}:${item.tmdbId}`;
       const current = titles.get(key);
       if (current) {
-        current.contributorCount += membershipCounts.get(String(item._id)) ?? 1;
+        current.contributorCount += 1;
         continue;
       }
       titles.set(key, {
         ...publicTitle(item),
-        contributorCount: membershipCounts.get(String(item._id)) ?? 1,
+        contributorCount: 1,
       });
     }
+    const nextCursor = !memberships.isDone
+      ? JSON.stringify({
+          collectionId: String(collection._id),
+          collectionCreatedAt: collection._creationTime,
+          cursor: memberships.continueCursor,
+        })
+      : collectionIndex + 1 < populatedCollections.length
+        ? JSON.stringify({
+            collectionId: String(populatedCollections[collectionIndex + 1]!._id),
+            collectionCreatedAt: populatedCollections[collectionIndex + 1]!._creationTime,
+            cursor: null,
+          })
+        : undefined;
     return {
-      tag: collections[0]!.label,
+      tag: populatedCollections[0]!.label,
       contributorCount: contributors.size,
+      ...(nextCursor && { nextCursor }),
       titles: [...titles.values()].sort((left, right) => left.title.localeCompare(right.title)),
     };
   },

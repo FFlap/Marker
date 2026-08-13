@@ -10,6 +10,7 @@ import {
   type QueryCtx,
 } from './_generated/server';
 import { normalizeUsername, validateUsername } from './profileRules';
+import { requestProfileStatsRefresh } from './profileStatsRefresh';
 
 type AuthOnlyCtx = { auth: { getUserIdentity(): Promise<UserIdentity | null> } };
 type ReadCtx = AuthOnlyCtx & { db: QueryCtx['db'] };
@@ -94,7 +95,10 @@ export const ensureCurrentUser = mutation({
       .query('users')
       .withIndex('by_clerk_id', (q) => q.eq('clerkId', identity.subject))
       .unique();
-    if (alreadyLinked) return alreadyLinked._id;
+    if (alreadyLinked) {
+      await requestProfileStatsRefresh(ctx, alreadyLinked._id);
+      return alreadyLinked._id;
+    }
 
     const email = normalizeEmail(identity.email);
     if (email) {
@@ -108,7 +112,7 @@ export const ensureCurrentUser = mutation({
 
     const now = Date.now();
     const username = await availableUsername(ctx, identity, args.username);
-    return ctx.db.insert('users', {
+    const userId = await ctx.db.insert('users', {
       clerkId: identity.subject,
       ...(email && { email }),
       ...username,
@@ -120,5 +124,7 @@ export const ensureCurrentUser = mutation({
       followerCount: 0,
       followingCount: 0,
     });
+    await requestProfileStatsRefresh(ctx, userId);
+    return userId;
   },
 });

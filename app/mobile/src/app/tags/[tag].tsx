@@ -64,6 +64,16 @@ import {
 import { colors } from '@/constants/colors';
 import { createStyles } from '@/lib/typography';
 import {
+  activateWebReorderSession,
+  clearWebReorderSession,
+  getWebReorderSession,
+  positionWebReorder,
+  scheduleWebReorder,
+  updateWebReorderAutoScroll,
+  webReorderIndexAtPoint,
+  webStatusDropZoneProps,
+} from '@/lib/webReorder';
+import {
   DEFAULT_DISPLAY_PREFERENCES,
   gridItemWidth,
   listItemWidth,
@@ -126,6 +136,7 @@ export default function TagDetailScreen() {
   const [minimumRating, setMinimumRating] = useState(0);
   const [visibilityPending, setVisibilityPending] = useState(false);
   const [statusMovePending, setStatusMovePending] = useState(false);
+  const statusMovePendingRef = useRef(false);
   const [pendingWatchedMove, setPendingWatchedMove] = useState<RankedItem>();
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});
   useEffect(() => {
@@ -317,7 +328,7 @@ export default function TagDetailScreen() {
     }
   };
   const performCategoryMove = async (item: RankedItem, targetStatus: Status) => {
-    if (filtersActive || statusMovePending || item.status === targetStatus) return;
+    if (filtersActive || statusMovePendingRef.current || item.status === targetStatus) return;
     const sourceStatus = item.status;
     const sourceItems = sectionItems(sourceStatus).filter((entry) => entry._id !== item._id);
     const targetItems = sectionItems(targetStatus).filter((entry) => entry._id !== item._id);
@@ -326,6 +337,7 @@ export default function TagDetailScreen() {
       .sort((left, right) => left.rank - right.rank);
     const nextTarget = [...targetItems, { ...item, status: targetStatus }];
 
+    statusMovePendingRef.current = true;
     setStatusMovePending(true);
     setOptimisticStatuses((current) => ({ ...current, [String(item._id)]: targetStatus }));
     setOptimisticState((current) => ({
@@ -367,6 +379,7 @@ export default function TagDetailScreen() {
           ? 'Couldn’t mark every episode watched'
           : 'Couldn’t move this title',
       );
+      statusMovePendingRef.current = false;
       setStatusMovePending(false);
       return;
     }
@@ -385,10 +398,11 @@ export default function TagDetailScreen() {
       );
       toast.show('Title moved, but its tag order couldn’t be saved');
     }
+    statusMovePendingRef.current = false;
     setStatusMovePending(false);
   };
   const requestCategoryMove = (itemId: string, targetStatus: Status) => {
-    if (filtersActive || statusMovePending) return;
+    if (filtersActive || statusMovePendingRef.current) return;
     const item = members.find((entry) => String(entry._id) === itemId);
     if (!item || item.status === targetStatus) return;
     if (targetStatus === 'watched') {
@@ -1036,99 +1050,6 @@ function TagSkeleton() {
   );
 }
 
-type WebRect = { height: number; left: number; top: number; width: number };
-type WebSession = {
-  autoScrollFrame?: number;
-  dropZone?: HTMLElement;
-  dropped: boolean;
-  frame?: number;
-  from: number;
-  itemId: string;
-  nodes: HTMLElement[];
-  over: number;
-  pendingOver: number;
-  pointerX: number;
-  pointerY: number;
-  rects: WebRect[];
-  reducedMotion: boolean;
-  scrollElement: HTMLElement;
-  status: Status;
-};
-let webSession: WebSession | undefined;
-
-const clearWebItems = () => {
-  const session = webSession;
-  if (!session) return;
-  if (session.frame !== undefined) window.cancelAnimationFrame(session.frame);
-  if (session.autoScrollFrame !== undefined) window.cancelAnimationFrame(session.autoScrollFrame);
-  if (session.dropZone) {
-    session.dropZone.style.backgroundColor = '';
-    session.dropZone.style.boxShadow = '';
-    session.dropZone.style.borderRadius = '';
-  }
-  for (const node of session.nodes) {
-    node.style.opacity = '';
-    node.style.transform = '';
-    node.style.transition = '';
-    node.style.willChange = '';
-    node.removeAttribute('aria-grabbed');
-  }
-  webSession = undefined;
-};
-const tagStatusDropZoneProps = (
-  disabled: boolean,
-  status: Status,
-  onCrossDrop: (itemId: string, status: Status) => void,
-) => ({
-  onDragEnter: (event: DragEvent<HTMLDivElement>) => {
-    const session = webSession;
-    if (disabled || !session) return;
-    if (session.status === status) {
-      if (session.dropZone) {
-        session.dropZone.style.backgroundColor = '';
-        session.dropZone.style.boxShadow = '';
-        session.dropZone.style.borderRadius = '';
-        session.dropZone = undefined;
-      }
-      return;
-    }
-    event.preventDefault();
-    if (session.dropZone && session.dropZone !== event.currentTarget) {
-      session.dropZone.style.backgroundColor = '';
-      session.dropZone.style.boxShadow = '';
-      session.dropZone.style.borderRadius = '';
-    }
-    session.dropZone = event.currentTarget;
-    event.currentTarget.style.backgroundColor = colors.surface;
-    event.currentTarget.style.borderRadius = '12px';
-    event.currentTarget.style.boxShadow = `inset 0 0 0 1px ${colors.text}`;
-  },
-  onDragOver: (event: DragEvent<HTMLDivElement>) => {
-    if (disabled || !webSession || webSession.status === status) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  },
-  onDragLeave: (event: DragEvent<HTMLDivElement>) => {
-    const next = event.relatedTarget;
-    if (next instanceof Node && event.currentTarget.contains(next)) return;
-    const session = webSession;
-    if (session?.dropZone !== event.currentTarget) return;
-    event.currentTarget.style.backgroundColor = '';
-    event.currentTarget.style.boxShadow = '';
-    event.currentTarget.style.borderRadius = '';
-    session.dropZone = undefined;
-  },
-  onDrop: (event: DragEvent<HTMLDivElement>) => {
-    const session = webSession;
-    if (disabled || !session || session.status === status) return;
-    event.preventDefault();
-    session.dropped = true;
-    const itemId = session.itemId;
-    clearWebItems();
-    onCrossDrop(itemId, status);
-  },
-});
-
 function TagStatusDropZone({
   children,
   disabled,
@@ -1153,7 +1074,10 @@ function TagStatusDropZone({
   return createElement(
     'div',
     {
-      ...tagStatusDropZoneProps(disabled, status, onCrossDrop),
+      ...webStatusDropZoneProps(disabled, status, onCrossDrop, {
+        backgroundColor: colors.surface,
+        borderColor: colors.text,
+      }),
       'data-tag-status-drop-zone': status,
       style: StyleSheet.flatten(style) as CSSProperties,
     },
@@ -1189,87 +1113,6 @@ function NativeDragMonitor({
   );
   return null;
 }
-const indexAtPoint = (clientX: number, clientY: number) => {
-  const session = webSession;
-  if (!session) return;
-  const columns = new Set(session.rects.map((rect) => Math.round(rect.left))).size;
-  let nearest = session.over;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  for (const [index, rect] of session.rects.entries()) {
-    const x = columns > 1 ? (clientX - (rect.left + rect.width / 2)) / Math.max(rect.width, 1) : 0;
-    const y = (clientY - (rect.top + rect.height / 2)) / Math.max(rect.height, 1);
-    const distance = x * x + y * y;
-    if (distance < nearestDistance) {
-      nearest = index;
-      nearestDistance = distance;
-    }
-  }
-  return nearest;
-};
-const positionWebItems = (over: number) => {
-  const session = webSession;
-  if (!session) return;
-  session.over = over;
-  for (const [index, node] of session.nodes.entries()) {
-    let destination = index;
-    if (index === session.from) destination = over;
-    else if (session.from < over && index > session.from && index <= over) destination = index - 1;
-    else if (session.from > over && index >= over && index < session.from) destination = index + 1;
-    const fromRect = session.rects[index];
-    const toRect = session.rects[destination];
-    if (!fromRect || !toRect) continue;
-    node.style.transition = session.reducedMotion
-      ? 'none'
-      : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease-out';
-    node.style.transform = `translate3d(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px, 0)`;
-    node.style.willChange = 'transform';
-    if (index === session.from) {
-      node.style.opacity = '0';
-      node.setAttribute('aria-grabbed', 'true');
-    }
-  }
-};
-const scheduleWebPosition = (over: number) => {
-  const session = webSession;
-  if (!session) return;
-  session.pendingOver = over;
-  if (session.frame !== undefined) return;
-  session.frame = window.requestAnimationFrame(() => {
-    const current = webSession;
-    if (!current) return;
-    current.frame = undefined;
-    if (current.over !== current.pendingOver) positionWebItems(current.pendingOver);
-  });
-};
-const runAutoScroll = () => {
-  const session = webSession;
-  if (!session) return;
-  session.autoScrollFrame = undefined;
-  const bounds = session.scrollElement.getBoundingClientRect();
-  const edge = Math.min(84, bounds.height * 0.18);
-  const topDistance = session.pointerY - bounds.top;
-  const bottomDistance = bounds.bottom - session.pointerY;
-  let speed = 0;
-  if (topDistance < edge) speed = -20 * Math.max(0, 1 - Math.max(0, topDistance) / edge);
-  else if (bottomDistance < edge) speed = 20 * Math.max(0, 1 - Math.max(0, bottomDistance) / edge);
-  if (!speed) return;
-  const before = session.scrollElement.scrollTop;
-  session.scrollElement.scrollTop += speed;
-  const delta = session.scrollElement.scrollTop - before;
-  if (!delta) return;
-  session.rects = session.rects.map((rect) => ({ ...rect, top: rect.top - delta }));
-  const over = indexAtPoint(session.pointerX, session.pointerY);
-  if (over !== undefined) scheduleWebPosition(over);
-  session.autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
-};
-const updateAutoScroll = (clientX: number, clientY: number) => {
-  const session = webSession;
-  if (!session) return;
-  session.pointerX = clientX;
-  session.pointerY = clientY;
-  if (session.autoScrollFrame === undefined)
-    session.autoScrollFrame = window.requestAnimationFrame(runAutoScroll);
-};
 const createWebSession = ({
   currentTarget,
   index,
@@ -1295,7 +1138,7 @@ const createWebSession = ({
     (container.closest('[data-testid="tag-scroll"]') as HTMLElement | null) ??
     (document.scrollingElement as HTMLElement | null);
   if (!scrollElement) return;
-  webSession = {
+  activateWebReorderSession({
     dropped: false,
     from: index,
     itemId,
@@ -1311,8 +1154,8 @@ const createWebSession = ({
     reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     scrollElement,
     status,
-  };
-  return webSession;
+  });
+  return getWebReorderSession<Status>();
 };
 
 function WebTagDraggable({
@@ -1368,36 +1211,37 @@ function WebTagDraggable({
         ghost.width = 1;
         ghost.height = 1;
         event.dataTransfer.setDragImage(ghost, 0, 0);
-        positionWebItems(index);
+        positionWebReorder(index);
       },
       onDragEnter: (event: DragEvent<HTMLDivElement>) => {
-        if (disabled || webSession?.status !== status) return;
+        if (disabled || getWebReorderSession<Status>()?.status !== status) return;
         event.preventDefault();
-        updateAutoScroll(event.clientX, event.clientY);
-        const over = indexAtPoint(event.clientX, event.clientY);
-        if (over !== undefined) scheduleWebPosition(over);
+        updateWebReorderAutoScroll(event.clientX, event.clientY);
+        const over = webReorderIndexAtPoint(event.clientX, event.clientY);
+        if (over !== undefined) scheduleWebReorder(over);
       },
       onDragOver: (event: DragEvent<HTMLDivElement>) => {
-        if (disabled || webSession?.status !== status) return;
+        if (disabled || getWebReorderSession<Status>()?.status !== status) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
-        updateAutoScroll(event.clientX, event.clientY);
-        const over = indexAtPoint(event.clientX, event.clientY);
-        if (over !== undefined) scheduleWebPosition(over);
+        updateWebReorderAutoScroll(event.clientX, event.clientY);
+        const over = webReorderIndexAtPoint(event.clientX, event.clientY);
+        if (over !== undefined) scheduleWebReorder(over);
       },
       onDrop: (event: DragEvent<HTMLDivElement>) => {
-        if (disabled || webSession?.status !== status) return;
+        if (disabled) return;
         event.preventDefault();
-        const session = webSession;
+        const session = getWebReorderSession<Status>();
+        if (!session || session.status !== status) return;
         session.dropped = true;
-        const pointed = indexAtPoint(event.clientX, event.clientY);
-        if (pointed !== undefined && pointed !== session.over) positionWebItems(pointed);
+        const pointed = webReorderIndexAtPoint(event.clientX, event.clientY);
+        if (pointed !== undefined && pointed !== session.over) positionWebReorder(pointed);
         const { from, over } = session;
-        clearWebItems();
+        clearWebReorderSession();
         if (from !== over) void onDrop(from, over);
       },
       onDragEnd: () => {
-        if (!webSession?.dropped) clearWebItems();
+        if (!getWebReorderSession<Status>()?.dropped) clearWebReorderSession();
       },
       style: {
         ...style,

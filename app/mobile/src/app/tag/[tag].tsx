@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
@@ -7,7 +7,7 @@ import { SecondaryHeader } from '@/components/BackButton';
 import { PinchDensity } from '@/components/PinchDensity';
 import { PosterGridSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
-import { EmptyState, Input } from '@/components/ui/primitives';
+import { Button, EmptyState, Input } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
 import { createStyles } from '@/lib/typography';
@@ -26,11 +26,79 @@ type PublicTitle = {
   releaseDate?: string;
   contributorCount: number;
 };
+type PublicCollection = {
+  tag: string;
+  contributorCount: number;
+  titles: PublicTitle[];
+  nextCursor?: string;
+};
 
 export default function GlobalTagScreen() {
   const params = useLocalSearchParams<{ tag?: string | string[] }>();
   const tag = Array.isArray(params.tag) ? params.tag[0] : (params.tag ?? '');
-  const collection = useQuery(api.tags.publicDetails, tag ? { tag } : 'skip');
+  const [pageCursor, setPageCursor] = useState<string>();
+  const [collectionPages, setCollectionPages] = useState<
+    { cursor?: string; value: PublicCollection | null }[]
+  >([]);
+  const [cachedTag, setCachedTag] = useState(tag);
+  const collectionPage = useQuery(
+    api.tags.publicDetails,
+    tag ? { tag, cursor: pageCursor } : 'skip',
+  ) as PublicCollection | null | undefined;
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPageCursor(undefined);
+      setCollectionPages([]);
+      setCachedTag(tag);
+    });
+    return () => {
+      active = false;
+    };
+  }, [tag]);
+  useEffect(() => {
+    if (collectionPage === undefined) return;
+    if (
+      collectionPage !== null &&
+      collectionPage.tag.toLocaleLowerCase() !== tag.trim().toLocaleLowerCase()
+    )
+      return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setCollectionPages((current) => {
+        const index = current.findIndex((page) => page.cursor === pageCursor);
+        const next = { cursor: pageCursor, value: collectionPage };
+        if (index < 0) return [...current, next];
+        if (JSON.stringify(current[index]?.value) === JSON.stringify(collectionPage))
+          return current;
+        return [...current.slice(0, index), next];
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [collectionPage, pageCursor, tag]);
+  const collection = useMemo(() => {
+    const loaded = collectionPages.map((page) => page.value);
+    if (cachedTag !== tag) return undefined;
+    if (!loaded.length) return undefined;
+    const available = loaded.filter((page): page is PublicCollection => page !== null);
+    if (!available.length) return null;
+    const titles = new Map<string, PublicTitle>();
+    for (const page of available)
+      for (const title of page.titles) {
+        const key = `${title.mediaType}:${title.tmdbId}`;
+        const existing = titles.get(key);
+        titles.set(key, {
+          ...title,
+          contributorCount: (existing?.contributorCount ?? 0) + title.contributorCount,
+        });
+      }
+    return { ...available[0], titles: [...titles.values()] };
+  }, [cachedTag, collectionPages, tag]);
+  const nextCursor = collectionPages.at(-1)?.value?.nextCursor;
   const library = useQuery(api.library.listItems);
   const settings = useQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);
@@ -122,6 +190,13 @@ export default function GlobalTagScreen() {
               onPress={openTitle}
               columns={gridColumns}
             />
+            {nextCursor && (
+              <Button
+                title="Load more titles"
+                variant="outline"
+                onPress={() => setPageCursor(nextCursor)}
+              />
+            )}
           </PinchDensity>
         )}
       </ScrollView>

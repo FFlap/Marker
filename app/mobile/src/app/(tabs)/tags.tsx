@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from 'convex/react';
@@ -15,14 +15,43 @@ type TagPreview = {
   tag: string;
   count: number;
   posters: {
-    itemId: string;
+    itemId?: string;
     title: string;
     posterPath?: string;
   }[];
 };
 
 export default function TagsScreen() {
-  const collections = useQuery(api.tags.mine);
+  const [cursor, setCursor] = useState<string>();
+  const [pages, setPages] = useState<Record<string, TagPreview[]>>({});
+  const pageKey = cursor ?? 'first';
+  const page = useQuery(api.tags.mine, { cursor }) as
+    { collections: TagPreview[]; nextCursor?: string } | undefined;
+  useEffect(() => {
+    if (!page) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setPages((current) =>
+        JSON.stringify(current[pageKey]) === JSON.stringify(page.collections)
+          ? current
+          : { ...current, [pageKey]: page.collections },
+      );
+      if (page.nextCursor) setCursor(page.nextCursor);
+    });
+    return () => {
+      active = false;
+    };
+  }, [page, pageKey]);
+  const collections = useMemo(
+    () =>
+      Object.keys(pages).length || page
+        ? Object.values(pages)
+            .flat()
+            .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag))
+        : undefined,
+    [page, pages],
+  );
   const [search, setSearch] = useState('');
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -54,7 +83,7 @@ export default function TagsScreen() {
               key: group.tag.toLocaleLowerCase(),
               label: group.tag,
               posters: group.posters.map((item) => ({
-                key: String(item.itemId),
+                key: item.itemId ?? `${group.tag}:${item.title}`,
                 title: item.title,
                 posterPath: item.posterPath,
               })),

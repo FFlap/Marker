@@ -5,6 +5,7 @@ import { Text } from 'react-native';
 const mockRedirect = jest.fn(({ href }: { href: string }) => <Text>{href}</Text>);
 jest.mock('@clerk/expo', () => ({
   useAuth: () => ({ userId: null }),
+  useClerk: () => ({ signOut: jest.fn() }),
   useUser: () => ({ isLoaded: true, user: null }),
 }));
 jest.mock('convex/react', () => ({

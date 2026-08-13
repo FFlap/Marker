@@ -19,6 +19,7 @@ const add = (
 
 describe('Marker backend', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -149,7 +150,7 @@ describe('Marker backend', () => {
         (rank) => rank.itemId,
       ),
     ).toEqual([third, first, second]);
-    const previews = await asUser.query(api.tags.mine, {});
+    const { collections: previews } = await asUser.query(api.tags.mine, {});
     expect(previews.find((preview) => preview.tag === 'Favorites')?.posters).toMatchObject([
       { itemId: String(third) },
       { itemId: String(first) },
@@ -261,7 +262,7 @@ describe('Marker backend', () => {
     expect(publicTags).toMatchObject([
       {
         tag: 'Favorites',
-        titleCount: 2,
+        entryCount: 2,
         contributorCount: 1,
       },
     ]);
@@ -379,6 +380,7 @@ describe('Marker backend', () => {
   });
 
   it('upserts episodes idempotently and computes exact stats', async () => {
+    vi.useFakeTimers();
     const { t, asUser } = await setup();
     const movie = await asUser.mutation(
       api.library.addItem,
@@ -421,6 +423,7 @@ describe('Marker backend', () => {
     const episodes = await asUser.query(api.library.listEpisodes, { itemId: show, season: 1 });
     expect(episodes).toHaveLength(2);
     expect(episodes[0]).toMatchObject({ rating: 8.5, tags: ['pilot', 'great'] });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     const stats = await asUser.query(api.stats.profile, {});
     expect(stats).toMatchObject({
       totalWatchMinutes: 464,
@@ -530,6 +533,7 @@ describe('Marker backend', () => {
   });
 
   it('computes episode stats from maintained summaries without raw episode rows', async () => {
+    vi.useFakeTimers();
     const { t, userId, asUser } = await setup();
     const itemId = await asUser.mutation(
       api.library.addItem,
@@ -547,6 +551,7 @@ describe('Marker backend', () => {
         tagCounts: [{ tag: 'pilot', count: 2 }],
       }),
     );
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
     await expect(asUser.query(api.stats.profile, {})).resolves.toMatchObject({
       episodesWatched: 2,
@@ -621,6 +626,7 @@ describe('Marker backend', () => {
   });
 
   it('stores unique profiles and hides private activity from public queries', async () => {
+    vi.useFakeTimers();
     const { t, asUser } = await setup();
     await asUser.mutation(api.profiles.save, { username: 'Flappy_7', isPublic: false });
     expect(await asUser.query(api.profiles.me, {})).toMatchObject({
@@ -648,6 +654,7 @@ describe('Marker backend', () => {
       }),
     );
     await asUser.mutation(api.profiles.save, { username: 'Flappy_7', isPublic: true });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     const publicProfile = await t.query(api.profiles.publicProfile, { username: 'FLAPPY_7' });
     expect(publicProfile).toMatchObject({
       profile: { username: 'Flappy_7', isPublic: true },
@@ -656,6 +663,7 @@ describe('Marker backend', () => {
   });
 
   it('requires approval for private follows and keeps relationship counts exact', async () => {
+    vi.useFakeTimers();
     const { t, userId: ownerId, asUser: owner } = await setup();
     await owner.mutation(api.profiles.save, { username: 'private_owner', isPublic: false });
     await owner.mutation(
@@ -666,6 +674,7 @@ describe('Marker backend', () => {
         timesWatched: 1,
       }),
     );
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
     await t.run((ctx) => ctx.db.insert('users', { clerkId: 'user_private_follower' }));
     const follower = t.withIdentity({ subject: 'user_private_follower' });

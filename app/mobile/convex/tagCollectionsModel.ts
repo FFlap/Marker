@@ -29,10 +29,11 @@ export async function refreshTagCollectionSummary(
   await ctx.db.patch(collectionId, {
     memberCount,
     previewPosters: previewItems
-      .filter((item) => item?.posterPath && item.deletingAt === undefined)
+      .filter((item) => item && item.deletingAt === undefined)
       .slice(0, 3)
       .map((item) => ({
         title: item!.title,
+        itemId: item!._id,
         posterPath: item!.posterPath,
       })),
     updatedAt: Date.now(),
@@ -43,7 +44,7 @@ export async function ensureTagMemberships(
   ctx: MutationCtx,
   userId: Id<'users'>,
   label: string,
-  defaultPublic = false,
+  _defaultPublic = false,
 ) {
   const tagKey = normalizeTagKey(label);
   if (!tagKey || tagKey.length > 40) throw new Error('Tag not found');
@@ -51,25 +52,11 @@ export async function ensureTagMemberships(
     .query('tagCollections')
     .withIndex('by_user_tag', (q) => q.eq('userId', userId).eq('tagKey', tagKey))
     .unique();
-  const now = Date.now();
-  if (!collection) {
-    const collectionId = await ctx.db.insert('tagCollections', {
-      userId,
-      tagKey,
-      label: label.trim(),
-      isPublic: defaultPublic,
-      memberCount: 0,
-      previewPosters: [],
-      createdAt: now,
-      updatedAt: now,
-    });
-    collection = await ctx.db.get(collectionId);
-  }
-  if (!collection) throw new Error('Tag collection could not be created');
+  if (!collection) throw new Error('Tag not found');
 
   const existing = await ctx.db
     .query('tagMemberships')
-    .withIndex('by_collection_rank', (q) => q.eq('collectionId', collection!._id))
+    .withIndex('by_collection_rank', (q) => q.eq('collectionId', collection._id))
     .take(2_001);
   if (existing.length > 2_000) throw new Error('Too many tag entries');
   if (existing.length > 0) return collection;
