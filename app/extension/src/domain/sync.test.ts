@@ -15,6 +15,12 @@ const bookmark = {
   updatedAt: 1,
 };
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
+const storageFor = (values: Record<string, unknown>) => ({
+  get: async () => ({ ...values }),
+  set: async (next: Record<string, unknown>) => {
+    Object.assign(values, next);
+  },
+});
 
 describe("background-owned sync outbox", () => {
   it("builds supported watch payloads", () => {
@@ -138,8 +144,7 @@ describe("background-owned sync outbox", () => {
   });
   it("keeps only the newest entries when the outbox reaches its cap", async () => {
     const values: Record<string, unknown> = {};
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    const manager = createOutboxManager(storageFor(values), async () => ({ ok: false, retryable: true }));
     for (let episodeNumber = 0; episodeNumber < SYNC_OUTBOX_MAX + 2; episodeNumber += 1) {
       // Queue operations are intentionally sequential so each one sees the prior write.
       // eslint-disable-next-line no-await-in-loop
@@ -153,9 +158,8 @@ describe("background-owned sync outbox", () => {
     const values: Record<string, unknown> = {
       [SYNC_OUTBOX_KEY]: [{ invalid: true }, payload],
     };
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
     await createOutboxManager(
-      storage,
+      storageFor(values),
       async () => ({ ok: false, retryable: true }),
     ).flush();
     expect(values[SYNC_OUTBOX_KEY]).toEqual([payload]);
