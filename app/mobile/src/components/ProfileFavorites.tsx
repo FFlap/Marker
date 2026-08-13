@@ -1,4 +1,4 @@
-import { createElement, useMemo, useState, type DragEvent, type ReactNode } from 'react';
+import { createElement, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
@@ -89,6 +89,7 @@ export function ProfileFavorites({
   const [pickerType, setPickerType] = useState<FavoriteSection>();
   const [pendingId, setPendingId] = useState<string>();
   const [orders, setOrders] = useState<Partial<Record<FavoriteSection, string[]>>>({});
+  const reorderPending = useRef(false);
   const persisted = useMemo(
     () => [...favorites].sort((left, right) => left.rank - right.rank),
     [favorites],
@@ -111,20 +112,24 @@ export function ProfileFavorites({
 
   const move = async (section: FavoriteSection, from: number, to: number) => {
     const displayed = displayedFor(section);
-    if (from === to || !displayed[from]) return;
+    if (reorderPending.current || from === to || !displayed[from]) return;
     const next = [...displayed];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved!);
     setOrders((current) => ({ ...current, [section]: next.map((favorite) => favorite._id) }));
+    reorderPending.current = true;
     try {
       await reorder({
         itemId: moved!._id,
         beforeId: next[to - 1]?._id,
         afterId: next[to + 1]?._id,
       });
+      setOrders((current) => ({ ...current, [section]: undefined }));
     } catch {
       setOrders((current) => ({ ...current, [section]: undefined }));
       toast.show(`Couldn’t save the ${sectionLabel(section)} order`);
+    } finally {
+      reorderPending.current = false;
     }
   };
 

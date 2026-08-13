@@ -29,7 +29,10 @@ export function ProfileMetrics({ stats }: { stats: ProfileStatsValue }) {
       <StatTile label="Movies Watched" value={stats.moviesWatched} />
       <StatTile label="Shows Watched" value={stats.showsWatched} />
       <StatTile label="Library Items" value={stats.totalItems} />
-      <StatTile label="Average Rating" value={stats.avgRating ? stats.avgRating.toFixed(1) : '—'} />
+      <StatTile
+        label="Average Rating"
+        value={stats.avgRating !== undefined ? stats.avgRating.toFixed(1) : '—'}
+      />
     </View>
   );
 }

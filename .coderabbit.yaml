@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+reviews:
+  path_filters:
+    # Keep reviews centered on authored runtime and configuration code. These
+    # files are generated, binary, dependency snapshots, or covered by the
+    # runtime code they exercise and made the initial mobile review too large.
+    - "!app/mobile/assets/**"
+    - "!app/mobile/convex/_generated/**"
+    - "!app/mobile/package-lock.json"
+    - "!app/mobile/patches/**"
+    - "!app/mobile/tests/**"

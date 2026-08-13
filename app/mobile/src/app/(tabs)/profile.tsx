@@ -31,7 +31,7 @@ function ProfileContent() {
   const requests = useQuery(api.profiles.followRequests);
   const respond = useMutation(api.profiles.respondToFollow);
   const toast = useToast();
-  const [requestPending, setRequestPending] = useState<string>();
+  const [requestPending, setRequestPending] = useState<ReadonlySet<string>>(() => new Set());
   const [tab, setTab] = useState<ProfileTab>('collection');
   if (profile === undefined || stats === undefined) {
     return (
@@ -43,13 +43,17 @@ function ProfileContent() {
   }
   const VisibilityIcon = profile.isPublic ? Globe2 : LockKeyhole;
   const handleRequest = async (username: string, accept: boolean) => {
-    setRequestPending(username);
+    setRequestPending((current) => new Set(current).add(username));
     try {
       await respond({ username, accept });
     } catch {
       toast.show('Couldn’t update this request');
     }
-    setRequestPending(undefined);
+    setRequestPending((current) => {
+      const next = new Set(current);
+      next.delete(username);
+      return next;
+    });
   };
   return (
     <View style={s.root}>
@@ -103,7 +107,7 @@ function ProfileContent() {
                     {request.followerCount === 1 ? '' : 's'}
                   </Text>
                 </Pressable>
-                {requestPending === request.username ? (
+                {requestPending.has(request.username) ? (
                   <ActivityIndicator color={colors.muted} />
                 ) : (
                   <View style={s.requestActions}>

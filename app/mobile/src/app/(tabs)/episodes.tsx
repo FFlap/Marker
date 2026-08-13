@@ -93,7 +93,7 @@ function Episodes() {
   const [tagFilter, setTagFilter] = useState('all');
   const [expanded, setExpanded] = useState<string>();
   const [editing, setEditing] = useState<EpisodeHubItem>();
-  const [pending, setPending] = useState<string>();
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const episodeMutationQueues = useRef(new Map<string, Promise<unknown>>());
   const [draftRating, setDraftRating] = useState<number>();
   const [draftTags, setDraftTags] = useState<string[]>([]);
@@ -136,7 +136,7 @@ function Episodes() {
     patch: { watched?: boolean; rating?: number; clearRating?: boolean; tags?: string[] },
   ) => {
     const key = `${episode.itemId}:${episode.season}:${episode.episode}`;
-    setPending(key);
+    setPending((current) => new Set(current).add(key));
     const previous = episodeMutationQueues.current.get(key) ?? Promise.resolve();
     const request = previous
       .catch(() => undefined)
@@ -162,7 +162,11 @@ function Episodes() {
     }
     if (episodeMutationQueues.current.get(key) === request) {
       episodeMutationQueues.current.delete(key);
-      setPending((current) => (current === key ? undefined : current));
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -341,10 +345,10 @@ function Episodes() {
                       }
                       accessibilityState={
                         tab === 'watching'
-                          ? { checked: false, disabled: pending === key }
-                          : { disabled: pending === key }
+                          ? { checked: false, disabled: pending.has(key) }
+                          : { disabled: pending.has(key) }
                       }
-                      disabled={pending === key}
+                      disabled={pending.has(key)}
                       onPress={() => {
                         if (tab === 'watching') {
                           void updateEpisode(episode, { watched: true });

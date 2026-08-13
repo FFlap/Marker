@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery } from 'convex/react';
+import type { FunctionReturnType } from 'convex/server';
 import { Check, Clock3, Eye, Star, X } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { api } from '../../convex/_generated/api';
@@ -12,19 +13,7 @@ import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
 import { createStyles } from '@/lib/typography';
 
-type Activity = {
-  id: string;
-  actorUsername: string;
-  avatarUrl?: string;
-  kind: 'rating' | 'status' | 'finished' | 'episode';
-  title: string;
-  posterPath?: string;
-  rating?: number;
-  status?: 'watched' | 'watching' | 'watchlist' | 'dropped';
-  season?: number;
-  episode?: number;
-  occurredAt: number;
-};
+type Activity = FunctionReturnType<typeof api.notifications.feed>[number];
 
 const poster = (path?: string) => (path ? `https://image.tmdb.org/t/p/w185${path}` : undefined);
 function relativeTime(value: number) {
@@ -52,15 +41,19 @@ export default function NotificationsScreen() {
   const activity = useQuery(api.notifications.feed) as Activity[] | undefined;
   const respond = useMutation(api.profiles.respondToFollow);
   const toast = useToast();
-  const [pending, setPending] = useState<string>();
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const handle = async (username: string, accept: boolean) => {
-    setPending(username);
+    setPending((current) => new Set(current).add(username));
     try {
       await respond({ username, accept });
     } catch {
       toast.show('Couldn’t update this request');
     }
-    setPending(undefined);
+    setPending((current) => {
+      const next = new Set(current);
+      next.delete(username);
+      return next;
+    });
   };
   return (
     <View style={s.root}>
@@ -80,7 +73,7 @@ export default function NotificationsScreen() {
                   <Text style={s.name}>@{request.username}</Text>
                   <Text style={s.meta}>{request.followerCount} followers</Text>
                 </View>
-                {pending === request.username ? (
+                {pending.has(request.username) ? (
                   <ActivityIndicator color={colors.muted} />
                 ) : (
                   <View style={s.actions}>

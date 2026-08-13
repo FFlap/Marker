@@ -35,12 +35,12 @@ export default function Settings() {
   const setSettings = useMutation(api.settings.setSettings);
   const { signOut } = useClerk();
   const toast = useToast();
-  const [pending, setPending] = useState<string>();
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const [optimistic, setOptimistic] = useState<Record<string, unknown>>({});
   const current = { ...DEFAULT_DISPLAY_PREFERENCES, ...settings, ...optimistic };
 
   const update = async (key: string, value: unknown) => {
-    setPending(key);
+    setPending((current) => new Set(current).add(key));
     setOptimistic((existing) => ({ ...existing, [key]: value }));
     try {
       await setSettings({ [key]: value });
@@ -57,15 +57,23 @@ export default function Settings() {
       });
       toast.show('Couldn’t update settings');
     }
-    setPending(undefined);
+    setPending((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
   };
   const handleSignOut = async () => {
-    setPending('signout');
+    setPending((current) => new Set(current).add('signout'));
     try {
       await signOut();
     } catch {
       toast.show('Couldn’t sign out');
-      setPending(undefined);
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete('signout');
+        return next;
+      });
     }
   };
 
@@ -84,6 +92,7 @@ export default function Settings() {
             <Segmented
               options={views}
               value={current.defaultView as 'list' | 'posters'}
+              disabled={pending.has('defaultView')}
               onChange={(defaultView) => void update('defaultView', defaultView)}
             />
           )}
@@ -103,8 +112,8 @@ export default function Settings() {
                     key={columns}
                     accessibilityRole="radio"
                     accessibilityLabel={`${columns} columns`}
-                    accessibilityState={{ checked: selected, disabled: pending === 'gridColumns' }}
-                    disabled={pending === 'gridColumns'}
+                    accessibilityState={{ checked: selected, disabled: pending.has('gridColumns') }}
+                    disabled={pending.has('gridColumns')}
                     onPress={() => void update('gridColumns', columns)}
                     style={[s.densityOption, selected && s.densityOptionSelected]}
                     pressedStyle={s.pressed}
@@ -135,6 +144,7 @@ export default function Settings() {
               <Segmented
                 options={textSizes}
                 value={current.listTextSize as ListTextSize}
+                disabled={pending.has('listTextSize')}
                 onChange={(listTextSize) => void update('listTextSize', listTextSize)}
               />
             </View>
@@ -146,6 +156,7 @@ export default function Settings() {
               <Segmented
                 options={listColumns}
                 value={String(current.listColumns) as '1' | '2'}
+                disabled={pending.has('listColumns')}
                 onChange={(value) => void update('listColumns', Number(value) as ListColumns)}
               />
             </View>
@@ -162,21 +173,21 @@ export default function Settings() {
             label="Ratings"
             detail="Ratings shared by people you follow"
             value={current.activityRatings !== false}
-            disabled={pending === 'activityRatings'}
+            disabled={pending.has('activityRatings')}
             onChange={(value) => void update('activityRatings', value)}
           />
           <NotificationToggle
             label="Watching"
             detail="When someone starts watching a title"
             value={current.activityWatching !== false}
-            disabled={pending === 'activityWatching'}
+            disabled={pending.has('activityWatching')}
             onChange={(value) => void update('activityWatching', value)}
           />
           <NotificationToggle
             label="Watched"
             detail="Finished titles and watched episodes"
             value={current.activityWatched !== false}
-            disabled={pending === 'activityWatched'}
+            disabled={pending.has('activityWatched')}
             onChange={(value) => void update('activityWatched', value)}
           />
         </View>
@@ -189,9 +200,9 @@ export default function Settings() {
         </Text>
         <View style={s.signout}>
           <Button
-            title={pending === 'signout' ? 'Signing out…' : 'Sign out'}
+            title={pending.has('signout') ? 'Signing out…' : 'Sign out'}
             variant="danger"
-            disabled={!!pending}
+            disabled={pending.size > 0}
             onPress={handleSignOut}
           />
         </View>

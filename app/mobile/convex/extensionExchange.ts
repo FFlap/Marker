@@ -7,9 +7,8 @@ function allowedExtensionOrigins() {
   return new Set(
     (process.env.EXTENSION_ORIGINS ?? '')
       .split(',')
-      .map((origin) => origin.trim())
-      .filter((origin) => /^chrome-extension:\/\/[a-p]{32}$/u.test(origin))
-      .filter(Boolean),
+      .map((origin: string) => origin.trim())
+      .filter((origin: string) => /^chrome-extension:\/\/[a-p]{32}$/u.test(origin)),
   );
 }
 

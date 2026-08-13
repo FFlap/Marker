@@ -83,20 +83,27 @@ export function Segmented<T extends string>({
   options,
   value,
   onChange,
+  disabled = false,
 }: {
   options: readonly { label: string; value: T }[];
   value: T;
   onChange: (value: T) => void;
+  disabled?: boolean;
 }) {
   return (
     <View style={styles.segmented}>
       {options.map((option) => (
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ selected: value === option.value }}
+          accessibilityState={{ selected: value === option.value, disabled }}
+          disabled={disabled}
           key={option.value}
           onPress={() => onChange(option.value)}
-          style={[styles.segment, value === option.value && styles.segmentOn]}
+          style={[
+            styles.segment,
+            value === option.value && styles.segmentOn,
+            disabled && styles.disabled,
+          ]}
         >
           <Text style={[styles.segmentText, value === option.value && styles.segmentTextOn]}>
             {option.label}
