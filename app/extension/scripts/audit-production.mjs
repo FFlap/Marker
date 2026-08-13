@@ -2,7 +2,9 @@ import { spawnSync } from "node:child_process";
 import { isAuditCommandFailure } from "./audit-report.mjs";
 
 const allowedAdvisories = new Set([
+  // Clerk image-size build dependency; owner: extension maintainers; review by 2026-10-01.
   "GHSA-5p2g-fcmc-qvqq",
+  // Clerk image-size build dependency; owner: extension maintainers; review by 2026-10-01.
   "GHSA-w3rx-r6r6-pgpr",
 ]);
 
@@ -28,14 +30,31 @@ if (isAuditCommandFailure(result.status, report)) {
 }
 
 const advisories = Object.values(report.vulnerabilities ?? {}).flatMap(
-  (vulnerability) =>
-    vulnerability.via
-      .filter((via) => typeof via === "object" && via !== null)
-      .map((via) => ({
-        name: vulnerability.name,
-        severity: via.severity,
-        id: new URL(via.url).pathname.split("/").at(-1),
-      })),
+  (vulnerability) => {
+    const name =
+      typeof vulnerability?.name === "string"
+        ? vulnerability.name
+        : "unknown package";
+    if (!Array.isArray(vulnerability?.via))
+      return [{ name, severity: "critical", id: "missing-advisory-data" }];
+    const direct = vulnerability.via.filter(
+      (via) => typeof via === "object" && via !== null,
+    );
+    if (!direct.length) return [];
+    return direct.map((via) => {
+      if (typeof via.url !== "string")
+        return { name, severity: "critical", id: "missing-advisory-url" };
+      try {
+        return {
+          name,
+          severity: via.severity,
+          id: new URL(via.url).pathname.split("/").at(-1),
+        };
+      } catch {
+        return { name, severity: "critical", id: "invalid-advisory-url" };
+      }
+    });
+  },
 );
 const blocking = advisories.filter(
   ({ severity, id }) =>
@@ -50,9 +69,12 @@ if (blocking.length > 0) {
     );
   }
   process.exitCode = 1;
-} else if ((report.metadata?.vulnerabilities?.high ?? 0) > 0) {
+} else if (
+  (report.metadata?.vulnerabilities?.high ?? 0) > 0 ||
+  (report.metadata?.vulnerabilities?.critical ?? 0) > 0
+) {
   console.warn(
-    "Only the allowlisted Metro/image-size build-time advisories remain.",
+    "Only the allowlisted image-size advisories inherited through Clerk build dependencies remain.",
   );
 } else {
   console.log("No high or critical production dependency advisories found.");

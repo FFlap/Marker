@@ -135,7 +135,7 @@ export function normalizeBookmarkStore(value: unknown): BookmarkStore {
       typeof bookmark === "object" &&
       !Array.isArray(bookmark) &&
       (bookmark as Record<string, unknown>).platform === undefined
-        ? { platform: "crunchyroll", ...bookmark }
+        ? { ...bookmark, platform: "crunchyroll" }
         : bookmark;
     if (isBookmark(migrated) && key === bookmarkKey(migrated))
       bookmarks[key] = migrated;
@@ -181,7 +181,9 @@ export function createBookmarkOperations(
   ) => {
     const operation = pending.then(async () => {
       const stored = await storage.get(storageKey);
-      const next = transform(normalizeBookmarkStore(stored[storageKey]));
+      const store = normalizeBookmarkStore(stored[storageKey]);
+      const next = transform(store);
+      if (next.store === store) return next.result;
       await storage.set({
         [storageKey]: next.store,
       });
@@ -204,12 +206,14 @@ export function createBookmarkOperations(
           previous.seasonNumber === bookmark.seasonNumber &&
           previous.episodeNumber === bookmark.episodeNumber;
         return {
-          store: unchanged ? store : mergeBookmark(store, bookmark),
+          store: mergeBookmark(store, bookmark),
           result: !unchanged,
         };
       }),
     remove: (key: string) =>
       update((store) => {
+        if (!(key in store.bookmarks))
+          return { store, result: undefined };
         const bookmarks = { ...store.bookmarks };
         delete bookmarks[key];
         return {

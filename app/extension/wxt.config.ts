@@ -16,7 +16,7 @@ export default defineConfig({
       name: "Marker",
       description:
         "Automatically remember the latest episode opened on Crunchyroll and Netflix.",
-      permissions: ["storage", "tabs", "alarms", "cookies"],
+      permissions: ["storage", "alarms", "cookies"],
       host_permissions: build.hostPermissions,
       icons: {
         16: "icon/16.png",

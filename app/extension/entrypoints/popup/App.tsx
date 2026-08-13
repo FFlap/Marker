@@ -59,6 +59,8 @@ export function App({
     if (sync.lastResult.reason === "unmatched-episode") return `${prefix} episode not matched by name`;
     if (sync.lastResult.reason === "unsupported-episode") return `${prefix} unsupported episode`;
     if (sync.lastResult.reason === "unmatched") return shortTitle ? `${prefix} episode couldn't be matched to a show` : "Last episode couldn't be matched to a show";
+    if (sync.lastResult.reason === "not-signed-in") return `${prefix} waiting for sign-in`;
+    if (sync.lastResult.reason === "rejected") return `${prefix} was rejected`;
     return `${prefix} failed`;
   })();
 

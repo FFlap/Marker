@@ -19,7 +19,7 @@ export const SYNC_OUTBOX_KEY = "sync.outbox";
 export const SYNC_RETRY_KEY = "sync.outboxRetry";
 export const SYNC_RETRY_ALARM = "sync.outboxRetry";
 export const SYNC_LAST_RESULT_KEY = "sync.lastResult";
-const SYNC_OUTBOX_MAX = 20;
+export const SYNC_OUTBOX_MAX = 20;
 const TEXT_MAX = 300;
 const URL_MAX = 1_000;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000, 6 * 60 * 60_000] as const;
@@ -31,6 +31,7 @@ export interface AlarmScheduler {
 export interface SyncStorage {
   get(key: string | string[]): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
+  remove?(key: string): Promise<void>;
 }
 
 export function buildWatchPayload(
@@ -188,7 +189,12 @@ async function flushWatchOutbox(
   const droppedInvalid = Array.isArray(storedOutbox) && storedOutbox.length !== outbox.length;
   let sent = 0;
   for (const payload of outbox) {
-    const result = await post(payload);
+    let result: SyncResult;
+    try {
+      result = await post(payload);
+    } catch {
+      break;
+    }
     if (result.retryable) break;
     sent += 1;
   }
@@ -240,7 +246,21 @@ export function createOutboxManager(
     return complete;
   };
   const flush = () => serialize(runFlush);
+  const clear = () =>
+    serialize(async () => {
+      if (storage.remove) {
+        await storage.remove(SYNC_OUTBOX_KEY);
+        await storage.remove(SYNC_RETRY_KEY);
+      } else {
+        await storage.set({
+          [SYNC_OUTBOX_KEY]: null,
+          [SYNC_RETRY_KEY]: null,
+        });
+      }
+      await options.alarms?.clear(SYNC_RETRY_ALARM);
+    });
   return {
+    clear,
     flush,
     async alarmFired() {
       return serialize(async () => {

@@ -43,7 +43,7 @@ export default defineContentScript({
       document.documentElement.dataset.markerNetflix = "saving";
       try {
         const changed = await persistDetectedEpisode(bookmark);
-        if (changed) void syncDetectedEpisode(browser.storage.local, bookmark);
+        if (changed) void syncDetectedEpisode(bookmark);
         lastSavedVideoId = bookmark.episodeId;
         document.documentElement.dataset.markerNetflix = "tracked";
       } catch (error: unknown) {

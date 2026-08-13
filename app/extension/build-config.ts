@@ -41,11 +41,19 @@ function configuredOrigin(name: string, value: string, isDevelopment: boolean) {
 }
 
 function clerkOrigin(publishableKey: string) {
-  const encoded = publishableKey.replace(/^pk_(?:test|live)_/u, "");
-  const hostname = Buffer.from(encoded, "base64")
-    .toString("utf8")
-    .replace(/\$$/u, "");
-  if (!hostname || hostname.includes("/") || hostname.includes(":")) {
+  const match = /^pk_(?:test|live)_([A-Za-z0-9_-]+)$/u.exec(publishableKey);
+  const encoded = match?.[1];
+  if (!encoded) {
+    throw new Error(
+      "WXT_CLERK_PUBLISHABLE_KEY does not contain a valid Clerk frontend host",
+    );
+  }
+  const decoded = Buffer.from(encoded, "base64url").toString("utf8");
+  const canonical = Buffer.from(decoded, "utf8").toString("base64url");
+  const hostname = decoded.endsWith("$") ? decoded.slice(0, -1) : "";
+  const hostnamePattern =
+    /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u;
+  if (canonical !== encoded || !hostnamePattern.test(hostname)) {
     throw new Error(
       "WXT_CLERK_PUBLISHABLE_KEY does not contain a valid Clerk frontend host",
     );
@@ -71,15 +79,17 @@ export function resolveExtensionBuild(
     isDevelopment,
   );
   const convexUrl = new URL(convexOrigin);
-  if (!convexUrl.hostname.endsWith(".convex.cloud")) {
+  if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.convex\.cloud$/u.test(convexUrl.hostname)) {
     throw new Error(
       "WXT_CONVEX_URL must use an exact .convex.cloud deployment origin",
     );
   }
-  const convexSiteOrigin = `${convexUrl.protocol}//${convexUrl.hostname.replace(
+  const convexSiteUrl = new URL(convexOrigin);
+  convexSiteUrl.hostname = convexUrl.hostname.replace(
     /\.convex\.cloud$/u,
     ".convex.site",
-  )}${convexUrl.port ? `:${convexUrl.port}` : ""}`;
+  );
+  const convexSiteOrigin = convexSiteUrl.origin;
   const websiteOrigin = configuredOrigin(
     "WXT_WEBSITE_URL",
     configuredValue(
@@ -104,7 +114,7 @@ export function resolveExtensionBuild(
     DEV_CLERK_PUBLISHABLE_KEY,
   );
 
-  const hostPermissions = [
+  const hostPermissions = [...new Set([
     "https://www.crunchyroll.com/*",
     "https://www.netflix.com/*",
     originPattern(convexOrigin),
@@ -113,7 +123,7 @@ export function resolveExtensionBuild(
     originPattern(websiteOrigin),
     originPattern(syncHostOrigin),
     ...(isDevelopment ? ["http://localhost/*", "http://127.0.0.1/*"] : []),
-  ].filter((value, index, values) => values.indexOf(value) === index);
+  ])];
 
   return {
     convexOrigin,

@@ -1,5 +1,6 @@
 export function isAuditCommandFailure(status, report) {
-  if (status === 0 || status === null) return false;
+  if (status === 0) return false;
+  if (status === null) return true;
   return !(
     report &&
     typeof report === "object" &&

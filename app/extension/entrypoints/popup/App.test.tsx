@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { EpisodeBookmark } from "../../src/domain/types";
 import { bookmarkKey } from "../../src/domain/bookmarks";
@@ -18,6 +18,8 @@ const bookmark: EpisodeBookmark = {
 };
 
 describe("App", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it("shows a useful empty state", () => {
     render(
       <App
@@ -173,11 +175,35 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    ["unsupported-episode", "Last sync unsupported episode"],
+    ["not-signed-in", "Last sync waiting for sign-in"],
+    ["rejected", "Last sync was rejected"],
+  ])("renders the %s sync reason", (reason, expected) => {
+    render(
+      <App
+        bookmarks={[]}
+        onOpen={vi.fn()}
+        onRemove={vi.fn()}
+        onClear={vi.fn()}
+        sync={{
+          signedIn: true,
+          lastResult: { ok: false, at: 100, reason },
+          onConnect: vi.fn(),
+          onSignOut: vi.fn(),
+        }}
+      />,
+    );
+    expect(
+      screen.getByText((content) => content.startsWith(expected)),
+    ).toBeInTheDocument();
+  });
+
   it("connects through the website and never renders credential fields", async () => {
     const onConnect = vi.fn().mockResolvedValue(undefined);
     render(<App bookmarks={[]} onOpen={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} sync={{ signedIn: false, onConnect, onSignOut: vi.fn() }} />);
     fireEvent.click(screen.getByRole("button", { name: "Connect Marker" }));
-    expect(onConnect).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onConnect).toHaveBeenCalledOnce());
     expect(screen.queryByLabelText(/email|password|token/i)).not.toBeInTheDocument();
   });
 

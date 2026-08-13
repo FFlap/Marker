@@ -11,6 +11,13 @@ const payload = {
   episodeNumber: 2,
 };
 const token = "t".repeat(64);
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
 const setup = () => {
   const values: Record<string, unknown> = {};
   const storage = {
@@ -81,6 +88,9 @@ describe("background delivery classification", () => {
     });
     expect(error.data.code).toBe("upstream");
   });
+});
+
+describe("background message validation", () => {
   it.each([
     null,
     {},
@@ -93,6 +103,9 @@ describe("background delivery classification", () => {
       retryable: false,
     });
   });
+});
+
+describe("background sign-out cleanup", () => {
   it("clears queued watch data and retry state when signing out", async () => {
     const x = setup();
     x.values["sync.outbox"] = [payload];
@@ -113,6 +126,22 @@ describe("background delivery classification", () => {
     expect(x.values["sync.lastResult"]).toBeUndefined();
     expect(alarms.clear).toHaveBeenCalledWith("sync.outboxRetry");
   });
+  it("keeps the outbox cleared when sign-out waits for an in-flight flush", async () => {
+    const x = setup();
+    const gate = deferred<unknown>();
+    x.client.record.mockReturnValue(gate.promise);
+
+    const enqueue = x.background.handler({ type: "sync/enqueue", payload });
+    await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
+    const signOut = x.background.handler({ type: "sync/signOut" });
+    gate.resolve({ ok: true });
+    await Promise.all([enqueue, signOut]);
+
+    expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
+  });
+});
+
+describe("background bookmark serialization", () => {
   it("serializes bookmark saves and removals through one background queue", async () => {
     const x = setup();
     const first = {
@@ -149,6 +178,9 @@ describe("background delivery classification", () => {
       normalizeBookmarkStore(x.values[BOOKMARKS_STORAGE_KEY]).bookmarks,
     ).toEqual({ "netflix:second": second });
   });
+});
+
+describe("background website connection", () => {
   it("returns a structured response when website connection fails", async () => {
     const x = setup();
     x.client.connect.mockRejectedValue(new Error("Connection cancelled"));
@@ -156,6 +188,9 @@ describe("background delivery classification", () => {
       x.background.handler({ type: "sync/connect" }),
     ).resolves.toEqual({ signedIn: false, reason: "Connection cancelled" });
   });
+});
+
+describe("background queue behavior", () => {
   it("auth failure pauses the queued event and later flushes skip delivery without a Clerk session", async () => {
     const x = setup();
     x.client.record.mockRejectedValue({ status: 401 });
@@ -173,5 +208,22 @@ describe("background delivery classification", () => {
     await x.background.handler({ type: "sync/enqueue", payload });
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([]);
     expect(x.values["sync.lastResult"]).toMatchObject({ reason: "rejected" });
+  });
+  it("refreshes the retry schedule when an alarm fires without a session", async () => {
+    const x = setup();
+    x.values[SYNC_OUTBOX_KEY] = [payload];
+    x.values["sync.outboxRetry"] = { attempt: 1, nextRetryAt: 1_000 };
+    x.client.getSession.mockResolvedValue(null);
+    const alarms = { schedule: vi.fn(), clear: vi.fn() };
+    const background = createMessageHandler(x.storage, x.client, {
+      now: () => 1_000,
+      alarms,
+    });
+
+    await expect(background.alarmFired()).resolves.toBe(false);
+    expect(alarms.schedule).toHaveBeenCalledWith(
+      "sync.outboxRetry",
+      301_000,
+    );
   });
 });

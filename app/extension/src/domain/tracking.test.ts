@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { persistDetectedEpisode, syncDetectedEpisode } from "./tracking";
 
 const bookmark = {
@@ -15,6 +15,8 @@ const bookmark = {
 };
 
 describe("background-owned tracking", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("routes detected bookmarks through the background owner", async () => {
     const send = vi.fn(async () => ({ changed: true }));
     await expect(persistDetectedEpisode(bookmark, send)).resolves.toBe(true);
@@ -24,6 +26,24 @@ describe("background-owned tracking", () => {
   it("returns false when the background reports no bookmark change", async () => {
     await expect(
       persistDetectedEpisode(bookmark, async () => ({ changed: false })),
+    ).resolves.toBe(false);
+  });
+
+  it("asks the background to record an unsupported episode", async () => {
+    const send = vi.fn(async () => undefined);
+    await syncDetectedEpisode(
+      { ...bookmark, seriesTitle: "x".repeat(301) },
+      send,
+    );
+    expect(send).toHaveBeenCalledWith({
+      type: "sync/unsupported",
+      seriesTitle: "x".repeat(300),
+    });
+  });
+
+  it("treats a missing background response as unchanged", async () => {
+    await expect(
+      persistDetectedEpisode(bookmark, async () => undefined),
     ).resolves.toBe(false);
   });
 
@@ -39,13 +59,8 @@ describe("background-owned tracking", () => {
       }),
     };
     vi.stubGlobal("browser", { runtime });
-    const storage = {
-      get: async () => ({}),
-      set: vi.fn(async () => undefined),
-    };
-
     await persistDetectedEpisode(bookmark);
-    await syncDetectedEpisode(storage, bookmark);
+    await syncDetectedEpisode(bookmark);
 
     expect(runtime.sendMessage).toHaveBeenCalledTimes(2);
   });

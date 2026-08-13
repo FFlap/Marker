@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { isAuditCommandFailure } from "./audit-report.mjs";
 
 describe("production audit report handling", () => {
+  it("rejects a signal-terminated audit even when stdout is valid JSON", () => {
+    expect(
+      isAuditCommandFailure(null, {
+        vulnerabilities: {},
+        metadata: { vulnerabilities: {} },
+      }),
+    ).toBe(true);
+  });
+
   it("rejects a parseable endpoint error returned with a failing status", () => {
     expect(
       isAuditCommandFailure(1, {

@@ -55,4 +55,51 @@ describe("extension build configuration", () => {
       "https://marker-production.convex.site:8443",
     );
   });
+
+  it("adds a distinct Clerk sync host to permissions", () => {
+    const result = resolveExtensionBuild("production", {
+      ...productionEnvironment,
+      WXT_CLERK_SYNC_HOST: "https://accounts.marker.example.com",
+    });
+    expect(result.syncHostOrigin).toBe(
+      "https://accounts.marker.example.com",
+    );
+    expect(result.hostPermissions).toContain(
+      "https://accounts.marker.example.com/*",
+    );
+  });
+
+  it("rejects a Convex URL outside an exact deployment hostname", () => {
+    expect(() =>
+      resolveExtensionBuild("production", {
+        ...productionEnvironment,
+        WXT_CONVEX_URL: "https://evil-convex.cloud",
+      }),
+    ).toThrow("WXT_CONVEX_URL must use an exact .convex.cloud deployment origin");
+  });
+
+  it("rejects non-HTTPS production origins", () => {
+    expect(() =>
+      resolveExtensionBuild("production", {
+        ...productionEnvironment,
+        WXT_WEBSITE_URL: "http://marker.example.com",
+      }),
+    ).toThrow("WXT_WEBSITE_URL must be an absolute HTTPS origin");
+  });
+
+  it.each([
+    "not-a-key",
+    "pk_live_@@@",
+    `pk_live_${Buffer.from("user@marker.example.com$").toString("base64url")}`,
+    `pk_live_${Buffer.from("marker.example.com?admin=true$").toString("base64url")}`,
+  ])("rejects a malformed Clerk key: %s", (publishableKey) => {
+    expect(() =>
+      resolveExtensionBuild("production", {
+        ...productionEnvironment,
+        WXT_CLERK_PUBLISHABLE_KEY: publishableKey,
+      }),
+    ).toThrow(
+      "WXT_CLERK_PUBLISHABLE_KEY does not contain a valid Clerk frontend host",
+    );
+  });
 });

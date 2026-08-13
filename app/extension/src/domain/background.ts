@@ -9,9 +9,6 @@ import {
   createOutboxManager,
   parseWatchPayload,
   SYNC_LAST_RESULT_KEY,
-  SYNC_OUTBOX_KEY,
-  SYNC_RETRY_ALARM,
-  SYNC_RETRY_KEY,
   type AlarmScheduler,
   type SyncResult,
   type WatchPayload,
@@ -22,6 +19,7 @@ export type BackgroundMessage =
   | { type: "sync/signOut" }
   | { type: "sync/status" }
   | { type: "sync/enqueue"; payload: WatchPayload }
+  | { type: "sync/unsupported"; seriesTitle: string }
   | { type: "sync/flushNow" }
   | { type: "bookmark/save"; bookmark: EpisodeBookmark }
   | { type: "bookmark/remove"; key: string }
@@ -86,6 +84,12 @@ function isBackgroundMessage(value: unknown): value is BackgroundMessage {
       return true;
     case "sync/enqueue":
       return typeof message.payload === "object" && message.payload !== null;
+    case "sync/unsupported":
+      return (
+        typeof message.seriesTitle === "string" &&
+        Boolean(message.seriesTitle.trim()) &&
+        message.seriesTitle.length <= 300
+      );
     case "bookmark/save":
       return typeof message.bookmark === "object" && message.bookmark !== null;
     case "bookmark/remove":
@@ -159,7 +163,7 @@ export function createMessageHandler(
         try {
           await client.connect();
           const signedIn = await client.getSession();
-          if (signedIn) void outbox.flush();
+          if (signedIn) await outbox.flush();
           return signedIn
             ? { signedIn: true, accountLabel: signedIn.accountLabel }
             : { signedIn: false, reason: "sign-in-opened" };
@@ -172,10 +176,8 @@ export function createMessageHandler(
       }
       case "sync/signOut":
         await client.signOut();
-        await storage.remove(SYNC_OUTBOX_KEY);
-        await storage.remove(SYNC_RETRY_KEY);
+        await outbox.clear();
         await storage.remove(SYNC_LAST_RESULT_KEY);
-        await options.alarms?.clear(SYNC_RETRY_ALARM);
         return { signedIn: false };
       case "sync/status": {
         const current = await client.getSession();
@@ -190,6 +192,11 @@ export function createMessageHandler(
         await outbox.enqueue(payload);
         return { ok: true };
       }
+      case "sync/unsupported":
+        return recordResult(
+          { ok: false, reason: "unsupported-episode", retryable: false },
+          message.seriesTitle.trim(),
+        );
       case "sync/flushNow":
         await outbox.flush();
         return { ok: true };
@@ -206,14 +213,10 @@ export function createMessageHandler(
             incoming.seriesTitle.length <= 300
               ? incoming.seriesTitle.trim()
               : undefined;
-          await storage.set({
-            [SYNC_LAST_RESULT_KEY]: {
-              ok: false,
-              at: Date.now(),
-              reason: "unsupported-episode",
-              ...(seriesTitle ? { seriesTitle } : {}),
-            },
-          });
+          await recordResult(
+            { ok: false, reason: "unsupported-episode", retryable: false },
+            seriesTitle,
+          );
           return { changed: false, reason: "unsupported-episode" };
         }
         return { changed: await bookmarks.save(bookmark) };
@@ -229,8 +232,7 @@ export function createMessageHandler(
   return {
     handler,
     flush: outbox.flush,
-    alarmFired: async () =>
-      (await client.getSession()) ? outbox.alarmFired() : false,
+    alarmFired: outbox.alarmFired,
     deliver,
   };
 }

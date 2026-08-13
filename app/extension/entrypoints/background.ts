@@ -20,7 +20,12 @@ export default defineBackground(() => {
     const session = clerk.session;
     const user = clerk.user;
     if (!session || !user) return null;
-    const token = await session.getToken();
+    let token: string | null;
+    try {
+      token = await session.getToken();
+    } catch {
+      return null;
+    }
     if (!token) return null;
     const accountLabel = user.username
       ? `@${user.username}`
@@ -99,7 +104,13 @@ export default defineBackground(() => {
   });
   void clerkPromise
     .then((clerk) => {
-      clerk.addListener(() => void background.flush().catch(() => undefined));
+      let wasSignedIn = Boolean(clerk.session && clerk.user);
+      clerk.addListener(() => {
+        const isSignedIn = Boolean(clerk.session && clerk.user);
+        if (isSignedIn === wasSignedIn) return;
+        wasSignedIn = isSignedIn;
+        void background.flush().catch(() => undefined);
+      });
       return background.flush();
     })
     .catch(() => undefined);

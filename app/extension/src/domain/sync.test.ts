@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildWatchPayload, createOutboxManager, parseWatchPayload, SYNC_OUTBOX_KEY, SYNC_RETRY_ALARM, SYNC_RETRY_KEY } from "./sync";
+import { buildWatchPayload, createOutboxManager, parseWatchPayload, SYNC_OUTBOX_KEY, SYNC_OUTBOX_MAX, SYNC_RETRY_ALARM, SYNC_RETRY_KEY } from "./sync";
 
 const payload = { service: "netflix" as const, seriesTitle: "Dark", seasonNumber: 1, episodeNumber: 2 };
 const bookmark = {
@@ -135,6 +135,39 @@ describe("background-owned sync outbox", () => {
     const second = manager.enqueue(secondPayload);
     gate.resolve(); await Promise.all([first, second]);
     expect(values[SYNC_OUTBOX_KEY]).toEqual([payload, secondPayload]);
+  });
+  it("keeps only the newest entries when the outbox reaches its cap", async () => {
+    const values: Record<string, unknown> = {};
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    for (let episodeNumber = 0; episodeNumber < SYNC_OUTBOX_MAX + 2; episodeNumber += 1) {
+      // Queue operations are intentionally sequential so each one sees the prior write.
+      // eslint-disable-next-line no-await-in-loop
+      await manager.enqueue({ ...payload, episodeNumber });
+    }
+    const stored = values[SYNC_OUTBOX_KEY] as Array<{ episodeNumber: number }>;
+    expect(stored).toHaveLength(SYNC_OUTBOX_MAX);
+    expect(stored[0]?.episodeNumber).toBe(2);
+  });
+  it("prunes invalid stored entries even when no payload is delivered", async () => {
+    const values: Record<string, unknown> = {
+      [SYNC_OUTBOX_KEY]: [{ invalid: true }, payload],
+    };
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    await createOutboxManager(
+      storage,
+      async () => ({ ok: false, retryable: true }),
+    ).flush();
+    expect(values[SYNC_OUTBOX_KEY]).toEqual([payload]);
+  });
+  it("treats an unexpected delivery rejection as retryable", async () => {
+    const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload] };
+    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    await createOutboxManager(storage, async () => {
+      throw new Error("unexpected failure");
+    }).flush();
+    expect(values[SYNC_OUTBOX_KEY]).toEqual([payload]);
+    expect(values[SYNC_RETRY_KEY]).toMatchObject({ attempt: 1 });
   });
   it("persists before attempting delivery", async () => {
     const order: string[] = []; const values: Record<string, unknown> = {};

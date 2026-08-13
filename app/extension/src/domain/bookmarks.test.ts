@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createBookmarkOperations,
   mergeBookmark,
@@ -239,6 +239,37 @@ describe("normalizeBookmarkStore", () => {
 });
 
 describe("bookmark operations", () => {
+  it("refreshes unchanged bookmarks while reporting no episode change", async () => {
+    let value: unknown = { version: 1, bookmarks: {} };
+    const storage = {
+      get: async () => ({ bookmarks: value }),
+      set: async (items: Record<string, unknown>) => {
+        value = items.bookmarks;
+      },
+    };
+    const operations = createBookmarkOperations(storage, "bookmarks");
+
+    expect(await operations.save(slimeEpisode1)).toBe(true);
+    expect(
+      await operations.save({ ...slimeEpisode1, updatedAt: 400 }),
+    ).toBe(false);
+    expect(
+      normalizeBookmarkStore(value).bookmarks["crunchyroll:GYZJ43JMR"]
+        ?.updatedAt,
+    ).toBe(400);
+  });
+
+  it("rejects an invalid bookmark without writing", async () => {
+    const set = vi.fn(async () => undefined);
+    const operations = createBookmarkOperations(
+      { get: async () => ({ bookmarks: { version: 1, bookmarks: {} } }), set },
+      "bookmarks",
+    );
+
+    expect(await operations.save({ platform: "hulu" })).toBe(false);
+    expect(set).not.toHaveBeenCalled();
+  });
+
   it("serializes overlapping removals against the latest stored bookmarks", async () => {
     let value: unknown = {
       version: 1,

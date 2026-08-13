@@ -32,7 +32,7 @@ export default defineContentScript({
         try {
           const changed = await persistDetectedEpisode(bookmark);
           if (changed)
-            void syncDetectedEpisode(browser.storage.local, bookmark);
+            void syncDetectedEpisode(bookmark);
           lastSentEpisodeId = bookmark.episodeId;
           document.documentElement.dataset.markerCrunchyroll = "tracked";
         } catch (error: unknown) {
