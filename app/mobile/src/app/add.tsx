@@ -71,6 +71,7 @@ export default function Add() {
   const [rating, setRating] = useState<number>();
   const [times, setTimes] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   useEffect(() => {
     if (picked) return;
     const normalizedQuery = query.trim();
@@ -142,7 +143,8 @@ export default function Add() {
         resolvedTitle.episodeRunTime.length
       : undefined);
   const submit = async () => {
-    if (!picked) return;
+    if (!picked || resolvedTitle === undefined || submitting) return;
+    setSubmitting(true);
     try {
       const addArgs = {
         tmdbId: picked.id,
@@ -171,6 +173,8 @@ export default function Add() {
           ? 'Already in your library'
           : 'Couldn’t add this title',
       );
+    } finally {
+      setSubmitting(false);
     }
   };
   return (
@@ -260,7 +264,18 @@ export default function Add() {
               <Stepper label="Times Watched" value={times} onChange={setTimes} min={1} />
             )}
             <TagEditor tags={tags} onChange={setTags} suggestions={suggestions} />
-            <Button testID="add-submit" title="Add to library" onPress={submit} />
+            <Button
+              testID="add-submit"
+              title={
+                resolvedTitle === undefined
+                  ? 'Loading details…'
+                  : submitting
+                    ? 'Adding…'
+                    : 'Add to library'
+              }
+              disabled={resolvedTitle === undefined || submitting}
+              onPress={submit}
+            />
           </View>
         )}
       </ScrollView>

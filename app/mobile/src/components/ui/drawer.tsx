@@ -9,7 +9,6 @@ import {
   StyleSheet,
   useWindowDimensions,
   View,
-  type GestureResponderEvent,
   type ViewProps,
 } from 'react-native';
 import Animated, {
@@ -240,11 +239,9 @@ function DrawerOverlay({
   const { interactive } = useDrawerMotion();
   const { onOpenChange } = DialogPrimitive.useRootContext();
 
-  function onOverlayPress(event: GestureResponderEvent) {
+  function onOverlayPress(event: Parameters<NonNullable<typeof onPress>>[0]) {
     onPress?.(event);
-    if (event.target === event.currentTarget && !event.isDefaultPrevented()) {
-      onOpenChange(false);
-    }
+    onOpenChange(false);
   }
 
   return (
@@ -265,7 +262,9 @@ function DrawerOverlay({
         style={styles.overlay}
       >
         <DrawerBackdropTint />
-        {children}
+        <Pressable onPress={() => undefined} style={styles.sheetPressGuard}>
+          {children}
+        </Pressable>
       </DrawerBackdrop>
     </FullWindowOverlay>
   );
@@ -366,6 +365,7 @@ export {
 };
 
 const styles = StyleSheet.create({
+  sheetPressGuard: { width: '100%' },
   overlay: {
     position: Platform.OS === 'web' ? ('fixed' as 'absolute') : 'absolute',
     top: 0,

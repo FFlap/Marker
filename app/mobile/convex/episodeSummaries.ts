@@ -125,8 +125,21 @@ async function beginEpisodeSummaryRebuild(
   summary: Doc<'episodeSummaries'>,
   identityKey: string,
   force = false,
+  restart = false,
 ) {
   if (!force && summary.rebuildIdentityKey === identityKey) return false;
+  const rebuildAttempts = restart ? (summary.rebuildAttempts ?? 0) + 1 : 0;
+  if (rebuildAttempts > 3) {
+    await ctx.db.patch(summary._id, {
+      rebuildIdentityKey: undefined,
+      rebuildOffset: undefined,
+      rebuildTotal: undefined,
+      rebuildWatchedCount: undefined,
+      rebuildRevision: undefined,
+      rebuildAttempts: undefined,
+    });
+    return false;
+  }
   const revision = (summary.rebuildRevision ?? 0) + 1;
   await ctx.db.patch(summary._id, {
     rebuildIdentityKey: identityKey,
@@ -134,6 +147,7 @@ async function beginEpisodeSummaryRebuild(
     rebuildTotal: 0,
     rebuildWatchedCount: 0,
     rebuildRevision: revision,
+    rebuildAttempts,
   });
   await ctx.scheduler.runAfter(0, internal.episodeSummaries.rebuildEpisodeSummary, {
     summaryId: summary._id,
@@ -289,8 +303,8 @@ export async function updateSummaryForEpisodeUpsert(
   const currentTotal = identity.total;
   const currentWatchedCount =
     (summary.currentWatchedCount ?? 0) +
-    Number(identity.nextMatches && watched) -
-    Number(identity.existingMatches && existing?.watched);
+    Number(Boolean(identity.nextMatches && watched)) -
+    Number(Boolean(identity.existingMatches && existing?.watched));
   if (currentTotal < 0 || currentWatchedCount < 0 || currentWatchedCount > currentTotal)
     throw new Error('Current episode summary counters would become invalid');
   await ctx.db.patch(summary._id, { currentTotal, currentWatchedCount });
@@ -312,18 +326,19 @@ export const rebuildEpisodeSummary = internalMutation({
         rebuildTotal: undefined,
         rebuildWatchedCount: undefined,
         rebuildRevision: undefined,
+        rebuildAttempts: undefined,
       });
       return { work: 0, isDone: true };
     }
     if (identity.key !== summary.rebuildIdentityKey) {
-      await beginEpisodeSummaryRebuild(ctx, summary, identity.key, true);
+      await beginEpisodeSummaryRebuild(ctx, summary, identity.key, true, true);
       return { work: 0, isDone: false };
     }
 
     const offset = summary.rebuildOffset ?? 0;
     const batch = await canonicalEpisodeBatch(ctx, identity.season, offset);
     if (offset < identity.episodeCount && batch.length === 0) {
-      await beginEpisodeSummaryRebuild(ctx, summary, identity.key, true);
+      await beginEpisodeSummaryRebuild(ctx, summary, identity.key, true, true);
       return { work: 0, isDone: false };
     }
     const saved = await Promise.all(
@@ -366,6 +381,7 @@ export const rebuildEpisodeSummary = internalMutation({
         rebuildTotal: undefined,
         rebuildWatchedCount: undefined,
         rebuildRevision: undefined,
+        rebuildAttempts: undefined,
       });
       await refreshNextEpisode(ctx, summary.itemId);
       return { work: batch.length, isDone: true };

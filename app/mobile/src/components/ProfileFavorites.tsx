@@ -116,8 +116,8 @@ export function ProfileFavorites({
     const next = [...displayed];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved!);
-    setOrders((current) => ({ ...current, [section]: next.map((favorite) => favorite._id) }));
     reorderPending.current = true;
+    setOrders((current) => ({ ...current, [section]: next.map((favorite) => favorite._id) }));
     try {
       await reorder({
         itemId: moved!._id,

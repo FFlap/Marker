@@ -15,6 +15,7 @@ export const EPISODE_FIELD_LIMITS = {
   name: 300,
   overview: 400,
   imageUrl: 500,
+  stillPath: 500,
   airDate: 50,
 } as const;
 export const MAX_METADATA_MUTATION_BYTES = 1024 * 1024;
@@ -49,6 +50,9 @@ export const boundedEpisode = (episode: ResolvedEpisode): ResolvedEpisode => ({
   ...(episode.runtime !== undefined && { runtime: episode.runtime }),
   ...(episode.imageUrl !== undefined && {
     imageUrl: truncate(episode.imageUrl, EPISODE_FIELD_LIMITS.imageUrl),
+  }),
+  ...(episode.stillPath !== undefined && {
+    stillPath: truncate(episode.stillPath, EPISODE_FIELD_LIMITS.stillPath),
   }),
   ...(episode.airDate !== undefined && {
     airDate: truncate(episode.airDate, EPISODE_FIELD_LIMITS.airDate),

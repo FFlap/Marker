@@ -1071,6 +1071,9 @@ export const listEpisodeProgress = query({
 });
 /** Derives the batch from the server's epoch-checked canonical season. */
 const SEASON_WATCH_BATCH_SIZE = EPISODES_PER_CHUNK;
+const MAX_SEASON_WATCH_RESTARTS = 4;
+const MAX_SEASON_WATCH_BATCHES =
+  Math.ceil(MAX_SEASON_EPISODES / SEASON_WATCH_BATCH_SIZE) * (MAX_SEASON_WATCH_RESTARTS + 1);
 const seasonWatchIdentity = {
   userId: v.id('users'),
   itemId: v.id('items'),
@@ -1298,6 +1301,8 @@ async function applySeasonWatched(
     metadataProvider,
   });
   let processed = 0;
+  let batches = 0;
+  let restarts = 0;
   let episodeCount = plan.episodeCount;
   let refreshedAt = plan.refreshedAt;
   while (true) {
@@ -1311,11 +1316,15 @@ async function applySeasonWatched(
         metadataProvider: plan.metadataProvider,
       });
       if (current.refreshedAt === refreshedAt && current.episodeCount === episodeCount) break;
+      restarts += 1;
+      if (restarts > MAX_SEASON_WATCH_RESTARTS) throw staleSeasonEpoch();
       processed = 0;
       episodeCount = current.episodeCount;
       refreshedAt = current.refreshedAt;
       continue;
     }
+    batches += 1;
+    if (batches > MAX_SEASON_WATCH_BATCHES) throw staleSeasonEpoch();
     const result = await ctx.runMutation(internal.library.setSeasonWatchedBatch, {
       userId,
       itemId,
@@ -1327,6 +1336,10 @@ async function applySeasonWatched(
       expectedMetadataProvider: plan.metadataProvider,
     });
     if (result.processed === 0) throw new Error('Season batch made no progress');
+    if (result.restarted) {
+      restarts += 1;
+      if (restarts > MAX_SEASON_WATCH_RESTARTS) throw staleSeasonEpoch();
+    }
     processed = (result.restarted ? 0 : processed) + result.processed;
     episodeCount = result.episodeCount;
     refreshedAt = result.refreshedAt;
@@ -1436,7 +1449,24 @@ export const addItemAndMarkWatched = action({
       ...args,
       status: 'watchlist',
     });
-    await moveItemToWatchedForUser(ctx, userId, { itemId });
+    try {
+      await moveItemToWatchedForUser(ctx, userId, { itemId });
+    } catch (error) {
+      await ctx
+        .runMutation(internal.library.discardAddedItem, { userId, itemId })
+        .catch(() => undefined);
+      throw error;
+    }
     return itemId;
+  },
+});
+
+export const discardAddedItem = internalMutation({
+  args: { userId: v.id('users'), itemId: v.id('items') },
+  handler: async (ctx, { userId, itemId }) => {
+    const item = await ctx.db.get(itemId);
+    if (!item || item.userId !== userId) return;
+    if (item.deletingAt === undefined) await ctx.db.patch(itemId, { deletingAt: Date.now() });
+    await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
   },
 });

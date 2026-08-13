@@ -155,7 +155,12 @@ async function snapshot<T>(
   }
   const loaded = await load();
   const value = (
-    key.startsWith('tmdb:season:') && Array.isArray(loaded) ? loaded.map(boundedEpisode) : loaded
+    key.startsWith('tmdb:season:') && Array.isArray(loaded)
+      ? loaded.map((episode: TmdbSeasonEpisode) => ({
+          ...boundedEpisode(episode),
+          ...(episode.stillPath && { stillPath: episode.stillPath.slice(0, 500) }),
+        }))
+      : loaded
   ) as T;
   await putNonFatal(ctx, { key, value, metricKey: 'tmdb' });
   return value;
@@ -164,7 +169,12 @@ async function snapshot<T>(
 async function refreshSnapshot<T>(ctx: SnapshotCtx, key: string, load: () => Promise<T>) {
   const loaded = await load();
   const value = (
-    key.startsWith('tmdb:season:') && Array.isArray(loaded) ? loaded.map(boundedEpisode) : loaded
+    key.startsWith('tmdb:season:') && Array.isArray(loaded)
+      ? loaded.map((episode: TmdbSeasonEpisode) => ({
+          ...boundedEpisode(episode),
+          ...(episode.stillPath && { stillPath: episode.stillPath.slice(0, 500) }),
+        }))
+      : loaded
   ) as T;
   await putNonFatal(ctx, { key, value, metricKey: 'tmdb' });
   return value;
@@ -283,10 +293,12 @@ export const internalSearchTv = internalAction({
 });
 export const internalTvDetails = internalAction({
   args: { tmdbId: v.number() },
-  handler: async (ctx, { tmdbId }) =>
-    snapshot(ctx, `tmdb:tv:base:${tmdbId}`, DETAIL_SNAPSHOT_MS, async () =>
+  handler: async (ctx, { tmdbId }) => {
+    validateTmdbId(tmdbId);
+    return snapshot(ctx, `tmdb:tv:base:${tmdbId}`, DETAIL_SNAPSHOT_MS, async () =>
       mapTvDetails(await request(ctx, `/tv/${tmdbId}`)),
-    ),
+    );
+  },
 });
 export const refreshMovieDetails = internalAction({
   args: { tmdbId: v.number(), force: v.optional(v.boolean()) },

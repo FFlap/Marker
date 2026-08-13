@@ -95,7 +95,11 @@ export async function providerFetch(url: string, init: RequestInit, options: Pro
         await pause(backoffMs(attempt));
         continue;
       }
-      const timedOut = error instanceof Error && error.name === 'AbortError';
+      const timedOut =
+        typeof error === 'object' &&
+        error !== null &&
+        'name' in error &&
+        error.name === 'AbortError';
       console.info(
         '[metadata-provider]',
         JSON.stringify({

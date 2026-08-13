@@ -26,8 +26,9 @@ const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() 
 const addDays = (date: Date, days: number) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 const deviceRegion = () => {
-  const part = Intl.DateTimeFormat().resolvedOptions().locale.split('-').at(-1)?.toUpperCase();
-  return part && /^[A-Z]{2}$/.test(part) ? part : 'US';
+  const locale = Intl.DateTimeFormat().resolvedOptions().locale;
+  const region = new Intl.Locale(locale).region?.toUpperCase();
+  return region && /^[A-Z]{2}$/.test(region) ? region : 'US';
 };
 
 export default function CalendarScreen() {

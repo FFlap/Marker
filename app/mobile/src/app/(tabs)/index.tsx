@@ -509,6 +509,7 @@ function Library() {
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});
   const [pendingWatchedMove, setPendingWatchedMove] = useState<LibraryItem>();
   const [statusMovePending, setStatusMovePending] = useState(false);
+  const statusMovePendingRef = useRef(false);
   const [nativeDrag, setNativeDrag] = useState<{
     item: LibraryItem;
     rank?: number;
@@ -684,7 +685,8 @@ function Library() {
       });
   };
   const performCategoryMove = async (item: LibraryItem, targetStatus: Status) => {
-    if (statusMovePending || effectiveStatus(item) === targetStatus) return;
+    if (statusMovePendingRef.current || effectiveStatus(item) === targetStatus) return;
+    statusMovePendingRef.current = true;
     const sourceStatus = effectiveStatus(item);
     const sourceItems = orderedForStatus(sourceStatus).filter((entry) => entry._id !== item._id);
     const targetItems = orderedForStatus(targetStatus).filter((entry) => entry._id !== item._id);
@@ -721,10 +723,11 @@ function Library() {
           : 'Couldn’t move this title',
       );
     }
+    statusMovePendingRef.current = false;
     setStatusMovePending(false);
   };
   const requestCategoryMove = (itemId: string, targetStatus: Status) => {
-    if (active || statusMovePending) return;
+    if (active || statusMovePendingRef.current) return;
     const item = items.find((entry) => entry._id === itemId);
     if (!item || effectiveStatus(item) === targetStatus) return;
     if (targetStatus === 'watched') {
@@ -827,9 +830,9 @@ function Library() {
     () =>
       Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
         listener: updateToolbarFromScroll,
-        useNativeDriver: Platform.OS !== 'web' && view === 'posters',
+        useNativeDriver: false,
       }),
-    [scrollY, updateToolbarFromScroll, view],
+    [scrollY, updateToolbarFromScroll],
   );
   const nativePosterAutoScroll = useMemo<NativeGridAutoScroll>(
     () => ({

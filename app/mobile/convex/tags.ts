@@ -272,8 +272,15 @@ export const searchPublic = query({
         ).flat();
         const titles = new Map<string, { title: string; posterPath?: string }>();
         const contributors = new Set(owners.map((owner) => String(owner.userId)));
-        for (const membership of memberships) {
-          const item = await ctx.db.get(membership.itemId);
+        const uniqueMemberships = [
+          ...new Map(
+            memberships.map((membership) => [String(membership.itemId), membership]),
+          ).values(),
+        ].slice(0, 60);
+        const items = await Promise.all(
+          uniqueMemberships.map((membership) => ctx.db.get(membership.itemId)),
+        );
+        for (const item of items) {
           if (!item || item.deletingAt !== undefined) continue;
           const key = `${item.mediaType}:${item.tmdbId}`;
           if (!titles.has(key))
@@ -331,18 +338,29 @@ export const publicDetails = query({
     if (!memberships.length) return null;
     const titles = new Map<string, ReturnType<typeof publicTitle> & { contributorCount: number }>();
     const contributors = new Set(collections.map((collection) => String(collection.userId)));
-    for (const membership of memberships) {
-      const item = await ctx.db.get(membership.itemId);
+    const membershipCounts = new Map<string, number>();
+    for (const membership of memberships)
+      membershipCounts.set(
+        String(membership.itemId),
+        (membershipCounts.get(String(membership.itemId)) ?? 0) + 1,
+      );
+    const uniqueMemberships = [
+      ...new Map(memberships.map((membership) => [String(membership.itemId), membership])).values(),
+    ].slice(0, 500);
+    const items = await Promise.all(
+      uniqueMemberships.map((membership) => ctx.db.get(membership.itemId)),
+    );
+    for (const item of items) {
       if (!item || item.deletingAt !== undefined) continue;
       const key = `${item.mediaType}:${item.tmdbId}`;
       const current = titles.get(key);
       if (current) {
-        current.contributorCount += 1;
+        current.contributorCount += membershipCounts.get(String(item._id)) ?? 1;
         continue;
       }
       titles.set(key, {
         ...publicTitle(item),
-        contributorCount: 1,
+        contributorCount: membershipCounts.get(String(item._id)) ?? 1,
       });
     }
     return {

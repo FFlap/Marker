@@ -31,7 +31,19 @@ const records = (value: unknown): Json[] =>
   Array.isArray(value)
     ? value.filter((entry): entry is Json => typeof entry === 'object' && entry !== null)
     : [];
-const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+const isDate = (value: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
+};
 const inRange = (date: string, startDate: string, endDate: string) =>
   date >= startDate && date <= endDate;
 

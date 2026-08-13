@@ -157,16 +157,19 @@ function Episodes() {
     episodeMutationQueues.current.set(key, request);
     try {
       await request;
+      return true;
     } catch {
       toast.show('Couldn’t update this episode');
-    }
-    if (episodeMutationQueues.current.get(key) === request) {
-      episodeMutationQueues.current.delete(key);
-      setPending((current) => {
-        const next = new Set(current);
-        next.delete(key);
-        return next;
-      });
+      return false;
+    } finally {
+      if (episodeMutationQueues.current.get(key) === request) {
+        episodeMutationQueues.current.delete(key);
+        setPending((current) => {
+          const next = new Set(current);
+          next.delete(key);
+          return next;
+        });
+      }
     }
   };
 
@@ -410,19 +413,25 @@ function Episodes() {
             <RatingControl
               value={draftRating}
               onChange={(rating) => {
+                const previous = draftRating;
                 setDraftRating(rating);
                 void updateEpisode(
                   editing,
                   rating === undefined ? { clearRating: true } : { rating },
-                );
+                ).then((saved) => {
+                  if (!saved) setDraftRating(previous);
+                });
               }}
             />
             <TagEditor
               tags={draftTags}
               suggestions={favoriteTags}
               onChange={(tags) => {
+                const previous = draftTags;
                 setDraftTags(tags);
-                void updateEpisode(editing, { tags });
+                void updateEpisode(editing, { tags }).then((saved) => {
+                  if (!saved) setDraftTags(previous);
+                });
               }}
             />
             {tab === 'favorites' && (

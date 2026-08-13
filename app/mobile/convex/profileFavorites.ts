@@ -64,9 +64,9 @@ export const eligible = query({
         .take(50),
     ]);
     const selected = new Set(favorites.map((favorite) => favorite.itemId));
-    const eligibleItems = items.filter(
-      (item) => item.deletingAt === undefined && !selected.has(item._id),
-    );
+    const eligibleItems = items
+      .filter((item) => item.deletingAt === undefined && !selected.has(item._id))
+      .slice(0, 200);
     const titles = await activeResolvedTitles(ctx, eligibleItems);
     return eligibleItems.map((item) => {
       const title = titles.get(mediaIdentityKey(item));

@@ -97,14 +97,16 @@ export default function GlobalTagScreen() {
           compact
           style={s.search}
         />
-        {collection === undefined ? (
+        {!tag ? (
+          <EmptyState title="Public tag not found" detail="The tag address is incomplete." />
+        ) : collection === undefined ? (
           <PosterGridSkeleton accessibilityLabel="Loading public tag" />
         ) : collection === null ? (
           <EmptyState title="Public tag not found" detail="This tag may have been made private." />
         ) : (
           <PinchDensity columns={gridColumns} onChange={updateGridColumns}>
             <Text style={s.summary}>
-              {collection.titles.length} {collection.titles.length === 1 ? 'title' : 'titles'} from{' '}
+              {titles.length} {titles.length === 1 ? 'title' : 'titles'} from{' '}
               {collection.contributorCount}{' '}
               {collection.contributorCount === 1 ? 'person' : 'people'}
             </Text>

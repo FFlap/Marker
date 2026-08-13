@@ -17,15 +17,22 @@ try {
   throw new Error('npm audit did not return valid JSON');
 }
 
-const advisories = Object.values(report.vulnerabilities ?? {}).flatMap((vulnerability) =>
-  vulnerability.via
-    .filter((via) => typeof via === 'object' && via !== null)
-    .map((via) => ({
-      name: vulnerability.name,
-      severity: via.severity,
-      id: new URL(via.url).pathname.split('/').at(-1),
-    })),
-);
+const advisories = Object.values(report.vulnerabilities ?? {}).flatMap((vulnerability) => {
+  const advisoryEntries = (vulnerability.via ?? []).filter(
+    (via) => typeof via === 'object' && via !== null,
+  );
+  return advisoryEntries.map((via) => {
+    try {
+      return {
+        name: vulnerability.name,
+        severity: via.severity ?? vulnerability.severity,
+        id: new URL(via.url).pathname.split('/').at(-1),
+      };
+    } catch {
+      return { name: vulnerability.name, severity: via.severity ?? vulnerability.severity };
+    }
+  });
+});
 const blocking = advisories.filter(
   ({ severity, id }) =>
     (severity === 'high' || severity === 'critical') && !allowedAdvisories.has(id),

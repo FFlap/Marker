@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -40,6 +40,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const [visible, setVisible] = useState(false);
   const [motionReduced, setMotionReduced] = useState(false);
   const [progress] = useState(() => new Animated.Value(0));
+  const pendingClose = useRef<(() => void) | undefined>(undefined);
   const profile = useQuery(api.profiles.me);
 
   useEffect(() => {
@@ -52,6 +53,14 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   }, []);
 
   const openDrawer = useCallback(() => {
+    if (pendingClose.current) {
+      progress.stopAnimation();
+      setVisible(false);
+      const callback = pendingClose.current;
+      pendingClose.current = undefined;
+      callback();
+      return;
+    }
     progress.stopAnimation();
     progress.setValue(motionReduced ? 1 : 0);
     setVisible(true);
@@ -69,11 +78,14 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
 
   const closeDrawer = useCallback(
     (onClosed?: () => void) => {
+      pendingClose.current = onClosed ?? pendingClose.current;
       progress.stopAnimation();
       if (motionReduced) {
         progress.setValue(0);
         setVisible(false);
-        onClosed?.();
+        const callback = pendingClose.current;
+        pendingClose.current = undefined;
+        callback?.();
         return;
       }
       Animated.timing(progress, {
@@ -84,7 +96,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       }).start(({ finished }) => {
         if (!finished) return;
         setVisible(false);
-        onClosed?.();
+        const callback = pendingClose.current;
+        pendingClose.current = undefined;
+        callback?.();
       });
     },
     [motionReduced, progress],

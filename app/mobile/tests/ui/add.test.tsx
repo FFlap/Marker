@@ -126,6 +126,7 @@ describe('add flow', () => {
 
   it('marks every episode watched when a TV show is added as Watched', async () => {
     mockSearch.mockResolvedValue([{ id: 1396, mediaType: 'tv', title: 'Breaking Bad' }]);
+    mockResolvedTitle = { runtime: 47, episodeRunTime: [47], genres: ['Drama'] };
     mockAddItemAndMarkWatched.mockResolvedValue('item-id');
     const view = await render(
       <ToastProvider>

@@ -98,7 +98,9 @@ export default function CalendarDayScreen() {
                     <Text style={s.eventMeta}>
                       {event.kind === 'movie'
                         ? 'Movie release'
-                        : `Season ${event.season} · Episode ${event.episode}`}
+                        : event.season !== undefined && event.episode !== undefined
+                          ? `Season ${event.season} · Episode ${event.episode}`
+                          : 'New episode'}
                     </Text>
                   </View>
                 </View>

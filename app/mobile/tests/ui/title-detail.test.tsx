@@ -218,7 +218,7 @@ describe('Explore title metadata subscriptions', () => {
     await act(async () => fireEvent.press(view.getByText('Add Entry')));
     await act(async () => fireEvent.press(view.getByText('Watched', { exact: true })));
     await act(async () =>
-      fireEvent.press(await view.findByRole('button', { name: 'Dismiss drawer' })),
+      fireEvent.press(view.getAllByRole('button', { name: 'Add to library' })[0]!),
     );
 
     await waitFor(() =>
@@ -340,7 +340,7 @@ describe('Explore title metadata subscriptions', () => {
     expect(view.getByTestId('title-detail-name').props.children).toBe('Canonical Frieren');
     await act(async () => fireEvent.press(view.getByText('Add Entry')));
     await act(async () =>
-      fireEvent.press(await view.findByRole('button', { name: 'Dismiss drawer' })),
+      fireEvent.press(view.getAllByRole('button', { name: 'Add to library' })[0]!),
     );
     await waitFor(() =>
       expect(mockAddItem).toHaveBeenCalledWith(

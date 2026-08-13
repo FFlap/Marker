@@ -69,6 +69,7 @@ export default function Settings() {
       await signOut();
     } catch {
       toast.show('Couldn’t sign out');
+    } finally {
       setPending((current) => {
         const next = new Set(current);
         next.delete('signout');

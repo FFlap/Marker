@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { RatingControl, Stepper, TagEditor } from '@/components/ui/library-controls';
 import { Button, Segmented } from '@/components/ui/primitives';
@@ -61,6 +61,10 @@ function LibraryEntryContent({
     dirty: false,
     wasOpen: open,
   }));
+  const submitted = useRef(false);
+  useEffect(() => {
+    if (open) submitted.current = false;
+  }, [open]);
   if (open !== editor.wasOpen) {
     setEditor(
       open
@@ -110,7 +114,10 @@ function LibraryEntryContent({
       onOpenChange={(nextOpen) => {
         if (nextOpen) return;
         onOpenChange(false);
-        if (mode === 'add' || editor.dirty) void onSubmit(draft);
+        if (mode === 'update' && editor.dirty && !submitted.current) {
+          submitted.current = true;
+          void onSubmit(draft);
+        }
       }}
     >
       <DrawerContent className="max-w-lg gap-6 rounded-2xl border-border bg-background p-6">
@@ -154,6 +161,8 @@ function LibraryEntryContent({
               title={saving ? 'Adding…' : 'Add to library'}
               disabled={saving}
               onPress={() => {
+                if (submitted.current) return;
+                submitted.current = true;
                 onOpenChange(false);
                 void onSubmit(draft);
               }}

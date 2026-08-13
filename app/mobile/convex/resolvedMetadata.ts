@@ -63,6 +63,7 @@ const resolvedEpisodeValidator = v.object({
   overview: v.optional(v.string()),
   runtime: v.optional(v.number()),
   imageUrl: v.optional(v.string()),
+  stillPath: v.optional(v.string()),
   airDate: v.optional(v.string()),
   providerEpisodeId: v.optional(v.number()),
 });
@@ -2968,7 +2969,7 @@ async function resolveAndCommitCanonical(
       metadataProvider: title.metadataProvider,
       episodes: seasonResult.episodes,
       episodeCount: seasonResult.episodes.length,
-      chunkCount: Math.ceil(seasonResult.episodes.length / 120),
+      chunkCount: Math.ceil(seasonResult.episodes.length / EPISODES_PER_CHUNK),
       refreshedAt: seasonResult.persisted
         ? refreshedAt
         : (currentSeason?.refreshedAt ?? refreshedAt),

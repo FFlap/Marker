@@ -27,6 +27,7 @@ const resolvedEpisode = v.object({
   overview: v.optional(v.string()),
   runtime: v.optional(v.number()),
   imageUrl: v.optional(v.string()),
+  stillPath: v.optional(v.string()),
   airDate: v.optional(v.string()),
   providerEpisodeId: v.optional(v.number()),
 });
@@ -315,6 +316,7 @@ export default defineSchema({
     rebuildTotal: v.optional(v.number()),
     rebuildWatchedCount: v.optional(v.number()),
     rebuildRevision: v.optional(v.number()),
+    rebuildAttempts: v.optional(v.number()),
   })
     .index('by_item', ['itemId', 'season'])
     .index('by_user', ['userId']),

@@ -53,6 +53,24 @@ const initial: LibraryEntryDraft = {
 };
 
 describe('library entry drawer', () => {
+  it('does not add an entry when the add drawer is dismissed', async () => {
+    const onSubmit = jest.fn();
+    const view = await render(
+      <LibraryEntryDrawer
+        open
+        onOpenChange={jest.fn()}
+        mode="add"
+        initial={initial}
+        suggestions={[]}
+        saving={false}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    await fireEvent.press(view.getByRole('button', { name: 'Dismiss drawer' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('only shows times watched for Watched entries and increments the count', async () => {
     const onSubmit = jest.fn();
     const view = await render(

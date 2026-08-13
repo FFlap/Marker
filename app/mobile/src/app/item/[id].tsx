@@ -292,14 +292,14 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       (entry) => entry.season === seasonNumber && entry.episode === episode,
     );
     const draftKey = `${seasonNumber}:${episode}`;
-    const previous = episodeDrafts[draftKey] ?? { rating: saved?.rating, tags: saved?.tags ?? [] };
+    const savedValue = field === 'rating' ? saved?.rating : (saved?.tags ?? []);
     const key = `episode:${seasonNumber}:${episode}:${field}`;
     const version = (fieldVersions.current.get(key) ?? 0) + 1;
     fieldVersions.current.set(key, version);
-    setEpisodeDrafts((current) => ({
-      ...current,
-      [draftKey]: { ...previous, [field]: value },
-    }));
+    setEpisodeDrafts((current) => {
+      const previous = current[draftKey] ?? { rating: saved?.rating, tags: saved?.tags ?? [] };
+      return { ...current, [draftKey]: { ...previous, [field]: value } };
+    });
     const args =
       field === 'rating'
         ? value === undefined
@@ -309,7 +309,10 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     void setEpisode({ itemId, season: seasonNumber, episode, ...args }).catch(() => {
       if (fieldVersions.current.get(key) === version) {
         fieldVersions.current.delete(key);
-        setEpisodeDrafts((current) => ({ ...current, [draftKey]: previous }));
+        setEpisodeDrafts((current) => {
+          const latest = current[draftKey] ?? { rating: saved?.rating, tags: saved?.tags ?? [] };
+          return { ...current, [draftKey]: { ...latest, [field]: savedValue } };
+        });
       }
       toast.show('Couldn’t update this episode');
     });

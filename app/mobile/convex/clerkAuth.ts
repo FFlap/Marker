@@ -56,7 +56,12 @@ function usernameCandidate(identity: UserIdentity, requestedUsername?: string) {
     ?.replace(/[^A-Za-z0-9_]/g, '');
   const stem = emailPrefix && emailPrefix.length >= 3 ? emailPrefix.slice(0, 16) : 'marker';
   const suffix = identity.subject.replace(/[^A-Za-z0-9]/g, '').slice(-6) || 'user';
-  return `${stem}_${suffix}`.slice(0, 24);
+  const candidate = `${stem}_${suffix}`.slice(0, 24);
+  try {
+    return validateUsername(candidate).username;
+  } catch {
+    return validateUsername(`marker_${suffix}`.slice(0, 24)).username;
+  }
 }
 
 async function availableUsername(

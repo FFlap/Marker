@@ -20,6 +20,7 @@ export const resolvedEpisodeValidator = v.object({
   overview: v.optional(v.string()),
   runtime: v.optional(v.number()),
   imageUrl: v.optional(v.string()),
+  stillPath: v.optional(v.string()),
   airDate: v.optional(v.string()),
   providerEpisodeId: v.optional(v.number()),
 });

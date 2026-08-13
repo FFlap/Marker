@@ -62,6 +62,12 @@ export const recordWatch = httpAction(async (ctx, request) => {
     return new Response(JSON.stringify({ error: 'account-not-linked' }), { status: 409, headers });
   let body: unknown;
   try {
+    const contentLength = request.headers.get('content-length');
+    if (contentLength !== null) {
+      const declaredLength = Number(contentLength);
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES)
+        return new Response(JSON.stringify({ error: 'invalid-request' }), { status: 413, headers });
+    }
     const text = await request.text();
     if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES)
       return new Response(JSON.stringify({ error: 'invalid-request' }), { status: 413, headers });

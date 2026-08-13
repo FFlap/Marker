@@ -17,6 +17,7 @@ type TouchOptions = { season?: number; force?: boolean };
 const EXPIRY_GRACE_MS = 1_000;
 const FAILED_REPOLL_MIN_MS = 5_000;
 const FAILED_REPOLL_MAX_MS = 5 * 60_000;
+const INFLIGHT_REPOLL_MIN_MS = 250;
 
 type TouchDecision = {
   reason?: string;
@@ -62,7 +63,7 @@ function useMetadataExpiryTimer(
     if ((state !== 'inFlight' && state !== 'failed') || relativeDelay === undefined) return;
     const armReason = authoritativeArm?.reason ?? state;
     const timerDelay = Math.max(
-      state === 'failed' ? FAILED_REPOLL_MIN_MS : 0,
+      state === 'failed' ? FAILED_REPOLL_MIN_MS : INFLIGHT_REPOLL_MIN_MS,
       relativeDelay + (armReason === 'inFlight' ? EXPIRY_GRACE_MS : 0),
     );
     const timer = setTimeout(
@@ -299,7 +300,7 @@ export function useTitleView(
   }, [mediaType, selectedSeason, title, tmdbId, touch]);
   const requestState = args ? subscribedRequestState : itemRequestState;
   const retouch = args ? touchTitle : touchItemView;
-  useMetadataExpiryTimer(autoRecovery ? key : undefined, requestState, retouch);
+  useMetadataExpiryTimer(autoRecovery ? displayedRequestKey : undefined, requestState, retouch);
 
   return {
     view: view === undefined ? undefined : { ...view, requestState },

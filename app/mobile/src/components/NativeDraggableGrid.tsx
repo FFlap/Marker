@@ -137,6 +137,7 @@ export function NativeDraggableGrid<T>({
   const gridOrigin = useRef({ x: 0, y: 0 });
   const cellRefs = useRef(new Map<string, View>());
   const slotLayouts = useRef(new Map<number, LayoutRectangle>());
+  const slotOwners = useRef(new Map<number, string>());
   const session = useRef<DragSession<T> | undefined>(undefined);
   const onMotionInitRef = useRef(onMotionInit);
   const autoScrollRef = useRef(autoScroll);
@@ -321,6 +322,7 @@ export function NativeDraggableGrid<T>({
             onTouchStateChange={onTouchStateChange}
             renderItem={renderItem}
             slotLayouts={slotLayouts}
+            slotOwners={slotOwners}
           />
         );
       })}
@@ -344,6 +346,7 @@ function NativeGridCellImpl<T>({
   onTouchStateChange,
   renderItem,
   slotLayouts,
+  slotOwners,
   touchTranslate,
 }: {
   active: boolean;
@@ -361,10 +364,12 @@ function NativeGridCellImpl<T>({
   onTouchStateChange?: (touching: boolean) => void;
   renderItem: (event: { index: number; isActive: boolean; item: T }) => ReactNode;
   slotLayouts: { current: Map<number, LayoutRectangle> };
+  slotOwners: { current: Map<number, string> };
   touchTranslate: SharedValue<number>;
 }) {
   const cellMap = cellRefs.current;
   const slotMap = slotLayouts.current;
+  const ownerMap = slotOwners.current;
   const setCellRef = useCallback(
     (node: View | null) => {
       if (node) cellMap.set(itemKey, node);
@@ -373,8 +378,20 @@ function NativeGridCellImpl<T>({
     [cellMap, itemKey],
   );
   const saveSlotLayout = useCallback(
-    (layout: LayoutRectangle) => slotMap.set(index, layout),
-    [index, slotMap],
+    (layout: LayoutRectangle) => {
+      slotMap.set(index, layout);
+      ownerMap.set(index, itemKey);
+    },
+    [index, itemKey, ownerMap, slotMap],
+  );
+  useEffect(
+    () => () => {
+      if (ownerMap.get(index) === itemKey) {
+        ownerMap.delete(index);
+        slotMap.delete(index);
+      }
+    },
+    [index, itemKey, ownerMap, slotMap],
   );
   const gesture = useMemo(
     () =>

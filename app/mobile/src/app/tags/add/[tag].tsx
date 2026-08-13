@@ -51,9 +51,12 @@ export default function AddTitlesToTagScreen() {
     if (!selected.size || saving) return;
     setSaving(true);
     const ids = [...selected] as Id<'items'>[];
+    let added = 0;
     try {
       for (let start = 0; start < ids.length; start += BATCH_SIZE) {
-        await addTagToItems({ tag, itemIds: ids.slice(start, start + BATCH_SIZE) });
+        const batch = ids.slice(start, start + BATCH_SIZE);
+        await addTagToItems({ tag, itemIds: batch });
+        added += batch.length;
       }
       toast.show(`${ids.length} ${ids.length === 1 ? 'title' : 'titles'} added to ${tag}`);
       if (router.canGoBack()) router.back();
@@ -63,7 +66,11 @@ export default function AddTitlesToTagScreen() {
           params: { tag },
         });
     } catch {
-      toast.show(`Couldn’t add titles to ${tag}`);
+      toast.show(
+        added
+          ? `Only ${added} of ${ids.length} ${ids.length === 1 ? 'title was' : 'titles were'} added to ${tag}`
+          : `Couldn’t add titles to ${tag}`,
+      );
       setSaving(false);
     }
   };

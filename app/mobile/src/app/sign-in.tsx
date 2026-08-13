@@ -208,7 +208,7 @@ export default function SignIn() {
         if (currentSignUp.status === 'complete') {
           const finalized = await currentSignUp.finalize();
           if (finalized.error) {
-            console.error('[Marker auth] Could not activate verified sign-up', finalized.error);
+            console.warn('[Marker auth] Could not activate verified sign-up');
             setError(friendly(finalized.error, 'session'));
           }
         } else {
@@ -309,7 +309,8 @@ export default function SignIn() {
             .slice(0, 16) || 'marker';
         const generated = `${prefix}_${Math.random().toString(36).slice(2, 6)}`.slice(0, 24);
         throwIfError(await result.signUp.update({ username: generated }));
-        if (result.signUp.status === 'complete') throwIfError(await result.signUp.finalize());
+        const currentSignUp = (await client.signUp.reload()).__internal_future;
+        if (currentSignUp.status === 'complete') throwIfError(await currentSignUp.finalize());
       }
     } catch (cause) {
       setError(friendly(cause, 'oauth'));

@@ -165,7 +165,8 @@ async function fetchEpisodes(
       `/series/${tvdbId}/episodes/${order}/eng?${query.toString()}`,
       true,
     );
-    const mapped = records(record(payload.data).episodes).flatMap((entry) => {
+    const rawEpisodes = records(record(payload.data).episodes);
+    const mapped = rawEpisodes.flatMap((entry) => {
       const episode = mapEpisode(entry);
       if (!episode || seen.has(episode.id)) return [];
       seen.add(episode.id);
@@ -177,7 +178,7 @@ async function fetchEpisodes(
       break;
     }
     const next = record(payload.links).next;
-    hasNextPage = next !== null && next !== undefined && next !== '' && mapped.length > 0;
+    hasNextPage = next !== null && next !== undefined && next !== '' && rawEpisodes.length > 0;
     if (!hasNextPage) break;
   }
   if (hasNextPage) throw new Error('TVDB episode pagination exceeded the safety limit');
