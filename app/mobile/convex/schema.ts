@@ -231,6 +231,7 @@ export default defineSchema({
     .index('by_user', ['userId'])
     .index('by_user_updated_at', ['userId', 'updatedAt'])
     .index('by_user_status', ['userId', 'status', 'rank'])
+    .index('by_user_status_title', ['userId', 'status', 'normalizedTitle'])
     .index('by_user_normalized', ['userId', 'normalizedTitle'])
     .index('by_user_tmdb', ['userId', 'mediaType', 'tmdbId'])
     .index('by_media_tmdb', ['mediaType', 'tmdbId']),
@@ -269,6 +270,7 @@ export default defineSchema({
     ratingCount: v.number(),
     tagCounts: v.array(watchedTagCount),
     restartRequested: v.boolean(),
+    lastProgressAt: v.optional(v.number()),
   }).index('by_user', ['userId']),
   tagCollections: defineTable({
     userId: v.id('users'),

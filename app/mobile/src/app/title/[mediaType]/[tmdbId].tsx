@@ -199,6 +199,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const failed =
     !detail && (titleView?.requestState?.state === 'failed' || touchError !== undefined);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [tagPrefix, setTagPrefix] = useState('');
   const [entrySaving, setEntrySaving] = useState(false);
   const canonicalSeason = useSeasonView(
     mediaType === 'tv' && validId ? { tmdbId, season } : undefined,
@@ -234,7 +235,11 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     retouchSeason: () => touchTitle({ season }),
   });
 
-  const suggestions = useQuery(api.library.listTagSuggestions, entryOpen ? {} : 'skip') ?? [];
+  const suggestions =
+    useQuery(
+      api.library.listTagSuggestions,
+      entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
+    ) ?? [];
   const meta = {
     title: hero?.title ?? '',
     posterPath: hero?.posterPath,
@@ -616,10 +621,14 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
 
       <LibraryEntryDrawer
         open={entryOpen}
-        onOpenChange={setEntryOpen}
+        onOpenChange={(open) => {
+          setEntryOpen(open);
+          if (!open) setTagPrefix('');
+        }}
         mode="add"
         initial={initialEntry}
         suggestions={suggestions}
+        onTagPrefixChange={setTagPrefix}
         saving={entrySaving}
         onSubmit={saveEntry}
       />

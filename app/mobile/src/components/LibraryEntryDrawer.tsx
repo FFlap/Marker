@@ -30,6 +30,7 @@ type EntryContentProps = {
   watchedHint?: string;
   onRemove?: () => void;
   removePending?: boolean;
+  onTagPrefixChange?: (prefix: string) => void;
 };
 
 export function LibraryEntryDrawer({
@@ -49,6 +50,7 @@ function LibraryEntryContent({
   watchedHint,
   onRemove,
   removePending = false,
+  onTagPrefixChange,
   open,
   onOpenChange,
 }: EntryContentProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -154,6 +156,7 @@ function LibraryEntryContent({
           <TagEditor
             tags={draft.tags}
             suggestions={suggestions}
+            onInputChange={onTagPrefixChange}
             onChange={(tags) => updateDraft((current) => ({ ...current, tags }))}
           />
           {mode === 'add' && (

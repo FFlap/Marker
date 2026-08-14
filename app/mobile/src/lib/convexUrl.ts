@@ -8,7 +8,14 @@ export function getConvexSiteUrl({
   convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL,
 }: ConvexUrlOptions = {}) {
   const override = siteUrl?.trim();
-  if (override) return override;
+  if (override) {
+    try {
+      const url = new URL(override);
+      return /^https?:$/.test(url.protocol) ? url.origin : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   const deploymentUrl = convexUrl?.trim();
   if (!deploymentUrl) return undefined;

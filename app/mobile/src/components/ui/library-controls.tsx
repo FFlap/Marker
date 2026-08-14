@@ -128,17 +128,20 @@ export function TagEditor({
   tags,
   onChange,
   suggestions = [],
+  onInputChange,
 }: {
   tags: string[];
   onChange: (tags: string[]) => void;
   suggestions?: string[];
+  onInputChange?: (value: string) => void;
 }) {
-  const selectedTags = new Set(tags);
+  const selectedTags = new Set(tags.map((tag) => tag.trim().toLocaleLowerCase()));
   const [text, setText] = useState('');
   const add = () => {
     const tag = text.trim();
-    if (tag && !tags.includes(tag)) onChange([...tags, tag]);
+    if (tag && !selectedTags.has(tag.toLocaleLowerCase())) onChange([...tags, tag]);
     setText('');
+    onInputChange?.('');
   };
   return (
     <View>
@@ -146,7 +149,10 @@ export function TagEditor({
       <View style={styles.tagInput}>
         <Input
           value={text}
-          onChangeText={setText}
+          onChangeText={(value) => {
+            setText(value);
+            onInputChange?.(value);
+          }}
           onSubmitEditing={add}
           placeholder="Add a tag"
           style={styles.tagTextInput}
@@ -162,7 +168,7 @@ export function TagEditor({
           />
         ))}
         {suggestions
-          .filter((tag) => !selectedTags.has(tag))
+          .filter((tag) => !selectedTags.has(tag.trim().toLocaleLowerCase()))
           .slice(0, 5)
           .map((tag) => (
             <Chip key={tag} label={`+ ${tag}`} onPress={() => onChange([...tags, tag])} />

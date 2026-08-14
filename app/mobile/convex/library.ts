@@ -272,14 +272,18 @@ export const getOwnedItemByTmdb = query({
 });
 
 export const listTagSuggestions = query({
-  args: {},
+  args: { prefix: v.optional(v.string()) },
   returns: v.array(v.string()),
-  handler: async (ctx) => {
+  handler: async (ctx, { prefix: rawPrefix }) => {
     const userId = await requireUser(ctx);
+    const prefix = normalizedTagKey(rawPrefix ?? '').slice(0, 40);
     const collections = await ctx.db
       .query('tagCollections')
-      .withIndex('by_user_tag', (query) => query.eq('userId', userId))
-      .take(2_000);
+      .withIndex('by_user_tag', (query) => {
+        const owned = query.eq('userId', userId);
+        return prefix ? owned.gte('tagKey', prefix).lt('tagKey', `${prefix}\uffff`) : owned;
+      })
+      .take(prefix ? 50 : 200);
     return collections
       .map((collection) => collection.label)
       .sort((left, right) => left.localeCompare(right));

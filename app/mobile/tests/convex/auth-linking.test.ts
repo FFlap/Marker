@@ -1,7 +1,7 @@
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
-import { api } from '../../convex/_generated/api';
+import { api, internal } from '../../convex/_generated/api';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 afterEach(() => vi.unstubAllEnvs());
@@ -64,6 +64,34 @@ describe('Clerk account identity linking', () => {
         .unique(),
     );
     expect(after?.restartRequested).toBe(false);
+  });
+
+  it('restarts profile stats work that stopped making progress', async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({ subject: 'user_stalled_stats' });
+    const userId = await asUser.mutation(api.clerkAuth.ensureCurrentUser, {});
+    const refreshId = await t.run(async (ctx) => {
+      const refresh = await ctx.db
+        .query('profileStatsRefreshes')
+        .withIndex('by_user', (query) => query.eq('userId', userId))
+        .unique();
+      if (!refresh) throw new Error('Expected a profile refresh');
+      await ctx.db.patch(refresh._id, {
+        restartRequested: false,
+        lastProgressAt: Date.now() - 10 * 60 * 1_000,
+      });
+      return refresh._id;
+    });
+
+    const beforeRestart = Date.now();
+    await t.mutation(internal.profileStatsRefresh.start, { userId });
+    expect(await t.run((ctx) => ctx.db.get(refreshId))).toMatchObject({
+      restartRequested: true,
+      lastProgressAt: expect.any(Number),
+    });
+    expect((await t.run((ctx) => ctx.db.get(refreshId)))?.lastProgressAt).toBeGreaterThanOrEqual(
+      beforeRestart,
+    );
   });
 
   it('does not fall back to email or let a second Clerk identity claim a profile', async () => {

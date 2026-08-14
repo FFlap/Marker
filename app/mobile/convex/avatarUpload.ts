@@ -36,13 +36,13 @@ export const upload = httpAction(async (ctx, request) => {
     return json({ error: 'invalid-upload' }, 400);
   }
   const contentType = request.headers.get('content-type')?.split(';', 1)[0]?.toLocaleLowerCase();
-  const contentLength = Number(request.headers.get('content-length'));
-  if (
-    !contentType ||
-    !IMAGE_TYPES.has(contentType) ||
-    (Number.isFinite(contentLength) && contentLength > MAX_AVATAR_BYTES)
-  )
-    return json({ error: 'invalid-image' }, 415);
+  if (!contentType || !IMAGE_TYPES.has(contentType)) return json({ error: 'invalid-image' }, 415);
+  const contentLengthHeader = request.headers.get('content-length')?.trim();
+  if (!contentLengthHeader || !/^[1-9]\d*$/.test(contentLengthHeader))
+    return json({ error: 'invalid-image' }, 400);
+  const contentLength = Number(contentLengthHeader);
+  if (!Number.isSafeInteger(contentLength) || contentLength > MAX_AVATAR_BYTES)
+    return json({ error: 'invalid-image' }, 413);
   const blob = await request.blob();
   if (blob.size > MAX_AVATAR_BYTES) return json({ error: 'invalid-image' }, 413);
   const storageId = await ctx.storage.store(blob);

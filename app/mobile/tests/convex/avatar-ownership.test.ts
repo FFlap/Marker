@@ -17,7 +17,7 @@ describe('avatar upload ownership', () => {
     const uploadPath = await uploader.mutation(api.profiles.generateAvatarUploadUrl, {});
     const request = {
       method: 'POST',
-      headers: { 'Content-Type': 'image/png' },
+      headers: { 'Content-Type': 'image/png', 'Content-Length': '5' },
       body: new Blob(['image'], { type: 'image/png' }),
     } satisfies RequestInit;
 

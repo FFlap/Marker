@@ -15,8 +15,8 @@ afterEach(() => vi.useRealTimers());
 async function setup() {
   const t = convexTest(schema, modules);
   const clerkId = 'user_episodes_test';
-  await t.run((ctx) => ctx.db.insert('users', { clerkId }));
-  return { t, asUser: t.withIdentity({ subject: clerkId }) };
+  const userId = await t.run((ctx) => ctx.db.insert('users', { clerkId }));
+  return { t, userId, asUser: t.withIdentity({ subject: clerkId }) };
 }
 
 const add = (
@@ -922,6 +922,51 @@ describe('episode hub and profile favorites', () => {
     await asUser.mutation(api.profileFavorites.add, { itemId: anime });
     expect((await asUser.query(api.stats.profile, {})).favorites).toContainEqual(
       expect.objectContaining({ title: 'Favorite Anime', mediaType: 'tv', isAnime: true }),
+    );
+  });
+
+  it('finds eligible favorites beyond the initial picker page', async () => {
+    const { t, userId, asUser } = await setup();
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      for (let index = 0; index < 251; index += 1) {
+        const title = `Alpha movie ${String(index).padStart(3, '0')}`;
+        await ctx.db.insert('items', {
+          userId,
+          tmdbId: 10_000 + index,
+          mediaType: 'movie',
+          title,
+          normalizedTitle: title.toLocaleLowerCase(),
+          isAnime: false,
+          status: 'watched',
+          timesWatched: 1,
+          tags: [],
+          rank: index,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await ctx.db.insert('items', {
+        userId,
+        tmdbId: 20_000,
+        mediaType: 'movie',
+        title: 'Zulu Search Target',
+        normalizedTitle: 'zulu search target',
+        isAnime: false,
+        status: 'watched',
+        timesWatched: 1,
+        tags: [],
+        rank: 252,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    expect(await asUser.query(api.profileFavorites.eligible, {})).not.toContainEqual(
+      expect.objectContaining({ title: 'Zulu Search Target' }),
+    );
+    expect(await asUser.query(api.profileFavorites.eligible, { search: 'zulu' })).toContainEqual(
+      expect.objectContaining({ title: 'Zulu Search Target' }),
     );
   });
 });

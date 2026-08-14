@@ -24,7 +24,6 @@ type PublicTitle = {
   posterPath?: string;
   overview?: string;
   releaseDate?: string;
-  contributorCount: number;
 };
 type PublicCollection = {
   tag: string;
@@ -90,13 +89,12 @@ export default function GlobalTagScreen() {
     for (const page of available)
       for (const title of page.titles) {
         const key = `${title.mediaType}:${title.tmdbId}`;
-        const existing = titles.get(key);
-        titles.set(key, {
-          ...title,
-          contributorCount: (existing?.contributorCount ?? 0) + title.contributorCount,
-        });
+        if (!titles.has(key)) titles.set(key, title);
       }
-    return { ...available[0], titles: [...titles.values()] };
+    return {
+      ...available[0],
+      titles: [...titles.values()].sort((left, right) => left.title.localeCompare(right.title)),
+    };
   }, [cachedTag, collectionPages, tag]);
   const nextCursor = collectionPages.at(-1)?.value?.nextCursor;
   const library = useQuery(api.library.listItems);
@@ -236,9 +234,6 @@ function TitleSection({
             <Text numberOfLines={2} style={s.cardTitle}>
               {item.title}
             </Text>
-            <Text style={s.cardMeta}>
-              {item.contributorCount} {item.contributorCount === 1 ? 'collection' : 'collections'}
-            </Text>
           </NativePressable>
         ))}
       </View>
@@ -283,6 +278,5 @@ const s = createStyles({
   card: { minWidth: 0 },
   poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 12 },
   cardTitle: { color: colors.text, fontSize: 12, lineHeight: 16, fontWeight: '600', marginTop: 6 },
-  cardMeta: { color: colors.muted, fontSize: 9, marginTop: 3 },
   pressed: { opacity: 0.72 },
 });

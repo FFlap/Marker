@@ -10,6 +10,7 @@ import { PosterImage } from '@/components/ui/PosterImage';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { Input } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 import { createStyles } from '@/lib/typography';
 
@@ -82,13 +83,18 @@ export function ProfileFavorites({
   favorites: ProfileFavorite[];
   interactive?: boolean;
 }) {
-  const eligible = useQuery(api.profileFavorites.eligible, interactive ? {} : 'skip') as
-    EligibleFavorite[] | undefined;
+  const [favoriteSearch, setFavoriteSearch] = useState('');
+  const [pickerType, setPickerType] = useState<FavoriteSection>();
+  const eligible = useQuery(
+    api.profileFavorites.eligible,
+    interactive && pickerType !== undefined
+      ? { search: favoriteSearch.trim() || undefined }
+      : 'skip',
+  ) as EligibleFavorite[] | undefined;
   const add = useMutation(api.profileFavorites.add);
   const remove = useMutation(api.profileFavorites.remove);
   const reorder = useMutation(api.profileFavorites.reorder);
   const toast = useToast();
-  const [pickerType, setPickerType] = useState<FavoriteSection>();
   const [pendingId, setPendingId] = useState<string>();
   const [orders, setOrders] = useState<Partial<Record<FavoriteSection, string[]>>>({});
   const reorderPending = useRef(false);
@@ -218,7 +224,10 @@ export function ProfileFavorites({
                 <NativePressable
                   accessibilityRole="button"
                   accessibilityLabel={`Add favorite ${singular}`}
-                  onPress={() => setPickerType(section)}
+                  onPress={() => {
+                    setFavoriteSearch('');
+                    setPickerType(section);
+                  }}
                   hitSlop={6}
                   style={s.addButton}
                   pressedStyle={s.pressed}
@@ -285,6 +294,13 @@ export function ProfileFavorites({
             <DrawerHeader>
               <DrawerTitle>Add {sectionLabel(pickerType)}</DrawerTitle>
             </DrawerHeader>
+            <Input
+              accessibilityLabel="Search watched titles"
+              value={favoriteSearch}
+              onChangeText={setFavoriteSearch}
+              placeholder="Search watched titles"
+              returnKeyType="search"
+            />
             <ScrollView style={s.picker} contentContainerStyle={s.pickerContent}>
               {eligible === undefined ? (
                 <ActivityIndicator color={colors.muted} style={s.loader} />
@@ -308,7 +324,9 @@ export function ProfileFavorites({
                 ))
               ) : (
                 <Text style={s.emptyText}>
-                  No more watched {pickerType === 'tv' ? 'TV shows' : pickerType} are available.
+                  {favoriteSearch.trim()
+                    ? 'No matching watched titles are available.'
+                    : `No more watched ${pickerType === 'tv' ? 'TV shows' : pickerType} are available.`}
                 </Text>
               )}
             </ScrollView>

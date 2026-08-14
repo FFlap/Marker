@@ -43,15 +43,22 @@ export async function profileFavoritesForUser(ctx: QueryCtx, userId: Id<'users'>
 }
 
 export const eligible = query({
-  args: {},
+  args: { search: v.optional(v.string()) },
   returns: v.array(eligibleFavoriteValidator),
-  handler: async (ctx) => {
+  handler: async (ctx, { search }) => {
     const userId = await requireUser(ctx);
+    const normalizedSearch = search?.trim().toLowerCase().slice(0, 500) ?? '';
     const [items, favorites] = await Promise.all([
       ctx.db
         .query('items')
-        .withIndex('by_user_status', (q) => q.eq('userId', userId).eq('status', 'watched'))
-        .filter((q) => q.eq(q.field('deletingAt'), undefined))
+        .withIndex('by_user_status_title', (q) => {
+          const watched = q.eq('userId', userId).eq('status', 'watched');
+          return normalizedSearch
+            ? watched
+                .gte('normalizedTitle', normalizedSearch)
+                .lt('normalizedTitle', `${normalizedSearch}\uffff`)
+            : watched;
+        })
         .take(250),
       ctx.db
         .query('profileFavorites')
@@ -60,7 +67,7 @@ export const eligible = query({
     ]);
     const selected = new Set(favorites.map((favorite) => favorite.itemId));
     return items
-      .filter((item) => !selected.has(item._id))
+      .filter((item) => item.deletingAt === undefined && !selected.has(item._id))
       .slice(0, 200)
       .map((item) => ({
         _id: item._id,

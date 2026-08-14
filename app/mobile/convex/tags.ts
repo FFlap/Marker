@@ -263,7 +263,7 @@ export const publicDetails = query({
       tag: v.string(),
       contributorCount: v.number(),
       nextCursor: v.optional(v.string()),
-      titles: v.array(v.object({ ...publicTitleValidator.fields, contributorCount: v.number() })),
+      titles: v.array(publicTitleValidator),
     }),
   ),
   handler: async (ctx, { tag, cursor }) => {
@@ -295,7 +295,7 @@ export const publicDetails = query({
         )
           pageState = parsed;
       } catch {
-        return null;
+        // Restart at the first page instead of treating a damaged cursor as a missing tag.
       }
     }
     let collectionIndex = populatedCollections.findIndex(
@@ -315,7 +315,7 @@ export const publicDetails = query({
       .query('tagMemberships')
       .withIndex('by_collection_rank', (q) => q.eq('collectionId', collection._id))
       .paginate({ cursor: collectionStillExists ? pageState.cursor : null, numItems: 100 });
-    const titles = new Map<string, ReturnType<typeof publicTitle> & { contributorCount: number }>();
+    const titles = new Map<string, ReturnType<typeof publicTitle>>();
     const contributors = new Set(
       populatedCollections.map((collection) => String(collection.userId)),
     );
@@ -325,15 +325,7 @@ export const publicDetails = query({
     for (const item of items) {
       if (!item || item.deletingAt !== undefined) continue;
       const key = `${item.mediaType}:${item.tmdbId}`;
-      const current = titles.get(key);
-      if (current) {
-        current.contributorCount += 1;
-        continue;
-      }
-      titles.set(key, {
-        ...publicTitle(item),
-        contributorCount: 1,
-      });
+      if (!titles.has(key)) titles.set(key, publicTitle(item));
     }
     const nextCursor = !memberships.isDone
       ? JSON.stringify({

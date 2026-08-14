@@ -5,6 +5,7 @@ import { internalMutation, type MutationCtx } from './_generated/server';
 
 const BATCH_SIZE = 100;
 const MAX_DISTINCT_TAGS = 1_000;
+const ABANDONED_AFTER_MS = 5 * 60 * 1_000;
 
 const addTags = (
   existing: { tag: string; count: number }[],
@@ -28,9 +29,20 @@ export async function requestProfileStatsRefresh(ctx: MutationCtx, userId: Id<'u
     .withIndex('by_user', (query) => query.eq('userId', userId))
     .unique();
   if (existing) {
-    if (!existing.restartRequested) await ctx.db.patch(existing._id, { restartRequested: true });
+    const now = Date.now();
+    const abandoned =
+      existing.lastProgressAt === undefined || now - existing.lastProgressAt > ABANDONED_AFTER_MS;
+    await ctx.db.patch(existing._id, {
+      restartRequested: true,
+      ...(abandoned && { lastProgressAt: now }),
+    });
+    if (abandoned)
+      await ctx.scheduler.runAfter(0, internal.profileStatsRefresh.processBatch, {
+        refreshId: existing._id,
+      });
     return;
   }
+  const now = Date.now();
   const refreshId = await ctx.db.insert('profileStatsRefreshes', {
     userId,
     phase: 'items',
@@ -43,8 +55,9 @@ export async function requestProfileStatsRefresh(ctx: MutationCtx, userId: Id<'u
     ratingCount: 0,
     tagCounts: [],
     restartRequested: false,
+    lastProgressAt: now,
   });
-  await ctx.scheduler.runAfter(0, internal.profileStatsRefresh.process, { refreshId });
+  await ctx.scheduler.runAfter(0, internal.profileStatsRefresh.processBatch, { refreshId });
 }
 
 export const start = internalMutation({
@@ -56,7 +69,7 @@ export const start = internalMutation({
   },
 });
 
-export const process = internalMutation({
+export const processBatch = internalMutation({
   args: { refreshId: v.id('profileStatsRefreshes') },
   returns: v.null(),
   handler: async (ctx, { refreshId }) => {
@@ -97,8 +110,9 @@ export const process = internalMutation({
         tagCounts: addTags(refresh.tagCounts, tags),
         phase: page.isDone ? 'summaries' : 'items',
         cursor: page.isDone ? undefined : page.continueCursor,
+        lastProgressAt: Date.now(),
       });
-      await ctx.scheduler.runAfter(0, internal.profileStatsRefresh.process, { refreshId });
+      await ctx.scheduler.runAfter(0, internal.profileStatsRefresh.processBatch, { refreshId });
       return null;
     }
 
@@ -124,8 +138,9 @@ export const process = internalMutation({
         episodesWatched,
         tagCounts,
         cursor: page.continueCursor,
+        lastProgressAt: Date.now(),
       });
-      await ctx.scheduler.runAfter(0, internal.profileStatsRefresh.process, { refreshId });
+      await ctx.scheduler.runAfter(0, internal.profileStatsRefresh.processBatch, { refreshId });
       return null;
     }
     const topTags = tagCounts

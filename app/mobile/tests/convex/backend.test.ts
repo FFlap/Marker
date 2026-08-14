@@ -219,6 +219,41 @@ describe('Marker backend', () => {
     ).not.toContain(third);
   });
 
+  it('searches tag suggestions beyond the initial list', async () => {
+    const { t, userId, asUser } = await setup();
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      for (let index = 0; index < 205; index += 1) {
+        const tagKey = `alpha-${String(index).padStart(3, '0')}`;
+        await ctx.db.insert('tagCollections', {
+          userId,
+          tagKey,
+          label: tagKey,
+          isPublic: false,
+          memberCount: 0,
+          previewPosters: [],
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await ctx.db.insert('tagCollections', {
+        userId,
+        tagKey: 'zulu-target',
+        label: 'Zulu Target',
+        isPublic: false,
+        memberCount: 0,
+        previewPosters: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    expect(await asUser.query(api.library.listTagSuggestions, {})).not.toContain('Zulu Target');
+    expect(await asUser.query(api.library.listTagSuggestions, { prefix: 'zulu' })).toEqual([
+      'Zulu Target',
+    ]);
+  });
+
   it('adds one tag to many owned titles without duplicating tags or memberships', async () => {
     const { asUser } = await setup();
     const existing = await asUser.mutation(
