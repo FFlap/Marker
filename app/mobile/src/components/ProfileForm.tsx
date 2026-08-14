@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAuth } from '@clerk/expo';
 import { ActivityIndicator, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, Trash2 } from 'lucide-react-native';
@@ -9,6 +10,7 @@ import { Button, Input } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
+import { getConvexSiteUrl } from '@/lib/convexUrl';
 import { usernameError } from '@/lib/profile';
 import { createStyles } from '@/lib/typography';
 import { ProfileAvatar } from './ProfileAvatar';
@@ -55,6 +57,7 @@ function ProfileFormFields({
   const generateUploadUrl = useMutation(api.profiles.generateAvatarUploadUrl);
   const setAvatar = useMutation(api.profiles.setAvatar);
   const removeAvatar = useMutation(api.profiles.removeAvatar);
+  const { getToken } = useAuth();
   const toast = useToast();
   const [username, setUsername] = useState(profile.username ?? '');
   const [isPublic, setIsPublic] = useState(profile.isPublic);
@@ -111,10 +114,16 @@ function ProfileFormFields({
         setPhotoPending(false);
         return;
       }
-      const uploadUrl = await generateUploadUrl();
-      const response = await fetch(uploadUrl, {
+      const uploadPath = await generateUploadUrl();
+      const siteUrl = getConvexSiteUrl();
+      const token = await getToken({ template: 'convex' });
+      if (!siteUrl || !token) throw new Error('Avatar uploads are unavailable');
+      const response = await fetch(new URL(uploadPath, siteUrl).toString(), {
         method: 'POST',
-        headers: { 'Content-Type': asset.mimeType || blob.type || 'image/jpeg' },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': asset.mimeType || blob.type || 'image/jpeg',
+        },
         body: blob,
       });
       if (!response.ok) {

@@ -193,6 +193,14 @@ const providerSnapshotEntry = v.union(
 
 export default defineSchema({
   users,
+  avatarUploads: defineTable({
+    userId: v.id('users'),
+    storageId: v.optional(v.id('_storage')),
+    status: v.union(v.literal('pending'), v.literal('active')),
+    createdAt: v.number(),
+  })
+    .index('by_storage', ['storageId'])
+    .index('by_status_created', ['status', 'createdAt']),
   items: defineTable({
     userId: v.id('users'),
     tmdbId: v.number(),

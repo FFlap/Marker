@@ -30,27 +30,6 @@ export const activateWebReorderSession = <Status extends string>(
   return session;
 };
 
-export const startWebReorderSession = <Status extends string>(
-  session: Omit<
-    WebReorderSession<Status>,
-    'dropped' | 'over' | 'pendingOver' | 'rects' | 'reducedMotion'
-  >,
-) => {
-  const next: WebReorderSession<Status> = {
-    ...session,
-    dropped: false,
-    over: session.from,
-    pendingOver: session.from,
-    rects: session.nodes.map((node) => {
-      const rect = node.getBoundingClientRect();
-      return { height: rect.height, left: rect.left, top: rect.top, width: rect.width };
-    }),
-    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  };
-  activeSession = next;
-  return next;
-};
-
 export const clearWebReorderSession = () => {
   const session = activeSession;
   if (!session) return;

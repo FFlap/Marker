@@ -3,7 +3,7 @@ import { mutation, query, type QueryCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { activeResolvedTitles, mediaIdentityKey } from './resolvedTitleModel';
-import { eligibleFavoriteValidator, favoriteValidator } from './publicValidators';
+import { eligibleFavoriteValidator } from './publicValidators';
 
 const requireUser = async (ctx: { auth: Parameters<typeof getClerkUserId>[0]['auth'] }) => {
   const userId = await getClerkUserId(ctx);
@@ -42,12 +42,6 @@ export async function profileFavoritesForUser(ctx: QueryCtx, userId: Id<'users'>
   });
 }
 
-export const mine = query({
-  args: {},
-  returns: v.array(favoriteValidator),
-  handler: async (ctx) => profileFavoritesForUser(ctx, await requireUser(ctx)),
-});
-
 export const eligible = query({
   args: {},
   returns: v.array(eligibleFavoriteValidator),
@@ -57,29 +51,24 @@ export const eligible = query({
       ctx.db
         .query('items')
         .withIndex('by_user_status', (q) => q.eq('userId', userId).eq('status', 'watched'))
-        .take(2000),
+        .filter((q) => q.eq(q.field('deletingAt'), undefined))
+        .take(250),
       ctx.db
         .query('profileFavorites')
         .withIndex('by_user_rank', (q) => q.eq('userId', userId))
         .take(50),
     ]);
     const selected = new Set(favorites.map((favorite) => favorite.itemId));
-    const eligibleItems = items
-      .filter((item) => item.deletingAt === undefined && !selected.has(item._id))
-      .slice(0, 200);
-    const titles = await activeResolvedTitles(ctx, eligibleItems);
-    return eligibleItems.map((item) => {
-      const title = titles.get(mediaIdentityKey(item));
-      return {
+    return items
+      .filter((item) => !selected.has(item._id))
+      .slice(0, 200)
+      .map((item) => ({
         _id: item._id,
-        title: title?.title ?? item.title,
+        title: item.title,
         mediaType: item.mediaType,
-        isAnime: title
-          ? title.genres.some((genre) => genre.toLocaleLowerCase() === 'anime')
-          : item.isAnime,
-        posterPath: title?.posterPath ?? item.posterPath,
-      };
-    });
+        isAnime: item.isAnime,
+        posterPath: item.posterPath,
+      }));
   },
 });
 

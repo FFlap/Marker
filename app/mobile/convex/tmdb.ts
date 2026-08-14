@@ -5,6 +5,7 @@ import { getClerkUserId } from './clerkAuth';
 import { providerFetch } from './providerHttp';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
 import { boundedEpisode, MAX_SEASON_EPISODES } from './seasonStorage';
+import { validateInteger, validateTmdbId } from './providerValidation';
 
 type Json = Record<string, unknown>;
 type SnapshotCtx = { runQuery: Function; runMutation: Function };
@@ -260,11 +261,6 @@ async function authorizeAction(
   const allowed = await ctx.runMutation(internal.tmdb.consumeThrottle, { key: `tmdb:${userId}` });
   if (!allowed) throw new Error('Too many requests — try again shortly');
 }
-const validateInteger = (name: string, value: number, max: number) => {
-  if (!Number.isInteger(value) || value < 0 || value > max)
-    throw new Error(`${name} must be a non-negative integer no greater than ${max}`);
-};
-const validateTmdbId = (tmdbId: number) => validateInteger('tmdbId', tmdbId, 2 ** 31);
 export const searchMulti = action({
   args: { query: v.string() },
   returns: v.array(
@@ -290,15 +286,6 @@ export const searchMulti = action({
 export const internalSearchTv = internalAction({
   args: { query: v.string() },
   handler: async (ctx, { query }) => search(ctx, query, 'tv'),
-});
-export const internalTvDetails = internalAction({
-  args: { tmdbId: v.number() },
-  handler: async (ctx, { tmdbId }) => {
-    validateTmdbId(tmdbId);
-    return snapshot(ctx, `tmdb:tv:base:${tmdbId}`, DETAIL_SNAPSHOT_MS, async () =>
-      mapTvDetails(await request(ctx, `/tv/${tmdbId}`)),
-    );
-  },
 });
 export const refreshMovieDetails = internalAction({
   args: { tmdbId: v.number(), force: v.optional(v.boolean()) },

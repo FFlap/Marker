@@ -125,6 +125,30 @@ describe('settings and ordering', () => {
       true,
     );
   });
+
+  it('rebalances only a bounded window when adjacent ranks become dense', async () => {
+    const { t, asUser } = await setup();
+    const ids = [];
+    for (let index = 0; index < 20; index += 1)
+      ids.push(await asUser.mutation(api.library.addItem, add(`Dense ${index}`, index + 200)));
+    await t.run(async (ctx) => {
+      await ctx.db.patch(ids[9], { rank: 10 });
+      await ctx.db.patch(ids[10], { rank: 10 + 1e-12 });
+    });
+
+    await asUser.mutation(api.library.reorderItem, {
+      itemId: ids[19],
+      beforeId: ids[9],
+      afterId: ids[10],
+    });
+    const rows = await t.run(async (ctx) =>
+      Promise.all([ids[1], ids[9], ids[10], ids[18], ids[19]].map((id) => ctx.db.get(id))),
+    );
+    expect(rows[0]?.rank).toBe(2);
+    expect(rows[3]?.rank).toBe(19);
+    expect(rows[4]!.rank).toBeGreaterThan(rows[1]!.rank);
+    expect(rows[4]!.rank).toBeLessThan(rows[2]!.rank);
+  });
 });
 
 describe('rating clearing and stats', () => {

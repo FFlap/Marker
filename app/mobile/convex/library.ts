@@ -15,15 +15,12 @@ import { ConvexError, v } from 'convex/values';
 import { rankAtEnd } from './rank';
 import { EPISODES_PER_CHUNK, MAX_SEASON_EPISODES } from './seasonStorage';
 import { seasonSummaryIdentityKey, updateSummaryForEpisodeUpsert } from './episodeSummaries';
-import {
-  ensureTagMemberships,
-  refreshTagCollectionSummary,
-  syncItemTagMemberships,
-} from './tagCollectionsModel';
+import { refreshTagCollectionSummary, syncItemTagMemberships } from './tagCollectionsModel';
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from './activityEvents';
 import { episodeValidator, itemValidator } from './publicValidators';
 import { refreshNextEpisode } from './nextEpisode';
 import { requestProfileStatsRefresh } from './profileStatsRefresh';
+import { validateTmdbId } from './providerValidation';
 
 const status = v.union(
   v.literal('watched'),
@@ -72,6 +69,21 @@ const boundedOptional = (name: string, value: string | undefined, max: number) =
 const requireRuntime = (value: number | undefined) => {
   if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 3000))
     throw new Error('Runtime must be a finite number between 0 and 3000 minutes');
+};
+const requireReleaseDate = (value: string | undefined) => {
+  if (value === undefined) return;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (!match) throw new Error('Release date must use YYYY-MM-DD format');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  )
+    throw new Error('Release date must use YYYY-MM-DD format');
 };
 const normalizeGenres = (genres: string[] | undefined) => {
   if (genres === undefined) return undefined;
@@ -264,14 +276,13 @@ export const listTagSuggestions = query({
   returns: v.array(v.string()),
   handler: async (ctx) => {
     const userId = await requireUser(ctx);
-    const items = await ctx.db
-      .query('items')
-      .withIndex('by_user', (query) => query.eq('userId', userId))
-      .filter((query) => query.eq(query.field('deletingAt'), undefined))
+    const collections = await ctx.db
+      .query('tagCollections')
+      .withIndex('by_user_tag', (query) => query.eq('userId', userId))
       .take(2_000);
-    return [...new Set(items.flatMap((item) => item.tags))].sort((left, right) =>
-      left.localeCompare(right),
-    );
+    return collections
+      .map((collection) => collection.label)
+      .sort((left, right) => left.localeCompare(right));
   },
 });
 
@@ -299,8 +310,10 @@ export const listTagRanks = query({
 });
 
 async function insertItem(ctx: MutationCtx, userId: Id<'users'>, args: AddItemArgs) {
+  validateTmdbId(args.tmdbId);
   requireRating(args.rating);
   requireRuntime(args.runtime);
+  requireReleaseDate(args.releaseDate);
   const genres = normalizeGenres(args.genres);
   const title = args.title.trim();
   if (!title || title.length > 500) throw new Error('Title must be between 1 and 500 characters');
@@ -532,6 +545,110 @@ type MoveItemArgs = {
   afterId?: Id<'items'>;
 };
 
+const RANK_EPSILON = 1e-9;
+const REBALANCE_SIDE = 8;
+
+const compareRanked = <T extends { rank: number; _creationTime: number; _id: unknown }>(
+  left: T,
+  right: T,
+) =>
+  left.rank - right.rank ||
+  left._creationTime - right._creationTime ||
+  String(left._id).localeCompare(String(right._id));
+
+async function statusRowBefore(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  targetStatus: Doc<'items'>['status'],
+  rank: number,
+  movedId: Id<'items'>,
+  inclusive = false,
+) {
+  const rows = await ctx.db
+    .query('items')
+    .withIndex('by_user_status', (query) => {
+      const prefix = query.eq('userId', userId).eq('status', targetStatus);
+      return inclusive ? prefix.lte('rank', rank) : prefix.lt('rank', rank);
+    })
+    .filter((query) => query.eq(query.field('deletingAt'), undefined))
+    .order('desc')
+    .take(2);
+  return rows.find((row) => row._id !== movedId);
+}
+
+async function statusRowAfter(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  targetStatus: Doc<'items'>['status'],
+  rank: number,
+  movedId: Id<'items'>,
+  inclusive = false,
+) {
+  const rows = await ctx.db
+    .query('items')
+    .withIndex('by_user_status', (query) => {
+      const prefix = query.eq('userId', userId).eq('status', targetStatus);
+      return inclusive ? prefix.gte('rank', rank) : prefix.gt('rank', rank);
+    })
+    .filter((query) => query.eq(query.field('deletingAt'), undefined))
+    .take(2);
+  return rows.find((row) => row._id !== movedId);
+}
+
+async function rebalanceStatusWindow(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  targetStatus: Doc<'items'>['status'],
+  movedId: Id<'items'>,
+  before: Doc<'items'>,
+  after: Doc<'items'>,
+) {
+  const [leftRows, rightRows] = await Promise.all([
+    ctx.db
+      .query('items')
+      .withIndex('by_user_status', (query) =>
+        query.eq('userId', userId).eq('status', targetStatus).lte('rank', before.rank),
+      )
+      .filter((query) => query.eq(query.field('deletingAt'), undefined))
+      .order('desc')
+      .take(REBALANCE_SIDE + 1),
+    ctx.db
+      .query('items')
+      .withIndex('by_user_status', (query) =>
+        query.eq('userId', userId).eq('status', targetStatus).gte('rank', after.rank),
+      )
+      .filter((query) => query.eq(query.field('deletingAt'), undefined))
+      .take(REBALANCE_SIDE + 1),
+  ]);
+  const left = leftRows.filter((row) => row._id !== movedId);
+  const right = rightRows.filter((row) => row._id !== movedId);
+  const lower = left[REBALANCE_SIDE];
+  const upper = right[REBALANCE_SIDE];
+  const window = [
+    ...new Map(
+      [...left.slice(0, REBALANCE_SIDE), ...right.slice(0, REBALANCE_SIDE)].map((row) => [
+        String(row._id),
+        row,
+      ]),
+    ).values(),
+  ].sort(compareRanked);
+  const step = lower && upper ? (upper.rank - lower.rank) / (window.length + 1) : 1;
+  const start = lower ? lower.rank + step : upper ? upper.rank - step * window.length : 1;
+  if (!Number.isFinite(step) || step <= 0 || (lower && start === lower.rank))
+    throw new Error('Item order is too dense to update');
+  const ranks = new Map<Id<'items'>, number>();
+  for (const [index, row] of window.entries()) {
+    const rank = start + step * index;
+    ranks.set(row._id, rank);
+    if (row.rank !== rank) await ctx.db.patch(row._id, { rank });
+  }
+  const beforeRank = ranks.get(before._id);
+  const afterRank = ranks.get(after._id);
+  if (beforeRank === undefined || afterRank === undefined)
+    throw new Error('Item order is too dense to update');
+  return { beforeRank, afterRank };
+}
+
 async function moveItemToSlot(ctx: MutationCtx, userId: Id<'users'>, args: MoveItemArgs) {
   const item = await ownedItem(ctx, args.itemId, userId);
   const targetStatus = args.status ?? item.status;
@@ -543,50 +660,45 @@ async function moveItemToSlot(ctx: MutationCtx, userId: Id<'users'>, args: MoveI
     throw new Error('Neighbors must share a status');
   if (claimedAfter && claimedAfter.status !== targetStatus)
     throw new Error('Neighbors must share a status');
-
-  const loadOrdered = async () => {
-    const items = await ctx.db
-      .query('items')
-      .withIndex('by_user_status', (q) => q.eq('userId', userId).eq('status', targetStatus))
-      .filter((q) => q.eq(q.field('deletingAt'), undefined))
-      .take(2001);
-    if (items.length > 2000) throw new Error('Too many items to reorder');
-    return items.sort(
-      (a, b) =>
-        a.rank - b.rank ||
-        a._creationTime - b._creationTime ||
-        String(a._id).localeCompare(String(b._id)),
-    );
-  };
-  let ordered = await loadOrdered();
-  let withoutMoved = ordered.filter((entry) => entry._id !== item._id);
-  const indexById = new Map(withoutMoved.map((entry, index) => [entry._id, index]));
-  const beforeIndex = claimedBefore ? indexById.get(claimedBefore._id) : undefined;
-  const afterIndex = claimedAfter ? indexById.get(claimedAfter._id) : undefined;
-
-  // Valid client claims identify one authoritative slot. Stale claims are projected
-  // to the closest slot between their current server-side positions.
-  let slot: number;
-  if (beforeIndex !== undefined && afterIndex !== undefined) {
-    slot = Math.round((beforeIndex + 1 + afterIndex) / 2);
-  } else if (beforeIndex !== undefined) slot = beforeIndex + 1;
-  else if (afterIndex !== undefined) slot = afterIndex;
-  else slot = 0;
-  slot = Math.max(0, Math.min(slot, withoutMoved.length));
-  let before = withoutMoved[slot - 1];
-  let after = withoutMoved[slot];
-
-  if (before && after && after.rank - before.rank < 1e-9) {
-    for (const [index, entry] of ordered.entries())
-      await ctx.db.patch(entry._id, { rank: index + 1 });
-    ordered = await loadOrdered();
-    withoutMoved = ordered.filter((entry) => entry._id !== item._id);
-    before = withoutMoved[slot - 1];
-    after = withoutMoved[slot];
+  let before: Doc<'items'> | undefined;
+  let after: Doc<'items'> | undefined;
+  if (claimedBefore && claimedAfter) {
+    const next = await statusRowAfter(ctx, userId, targetStatus, claimedBefore.rank, item._id);
+    if (claimedBefore.rank < claimedAfter.rank && next?._id === claimedAfter._id) {
+      before = claimedBefore;
+      after = claimedAfter;
+    } else {
+      const projectedRank = (claimedBefore.rank + claimedAfter.rank) / 2;
+      before = await statusRowBefore(ctx, userId, targetStatus, projectedRank, item._id, true);
+      after = before
+        ? await statusRowAfter(ctx, userId, targetStatus, before.rank, item._id)
+        : await statusRowAfter(ctx, userId, targetStatus, projectedRank, item._id, true);
+    }
+  } else if (claimedBefore) {
+    before = claimedBefore;
+    after = await statusRowAfter(ctx, userId, targetStatus, before.rank, item._id);
+  } else if (claimedAfter) {
+    after = claimedAfter;
+    before = await statusRowBefore(ctx, userId, targetStatus, after.rank, item._id);
+  } else {
+    after = await statusRowAfter(ctx, userId, targetStatus, -Number.MAX_VALUE, item._id, true);
   }
   let rank: number;
-  if (before && after) rank = (before.rank + after.rank) / 2;
-  else if (before) rank = before.rank + 1;
+  if (before && after) {
+    let beforeRank = before.rank;
+    let afterRank = after.rank;
+    if (afterRank - beforeRank < RANK_EPSILON) {
+      ({ beforeRank, afterRank } = await rebalanceStatusWindow(
+        ctx,
+        userId,
+        targetStatus,
+        item._id,
+        before,
+        after,
+      ));
+    }
+    rank = (beforeRank + afterRank) / 2;
+  } else if (before) rank = before.rank + 1;
   else if (after) rank = after.rank - 1;
   else rank = 1;
   await ctx.db.patch(args.itemId, {
@@ -623,6 +735,110 @@ export const reorderItem = mutation({
   },
 });
 
+async function tagMembership(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  tagKey: string,
+  itemId: Id<'items'> | undefined,
+) {
+  if (!itemId) return undefined;
+  return (
+    (await ctx.db
+      .query('tagMemberships')
+      .withIndex('by_user_tag_item', (query) =>
+        query.eq('userId', userId).eq('tagKey', tagKey).eq('itemId', itemId),
+      )
+      .unique()) ?? undefined
+  );
+}
+
+async function tagRowBefore(
+  ctx: MutationCtx,
+  collectionId: Id<'tagCollections'>,
+  rank: number,
+  movedId: Id<'tagMemberships'>,
+  inclusive = false,
+) {
+  const rows = await ctx.db
+    .query('tagMemberships')
+    .withIndex('by_collection_rank', (query) => {
+      const prefix = query.eq('collectionId', collectionId);
+      return inclusive ? prefix.lte('rank', rank) : prefix.lt('rank', rank);
+    })
+    .order('desc')
+    .take(2);
+  return rows.find((row) => row._id !== movedId);
+}
+
+async function tagRowAfter(
+  ctx: MutationCtx,
+  collectionId: Id<'tagCollections'>,
+  rank: number,
+  movedId: Id<'tagMemberships'>,
+  inclusive = false,
+) {
+  const rows = await ctx.db
+    .query('tagMemberships')
+    .withIndex('by_collection_rank', (query) => {
+      const prefix = query.eq('collectionId', collectionId);
+      return inclusive ? prefix.gte('rank', rank) : prefix.gt('rank', rank);
+    })
+    .take(2);
+  return rows.find((row) => row._id !== movedId);
+}
+
+async function rebalanceTagWindow(
+  ctx: MutationCtx,
+  collectionId: Id<'tagCollections'>,
+  movedId: Id<'tagMemberships'>,
+  before: Doc<'tagMemberships'>,
+  after: Doc<'tagMemberships'>,
+) {
+  const [leftRows, rightRows] = await Promise.all([
+    ctx.db
+      .query('tagMemberships')
+      .withIndex('by_collection_rank', (query) =>
+        query.eq('collectionId', collectionId).lte('rank', before.rank),
+      )
+      .order('desc')
+      .take(REBALANCE_SIDE + 1),
+    ctx.db
+      .query('tagMemberships')
+      .withIndex('by_collection_rank', (query) =>
+        query.eq('collectionId', collectionId).gte('rank', after.rank),
+      )
+      .take(REBALANCE_SIDE + 1),
+  ]);
+  const left = leftRows.filter((row) => row._id !== movedId);
+  const right = rightRows.filter((row) => row._id !== movedId);
+  const lower = left[REBALANCE_SIDE];
+  const upper = right[REBALANCE_SIDE];
+  const window = [
+    ...new Map(
+      [...left.slice(0, REBALANCE_SIDE), ...right.slice(0, REBALANCE_SIDE)].map((row) => [
+        String(row._id),
+        row,
+      ]),
+    ).values(),
+  ].sort(compareRanked);
+  const step = lower && upper ? (upper.rank - lower.rank) / (window.length + 1) : 1;
+  const start = lower ? lower.rank + step : upper ? upper.rank - step * window.length : 1;
+  if (!Number.isFinite(step) || step <= 0 || (lower && start === lower.rank))
+    throw new Error('Tag order is too dense to update');
+  const now = Date.now();
+  const ranks = new Map<Id<'tagMemberships'>, number>();
+  for (const [index, row] of window.entries()) {
+    const rank = start + step * index;
+    ranks.set(row._id, rank);
+    if (row.rank !== rank) await ctx.db.patch(row._id, { rank, updatedAt: now });
+  }
+  const beforeRank = ranks.get(before._id);
+  const afterRank = ranks.get(after._id);
+  if (beforeRank === undefined || afterRank === undefined)
+    throw new Error('Tag order is too dense to update');
+  return { beforeRank, afterRank };
+}
+
 export const reorderTagItem = mutation({
   args: {
     tag: v.string(),
@@ -637,73 +853,57 @@ export const reorderTagItem = mutation({
     if (!tagKey || tagKey.length > 40) throw new Error('Tag not found');
     const moved = await ownedItem(ctx, args.itemId, userId);
     if (!hasTag(moved, tagKey)) throw new Error('Item is not in this tag');
-    const collection = await ensureTagMemberships(ctx, userId, args.tag);
-
-    const allItems = await ctx.db
-      .query('items')
-      .withIndex('by_user', (query) => query.eq('userId', userId))
-      .filter((query) => query.eq(query.field('deletingAt'), undefined))
-      .take(2_001);
-    if (allItems.length > 2_000) throw new Error('Too many items to reorder');
-    const members = allItems.filter((item) => hasTag(item, tagKey));
-    const memberships = await ctx.db
-      .query('tagMemberships')
-      .withIndex('by_collection_rank', (query) => query.eq('collectionId', collection._id))
-      .take(2_001);
-    if (memberships.length > 2_000) throw new Error('Too many items to reorder');
-    const membershipByItem = new Map(
-      memberships.map((membership) => [String(membership.itemId), membership]),
-    );
-    let ordered = [...members].sort((left, right) => {
-      const leftRank = membershipByItem.get(String(left._id))?.rank;
-      const rightRank = membershipByItem.get(String(right._id))?.rank;
-      if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank;
-      if (leftRank !== undefined) return -1;
-      if (rightRank !== undefined) return 1;
-      return (
-        left.rank - right.rank ||
-        left._creationTime - right._creationTime ||
-        String(left._id).localeCompare(String(right._id))
-      );
-    });
-    if (ordered.some((item) => !membershipByItem.has(String(item._id))))
-      throw new Error('Tag membership could not be initialized');
-
-    ordered = ordered.filter((item) => item._id !== moved._id);
-    const indexById = new Map(ordered.map((item, index) => [String(item._id), index]));
-    const beforeIndex = args.beforeId ? indexById.get(String(args.beforeId)) : undefined;
-    const afterIndex = args.afterId ? indexById.get(String(args.afterId)) : undefined;
-    let slot: number;
-    if (beforeIndex !== undefined && afterIndex !== undefined)
-      slot = Math.round((beforeIndex + 1 + afterIndex) / 2);
-    else if (beforeIndex !== undefined) slot = beforeIndex + 1;
-    else if (afterIndex !== undefined) slot = afterIndex;
-    else slot = 0;
-    slot = Math.max(0, Math.min(slot, ordered.length));
-
-    let before = ordered[slot - 1];
-    let after = ordered[slot];
-    let beforeRank = before ? membershipByItem.get(String(before._id))?.rank : undefined;
-    let afterRank = after ? membershipByItem.get(String(after._id))?.rank : undefined;
+    const collection = await ctx.db
+      .query('tagCollections')
+      .withIndex('by_user_tag', (query) => query.eq('userId', userId).eq('tagKey', tagKey))
+      .unique();
+    if (!collection) throw new Error('Tag not found');
+    const current = await tagMembership(ctx, userId, tagKey, moved._id);
+    if (!current || current.collectionId !== collection._id)
+      throw new Error('Tag order could not be initialized');
+    const beforeClaim = await tagMembership(ctx, userId, tagKey, args.beforeId);
+    const afterClaim = await tagMembership(ctx, userId, tagKey, args.afterId);
+    const claimedBefore = beforeClaim?._id === current._id ? undefined : beforeClaim;
+    const claimedAfter = afterClaim?._id === current._id ? undefined : afterClaim;
+    let before: Doc<'tagMemberships'> | undefined;
+    let after: Doc<'tagMemberships'> | undefined;
+    if (claimedBefore && claimedAfter) {
+      const next = await tagRowAfter(ctx, collection._id, claimedBefore.rank, current._id);
+      if (claimedBefore.rank < claimedAfter.rank && next?._id === claimedAfter._id) {
+        before = claimedBefore;
+        after = claimedAfter;
+      } else {
+        const projectedRank = (claimedBefore.rank + claimedAfter.rank) / 2;
+        before = await tagRowBefore(ctx, collection._id, projectedRank, current._id, true);
+        after = before
+          ? await tagRowAfter(ctx, collection._id, before.rank, current._id)
+          : await tagRowAfter(ctx, collection._id, projectedRank, current._id, true);
+      }
+    } else if (claimedBefore) {
+      before = claimedBefore;
+      after = await tagRowAfter(ctx, collection._id, before.rank, current._id);
+    } else if (claimedAfter) {
+      after = claimedAfter;
+      before = await tagRowBefore(ctx, collection._id, after.rank, current._id);
+    } else {
+      after = await tagRowAfter(ctx, collection._id, -Number.MAX_VALUE, current._id, true);
+    }
+    let beforeRank = before?.rank;
+    let afterRank = after?.rank;
     if (
       before &&
       after &&
       beforeRank !== undefined &&
       afterRank !== undefined &&
-      afterRank - beforeRank < 1e-9
-    ) {
-      const now = Date.now();
-      for (const [index, item] of ordered.entries()) {
-        const membership = membershipByItem.get(String(item._id));
-        if (!membership) throw new Error('Tag membership could not be initialized');
-        await ctx.db.patch(membership._id, { rank: index + 1, updatedAt: now });
-        membershipByItem.set(String(item._id), { ...membership, rank: index + 1 });
-      }
-      before = ordered[slot - 1];
-      after = ordered[slot];
-      beforeRank = before ? membershipByItem.get(String(before._id))?.rank : undefined;
-      afterRank = after ? membershipByItem.get(String(after._id))?.rank : undefined;
-    }
+      afterRank - beforeRank < RANK_EPSILON
+    )
+      ({ beforeRank, afterRank } = await rebalanceTagWindow(
+        ctx,
+        collection._id,
+        current._id,
+        before,
+        after,
+      ));
     const nextRank =
       beforeRank !== undefined && afterRank !== undefined
         ? (beforeRank + afterRank) / 2
@@ -712,19 +912,8 @@ export const reorderTagItem = mutation({
           : afterRank !== undefined
             ? afterRank - 1
             : 1;
-    const current = membershipByItem.get(String(moved._id));
-    if (!current) throw new Error('Tag order could not be initialized');
     await ctx.db.patch(current._id, { rank: nextRank, updatedAt: Date.now() });
     await refreshTagCollectionSummary(ctx, collection._id, collection.memberCount);
-    const membership = await ctx.db
-      .query('tagMemberships')
-      .withIndex('by_user_tag_item', (query) =>
-        query.eq('userId', userId).eq('tagKey', tagKey).eq('itemId', moved._id),
-      )
-      .unique();
-    if (!membership || membership.collectionId !== collection._id)
-      throw new Error('Tag membership could not be initialized');
-    if (membership._id !== current._id) throw new Error('Tag membership could not be initialized');
     return nextRank;
   },
 });

@@ -910,10 +910,9 @@ describe('episode hub and profile favorites', () => {
       itemId: second,
       afterId: first,
     });
-    expect((await asUser.query(api.profileFavorites.mine, {})).map((item) => item.title)).toEqual([
-      'Second Movie',
-      'First Movie',
-    ]);
+    expect((await asUser.query(api.stats.profile, {})).favorites.map((item) => item.title)).toEqual(
+      ['Second Movie', 'First Movie'],
+    );
     expect(await asUser.query(api.profileFavorites.eligible, {})).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ title: 'Favorite Anime', mediaType: 'tv', isAnime: true }),
@@ -921,7 +920,7 @@ describe('episode hub and profile favorites', () => {
       ]),
     );
     await asUser.mutation(api.profileFavorites.add, { itemId: anime });
-    expect(await asUser.query(api.profileFavorites.mine, {})).toContainEqual(
+    expect((await asUser.query(api.stats.profile, {})).favorites).toContainEqual(
       expect.objectContaining({ title: 'Favorite Anime', mediaType: 'tv', isAnime: true }),
     );
   });

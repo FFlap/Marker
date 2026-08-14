@@ -95,10 +95,7 @@ export const ensureCurrentUser = mutation({
       .query('users')
       .withIndex('by_clerk_id', (q) => q.eq('clerkId', identity.subject))
       .unique();
-    if (alreadyLinked) {
-      await requestProfileStatsRefresh(ctx, alreadyLinked._id);
-      return alreadyLinked._id;
-    }
+    if (alreadyLinked) return alreadyLinked._id;
 
     const email = normalizeEmail(identity.email);
     if (email) {

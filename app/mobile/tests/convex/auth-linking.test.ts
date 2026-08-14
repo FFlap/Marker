@@ -44,6 +44,28 @@ describe('Clerk account identity linking', () => {
     expect(user?.email).toBeUndefined();
   });
 
+  it('does not restart profile stats work when resolving an already-linked account', async () => {
+    const t = convexTest(schema, modules);
+    const asUser = t.withIdentity({ subject: 'user_repeat_login' });
+    const userId = await asUser.mutation(api.clerkAuth.ensureCurrentUser, {});
+    const before = await t.run((ctx) =>
+      ctx.db
+        .query('profileStatsRefreshes')
+        .withIndex('by_user', (query) => query.eq('userId', userId))
+        .unique(),
+    );
+    expect(before?.restartRequested).toBe(false);
+
+    await asUser.mutation(api.clerkAuth.ensureCurrentUser, {});
+    const after = await t.run((ctx) =>
+      ctx.db
+        .query('profileStatsRefreshes')
+        .withIndex('by_user', (query) => query.eq('userId', userId))
+        .unique(),
+    );
+    expect(after?.restartRequested).toBe(false);
+  });
+
   it('does not fall back to email or let a second Clerk identity claim a profile', async () => {
     const t = convexTest(schema, modules);
     await t.run((ctx) =>

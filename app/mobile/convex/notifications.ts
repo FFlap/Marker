@@ -4,6 +4,7 @@ import { v } from 'convex/values';
 
 const MAX_FOLLOWS = 50;
 const MAX_EVENTS_PER_ACTOR = 40;
+const INITIAL_EVENTS_PER_ACTOR = 4;
 const MAX_ACTIVITY = 100;
 
 export const feed = query({
@@ -53,45 +54,65 @@ export const feed = query({
       .order('desc')
       .take(MAX_FOLLOWS);
 
-    const groups = await Promise.all(
+    const actors = await Promise.all(
       follows.map(async (follow) => {
         const actor = await ctx.db.get(follow.followingId);
-        if (!actor?.username) return [];
-        const actorUsername = actor.username;
+        if (!actor?.username) return null;
         const [events, avatarUrl] = await Promise.all([
           ctx.db
             .query('activityEvents')
             .withIndex('by_actor_time', (query) => query.eq('userId', actor._id))
             .order('desc')
-            .take(MAX_EVENTS_PER_ACTOR),
+            .take(INITIAL_EVENTS_PER_ACTOR),
           actor.avatarStorageId ? ctx.storage.getUrl(actor.avatarStorageId) : Promise.resolve(null),
         ]);
-        return events.flatMap((event) => {
-          const enabled =
-            (event.kind === 'rating' && showRatings) ||
-            (event.kind === 'status' && showStatuses) ||
-            ((event.kind === 'finished' || event.kind === 'episode') && showWatched);
-          if (!enabled) return [];
-          return [
-            {
-              id: String(event._id),
-              actorUsername,
-              ...(avatarUrl && { avatarUrl }),
-              kind: event.kind,
-              title: event.title,
-              ...(event.posterPath !== undefined && { posterPath: event.posterPath }),
-              ...(event.rating !== undefined && { rating: event.rating }),
-              ...(event.status !== undefined && { status: event.status }),
-              ...(event.season !== undefined && { season: event.season }),
-              ...(event.episode !== undefined && { episode: event.episode }),
-              occurredAt: event.createdAt,
-            },
-          ];
-        });
+        return { actor, avatarUrl, events };
       }),
     );
-    return groups
-      .flat()
+    const enabledEvents = (
+      actor: NonNullable<(typeof actors)[number]>,
+      events: NonNullable<(typeof actors)[number]>['events'],
+    ) =>
+      events.flatMap((event) => {
+        const enabled =
+          (event.kind === 'rating' && showRatings) ||
+          (event.kind === 'status' && showStatuses) ||
+          ((event.kind === 'finished' || event.kind === 'episode') && showWatched);
+        if (!enabled) return [];
+        return [
+          {
+            id: String(event._id),
+            actorUsername: actor.actor.username!,
+            ...(actor.avatarUrl && { avatarUrl: actor.avatarUrl }),
+            kind: event.kind,
+            title: event.title,
+            ...(event.posterPath !== undefined && { posterPath: event.posterPath }),
+            ...(event.rating !== undefined && { rating: event.rating }),
+            ...(event.status !== undefined && { status: event.status }),
+            ...(event.season !== undefined && { season: event.season }),
+            ...(event.episode !== undefined && { episode: event.episode }),
+            occurredAt: event.createdAt,
+          },
+        ];
+      });
+    const initial = actors.flatMap((actor) => (actor ? enabledEvents(actor, actor.events) : []));
+    const initialSorted = initial.sort((left, right) => right.occurredAt - left.occurredAt);
+    const cutoff = initialSorted[MAX_ACTIVITY - 1]?.occurredAt;
+    const expanded = await Promise.all(
+      actors.map(async (actor) => {
+        if (!actor || actor.events.length < INITIAL_EVENTS_PER_ACTOR) return [];
+        const tail = actor.events.at(-1)!;
+        if (cutoff !== undefined && tail.createdAt < cutoff) return [];
+        const events = await ctx.db
+          .query('activityEvents')
+          .withIndex('by_actor_time', (query) => query.eq('userId', actor.actor._id))
+          .order('desc')
+          .take(MAX_EVENTS_PER_ACTOR);
+        return enabledEvents(actor, events.slice(INITIAL_EVENTS_PER_ACTOR));
+      }),
+    );
+    return initialSorted
+      .concat(expanded.flat())
       .sort((left, right) => right.occurredAt - left.occurredAt)
       .slice(0, MAX_ACTIVITY);
   },

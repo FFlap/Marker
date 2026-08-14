@@ -15,6 +15,8 @@ import {
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+const AVATAR_UPLOAD_TTL_MS = 15 * 60 * 1000;
+const AVATAR_UPLOAD_PRUNE_BATCH = 100;
 const FOLLOW_ACCEPT_BATCH_SIZE = 100;
 
 async function acceptPendingFollowBatch(ctx: MutationCtx, userId: Id<'users'>) {
@@ -111,27 +113,92 @@ export const generateAvatarUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    await requireUser(ctx);
-    return ctx.storage.generateUploadUrl();
+    const userId = await requireUser(ctx);
+    const uploadId = await ctx.db.insert('avatarUploads', {
+      userId,
+      status: 'pending',
+      createdAt: Date.now(),
+    });
+    return `/avatar/upload?uploadId=${uploadId}`;
   },
 });
+
+export const pendingAvatarUpload = internalMutation({
+  args: { userId: v.id('users'), uploadId: v.id('avatarUploads') },
+  handler: async (ctx, { userId, uploadId }) => {
+    const upload = await ctx.db.get(uploadId);
+    if (
+      !upload ||
+      upload.userId !== userId ||
+      upload.status !== 'pending' ||
+      upload.storageId !== undefined ||
+      upload.createdAt < Date.now() - AVATAR_UPLOAD_TTL_MS
+    )
+      throw new Error('Avatar upload is invalid or expired');
+    return null;
+  },
+});
+
+export const completeAvatarUpload = internalMutation({
+  args: {
+    userId: v.id('users'),
+    uploadId: v.id('avatarUploads'),
+    storageId: v.id('_storage'),
+  },
+  handler: async (ctx, { userId, uploadId, storageId }) => {
+    const upload = await ctx.db.get(uploadId);
+    if (
+      !upload ||
+      upload.userId !== userId ||
+      upload.status !== 'pending' ||
+      upload.storageId !== undefined ||
+      upload.createdAt < Date.now() - AVATAR_UPLOAD_TTL_MS
+    )
+      throw new Error('Avatar upload is invalid or expired');
+    await ctx.db.patch(uploadId, { storageId });
+    return null;
+  },
+});
+
+async function deleteOwnedAvatar(ctx: MutationCtx, userId: Id<'users'>, storageId: Id<'_storage'>) {
+  const ownership = await ctx.db
+    .query('avatarUploads')
+    .withIndex('by_storage', (query) => query.eq('storageId', storageId))
+    .unique();
+  if (!ownership || ownership.userId !== userId || ownership.status !== 'active') return;
+  await ctx.storage.delete(storageId);
+  await ctx.db.delete(ownership._id);
+}
 
 export const setAvatar = mutation({
   args: { storageId: v.id('_storage') },
   returns: v.null(),
   handler: async (ctx, { storageId }) => {
     const userId = await requireUser(ctx);
+    const upload = await ctx.db
+      .query('avatarUploads')
+      .withIndex('by_storage', (query) => query.eq('storageId', storageId))
+      .unique();
+    if (
+      !upload ||
+      upload.userId !== userId ||
+      upload.status !== 'pending' ||
+      upload.createdAt < Date.now() - AVATAR_UPLOAD_TTL_MS
+    )
+      throw new Error('Avatar upload was not created by this account');
     const metadata = await ctx.db.system.get('_storage', storageId);
     if (!metadata) throw new Error('Uploaded image was not found');
     if (metadata.size > MAX_AVATAR_BYTES || !IMAGE_TYPES.has(metadata.contentType ?? '')) {
       await ctx.storage.delete(storageId);
+      await ctx.db.delete(upload._id);
       throw new Error('Avatar must be a JPG, PNG, WebP, or HEIC image under 5 MB');
     }
     const current = await ctx.db.get(userId);
     if (!current) throw new Error('Account not found');
     await ctx.db.patch(userId, { avatarStorageId: storageId, profileUpdatedAt: Date.now() });
+    await ctx.db.patch(upload._id, { status: 'active' });
     if (current.avatarStorageId && current.avatarStorageId !== storageId) {
-      await ctx.storage.delete(current.avatarStorageId);
+      await deleteOwnedAvatar(ctx, userId, current.avatarStorageId);
     }
   },
 });
@@ -144,7 +211,27 @@ export const removeAvatar = mutation({
     const current = await ctx.db.get(userId);
     if (!current?.avatarStorageId) return;
     await ctx.db.patch(userId, { avatarStorageId: undefined, profileUpdatedAt: Date.now() });
-    await ctx.storage.delete(current.avatarStorageId);
+    await deleteOwnedAvatar(ctx, userId, current.avatarStorageId);
+  },
+});
+
+export const pruneAvatarUploads = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const stale = await ctx.db
+      .query('avatarUploads')
+      .withIndex('by_status_created', (query) =>
+        query.eq('status', 'pending').lt('createdAt', Date.now() - AVATAR_UPLOAD_TTL_MS),
+      )
+      .take(AVATAR_UPLOAD_PRUNE_BATCH);
+    for (const upload of stale) {
+      if (upload.storageId) await ctx.storage.delete(upload.storageId);
+      await ctx.db.delete(upload._id);
+    }
+    if (stale.length === AVATAR_UPLOAD_PRUNE_BATCH)
+      await ctx.scheduler.runAfter(0, internal.profiles.pruneAvatarUploads, {});
+    return null;
   },
 });
 

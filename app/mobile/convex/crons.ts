@@ -11,6 +11,8 @@ crons.hourly(
 
 crons.hourly('Prune provider snapshots', { minuteUTC: 16 }, internal.providerSnapshots.prune, {});
 
+crons.hourly('Prune avatar uploads', { minuteUTC: 13 }, internal.profiles.pruneAvatarUploads, {});
+
 crons.hourly(
   'Prune metadata refresh requests',
   { minuteUTC: 15 },

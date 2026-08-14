@@ -25,7 +25,7 @@ describe('Marker backend', () => {
     vi.unstubAllEnvs();
   });
   it('validates runtime and genre metadata on additions', async () => {
-    const { asUser } = await setup();
+    const { userId, asUser } = await setup();
     await expect(
       asUser.mutation(api.library.addItem, add('Bad runtime', 11, 'movie', { runtime: Infinity })),
     ).rejects.toThrow('Runtime');
@@ -35,6 +35,39 @@ describe('Marker backend', () => {
         add('Too many genres', 12, 'movie', { genres: Array(16).fill('Drama') }),
       ),
     ).rejects.toThrow('limited to 15');
+    await expect(
+      asUser.mutation(
+        api.library.addItem,
+        add('Bad release date', 13, 'movie', { releaseDate: '2026-02-30' }),
+      ),
+    ).rejects.toThrow('YYYY-MM-DD');
+    await expect(
+      asUser.mutation(api.library.addItem, add('Bad TMDB id', -1, 'movie')),
+    ).rejects.toThrow('non-negative integer');
+    await expect(
+      asUser.mutation(api.library.addItem, add('Fractional TMDB id', 1.5, 'movie')),
+    ).rejects.toThrow('non-negative integer');
+    await expect(
+      asUser.mutation(api.library.addItem, add('Oversized TMDB id', 2 ** 31 + 1, 'movie')),
+    ).rejects.toThrow('no greater than');
+    await expect(
+      asUser.mutation(api.library.addItem, {
+        ...add('Valid release date', 14, 'movie'),
+        releaseDate: '2026-02-28',
+      }),
+    ).resolves.toBeDefined();
+    await expect(
+      asUser.mutation(internal.library.addItemInternal, {
+        userId,
+        ...add('Bad internal date', 15, 'movie', { releaseDate: 'February 15, 2026' }),
+      }),
+    ).rejects.toThrow('YYYY-MM-DD');
+    await expect(
+      asUser.action(api.library.addItemAndMarkWatched, {
+        ...add('Bad action id', -1, 'tv'),
+        status: 'watched',
+      }),
+    ).rejects.toThrow('non-negative integer');
   });
   it('requires auth and validates additions, duplicates, ratings, statuses, tags, and reorder', async () => {
     const { t, asUser } = await setup();
@@ -119,6 +152,10 @@ describe('Marker backend', () => {
       api.library.addItem,
       add('Third', 203, 'movie', { tags: ['Favorites', 'Weekend'] }),
     );
+    expect(await asUser.query(api.library.listTagSuggestions, {})).toEqual([
+      'Favorites',
+      'Weekend',
+    ]);
     const originalItems = (await asUser.query(api.library.listItems, {})).map((item) => ({
       id: item._id,
       title: item.title,
