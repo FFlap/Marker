@@ -217,6 +217,7 @@ export function ExplorePage() {
     if (!needsMedia) {
       setMedia([]);
       setMediaLoading(false);
+      setError("");
       return undefined;
     }
     let ignore = false;

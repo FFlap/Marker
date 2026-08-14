@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Check, X } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
@@ -9,18 +9,26 @@ import { Button } from "@/components/ui/button";
 export function FollowRequestList({ compact = false }: { compact?: boolean }) {
   const requests = useQuery(api.profiles.followRequests, {});
   const respond = useMutation(api.profiles.respondToFollow);
-  const [pending, setPending] = useState<string>();
+  const activeRequests = useRef(new Set<string>());
+  const [pending, setPending] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
 
   const handleRequest = async (username: string, accept: boolean) => {
-    setPending(username);
+    if (activeRequests.current.has(username)) return;
+    activeRequests.current.add(username);
+    setPending((current) => new Set(current).add(username));
     setError("");
     try {
       await respond({ username, accept });
     } catch {
       setError("Couldn’t update that follow request.");
     } finally {
-      setPending(undefined);
+      activeRequests.current.delete(username);
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(username);
+        return next;
+      });
     }
   };
 
@@ -63,7 +71,7 @@ export function FollowRequestList({ compact = false }: { compact?: boolean }) {
                   aria-label={`Decline @${request.username}`}
                   variant="ghost"
                   size="icon"
-                  disabled={pending === request.username}
+                  disabled={pending.has(request.username)}
                   onClick={() => void handleRequest(request.username, false)}
                 >
                   <X className="size-4" />
@@ -71,7 +79,7 @@ export function FollowRequestList({ compact = false }: { compact?: boolean }) {
                 <Button
                   aria-label={`Accept @${request.username}`}
                   size="icon"
-                  disabled={pending === request.username}
+                  disabled={pending.has(request.username)}
                   onClick={() => void handleRequest(request.username, true)}
                 >
                   <Check className="size-4" />
@@ -82,14 +90,14 @@ export function FollowRequestList({ compact = false }: { compact?: boolean }) {
                 <Button
                   variant="ghost"
                   aria-label={`Decline @${request.username}`}
-                  disabled={pending === request.username}
+                  disabled={pending.has(request.username)}
                   onClick={() => void handleRequest(request.username, false)}
                 >
                   Decline
                 </Button>
                 <Button
                   aria-label={`Accept @${request.username}`}
-                  disabled={pending === request.username}
+                  disabled={pending.has(request.username)}
                   onClick={() => void handleRequest(request.username, true)}
                 >
                   Accept
