@@ -176,19 +176,19 @@ export default function TagDetailScreen() {
     const versionKey = `${tagKey}:${status}`;
     const version = (reorderVersions.current[versionKey] ?? 0) + 1;
     reorderVersions.current[versionKey] = version;
-    setOptimisticState((current) => ({
-      tagKey,
-      orders: {
-        ...(current.tagKey === tagKey ? current.orders : {}),
-        [status]: next.map((item) => String(item._id)),
-      },
-    }));
+    setOptimisticState((current) => {
+      const orders = current.tagKey === tagKey ? current.orders : {};
+      return {
+        tagKey,
+        orders: { ...orders, [status]: next.map((item) => String(item._id)) },
+      };
+    });
     try {
       await reorderTagItem({
         tag,
         itemId: moved._id,
-        ...(next[to - 1] && { beforeId: next[to - 1]._id }),
-        ...(next[to + 1] && { afterId: next[to + 1]._id }),
+        beforeId: next[to - 1]?._id,
+        afterId: next[to + 1]?._id,
       });
     } catch {
       if (reorderVersions.current[versionKey] === version)
@@ -213,19 +213,22 @@ export default function TagDetailScreen() {
     statusMovePendingRef.current = true;
     setStatusMovePending(true);
     setOptimisticStatuses((current) => ({ ...current, [String(item._id)]: targetStatus }));
-    setOptimisticState((current) => ({
-      tagKey,
-      orders: {
-        ...(current.tagKey === tagKey ? current.orders : {}),
-        [sourceStatus]: sourceItems.map((entry) => String(entry._id)),
-        [targetStatus]: nextTarget.map((entry) => String(entry._id)),
-      },
-    }));
+    setOptimisticState((current) => {
+      const orders = current.tagKey === tagKey ? current.orders : {};
+      return {
+        tagKey,
+        orders: {
+          ...orders,
+          [sourceStatus]: sourceItems.map((entry) => String(entry._id)),
+          [targetStatus]: nextTarget.map((entry) => String(entry._id)),
+        },
+      };
+    });
 
     try {
       const placement = {
         itemId: item._id,
-        ...(targetLibraryItems.at(-1) && { beforeId: targetLibraryItems.at(-1)!._id }),
+        beforeId: targetLibraryItems.at(-1)?._id,
       };
       if (targetStatus === 'watched') await moveItemToWatched(placement);
       else await reorderItem({ ...placement, status: targetStatus });
@@ -261,7 +264,7 @@ export default function TagDetailScreen() {
       await reorderTagItem({
         tag,
         itemId: item._id,
-        ...(targetItems.at(-1) && { beforeId: targetItems.at(-1)!._id }),
+        beforeId: targetItems.at(-1)?._id,
       });
     } catch {
       setOptimisticState((current) =>

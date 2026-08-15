@@ -122,13 +122,9 @@ export async function resolveFreshTitle(
           )
       : Promise.resolve({ ok: true, value: null });
   const [tmdb, animeResult] = await Promise.all([tmdbPromise, animePromise]);
-  let partial = false;
-  let partialError: unknown;
+  let partial = !animeResult.ok;
+  let partialError = animeResult.ok ? undefined : animeResult.error;
   let anime = animeResult.ok ? animeResult.value : animeFromCurrent(current);
-  if (!animeResult.ok) {
-    partial = true;
-    partialError = animeResult.error;
-  }
   if (animeResult.ok && animeResult.value === null && current?.metadataProvider === 'tvdb') {
     anime = animeFromCurrent(current);
     partial = true;

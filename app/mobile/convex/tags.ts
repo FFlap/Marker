@@ -27,6 +27,12 @@ const tagPreviewValidator = v.object({
   ),
 });
 
+type PublicTagPageState = {
+  collectionId: string;
+  collectionCreatedAt: number;
+  cursor: string | null;
+};
+
 async function requireUser(ctx: Parameters<typeof getClerkUserId>[0]) {
   const userId = await getClerkUserId(ctx);
   if (!userId) throw new Error('Authentication required');
@@ -274,18 +280,14 @@ export const publicDetails = query({
       .take(20);
     const populatedCollections = collections.filter((collection) => collection.memberCount > 0);
     if (!populatedCollections.length) return null;
-    let pageState: {
-      collectionId: string;
-      collectionCreatedAt: number;
-      cursor: string | null;
-    } = {
+    let pageState: PublicTagPageState = {
       collectionId: String(populatedCollections[0]!._id),
       collectionCreatedAt: populatedCollections[0]!._creationTime,
       cursor: null,
     };
     if (cursor) {
       try {
-        const parsed = JSON.parse(cursor) as typeof pageState;
+        const parsed = JSON.parse(cursor) as PublicTagPageState;
         if (
           typeof parsed.collectionId === 'string' &&
           typeof parsed.collectionCreatedAt === 'number' &&

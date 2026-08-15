@@ -419,11 +419,12 @@ async function recordWatchForUser(
   let item: Doc<'items'> | ResolvedTvCandidate | null = await resolveTitle(title);
   if (!item && seasonTitle) item = await resolveTitle(seasonTitle);
   if (!item) return { ok: false as const, reason: 'unmatched' as const };
-  let canonicalTitle: {
+  type CanonicalTitle = {
     seasons: { season: number }[];
     orderEpoch?: number;
     metadataProvider?: 'tmdb' | 'tvdb';
   };
+  let canonicalTitle: CanonicalTitle;
   try {
     canonicalTitle = await ctx.runAction(internal.resolvedMetadata.resolveTitleForUser, {
       userId,

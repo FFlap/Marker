@@ -84,7 +84,7 @@ export const claimRefresh = internalMutation({
     if (existing) await ctx.db.replace(existing._id, value);
     else await ctx.db.insert('metadataRefreshLeases', value);
     if (attemptToken)
-      for (const requestKeyValue of [...new Set(requestKeys ?? [])]) {
+      for (const requestKeyValue of new Set(requestKeys ?? [])) {
         const request = await ctx.db
           .query('metadataRefreshRequests')
           .withIndex('by_key', (query) => query.eq('key', requestKeyValue))
@@ -113,7 +113,7 @@ export const renewRefreshAttempt = internalMutation({
     if (!lease || lease.token !== args.token) return false;
     const expiresAt = Date.now() + Math.min(Math.max(args.leaseMs, 1_000), 120_000);
     await ctx.db.patch(lease._id, { expiresAt });
-    for (const key of [...new Set(args.requestKeys)]) {
+    for (const key of new Set(args.requestKeys)) {
       const request = await ctx.db
         .query('metadataRefreshRequests')
         .withIndex('by_key', (query) => query.eq('key', key))
@@ -131,7 +131,7 @@ export const renewRefreshRequests = internalMutation({
   handler: async (ctx, args) => {
     const expiresAt = Date.now() + Math.min(Math.max(args.requestMs, 1_000), 120_000);
     let renewed = 0;
-    for (const key of [...new Set(args.keys)]) {
+    for (const key of new Set(args.keys)) {
       const request = await ctx.db
         .query('metadataRefreshRequests')
         .withIndex('by_key', (query) => query.eq('key', key))
@@ -326,7 +326,7 @@ export const adoptRefreshRequests = internalMutation({
       .unique();
     if (!lease || lease.token !== args.leaseToken || lease.expiresAt <= now) return [];
     const adopted: string[] = [];
-    for (const key of [...new Set(args.keys)]) {
+    for (const key of new Set(args.keys)) {
       const row = await ctx.db
         .query('metadataRefreshRequests')
         .withIndex('by_key', (query) => query.eq('key', key))

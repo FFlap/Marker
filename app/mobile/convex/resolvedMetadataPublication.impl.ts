@@ -21,17 +21,19 @@ import {
   finalizePrechunkedSeasonWrite,
 } from './seasonStorage';
 
+type CanonicalPublication = {
+  title: ResolvedTitle;
+  titleWrite: 'replace' | 'seasonPatch';
+  season?: { season: number; episodeCount: number };
+  mapping?: MappingWrite;
+  writeTitle: boolean;
+  writeSeason: boolean;
+  now: number;
+};
+
 export async function publishCanonicalMetadata(
   ctx: MutationCtx,
-  args: {
-    title: ResolvedTitle;
-    titleWrite: 'replace' | 'seasonPatch';
-    season?: { season: number; episodeCount: number };
-    mapping?: MappingWrite;
-    writeTitle: boolean;
-    writeSeason: boolean;
-    now: number;
-  },
+  args: CanonicalPublication,
   currentMapping: Doc<'titleMappings'> | null,
   existingTitle: Doc<'resolvedTitles'> | null,
 ) {
@@ -488,13 +490,13 @@ export const finalizeRefreshSeason = internalMutation({
     const seasonOutcome = args.outcomes.find((outcome) => outcome.key.startsWith('season:'));
     const writeTitle = titleOutcome?.state !== 'failed' && titleOutcome?.state !== 'notFound';
     const writeSeason = seasonOutcome?.state !== 'failed' && seasonOutcome?.state !== 'notFound';
+    const publicationKeys: string[] = [];
+    if (writeTitle) publicationKeys.push(requestKey('tv', args.tmdbId));
+    if (writeSeason) publicationKeys.push(seasonRequestKey(args.tmdbId, args.season));
     const requests = await requestsForPublication(
       ctx,
       args.outcomes,
-      [
-        ...(writeTitle ? [requestKey('tv', args.tmdbId)] : []),
-        ...(writeSeason ? [seasonRequestKey(args.tmdbId, args.season)] : []),
-      ],
+      publicationKeys,
       args.attemptToken,
       now,
     );
@@ -505,25 +507,20 @@ export const finalizeRefreshSeason = internalMutation({
       attemptToken: args.attemptToken,
     });
     if (!finalized) return false;
-    await publishCanonicalMetadata(
-      ctx,
-      {
-        title: parent.stagingTitle as ResolvedTitle,
-        titleWrite: parent.stagingTitleWrite,
-        season: {
-          season: args.season,
-          episodeCount: parent.stagingEpisodeCount,
-        },
-        ...(parent.stagingMapping !== null && parent.stagingMapping !== undefined
-          ? { mapping: parent.stagingMapping as MappingWrite }
-          : {}),
-        writeTitle,
-        writeSeason,
-        now,
+    const publication: CanonicalPublication = {
+      title: parent.stagingTitle as ResolvedTitle,
+      titleWrite: parent.stagingTitleWrite,
+      season: {
+        season: args.season,
+        episodeCount: parent.stagingEpisodeCount,
       },
-      mapping,
-      existingTitle,
-    );
+      writeTitle,
+      writeSeason,
+      now,
+    };
+    if (parent.stagingMapping !== null && parent.stagingMapping !== undefined)
+      publication.mapping = parent.stagingMapping as MappingWrite;
+    await publishCanonicalMetadata(ctx, publication, mapping, existingTitle);
     if (writeSeason)
       await ctx.scheduler.runAfter(0, internal.episodeSummaries.reconcileSeasonSummaries, {
         tmdbId: args.tmdbId,

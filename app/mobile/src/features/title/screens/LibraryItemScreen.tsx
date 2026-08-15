@@ -293,10 +293,10 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       }
       await update({
         itemId,
-        ...(item.mediaType !== 'tv' || entryForm.status !== 'watched'
-          ? { status: entryForm.status }
-          : {}),
-        ...(entryForm.rating === undefined ? { clearRating: true } : { rating: entryForm.rating }),
+        status:
+          item.mediaType !== 'tv' || entryForm.status !== 'watched' ? entryForm.status : undefined,
+        rating: entryForm.rating,
+        clearRating: entryForm.rating === undefined,
         timesWatched: entryForm.timesWatched,
         tags: entryForm.tags,
       });
