@@ -29,6 +29,16 @@ if (!convexUrl) throw new Error('EXPO_PUBLIC_CONVEX_URL is required');
 const client = new ConvexReactClient(convexUrl);
 const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
 if (!clerkPublishableKey) throw new Error('EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is required');
+
+function ConvexClerkBridge({ children }: { children: React.ReactNode }) {
+  const { sessionId } = useAuth();
+  return (
+    <ConvexProviderWithClerk key={sessionId ?? 'signed-out'} client={client} useAuth={useAuth}>
+      {children}
+    </ConvexProviderWithClerk>
+  );
+}
+
 export function AppRoutes() {
   return (
     <AuthBoundary>
@@ -62,7 +72,7 @@ export default function RootLayout() {
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
           <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
-            <ConvexProviderWithClerk client={client} useAuth={useAuth}>
+            <ConvexClerkBridge>
               <ToastProvider>
                 <StatusBar style="light" />
                 <ScreenErrorBoundary>
@@ -70,7 +80,7 @@ export default function RootLayout() {
                 </ScreenErrorBoundary>
                 <PortalHost />
               </ToastProvider>
-            </ConvexProviderWithClerk>
+            </ConvexClerkBridge>
           </ClerkProvider>
         </SafeAreaView>
       </SafeAreaProvider>

@@ -1,6 +1,8 @@
 import React from 'react';
 import { fireEvent, render, userEvent, waitFor } from '@testing-library/react-native';
 
+const mockRouterReplace = jest.fn();
+
 const mockSignInPassword = jest.fn();
 const mockSignInFinalize = jest.fn(async () => ({ error: null }));
 const mockSignInCreate = jest.fn(async () => ({ error: null }));
@@ -47,13 +49,21 @@ const mockSignUpResource = {
   },
 };
 const mockSignUpReload = jest.fn(async () => ({ __internal_future: mockSignUpResource }));
+const mockClientReload = jest.fn(async () => ({ signedInSessions: [] }));
+const mockSetActive = jest.fn(async () => undefined);
 jest.mock('@clerk/expo', () => ({
-  useClerk: () => ({ client: { signUp: { reload: mockSignUpReload } } }),
+  useClerk: () => ({
+    client: { reload: mockClientReload, signUp: { reload: mockSignUpReload } },
+    setActive: mockSetActive,
+  }),
   useSignIn: () => ({ signIn: mockSignInResource }),
   useSignUp: () => ({ fetchStatus: 'idle', signUp: mockSignUpResource }),
 }));
 jest.mock('@clerk/expo/experimental', () => ({
   useSSO: () => ({ startSSOFlow: jest.fn() }),
+}));
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ replace: mockRouterReplace }),
 }));
 jest.mock('expo-image', () => ({ Image: require('react-native').Image }));
 
@@ -66,6 +76,10 @@ describe('sign-in screen', () => {
     mockSignUpResource.status = 'missing_requirements';
     mockSignInPassword.mockResolvedValue({ error: null });
     mockSignUpPassword.mockResolvedValue({ error: null });
+    mockSignInFinalize.mockResolvedValue({ error: null });
+    mockSignUpFinalize.mockResolvedValue({ error: null });
+    mockClientReload.mockResolvedValue({ signedInSessions: [] });
+    mockSetActive.mockResolvedValue(undefined);
   });
 
   it('shows friendly text for Clerk failures and toggles modes', async () => {
@@ -105,6 +119,7 @@ describe('sign-in screen', () => {
       }),
     );
     expect(mockSignInFinalize).toHaveBeenCalled();
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
   });
 
   it('starts Clerk email verification during sign-up', async () => {
@@ -139,6 +154,7 @@ describe('sign-in screen', () => {
 
     await waitFor(() => expect(mockSignUpVerifyEmailCode).toHaveBeenCalledWith({ code: '424242' }));
     expect(mockSignUpFinalize).toHaveBeenCalled();
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
     expect(view.queryByText('That verification code is invalid or expired.')).toBeNull();
   });
 
@@ -159,7 +175,51 @@ describe('sign-in screen', () => {
 
     await waitFor(() => expect(mockSignUpReload).toHaveBeenCalled());
     expect(mockSignUpFinalize).toHaveBeenCalled();
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
     expect(view.queryByText('That verification code is invalid or expired.')).toBeNull();
+  });
+
+  it('treats a persisted Clerk session as success when same-tick finalization throws', async () => {
+    mockSignUpFinalize.mockRejectedValueOnce(new Error('session publication raced'));
+    mockClientReload.mockResolvedValueOnce({ signedInSessions: [{ id: 'sess_test' }] });
+    const user = userEvent.setup();
+    const view = await render(<SignIn />);
+
+    await user.press(view.getByText('Sign up'));
+    await fireEvent.changeText(view.getByLabelText('Username'), 'Flappy_7');
+    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@marker.local');
+    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await user.press(view.getByText('Create account'));
+    await fireEvent.changeText(view.getByPlaceholderText('Verification code'), '424242');
+    await user.press(view.getByText('Verify email'));
+
+    await waitFor(() => expect(mockClientReload).toHaveBeenCalled());
+    expect(mockSetActive).toHaveBeenCalledWith({ session: { id: 'sess_test' } });
+    await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith('/'));
+    expect(view.queryByText('That verification code is invalid or expired.')).toBeNull();
+  });
+
+  it('leaves the client-trust code page as soon as sign-in is finalized', async () => {
+    mockSignInResource.status = 'needs_client_trust';
+    mockSignInResource.mfa.verifyEmailCode.mockImplementationOnce(async () => {
+      mockSignInResource.status = 'complete';
+      return { error: null };
+    });
+    const user = userEvent.setup();
+    const view = await render(<SignIn />);
+
+    await user.press(view.getByText('Log in'));
+    await fireEvent.changeText(view.getByPlaceholderText('Username or email'), 'viewer_name');
+    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await user.press(view.getByText('Sign in'));
+    await fireEvent.changeText(view.getByPlaceholderText('Verification code'), '424242');
+    await user.press(view.getByText('Verify email'));
+
+    await waitFor(() =>
+      expect(mockSignInResource.mfa.verifyEmailCode).toHaveBeenCalledWith({ code: '424242' }),
+    );
+    expect(mockSignInFinalize).toHaveBeenCalled();
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
   });
 
   it('shows the real password requirement during sign-up instead of a sign-in error', async () => {
@@ -198,6 +258,7 @@ describe('sign-in screen', () => {
 
     await user.press(view.getByText('Log in'));
     await user.press(view.getByText('Forgot password?'));
+    expect(view.queryByPlaceholderText('Password')).toBeNull();
     await fireEvent.changeText(view.getByPlaceholderText('Email or username'), 'viewer_name');
     await user.press(view.getByText('Send reset code'));
 

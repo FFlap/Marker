@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { useClerk, useSignIn, useSignUp } from '@clerk/expo';
 import { useSSO } from '@clerk/expo/experimental';
+import { useRouter } from 'expo-router';
 import { ArrowLeft, LogIn, UserPlus } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Button, Input } from '@/components/ui/primitives';
@@ -116,7 +117,8 @@ function GoogleIcon() {
 }
 
 export default function SignIn() {
-  const { client } = useClerk();
+  const router = useRouter();
+  const { client, setActive } = useClerk();
   const { signIn } = useSignIn();
   const { signUp } = useSignUp();
   const { startSSOFlow } = useSSO();
@@ -130,6 +132,8 @@ export default function SignIn() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const openSignedInApp = () => router.replace('/');
 
   const chooseFlow = (nextFlow: 'signIn' | 'signUp') => {
     setFlow(nextFlow);
@@ -193,6 +197,7 @@ export default function SignIn() {
         );
         if (signIn.status === 'complete') {
           throwIfError(await signIn.finalize());
+          openSignedInApp();
         } else if (signIn.status === 'needs_client_trust') {
           throwIfError(await signIn.mfa.sendEmailCode());
           setRecovery(null);
@@ -210,6 +215,8 @@ export default function SignIn() {
           if (finalized.error) {
             console.warn('[Marker auth] Could not activate verified sign-up');
             setError(friendly(finalized.error, 'session'));
+          } else {
+            openSignedInApp();
           }
         } else {
           throwIfError(result);
@@ -219,6 +226,7 @@ export default function SignIn() {
         throwIfError(await signIn.mfa.verifyEmailCode({ code: code.trim() }));
         if (signIn.status !== 'complete') throw new Error('Verification is incomplete');
         throwIfError(await signIn.finalize());
+        openSignedInApp();
       } else if (flow === 'signUp') {
         throwIfError(
           await signUp.password({
@@ -229,6 +237,7 @@ export default function SignIn() {
         );
         if (signUp.status === 'complete') {
           throwIfError(await signUp.finalize());
+          openSignedInApp();
         } else {
           throwIfError(await signUp.verifications.sendEmailCode());
           setVerification('signUp');
@@ -237,6 +246,7 @@ export default function SignIn() {
         throwIfError(await signIn.password({ identifier: identifier.trim(), password }));
         if (signIn.status === 'complete') {
           throwIfError(await signIn.finalize());
+          openSignedInApp();
         } else if (signIn.status === 'needs_client_trust') {
           throwIfError(await signIn.mfa.sendEmailCode());
           setVerification('clientTrust');
@@ -245,6 +255,26 @@ export default function SignIn() {
         }
       }
     } catch (cause) {
+      // Clerk's native client can persist the newly created session before finalize() finishes
+      // publishing it to the React hooks. In that race, finalize() throws even though the code
+      // was accepted. Confirm against the reloaded client so a consumed, successful code exits
+      // this screen, while a genuinely invalid code still shows the verification error.
+      if (verification) {
+        try {
+          const currentClient = await client.reload();
+          const persistedSession = currentClient.signedInSessions[0];
+          if (persistedSession) {
+            // Pass the resource itself: the hook's previous client snapshot may not know this ID
+            // yet, which is the native race we are recovering from.
+            await setActive({ session: persistedSession });
+            openSignedInApp();
+            setBusy(false);
+            return;
+          }
+        } catch {
+          // Preserve the original Clerk error when the client itself cannot be reloaded.
+        }
+      }
       const context: AuthErrorContext = verification
         ? 'verification'
         : recovery
@@ -310,7 +340,10 @@ export default function SignIn() {
         const generated = `${prefix}_${Math.random().toString(36).slice(2, 6)}`.slice(0, 24);
         throwIfError(await result.signUp.update({ username: generated }));
         const currentSignUp = (await client.signUp.reload()).__internal_future;
-        if (currentSignUp.status === 'complete') throwIfError(await currentSignUp.finalize());
+        if (currentSignUp.status === 'complete') {
+          throwIfError(await currentSignUp.finalize());
+          openSignedInApp();
+        }
       }
     } catch (cause) {
       setError(friendly(cause, 'oauth'));
@@ -398,17 +431,19 @@ export default function SignIn() {
                       onChangeText={setIdentifier}
                     />
                   )}
-                  <Input
-                    secureTextEntry
-                    autoComplete={
-                      recovery === 'password' || flow === 'signUp'
-                        ? 'new-password'
-                        : 'current-password'
-                    }
-                    placeholder={recovery === 'password' ? 'New password' : 'Password'}
-                    value={password}
-                    onChangeText={setPassword}
-                  />
+                  {recovery !== 'identifier' && (
+                    <Input
+                      secureTextEntry
+                      autoComplete={
+                        recovery === 'password' || flow === 'signUp'
+                          ? 'new-password'
+                          : 'current-password'
+                      }
+                      placeholder={recovery === 'password' ? 'New password' : 'Password'}
+                      value={password}
+                      onChangeText={setPassword}
+                    />
+                  )}
                   {recovery === 'password' && (
                     <Input
                       secureTextEntry
