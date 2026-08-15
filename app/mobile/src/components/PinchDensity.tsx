@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { colors } from '@/constants/colors';
@@ -44,13 +44,13 @@ export function PinchDensity({
         Animated.timing(opacity, {
           toValue: 1,
           duration: 140,
-          useNativeDriver: Platform.OS !== 'web',
+          useNativeDriver: true,
         }),
         Animated.delay(420),
         Animated.timing(opacity, {
           toValue: 0,
           duration: 220,
-          useNativeDriver: Platform.OS !== 'web',
+          useNativeDriver: true,
         }),
       ]),
       Animated.spring(scale, {
@@ -58,7 +58,7 @@ export function PinchDensity({
         damping: 15,
         stiffness: 230,
         mass: 0.7,
-        useNativeDriver: Platform.OS !== 'web',
+        useNativeDriver: true,
       }),
     ]);
     animation.start();

@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
 import { getConvexSiteUrl } from '@/lib/convexUrl';
 import { usernameError } from '@/lib/profile';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import { ProfileAvatar } from './ProfileAvatar';
 import { ProfileFormSkeleton } from './PageSkeletons';
 import { ProfileVisibility } from './ProfileVisibility';
@@ -234,50 +234,53 @@ function ProfileFormFields({
   );
 }
 
-const s = createStyles({
-  form: { gap: 32 },
-  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 18 },
-  avatarButton: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center' },
-  pressed: { opacity: 0.68 },
-  cameraBadge: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.text,
-    borderWidth: 3,
-    borderColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
+const s = createAppStyles(
+  {
+    form: { gap: 32 },
+    photoRow: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+    avatarButton: { width: 96, height: 96, alignItems: 'center', justifyContent: 'center' },
+    pressed: { opacity: 0.68 },
+    cameraBadge: {
+      position: 'absolute',
+      right: 0,
+      bottom: 0,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.text,
+      borderWidth: 3,
+      borderColor: colors.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    photoCopy: { flex: 1 },
+    photoTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
+    photoHelp: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 4 },
+    remove: {
+      minHeight: 40,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+    },
+    removeText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+    field: { gap: 10 },
+    label: { color: colors.text, fontSize: 13, fontWeight: '700' },
+    usernameField: {
+      height: 52,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      paddingLeft: 15,
+    },
+    usernameFieldError: { borderColor: colors.danger },
+    at: { color: colors.muted, fontSize: 16, fontWeight: '600' },
+    usernameInput: { flex: 1, height: 50, borderWidth: 0, backgroundColor: 'transparent' },
+    hint: { color: colors.muted, fontSize: 11, lineHeight: 16 },
+    error: { color: colors.danger, fontSize: 11, lineHeight: 16 },
   },
-  photoCopy: { flex: 1 },
-  photoTitle: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  photoHelp: { color: colors.muted, fontSize: 12, lineHeight: 18, marginTop: 4 },
-  remove: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-  },
-  removeText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-  field: { gap: 10 },
-  label: { color: colors.text, fontSize: 13, fontWeight: '700' },
-  usernameField: {
-    height: 52,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingLeft: 15,
-  },
-  usernameFieldError: { borderColor: colors.danger },
-  at: { color: colors.muted, fontSize: 16, fontWeight: '600' },
-  usernameInput: { flex: 1, height: 50, borderWidth: 0, backgroundColor: 'transparent' },
-  hint: { color: colors.muted, fontSize: 11, lineHeight: 16 },
-  error: { color: colors.danger, fontSize: 11, lineHeight: 16 },
-});
+  ['photoTitle', 'photoHelp', 'removeText', 'label', 'at', 'hint', 'error'] as const,
+);

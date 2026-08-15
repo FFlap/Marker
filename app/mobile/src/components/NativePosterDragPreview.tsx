@@ -2,7 +2,7 @@ import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-rea
 import { Text } from 'react-native';
 import { colors } from '@/constants/colors';
 import { PosterImage } from '@/components/ui/PosterImage';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export type NativePosterDragMotion = {
   horizontalTranslate?: SharedValue<number>;
@@ -91,28 +91,31 @@ export function NativePosterDragPreview({
   );
 }
 
-const styles = createStyles({
-  preview: {
-    position: 'absolute',
-    zIndex: 30,
-    elevation: 18,
-    padding: PREVIEW_PADDING,
-    borderRadius: 14,
-    backgroundColor: colors.elevated,
-    borderWidth: 1,
-    borderColor: colors.text,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.38,
-    shadowRadius: 16,
+const styles = createAppStyles(
+  {
+    preview: {
+      position: 'absolute',
+      zIndex: 30,
+      elevation: 18,
+      padding: PREVIEW_PADDING,
+      borderRadius: 14,
+      backgroundColor: colors.elevated,
+      borderWidth: 1,
+      borderColor: colors.text,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.38,
+      shadowRadius: 16,
+    },
+    poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 10 },
+    title: {
+      color: colors.text,
+      fontSize: 12,
+      lineHeight: 16,
+      marginTop: 6,
+      fontWeight: '700',
+    },
+    rank: { color: colors.muted },
   },
-  poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 10 },
-  title: {
-    color: colors.text,
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 6,
-    fontWeight: '700',
-  },
-  rank: { color: colors.muted },
-});
+  ['title', 'rank'] as const,
+);

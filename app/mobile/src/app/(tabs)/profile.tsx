@@ -14,7 +14,7 @@ import { ProfileCollection, ProfileMetrics } from '@/components/ProfileStats';
 import { ProfileTabs, type ProfileTab } from '@/components/ProfileTabs';
 import { PublicTagsSection } from '@/components/PublicTagsSection';
 import { ProfilePageSkeleton } from '@/components/PageSkeletons';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export default function Profile() {
   return (
@@ -152,68 +152,81 @@ function ProfileContent() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    width: '100%',
-    maxWidth: 880,
-    alignSelf: 'center',
-    padding: 20,
-    paddingTop: 88,
-    paddingBottom: 72,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      width: '100%',
+      maxWidth: 880,
+      alignSelf: 'center',
+      padding: 20,
+      paddingTop: 88,
+      paddingBottom: 72,
+    },
+    hero: { minHeight: 152, flexDirection: 'row', alignItems: 'center', gap: 20 },
+    identity: { flex: 1, minWidth: 0 },
+    handle: {
+      color: colors.text,
+      fontSize: 27,
+      lineHeight: 32,
+      fontWeight: '700',
+      letterSpacing: -0.7,
+    },
+    visibility: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+    visibilityText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+    connections: { color: colors.muted, fontSize: 11, marginTop: 7 },
+    edit: {
+      minHeight: 44,
+      paddingHorizontal: 15,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+    },
+    editText: { color: colors.text, fontSize: 12, fontWeight: '700' },
+    pressed: { opacity: 0.64 },
+    requests: {
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      paddingBottom: 30,
+      marginBottom: 34,
+    },
+    requestSection: {
+      color: colors.muted,
+      fontSize: 10,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+      marginBottom: 10,
+    },
+    requestRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    requestIdentity: { flex: 1, minWidth: 0 },
+    requestName: { color: colors.text, fontSize: 13, fontWeight: '700' },
+    requestMeta: { color: colors.muted, fontSize: 10, marginTop: 4 },
+    requestActions: { flexDirection: 'row', gap: 7 },
+    requestButton: {
+      minHeight: 38,
+      paddingHorizontal: 11,
+      borderRadius: 19,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    requestButtonText: { color: colors.muted, fontSize: 10, fontWeight: '700' },
+    requestAccept: { backgroundColor: colors.text, borderColor: colors.text },
+    requestAcceptText: { color: colors.bg, fontSize: 10, fontWeight: '700' },
   },
-  hero: { minHeight: 152, flexDirection: 'row', alignItems: 'center', gap: 20 },
-  identity: { flex: 1, minWidth: 0 },
-  handle: {
-    color: colors.text,
-    fontSize: 27,
-    lineHeight: 32,
-    fontWeight: '700',
-    letterSpacing: -0.7,
-  },
-  visibility: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  visibilityText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-  connections: { color: colors.muted, fontSize: 11, marginTop: 7 },
-  edit: {
-    minHeight: 44,
-    paddingHorizontal: 15,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  editText: { color: colors.text, fontSize: 12, fontWeight: '700' },
-  pressed: { opacity: 0.64 },
-  requests: {
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    paddingBottom: 30,
-    marginBottom: 34,
-  },
-  requestSection: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  requestRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  requestIdentity: { flex: 1, minWidth: 0 },
-  requestName: { color: colors.text, fontSize: 13, fontWeight: '700' },
-  requestMeta: { color: colors.muted, fontSize: 10, marginTop: 4 },
-  requestActions: { flexDirection: 'row', gap: 7 },
-  requestButton: {
-    minHeight: 38,
-    paddingHorizontal: 11,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  requestButtonText: { color: colors.muted, fontSize: 10, fontWeight: '700' },
-  requestAccept: { backgroundColor: colors.text, borderColor: colors.text },
-  requestAcceptText: { color: colors.bg, fontSize: 10, fontWeight: '700' },
-});
+  [
+    'handle',
+    'visibilityText',
+    'connections',
+    'editText',
+    'requestSection',
+    'requestName',
+    'requestMeta',
+    'requestButtonText',
+    'requestAcceptText',
+  ] as const,
+);

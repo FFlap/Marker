@@ -2,7 +2,7 @@ import { Text, View } from 'react-native';
 import { ChartNoAxesColumn, Library } from 'lucide-react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export type ProfileTab = 'collection' | 'stats';
 
@@ -48,36 +48,39 @@ export function ProfileTabs({
   );
 }
 
-const s = createStyles({
-  tabs: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 32,
+const s = createAppStyles(
+  {
+    tabs: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 32,
+    },
+    tab: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 52,
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+    },
+    tabContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 7,
+    },
+    label: { color: colors.muted, fontSize: 13, fontWeight: '600' },
+    labelSelected: { color: colors.text, fontWeight: '700' },
+    indicator: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: -1,
+      height: 2,
+      backgroundColor: colors.text,
+    },
+    pressed: { opacity: 0.62 },
   },
-  tab: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  tabContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  label: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-  labelSelected: { color: colors.text, fontWeight: '700' },
-  indicator: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: -1,
-    height: 2,
-    backgroundColor: colors.text,
-  },
-  pressed: { opacity: 0.62 },
-});
+  ['label', 'labelSelected'] as const,
+);

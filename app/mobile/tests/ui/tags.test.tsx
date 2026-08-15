@@ -83,7 +83,6 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('convex/react', () => ({
   useQuery: (ref: string) => {
-    if (ref === 'tags.mine') return { collections: mockTagPreviews };
     if (ref === 'library.listItems') return mockItems;
     if (ref === 'library.listTagRanks') return [];
     if (ref === 'settings.getSettings') return { defaultView: 'list' };
@@ -91,6 +90,11 @@ jest.mock('convex/react', () => ({
     if (ref === 'profiles.me') return { username: 'tester', isPublic: false };
     return undefined;
   },
+  usePaginatedQuery: () => ({
+    results: mockTagPreviews,
+    status: 'Exhausted',
+    loadMore: jest.fn(),
+  }),
   useMutation: (ref: string) => {
     if (ref === 'tags.setVisibility') return mockSetVisibility;
     if (ref === 'library.reorderItem') return mockReorderItem;

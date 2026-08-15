@@ -1,7 +1,7 @@
 import type { Doc, Id } from './_generated/dataModel';
 import type { MutationCtx } from './_generated/server';
 
-export const normalizeTagKey = (tag: string) => tag.trim().toLocaleLowerCase();
+export const normalizeTagKey = (tag: string) => tag.trim().toLowerCase();
 
 const membershipPatch = (collection: Doc<'tagCollections'>, item: Doc<'items'>, rank: number) => ({
   collectionId: collection._id,
@@ -40,12 +40,7 @@ export async function refreshTagCollectionSummary(
   });
 }
 
-export async function ensureTagMemberships(
-  ctx: MutationCtx,
-  userId: Id<'users'>,
-  label: string,
-  _defaultPublic = false,
-) {
+export async function requireTagCollection(ctx: MutationCtx, userId: Id<'users'>, label: string) {
   const tagKey = normalizeTagKey(label);
   if (!tagKey || tagKey.length > 40) throw new Error('Tag not found');
   let collection = await ctx.db
@@ -59,9 +54,7 @@ export async function ensureTagMemberships(
     .withIndex('by_collection_rank', (q) => q.eq('collectionId', collection._id))
     .take(2_001);
   if (existing.length > 2_000) throw new Error('Too many tag entries');
-  if (existing.length > 0) return collection;
-
-  throw new Error('Tag not found');
+  return collection;
 }
 
 export async function syncItemTagMemberships(

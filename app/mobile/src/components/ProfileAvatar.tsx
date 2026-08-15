@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export function ProfileAvatar({
   username,
@@ -35,15 +35,18 @@ export function ProfileAvatar({
   );
 }
 
-const s = createStyles({
-  frame: {
-    overflow: 'hidden',
-    flexShrink: 0,
-    backgroundColor: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+const s = createAppStyles(
+  {
+    frame: {
+      overflow: 'hidden',
+      flexShrink: 0,
+      backgroundColor: colors.text,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    initial: { color: colors.bg, fontWeight: '700' },
   },
-  initial: { color: colors.bg, fontWeight: '700' },
-});
+  ['initial'] as const,
+);

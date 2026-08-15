@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 type ToastValue = { show: (message: string) => void };
 const ToastContext = createContext<ToastValue>({ show: () => undefined });
@@ -57,27 +57,30 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 export const useToast = () => useContext(ToastContext);
 
-const styles = createStyles({
-  toast: {
-    position: 'absolute',
-    bottom: 90,
-    left: 24,
-    right: 24,
-    backgroundColor: colors.text,
-    borderRadius: 12,
-    padding: 14,
-    paddingRight: 44,
-    zIndex: 99,
+const styles = createAppStyles(
+  {
+    toast: {
+      position: 'absolute',
+      bottom: 90,
+      left: 24,
+      right: 24,
+      backgroundColor: colors.text,
+      borderRadius: 12,
+      padding: 14,
+      paddingRight: 44,
+      zIndex: 99,
+    },
+    toastText: { color: colors.bg, textAlign: 'center', fontWeight: '600' },
+    toastClose: {
+      position: 'absolute',
+      right: 4,
+      top: 3,
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    toastCloseText: { color: colors.bg, fontSize: 24 },
   },
-  toastText: { color: colors.bg, textAlign: 'center', fontWeight: '600' },
-  toastClose: {
-    position: 'absolute',
-    right: 4,
-    top: 3,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toastCloseText: { color: colors.bg, fontSize: 24 },
-});
+  ['toastText', 'toastCloseText'] as const,
+);

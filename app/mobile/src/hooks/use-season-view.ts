@@ -2,8 +2,8 @@ import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } fr
 import { usePaginatedQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 
-// One resolved season page contains at most 120 episodes. FlatList otherwise
-// mounts only 10 rows initially, which can leave the rest unrendered on web.
+// One resolved season page contains at most 120 episodes. Render the complete
+// season so users can jump to any episode without waiting for another batch.
 export const SEASON_EPISODE_RENDER_BATCH = 120;
 
 type SeasonEpisode = {

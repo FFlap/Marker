@@ -4,7 +4,7 @@ import { router, type Href } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 type BackButtonProps = {
   accessibilityLabel?: string;
@@ -65,42 +65,45 @@ export function SecondaryHeader({
   );
 }
 
-const s = createStyles({
-  button: {
-    width: 40,
-    height: 40,
-    flexShrink: 0,
-    borderRadius: 20,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
+const s = createAppStyles(
+  {
+    button: {
+      width: 40,
+      height: 40,
+      flexShrink: 0,
+      borderRadius: 20,
+      backgroundColor: 'transparent',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pressed: { opacity: 0.62 },
+    toolbar: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      backgroundColor: colors.bg,
+    },
+    header: {
+      width: '100%',
+      alignSelf: 'center',
+      height: 72,
+      paddingHorizontal: 20,
+      paddingTop: 20,
+      paddingBottom: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    title: {
+      color: colors.text,
+      fontSize: 24,
+      fontWeight: '700',
+      letterSpacing: -0.6,
+      flex: 1,
+      minWidth: 0,
+    },
   },
-  pressed: { opacity: 0.62 },
-  toolbar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    backgroundColor: colors.bg,
-  },
-  header: {
-    width: '100%',
-    alignSelf: 'center',
-    height: 72,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '700',
-    letterSpacing: -0.6,
-    flex: 1,
-    minWidth: 0,
-  },
-});
+  ['title'] as const,
+);

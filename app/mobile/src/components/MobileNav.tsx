@@ -3,7 +3,7 @@ import { router, type Href } from 'expo-router';
 import { BookOpen, ListVideo, Tags } from 'lucide-react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 type Destination = 'library' | 'episodes' | 'tags';
 
@@ -41,33 +41,36 @@ export function MobileNav({ current }: { current: Destination }) {
   );
 }
 
-const s = createStyles({
-  shell: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 30,
-    backgroundColor: colors.bg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingBottom: 8,
+const s = createAppStyles(
+  {
+    shell: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 30,
+      backgroundColor: colors.bg,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingBottom: 8,
+    },
+    navigation: {
+      width: '100%',
+      maxWidth: 520,
+      alignSelf: 'center',
+      height: 58,
+      flexDirection: 'row',
+    },
+    item: {
+      flex: 1,
+      minHeight: 52,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+    },
+    label: { color: colors.muted, fontSize: 9, fontWeight: '600' },
+    labelSelected: { color: colors.text },
+    pressed: { opacity: 0.62 },
   },
-  navigation: {
-    width: '100%',
-    maxWidth: 520,
-    alignSelf: 'center',
-    height: 58,
-    flexDirection: 'row',
-  },
-  item: {
-    flex: 1,
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  label: { color: colors.muted, fontSize: 9, fontWeight: '600' },
-  labelSelected: { color: colors.text },
-  pressed: { opacity: 0.62 },
-});
+  ['label', 'labelSelected'] as const,
+);

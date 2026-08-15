@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 type Props = React.PropsWithChildren<{ message?: string }>;
 
@@ -43,24 +43,27 @@ class ErrorBoundaryContent extends React.Component<
   }
 }
 
-const styles = createStyles({
-  root: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    padding: 24,
-    backgroundColor: colors.bg,
+const styles = createAppStyles(
+  {
+    root: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      padding: 24,
+      backgroundColor: colors.bg,
+    },
+    title: { color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+    detail: { color: colors.muted, fontSize: 13, textAlign: 'center' },
+    button: {
+      marginTop: 8,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      borderRadius: 999,
+      paddingHorizontal: 22,
+      paddingVertical: 10,
+    },
+    buttonText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
   },
-  title: { color: colors.text, fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  detail: { color: colors.muted, fontSize: 13, textAlign: 'center' },
-  button: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: 999,
-    paddingHorizontal: 22,
-    paddingVertical: 10,
-  },
-  buttonText: { color: colors.accent, fontSize: 13, fontWeight: '700' },
-});
+  ['title', 'detail', 'buttonText'] as const,
+);

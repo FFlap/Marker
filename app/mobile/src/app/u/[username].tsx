@@ -14,7 +14,7 @@ import { ProfileTabs, type ProfileTab } from '@/components/ProfileTabs';
 import { PublicTagsSection } from '@/components/PublicTagsSection';
 import { ProfilePageSkeleton } from '@/components/PageSkeletons';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export default function PublicProfile() {
   const { username = '' } = useLocalSearchParams<{ username: string }>();
@@ -138,47 +138,58 @@ export default function PublicProfile() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    width: '100%',
-    maxWidth: 880,
-    alignSelf: 'center',
-    padding: 20,
-    paddingTop: 96,
-    paddingBottom: 72,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      width: '100%',
+      maxWidth: 880,
+      alignSelf: 'center',
+      padding: 20,
+      paddingTop: 96,
+      paddingBottom: 72,
+    },
+    state: { flex: 1, paddingTop: 96 },
+    hero: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 20,
+      paddingBottom: 24,
+    },
+    identity: { flex: 1, minWidth: 0 },
+    handle: { color: colors.text, fontSize: 27, fontWeight: '700', letterSpacing: -0.7 },
+    connections: { color: colors.muted, fontSize: 11, marginTop: 8 },
+    followButton: {
+      minHeight: 42,
+      paddingHorizontal: 15,
+      borderRadius: 21,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    followButtonPrimary: { backgroundColor: colors.text, borderColor: colors.text },
+    followText: { color: colors.text, fontSize: 11, fontWeight: '700' },
+    followTextPrimary: { color: colors.bg },
+    pressed: { opacity: 0.64 },
+    privateState: {
+      minHeight: 260,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderTopWidth: 1,
+      borderColor: colors.border,
+    },
+    privateTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: 14 },
+    privateDetail: { color: colors.muted, fontSize: 12, marginTop: 7 },
+    privateNotice: { color: colors.muted, fontSize: 11, marginBottom: 8 },
   },
-  state: { flex: 1, paddingTop: 96 },
-  hero: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-    paddingBottom: 24,
-  },
-  identity: { flex: 1, minWidth: 0 },
-  handle: { color: colors.text, fontSize: 27, fontWeight: '700', letterSpacing: -0.7 },
-  connections: { color: colors.muted, fontSize: 11, marginTop: 8 },
-  followButton: {
-    minHeight: 42,
-    paddingHorizontal: 15,
-    borderRadius: 21,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  followButtonPrimary: { backgroundColor: colors.text, borderColor: colors.text },
-  followText: { color: colors.text, fontSize: 11, fontWeight: '700' },
-  followTextPrimary: { color: colors.bg },
-  pressed: { opacity: 0.64 },
-  privateState: {
-    minHeight: 260,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderTopWidth: 1,
-    borderColor: colors.border,
-  },
-  privateTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: 14 },
-  privateDetail: { color: colors.muted, fontSize: 12, marginTop: 7 },
-  privateNotice: { color: colors.muted, fontSize: 11, marginBottom: 8 },
-});
+  [
+    'handle',
+    'connections',
+    'followText',
+    'followTextPrimary',
+    'privateTitle',
+    'privateDetail',
+    'privateNotice',
+  ] as const,
+);

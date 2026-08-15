@@ -4,7 +4,6 @@ import {
   Animated,
   Easing,
   Modal,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -16,7 +15,7 @@ import { useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import { ProfileAvatar } from './ProfileAvatar';
 
 type Destination =
@@ -70,7 +69,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
           toValue: 1,
           duration: 240,
           easing: Easing.bezier(0.22, 1, 0.36, 1),
-          useNativeDriver: Platform.OS !== 'web',
+          useNativeDriver: true,
         }).start();
       });
     }
@@ -92,7 +91,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
         toValue: 0,
         duration: 170,
         easing: Easing.bezier(0.25, 1, 0.5, 1),
-        useNativeDriver: Platform.OS !== 'web',
+        useNativeDriver: true,
       }).start(({ finished }) => {
         if (!finished) return;
         setVisible(false);
@@ -215,56 +214,59 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   );
 });
 
-const s = createStyles({
-  trigger: {
-    width: 36,
-    height: 36,
-    flexShrink: 0,
-    borderRadius: 18,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
+const s = createAppStyles(
+  {
+    trigger: {
+      width: 36,
+      height: 36,
+      flexShrink: 0,
+      borderRadius: 18,
+      backgroundColor: 'transparent',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pressed: { opacity: 0.62 },
+    overlay: { flex: 1, flexDirection: 'row' },
+    scrim: { backgroundColor: '#000' },
+    backdrop: { flex: 1 },
+    drawer: {
+      width: '82%',
+      maxWidth: 320,
+      height: '100%',
+      backgroundColor: colors.bg,
+      borderRightWidth: 1,
+      borderRightColor: colors.border,
+      paddingHorizontal: 20,
+      paddingTop: 56,
+      paddingBottom: 28,
+    },
+    drawerHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingBottom: 28,
+    },
+    identity: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    eyebrow: {
+      color: colors.muted,
+      fontSize: 10,
+      fontWeight: '600',
+      letterSpacing: 0.2,
+      marginTop: 4,
+    },
+    name: { color: colors.text, fontSize: 17, fontWeight: '700' },
+    navigation: { flex: 1, gap: 8 },
+    settingsItem: { marginTop: 'auto' },
+    menuItem: {
+      minHeight: 52,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+    },
+    menuItemSelected: { backgroundColor: colors.text },
+    menuLabel: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    menuLabelSelected: { color: colors.bg },
   },
-  pressed: { opacity: 0.62 },
-  overlay: { flex: 1, flexDirection: 'row' },
-  scrim: { backgroundColor: '#000' },
-  backdrop: { flex: 1 },
-  drawer: {
-    width: '82%',
-    maxWidth: 320,
-    height: '100%',
-    backgroundColor: colors.bg,
-    borderRightWidth: 1,
-    borderRightColor: colors.border,
-    paddingHorizontal: 20,
-    paddingTop: 56,
-    paddingBottom: 28,
-  },
-  drawerHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingBottom: 28,
-  },
-  identity: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  eyebrow: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-    marginTop: 4,
-  },
-  name: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  navigation: { flex: 1, gap: 8 },
-  settingsItem: { marginTop: 'auto' },
-  menuItem: {
-    minHeight: 52,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  menuItemSelected: { backgroundColor: colors.text },
-  menuLabel: { color: colors.text, fontSize: 15, fontWeight: '600' },
-  menuLabelSelected: { color: colors.bg },
-});
+  ['eyebrow', 'name', 'menuLabel', 'menuLabelSelected'] as const,
+);

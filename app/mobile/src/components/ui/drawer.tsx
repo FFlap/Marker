@@ -161,7 +161,7 @@ const DrawerSheet = React.forwardRef<
   const dragGesture = React.useMemo(
     () =>
       Gesture.Pan()
-        .enabled(interactive && Platform.OS !== 'web')
+        .enabled(interactive)
         .maxPointers(1)
         .activeOffsetY([-10_000, 4])
         .failOffsetX([-32, 32])
@@ -247,13 +247,7 @@ function DrawerOverlay({
   return (
     <FullWindowOverlay>
       <DrawerBackdrop
-        className={cn(
-          'absolute bottom-0 left-0 right-0 top-0 flex justify-end',
-          Platform.select({
-            web: 'fixed cursor-default [&>*]:cursor-auto',
-          }),
-          className,
-        )}
+        className={cn('absolute bottom-0 left-0 right-0 top-0 flex justify-end', className)}
         {...props}
         accessibilityElementsHidden={!interactive}
         importantForAccessibility={interactive ? 'auto' : 'no-hide-descendants'}
@@ -295,6 +289,7 @@ function DrawerContent({
         <DrawerOverlay>
           <DialogPrimitive.Content asChild {...props}>
             <DrawerSheet
+              accessibilityViewIsModal
               className={cn(
                 'bg-background border-border z-50 flex w-full overflow-hidden rounded-t-[28px] rounded-b-none border-t p-0 shadow-lg shadow-black/10',
                 className,
@@ -367,7 +362,7 @@ export {
 const styles = StyleSheet.create({
   sheetPressGuard: { width: '100%' },
   overlay: {
-    position: Platform.OS === 'web' ? ('fixed' as 'absolute') : 'absolute',
+    position: 'absolute',
     top: 0,
     right: 0,
     bottom: 0,

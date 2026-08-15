@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
-import { useQuery } from 'convex/react';
+import { usePaginatedQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { MobileNav } from '@/components/MobileNav';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { TagGallery } from '@/components/TagGallery';
 import { EmptyState } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import { TabHeader } from '@/components/TabHeader';
 
 type TagPreview = {
@@ -22,35 +22,19 @@ type TagPreview = {
 };
 
 export default function TagsScreen() {
-  const [cursor, setCursor] = useState<string>();
-  const [pages, setPages] = useState<Record<string, TagPreview[]>>({});
-  const pageKey = cursor ?? 'first';
-  const page = useQuery(api.tags.mine, { cursor }) as
-    { collections: TagPreview[]; nextCursor?: string } | undefined;
-  useEffect(() => {
-    if (!page) return;
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setPages((current) =>
-        JSON.stringify(current[pageKey]) === JSON.stringify(page.collections)
-          ? current
-          : { ...current, [pageKey]: page.collections },
-      );
-      if (page.nextCursor) setCursor(page.nextCursor);
-    });
-    return () => {
-      active = false;
-    };
-  }, [page, pageKey]);
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.tags.mine,
+    {},
+    { initialNumItems: 100 },
+  );
   const collections = useMemo(
     () =>
-      Object.keys(pages).length || page
-        ? Object.values(pages)
-            .flat()
-            .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag))
-        : undefined,
-    [page, pages],
+      status === 'LoadingFirstPage'
+        ? undefined
+        : ([...results] as TagPreview[]).sort(
+            (left, right) => right.count - left.count || left.tag.localeCompare(right.tag),
+          ),
+    [results, status],
   );
   const [search, setSearch] = useState('');
   const visible = useMemo(() => {
@@ -74,7 +58,19 @@ export default function TagsScreen() {
           returnKeyType="search"
         />
       </View>
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={s.content}
+        keyboardShouldPersistTaps="handled"
+        onScroll={(event) => {
+          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+          if (
+            status === 'CanLoadMore' &&
+            contentOffset.y + layoutMeasurement.height >= contentSize.height - 240
+          )
+            loadMore(100);
+        }}
+        scrollEventThrottle={100}
+      >
         {collections === undefined ? (
           <TagSkeletons />
         ) : visible.length ? (
@@ -128,53 +124,56 @@ function TagSkeletons() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  toolbar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    backgroundColor: colors.bg,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    toolbar: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      backgroundColor: colors.bg,
+    },
+    content: {
+      width: '100%',
+      maxWidth: 760,
+      minHeight: '100%',
+      alignSelf: 'center',
+      paddingHorizontal: 20,
+      paddingTop: 76,
+      paddingBottom: 128,
+    },
+    cards: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      columnGap: '4%',
+      rowGap: 24,
+    },
+    card: {
+      width: '48%',
+      minWidth: 0,
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      paddingVertical: 4,
+    },
+    skeletonPosters: {
+      position: 'relative',
+      overflow: 'hidden',
+      width: 68,
+      height: 102,
+      borderRadius: 10,
+      backgroundColor: colors.elevated,
+    },
+    skeletonTitle: {
+      position: 'relative',
+      overflow: 'hidden',
+      width: 82,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: colors.elevated,
+      marginTop: 10,
+    },
   },
-  content: {
-    width: '100%',
-    maxWidth: 760,
-    minHeight: '100%',
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 76,
-    paddingBottom: 128,
-  },
-  cards: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: '4%',
-    rowGap: 24,
-  },
-  card: {
-    width: '48%',
-    minWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingVertical: 4,
-  },
-  skeletonPosters: {
-    position: 'relative',
-    overflow: 'hidden',
-    width: 68,
-    height: 102,
-    borderRadius: 10,
-    backgroundColor: colors.elevated,
-  },
-  skeletonTitle: {
-    position: 'relative',
-    overflow: 'hidden',
-    width: 82,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.elevated,
-    marginTop: 10,
-  },
-});
+  [] as const,
+);

@@ -10,7 +10,7 @@ import { NativePressable } from '@/components/ui/NativePressable';
 import { Button, EmptyState, Input } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import {
   DEFAULT_DISPLAY_PREFERENCES,
   gridItemWidth,
@@ -241,42 +241,51 @@ function TitleSection({
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    width: '100%',
-    maxWidth: 880,
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 88,
-    paddingBottom: 80,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      width: '100%',
+      maxWidth: 880,
+      alignSelf: 'center',
+      paddingHorizontal: 20,
+      paddingTop: 88,
+      paddingBottom: 80,
+    },
+    search: {
+      height: 36,
+      borderWidth: 0,
+      backgroundColor: colors.surface,
+      fontSize: 14,
+    },
+    summary: { color: colors.muted, fontSize: 11, marginTop: 14 },
+    section: { marginTop: 28 },
+    sectionHead: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingBottom: 11,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    sectionTitle: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+    count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      columnGap: '3.5%',
+      rowGap: 18,
+      paddingTop: 16,
+    },
+    card: { minWidth: 0 },
+    poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 12 },
+    cardTitle: {
+      color: colors.text,
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: '600',
+      marginTop: 6,
+    },
+    pressed: { opacity: 0.72 },
   },
-  search: {
-    height: 36,
-    borderWidth: 0,
-    backgroundColor: colors.surface,
-    fontSize: 14,
-  },
-  summary: { color: colors.muted, fontSize: 11, marginTop: 14 },
-  section: { marginTop: 28 },
-  sectionHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingBottom: 11,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-  },
-  sectionTitle: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-  count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: '3.5%',
-    rowGap: 18,
-    paddingTop: 16,
-  },
-  card: { minWidth: 0 },
-  poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 12 },
-  cardTitle: { color: colors.text, fontSize: 12, lineHeight: 16, fontWeight: '600', marginTop: 6 },
-  pressed: { opacity: 0.72 },
-});
+  ['search', 'summary', 'sectionTitle', 'count', 'cardTitle'] as const,
+);

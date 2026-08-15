@@ -1,4 +1,4 @@
-export const normalizeUsername = (username: string) => username.trim().toLocaleLowerCase();
+export const normalizeUsername = (username: string) => username.trim().toLowerCase();
 
 export function validateUsername(value: string) {
   const username = value.trim();

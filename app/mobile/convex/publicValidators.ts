@@ -156,9 +156,6 @@ export const relationshipValidator = v.union(
 export const requestStateValidator = v.union(
   v.null(),
   v.object({
-    _id: v.id('metadataRefreshRequests'),
-    _creationTime: v.number(),
-    key: v.string(),
     state: v.union(
       v.literal('inFlight'),
       v.literal('succeeded'),
@@ -169,7 +166,6 @@ export const requestStateValidator = v.union(
     completedAt: v.optional(v.number()),
     errorCode: v.optional(v.string()),
     retryAt: v.optional(v.number()),
-    attemptToken: v.string(),
     expiresAt: v.number(),
     delayMs: v.optional(v.number()),
   }),

@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/drawer';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export type SeasonChoice = {
   season: number;
@@ -131,44 +131,47 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
   );
 }
 
-const s = createStyles({
-  root: { position: 'relative' },
-  trigger: {
-    minHeight: 56,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    backgroundColor: colors.surface,
+const s = createAppStyles(
+  {
+    root: { position: 'relative' },
+    trigger: {
+      minHeight: 56,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+      backgroundColor: colors.surface,
+    },
+    triggerOpen: {
+      borderColor: colors.muted,
+      borderBottomLeftRadius: 8,
+      borderBottomRightRadius: 8,
+    },
+    pressed: { opacity: 0.72 },
+    value: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, fontWeight: '600' },
+    listFrame: {
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      backgroundColor: colors.bg,
+    },
+    list: { flex: 1 },
+    option: {
+      height: 52,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: 14,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    optionSelected: { backgroundColor: colors.elevated },
+    optionTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 13, fontWeight: '600' },
   },
-  triggerOpen: {
-    borderColor: colors.muted,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-  },
-  pressed: { opacity: 0.72 },
-  value: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, fontWeight: '600' },
-  listFrame: {
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    backgroundColor: colors.bg,
-  },
-  list: { flex: 1 },
-  option: {
-    height: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-  },
-  optionSelected: { backgroundColor: colors.elevated },
-  optionTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 13, fontWeight: '600' },
-});
+  ['value', 'optionTitle'] as const,
+);

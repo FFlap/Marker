@@ -4,7 +4,7 @@ import { RatingControl, Stepper, TagEditor } from '@/components/ui/library-contr
 import { Button, Segmented } from '@/components/ui/primitives';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import type { Status } from '@/types';
 
 export type LibraryEntryDraft = {
@@ -189,27 +189,30 @@ function LibraryEntryContent({
   );
 }
 
-const s = createStyles({
-  controls: { gap: 24 },
-  group: { gap: 10 },
-  label: { color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
-  hint: {
-    width: '100%',
-    minWidth: 0,
-    color: colors.muted,
-    fontSize: 11,
-    lineHeight: 15,
-    textAlign: 'center',
+const s = createAppStyles(
+  {
+    controls: { gap: 24 },
+    group: { gap: 10 },
+    label: { color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
+    hint: {
+      width: '100%',
+      minWidth: 0,
+      color: colors.muted,
+      fontSize: 11,
+      lineHeight: 15,
+      textAlign: 'center',
+    },
+    destructiveAction: {
+      minHeight: 44,
+      alignSelf: 'flex-start',
+      justifyContent: 'center',
+    },
+    destructiveText: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    disabledText: { opacity: 0.4 },
   },
-  destructiveAction: {
-    minHeight: 44,
-    alignSelf: 'flex-start',
-    justifyContent: 'center',
-  },
-  destructiveText: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  disabledText: { opacity: 0.4 },
-});
+  ['label', 'hint', 'destructiveText'] as const,
+);

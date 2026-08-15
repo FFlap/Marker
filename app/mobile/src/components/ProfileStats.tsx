@@ -1,7 +1,7 @@
 import { Text, View } from 'react-native';
 import { Chip, StatTile } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import { ProfileFavorites, type ProfileFavorite } from './ProfileFavorites';
 
 export type ProfileStatsValue = {
@@ -61,11 +61,14 @@ export function ProfileCollection({
   );
 }
 
-const s = createStyles({
-  tiles: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 },
-  sections: { gap: 48 },
-  sectionBlock: { gap: 16 },
-  section: { color: colors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  empty: { color: colors.muted, fontSize: 13, paddingVertical: 8 },
-});
+const s = createAppStyles(
+  {
+    tiles: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 },
+    sections: { gap: 48 },
+    sectionBlock: { gap: 16 },
+    section: { color: colors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+    tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    empty: { color: colors.muted, fontSize: 13, paddingVertical: 8 },
+  },
+  ['section', 'empty'] as const,
+);

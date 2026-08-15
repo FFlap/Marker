@@ -1,3 +1,5 @@
+import { getLocales } from 'expo-localization';
+
 export type CalendarEvent = {
   id: string;
   date: string;
@@ -9,7 +11,6 @@ export type CalendarEvent = {
 };
 
 export const deviceRegion = () => {
-  const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-  const region = new Intl.Locale(locale).region?.toUpperCase();
+  const region = getLocales()[0]?.regionCode?.toUpperCase();
   return region && /^[A-Z]{2}$/.test(region) ? region : 'US';
 };

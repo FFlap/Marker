@@ -1,9 +1,8 @@
 import type { ImageStyle, StyleProp, ViewStyle } from 'react-native';
 import { Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export function PosterImage({
   path,
@@ -38,25 +37,27 @@ export function PosterImage({
       style={[styles.poster, styles.placeholder, style as StyleProp<ViewStyle>]}
     >
       <Text style={styles.initials}>{initials}</Text>
-      <SkeletonShimmer />
     </View>
   );
 }
 
-const styles = createStyles({
-  poster: {
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    aspectRatio: 2 / 3,
-    width: '100%',
+const styles = createAppStyles(
+  {
+    poster: {
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      aspectRatio: 2 / 3,
+      width: '100%',
+    },
+    placeholder: {
+      position: 'relative',
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    initials: { color: colors.muted, fontSize: 18, fontWeight: '700' },
   },
-  placeholder: {
-    position: 'relative',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  initials: { color: colors.muted, fontSize: 18, fontWeight: '700' },
-});
+  ['initials'] as const,
+);

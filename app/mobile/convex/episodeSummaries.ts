@@ -19,6 +19,7 @@ type EpisodeSummaryDelta = {
 
 export type CurrentEpisodeIdentityDelta = {
   key: string;
+  seasonVersion: string;
   total: number;
   existingMatches: boolean;
   nextMatches: boolean;
@@ -90,6 +91,7 @@ async function currentSummaryIdentity(
     mapping,
     season,
     key: seasonSummaryIdentityKey(season, mapping.seasonOrder),
+    seasonVersion: season.seasonVersion,
     episodeCount: season.episodeCount,
   };
 }
@@ -125,14 +127,21 @@ async function beginEpisodeSummaryRebuild(
   ctx: MutationCtx,
   summary: Doc<'episodeSummaries'>,
   identityKey: string,
+  seasonVersion: string,
   force = false,
   restart = false,
 ) {
-  if (!force && summary.rebuildIdentityKey === identityKey) return false;
+  if (
+    !force &&
+    summary.rebuildIdentityKey === identityKey &&
+    summary.rebuildSeasonVersion === seasonVersion
+  )
+    return false;
   const rebuildAttempts = restart ? (summary.rebuildAttempts ?? 0) + 1 : 0;
   if (rebuildAttempts > 3) {
     await ctx.db.patch(summary._id, {
       rebuildIdentityKey: undefined,
+      rebuildSeasonVersion: undefined,
       rebuildOffset: undefined,
       rebuildTotal: undefined,
       rebuildWatchedCount: undefined,
@@ -144,6 +153,7 @@ async function beginEpisodeSummaryRebuild(
   const revision = (summary.rebuildRevision ?? 0) + 1;
   await ctx.db.patch(summary._id, {
     rebuildIdentityKey: identityKey,
+    rebuildSeasonVersion: seasonVersion,
     rebuildOffset: 0,
     rebuildTotal: 0,
     rebuildWatchedCount: 0,
@@ -290,15 +300,18 @@ export async function updateSummaryForEpisodeUpsert(
   if (!before) {
     await ctx.db.patch(summary._id, {
       currentIdentityKey: identity.key,
+      currentSeasonVersion: identity.seasonVersion,
       currentTotal: identity.total,
       currentWatchedCount: Number(identity.nextMatches && watched),
     });
     return;
   }
 
-  const sameIdentity = summary.currentIdentityKey === identity.key;
+  const sameIdentity =
+    summary.currentIdentityKey === identity.key &&
+    summary.currentSeasonVersion === identity.seasonVersion;
   if (!sameIdentity) {
-    await beginEpisodeSummaryRebuild(ctx, summary, identity.key, true);
+    await beginEpisodeSummaryRebuild(ctx, summary, identity.key, identity.seasonVersion, true);
     return;
   }
 
@@ -311,7 +324,7 @@ export async function updateSummaryForEpisodeUpsert(
     throw new Error('Current episode summary counters would become invalid');
   await ctx.db.patch(summary._id, { currentTotal, currentWatchedCount });
   if (summary.rebuildIdentityKey !== undefined)
-    await beginEpisodeSummaryRebuild(ctx, summary, summary.rebuildIdentityKey, true);
+    await beginEpisodeSummaryRebuild(ctx, summary, identity.key, identity.seasonVersion, true);
 }
 
 export const rebuildEpisodeSummary = internalMutation({
@@ -324,6 +337,7 @@ export const rebuildEpisodeSummary = internalMutation({
     if (!identity) {
       await ctx.db.patch(summary._id, {
         rebuildIdentityKey: undefined,
+        rebuildSeasonVersion: undefined,
         rebuildOffset: undefined,
         rebuildTotal: undefined,
         rebuildWatchedCount: undefined,
@@ -332,15 +346,32 @@ export const rebuildEpisodeSummary = internalMutation({
       });
       return { work: 0, isDone: true };
     }
-    if (identity.key !== summary.rebuildIdentityKey) {
-      await beginEpisodeSummaryRebuild(ctx, summary, identity.key, true, true);
+    if (
+      identity.key !== summary.rebuildIdentityKey ||
+      identity.seasonVersion !== summary.rebuildSeasonVersion
+    ) {
+      await beginEpisodeSummaryRebuild(
+        ctx,
+        summary,
+        identity.key,
+        identity.seasonVersion,
+        true,
+        true,
+      );
       return { work: 0, isDone: false };
     }
 
     const offset = summary.rebuildOffset ?? 0;
     const batch = await canonicalEpisodeBatch(ctx, identity.season, offset);
     if (offset < identity.episodeCount && batch.length === 0) {
-      await beginEpisodeSummaryRebuild(ctx, summary, identity.key, true, true);
+      await beginEpisodeSummaryRebuild(
+        ctx,
+        summary,
+        identity.key,
+        identity.seasonVersion,
+        true,
+        true,
+      );
       return { work: 0, isDone: false };
     }
     const saved = await Promise.all(
@@ -376,9 +407,11 @@ export const rebuildEpisodeSummary = internalMutation({
     if (nextOffset >= identity.episodeCount) {
       await ctx.db.patch(summary._id, {
         currentIdentityKey: identity.key,
+        currentSeasonVersion: identity.seasonVersion,
         currentTotal: identity.episodeCount,
         currentWatchedCount: watchedCount,
         rebuildIdentityKey: undefined,
+        rebuildSeasonVersion: undefined,
         rebuildOffset: undefined,
         rebuildTotal: undefined,
         rebuildWatchedCount: undefined,
@@ -435,12 +468,21 @@ export const reconcileSeasonSummaries = internalMutation({
           watchedRuntimeFallbackCount: 0,
           tagCounts: [],
           currentIdentityKey: identity.key,
+          currentSeasonVersion: identity.seasonVersion,
           currentTotal: identity.episodeCount,
           currentWatchedCount: 0,
         });
         work += 1;
-      } else if (summary.rebuildIdentityKey !== identity.key) {
-        if (await beginEpisodeSummaryRebuild(ctx, summary, identity.key, true)) work += 1;
+      } else if (
+        (summary.currentIdentityKey !== identity.key ||
+          summary.currentSeasonVersion !== identity.seasonVersion) &&
+        (summary.rebuildIdentityKey !== identity.key ||
+          summary.rebuildSeasonVersion !== identity.seasonVersion)
+      ) {
+        if (
+          await beginEpisodeSummaryRebuild(ctx, summary, identity.key, identity.seasonVersion, true)
+        )
+          work += 1;
       }
     }
     if (!page.isDone)

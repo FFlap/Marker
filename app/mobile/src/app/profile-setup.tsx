@@ -2,7 +2,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { ProfileForm } from '@/components/ProfileForm';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export default function ProfileSetup() {
   return (
@@ -19,26 +19,29 @@ export default function ProfileSetup() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    flexGrow: 1,
-    width: '100%',
-    maxWidth: 560,
-    alignSelf: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 64,
-    paddingBottom: 48,
-    gap: 52,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      flexGrow: 1,
+      width: '100%',
+      maxWidth: 560,
+      alignSelf: 'center',
+      paddingHorizontal: 24,
+      paddingTop: 64,
+      paddingBottom: 48,
+      gap: 52,
+    },
+    kicker: { color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.5 },
+    title: {
+      color: colors.text,
+      fontSize: 34,
+      lineHeight: 39,
+      fontWeight: '700',
+      letterSpacing: -1.1,
+      marginTop: 14,
+    },
+    lede: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 10, maxWidth: 400 },
   },
-  kicker: { color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 1.5 },
-  title: {
-    color: colors.text,
-    fontSize: 34,
-    lineHeight: 39,
-    fontWeight: '700',
-    letterSpacing: -1.1,
-    marginTop: 14,
-  },
-  lede: { color: colors.muted, fontSize: 14, lineHeight: 21, marginTop: 10, maxWidth: 400 },
-});
+  ['kicker', 'title', 'lede'] as const,
+);

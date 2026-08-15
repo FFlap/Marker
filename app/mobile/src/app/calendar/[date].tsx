@@ -8,7 +8,7 @@ import { SecondaryHeader } from '@/components/BackButton';
 import { EmptyState } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 import { type CalendarEvent, deviceRegion } from '@/lib/calendar';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
@@ -104,40 +104,43 @@ export default function CalendarDayScreen() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    width: '100%',
-    maxWidth: 720,
-    minHeight: '100%',
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 88,
-    paddingBottom: 72,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      width: '100%',
+      maxWidth: 720,
+      minHeight: '100%',
+      alignSelf: 'center',
+      paddingHorizontal: 20,
+      paddingTop: 88,
+      paddingBottom: 72,
+    },
+    loading: { marginTop: 56 },
+    error: { color: colors.danger, fontSize: 13, lineHeight: 20, marginTop: 32 },
+    notice: { color: colors.muted, fontSize: 12, lineHeight: 18, marginBottom: 16 },
+    list: { borderTopWidth: 1, borderColor: colors.border },
+    event: {
+      minHeight: 88,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 14,
+    },
+    eventIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 8,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    eventCopy: { flex: 1, minWidth: 0 },
+    eventTitle: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: '700' },
+    episodeName: { color: colors.text, fontSize: 12, lineHeight: 17, marginTop: 4 },
+    eventMeta: { color: colors.muted, fontSize: 11, marginTop: 5 },
   },
-  loading: { marginTop: 56 },
-  error: { color: colors.danger, fontSize: 13, lineHeight: 20, marginTop: 32 },
-  notice: { color: colors.muted, fontSize: 12, lineHeight: 18, marginBottom: 16 },
-  list: { borderTopWidth: 1, borderColor: colors.border },
-  event: {
-    minHeight: 88,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 14,
-  },
-  eventIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventCopy: { flex: 1, minWidth: 0 },
-  eventTitle: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: '700' },
-  episodeName: { color: colors.text, fontSize: 12, lineHeight: 17, marginTop: 4 },
-  eventMeta: { color: colors.muted, fontSize: 11, marginTop: 5 },
-});
+  ['error', 'notice', 'eventTitle', 'episodeName', 'eventMeta'] as const,
+);

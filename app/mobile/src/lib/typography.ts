@@ -24,22 +24,17 @@ function familyFor(style: TextStyle) {
   return fonts.regular;
 }
 
-export function createStyles<T extends StyleSheet.NamedStyles<T>>(styles: T): T {
+export function createAppStyles<T extends StyleSheet.NamedStyles<T>, K extends keyof T>(
+  styles: T,
+  textKeys: readonly K[],
+): T {
+  const textKeySet = new Set<keyof T>(textKeys);
   const withFonts = Object.fromEntries(
     Object.entries(styles).map(([key, style]) => {
       const textStyle = style as TextStyle;
-      const isText =
-        'color' in textStyle ||
-        'fontSize' in textStyle ||
-        'fontWeight' in textStyle ||
-        'lineHeight' in textStyle ||
-        'letterSpacing' in textStyle ||
-        'textAlign' in textStyle ||
-        'textTransform' in textStyle ||
-        'fontVariant' in textStyle;
       return [
         key,
-        isText
+        textKeySet.has(key as keyof T)
           ? {
               ...textStyle,
               fontSize: compensate(textStyle.fontSize),

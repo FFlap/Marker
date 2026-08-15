@@ -189,6 +189,7 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
     identityAvailable
       ? {
           key: seasonSummaryIdentityKey(activeResolvedSeason, seasonOrder),
+          seasonVersion: activeResolvedSeason.seasonVersion!,
           total: activeResolvedSeason.episodeCount ?? activeResolvedSeason.episodes.length,
           existingMatches:
             !!old &&

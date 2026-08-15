@@ -16,7 +16,7 @@ type AuthOnlyCtx = { auth: { getUserIdentity(): Promise<UserIdentity | null> } }
 type ReadCtx = AuthOnlyCtx & { db: QueryCtx['db'] };
 type ActionLikeCtx = AuthOnlyCtx & Pick<ActionCtx, 'runQuery'>;
 
-const normalizeEmail = (email: string | undefined) => email?.trim().toLocaleLowerCase();
+const normalizeEmail = (email: string | undefined) => email?.trim().toLowerCase();
 
 async function findUserId(ctx: Pick<QueryCtx, 'db'>, subject: string): Promise<Id<'users'> | null> {
   const byClerk = await ctx.db

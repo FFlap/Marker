@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Star } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import { Button, Chip, Input } from './primitives';
 
 export function Stepper({
@@ -136,10 +136,13 @@ export function TagEditor({
   onInputChange?: (value: string) => void;
 }) {
   const selectedTags = new Set(tags.map((tag) => tag.trim().toLocaleLowerCase()));
+  const appendTag = (rawTag: string) => {
+    const tag = rawTag.trim();
+    if (tag && !selectedTags.has(tag.toLocaleLowerCase())) onChange([...tags, tag]);
+  };
   const [text, setText] = useState('');
   const add = () => {
-    const tag = text.trim();
-    if (tag && !selectedTags.has(tag.toLocaleLowerCase())) onChange([...tags, tag]);
+    appendTag(text);
     setText('');
     onInputChange?.('');
   };
@@ -164,65 +167,73 @@ export function TagEditor({
           <Chip
             key={tag}
             label={`${tag} ×`}
-            onPress={() => onChange(tags.filter((candidate) => candidate !== tag))}
+            onPress={() => {
+              const normalized = tag.trim().toLocaleLowerCase();
+              onChange(
+                tags.filter((candidate) => candidate.trim().toLocaleLowerCase() !== normalized),
+              );
+            }}
           />
         ))}
         {suggestions
           .filter((tag) => !selectedTags.has(tag.trim().toLocaleLowerCase()))
           .slice(0, 5)
           .map((tag) => (
-            <Chip key={tag} label={`+ ${tag}`} onPress={() => onChange([...tags, tag])} />
+            <Chip key={tag} label={`+ ${tag}`} onPress={() => appendTag(tag)} />
           ))}
       </View>
     </View>
   );
 }
 
-const styles = createStyles({
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  stepButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+const styles = createAppStyles(
+  {
+    stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    stepButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepMark: { color: colors.text, fontSize: 22 },
+    stepValue: {
+      color: colors.text,
+      fontSize: 18,
+      fontVariant: ['tabular-nums'],
+      minWidth: 40,
+      textAlign: 'center',
+    },
+    controlHead: {
+      minHeight: 24,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+    },
+    controlLabel: {
+      color: colors.muted,
+      fontSize: 12,
+      letterSpacing: 0.15,
+      marginBottom: 10,
+    },
+    clear: { color: colors.accent, fontSize: 12 },
+    ratingRow: { flexDirection: 'row', justifyContent: 'center', gap: 4 },
+    ratingButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+    ratingStar: { width: 28, height: 28 },
+    ratingStarFill: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      height: 28,
+      overflow: 'hidden',
+    },
+    ratingHalfLeft: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 22 },
+    ratingHalfRight: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 22 },
+    tagInput: { flexDirection: 'row', alignItems: 'center' },
+    tagTextInput: { flex: 1, borderWidth: 0 },
+    wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
   },
-  stepMark: { color: colors.text, fontSize: 22 },
-  stepValue: {
-    color: colors.text,
-    fontSize: 18,
-    fontVariant: ['tabular-nums'],
-    minWidth: 40,
-    textAlign: 'center',
-  },
-  controlHead: {
-    minHeight: 24,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  controlLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    letterSpacing: 0.15,
-    marginBottom: 10,
-  },
-  clear: { color: colors.accent, fontSize: 12 },
-  ratingRow: { flexDirection: 'row', justifyContent: 'center', gap: 4 },
-  ratingButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  ratingStar: { width: 28, height: 28 },
-  ratingStarFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    height: 28,
-    overflow: 'hidden',
-  },
-  ratingHalfLeft: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 22 },
-  ratingHalfRight: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 22 },
-  tagInput: { flexDirection: 'row', alignItems: 'center' },
-  tagTextInput: { flex: 1, borderWidth: 0 },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
-});
+  ['stepMark', 'stepValue', 'controlLabel', 'clear'] as const,
+);

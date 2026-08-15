@@ -8,7 +8,7 @@ import { PosterImage } from '@/components/ui/PosterImage';
 import { RatingControl, Stepper, TagEditor } from '@/components/ui/library-controls';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SearchResultsSkeleton } from '@/components/PageSkeletons';
 import type { LibraryItem, SearchResult, Status } from '@/types';
@@ -282,51 +282,64 @@ export default function Add() {
     </View>
   );
 }
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    width: '100%',
-    maxWidth: 680,
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 96,
-    paddingBottom: 70,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      width: '100%',
+      maxWidth: 680,
+      alignSelf: 'center',
+      paddingHorizontal: 20,
+      paddingTop: 96,
+      paddingBottom: 70,
+    },
+    result: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    emptySearch: { paddingTop: 12 },
+    filters: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      marginTop: 18,
+    },
+    filter: {
+      minHeight: 46,
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderBottomWidth: 2,
+      borderBottomColor: 'transparent',
+    },
+    filterSelected: { borderBottomColor: colors.text },
+    filterText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
+    filterTextSelected: { color: colors.text },
+    resultTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
+    meta: { color: colors.muted, fontSize: 11, marginTop: 6, letterSpacing: 0.1 },
+    chev: { color: colors.muted, fontSize: 28 },
+    form: { gap: 24, paddingTop: 22 },
+    picked: { flexDirection: 'row', gap: 16 },
+    pickedTitle: { color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: 8 },
+    detailLoading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    detailLoadingText: { color: colors.muted, fontSize: 12 },
+    detailWarning: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    detailWarningText: { color: colors.muted, fontSize: 12 },
+    retry: { color: colors.accent, fontSize: 12, fontWeight: '700' },
   },
-  result: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-  },
-  emptySearch: { paddingTop: 12 },
-  filters: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    marginTop: 18,
-  },
-  filter: {
-    minHeight: 46,
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  filterSelected: { borderBottomColor: colors.text },
-  filterText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
-  filterTextSelected: { color: colors.text },
-  resultTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  meta: { color: colors.muted, fontSize: 11, marginTop: 6, letterSpacing: 0.1 },
-  chev: { color: colors.muted, fontSize: 28 },
-  form: { gap: 24, paddingTop: 22 },
-  picked: { flexDirection: 'row', gap: 16 },
-  pickedTitle: { color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: 8 },
-  detailLoading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  detailLoadingText: { color: colors.muted, fontSize: 12 },
-  detailWarning: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  detailWarningText: { color: colors.muted, fontSize: 12 },
-  retry: { color: colors.accent, fontSize: 12, fontWeight: '700' },
-});
+  [
+    'filterText',
+    'filterTextSelected',
+    'resultTitle',
+    'meta',
+    'chev',
+    'pickedTitle',
+    'detailLoadingText',
+    'detailWarningText',
+    'retry',
+  ] as const,
+);

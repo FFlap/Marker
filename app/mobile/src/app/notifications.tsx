@@ -11,7 +11,7 @@ import { EmptyState } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 type Activity = FunctionReturnType<typeof api.notifications.feed>[number];
 
@@ -157,66 +157,69 @@ export default function NotificationsScreen() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    width: '100%',
-    maxWidth: 760,
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 88,
-    paddingBottom: 80,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      width: '100%',
+      maxWidth: 760,
+      alignSelf: 'center',
+      paddingHorizontal: 20,
+      paddingTop: 88,
+      paddingBottom: 80,
+    },
+    section: {
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      paddingBottom: 24,
+      marginBottom: 28,
+    },
+    sectionTitle: {
+      color: colors.muted,
+      fontSize: 10,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+      marginBottom: 10,
+    },
+    request: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    identity: { flex: 1, minWidth: 0 },
+    name: { color: colors.text, fontSize: 13, fontWeight: '700' },
+    meta: { color: colors.muted, fontSize: 10, marginTop: 4 },
+    actions: { flexDirection: 'row', gap: 7 },
+    smallButton: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    accept: { backgroundColor: colors.text, borderColor: colors.text },
+    pressed: { opacity: 0.62 },
+    feedHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    feedHint: { color: colors.muted, fontSize: 9 },
+    loader: { marginTop: 60 },
+    activity: {
+      minHeight: 76,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 11,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 12,
+    },
+    activityCopy: { flex: 1, minWidth: 0 },
+    activityText: { color: colors.text, fontSize: 12, lineHeight: 18 },
+    poster: { width: 34, height: 50, borderRadius: 5, backgroundColor: colors.surface },
+    activityIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
   },
-  section: {
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    paddingBottom: 24,
-    marginBottom: 28,
-  },
-  sectionTitle: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    marginBottom: 10,
-  },
-  request: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  identity: { flex: 1, minWidth: 0 },
-  name: { color: colors.text, fontSize: 13, fontWeight: '700' },
-  meta: { color: colors.muted, fontSize: 10, marginTop: 4 },
-  actions: { flexDirection: 'row', gap: 7 },
-  smallButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  accept: { backgroundColor: colors.text, borderColor: colors.text },
-  pressed: { opacity: 0.62 },
-  feedHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  feedHint: { color: colors.muted, fontSize: 9 },
-  loader: { marginTop: 60 },
-  activity: {
-    minHeight: 76,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 12,
-  },
-  activityCopy: { flex: 1, minWidth: 0 },
-  activityText: { color: colors.text, fontSize: 12, lineHeight: 18 },
-  poster: { width: 34, height: 50, borderRadius: 5, backgroundColor: colors.surface },
-  activityIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+  ['sectionTitle', 'name', 'meta', 'feedHint', 'activityText'] as const,
+);

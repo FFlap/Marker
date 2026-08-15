@@ -135,6 +135,11 @@ export function NativeDraggableGrid<T>({
   const dataRef = useRef(data);
   const gridRef = useRef<View>(null);
   const gridOrigin = useRef({ x: 0, y: 0 });
+  const measureGridOrigin = useCallback(() => {
+    gridRef.current?.measureInWindow((x, y) => {
+      gridOrigin.current = { x, y };
+    });
+  }, []);
   const cellRefs = useRef(new Map<string, View>());
   const slotLayouts = useRef(new Map<number, LayoutRectangle>());
   const slotOwners = useRef(new Map<number, string>());
@@ -192,9 +197,7 @@ export function NativeDraggableGrid<T>({
       touchTranslate.value = 0;
       isTouchActiveNative.value = true;
       onDragBegin({ item, index });
-      gridRef.current?.measureInWindow((x, y) => {
-        gridOrigin.current = { x, y };
-      });
+      measureGridOrigin();
       cellRefs.current.get(itemKey)?.measureInWindow((x, y, width, height) => {
         if (session.current?.itemKey === itemKey) onDragLayout?.({ x, y, width, height });
       });
@@ -204,6 +207,7 @@ export function NativeDraggableGrid<T>({
       horizontalTranslate,
       isTouchActiveNative,
       keyExtractor,
+      measureGridOrigin,
       onDragBegin,
       onDragLayout,
       touchTranslate,
@@ -300,7 +304,7 @@ export function NativeDraggableGrid<T>({
 
   const displayed = dragOrder ?? data;
   return (
-    <View ref={gridRef} style={[styles.grid, contentContainerStyle]}>
+    <View ref={gridRef} onLayout={measureGridOrigin} style={[styles.grid, contentContainerStyle]}>
       {displayed.map((item, index) => {
         const itemKey = keyExtractor(item);
         return (

@@ -11,7 +11,7 @@ import { NativePressable } from '@/components/ui/NativePressable';
 import { Button, EmptyState, Input } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import {
   DEFAULT_DISPLAY_PREFERENCES,
   gridItemWidth,
@@ -133,7 +133,10 @@ export default function UserTagScreen() {
         [...(collection?.titles ?? [])]
           .filter((title: PublicTitle) => title.status === 'watched')
           .sort((left: PublicTitle, right: PublicTitle) => left.rank - right.rank)
-          .map((title: PublicTitle) => [`${title.mediaType}:${title.tmdbId}`, title.rank]),
+          .map((title: PublicTitle, index: number) => [
+            `${title.mediaType}:${title.tmdbId}`,
+            index + 1,
+          ]),
       ),
     [collection],
   );
@@ -291,68 +294,71 @@ export default function UserTagScreen() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  toolbar: {
-    position: 'absolute',
-    top: 72,
-    left: 0,
-    right: 0,
-    zIndex: 9,
-    width: '100%',
-    maxWidth: 880,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 8,
-    backgroundColor: colors.bg,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    toolbar: {
+      position: 'absolute',
+      top: 72,
+      left: 0,
+      right: 0,
+      zIndex: 9,
+      width: '100%',
+      maxWidth: 880,
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 20,
+      paddingTop: 8,
+      paddingBottom: 8,
+      backgroundColor: colors.bg,
+    },
+    content: {
+      width: '100%',
+      maxWidth: 880,
+      alignSelf: 'center',
+      paddingHorizontal: 20,
+      paddingTop: 116,
+      paddingBottom: 80,
+    },
+    search: {
+      flex: 1,
+      height: 36,
+      minWidth: 0,
+      borderWidth: 0,
+      backgroundColor: colors.surface,
+      fontSize: 14,
+    },
+    section: { marginTop: 24 },
+    sectionHead: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingBottom: 11,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    sectionTitle: { color: colors.muted, fontSize: 12, letterSpacing: 0.2, fontWeight: '600' },
+    count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      columnGap: '3.5%',
+      rowGap: 12,
+      paddingTop: 16,
+      paddingBottom: 4,
+    },
+    card: { minWidth: 0 },
+    poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 12 },
+    cardTitle: {
+      color: colors.text,
+      fontSize: 12,
+      lineHeight: 16,
+      fontWeight: '600',
+      marginTop: 6,
+    },
+    rank: { color: colors.muted },
+    pressed: { opacity: 0.72 },
   },
-  content: {
-    width: '100%',
-    maxWidth: 880,
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 116,
-    paddingBottom: 80,
-  },
-  search: {
-    flex: 1,
-    height: 36,
-    minWidth: 0,
-    borderWidth: 0,
-    backgroundColor: colors.surface,
-    fontSize: 14,
-  },
-  section: { marginTop: 24 },
-  sectionHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingBottom: 11,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-  },
-  sectionTitle: { color: colors.muted, fontSize: 12, letterSpacing: 0.2, fontWeight: '600' },
-  count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: '3.5%',
-    rowGap: 12,
-    paddingTop: 16,
-    paddingBottom: 4,
-  },
-  card: { minWidth: 0 },
-  poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 12 },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-  rank: { color: colors.muted },
-  pressed: { opacity: 0.72 },
-});
+  ['search', 'sectionTitle', 'count', 'cardTitle', 'rank'] as const,
+);

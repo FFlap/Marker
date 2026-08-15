@@ -1,7 +1,8 @@
 import { getClerkUserId } from './clerkAuth';
 import { mutation, query } from './_generated/server';
+import { paginationOptsValidator, paginationResultValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { ensureTagMemberships, normalizeTagKey } from './tagCollectionsModel';
+import { normalizeTagKey, requireTagCollection } from './tagCollectionsModel';
 import { normalizeUsername } from './profileRules';
 import { mediaTypeValidator, publicTagPreviewValidator, statusValidator } from './publicValidators';
 
@@ -12,6 +13,18 @@ const publicTitleValidator = v.object({
   posterPath: v.optional(v.string()),
   overview: v.optional(v.string()),
   releaseDate: v.optional(v.string()),
+});
+
+const tagPreviewValidator = v.object({
+  tag: v.string(),
+  count: v.number(),
+  posters: v.array(
+    v.object({
+      itemId: v.optional(v.string()),
+      title: v.string(),
+      posterPath: v.optional(v.string()),
+    }),
+  ),
 });
 
 async function requireUser(ctx: Parameters<typeof getClerkUserId>[0]) {
@@ -56,7 +69,7 @@ export const setVisibility = mutation({
   returns: v.id('tagCollections'),
   handler: async (ctx, { tag, isPublic }) => {
     const userId = await requireUser(ctx);
-    const collection = await ensureTagMemberships(ctx, userId, tag, isPublic);
+    const collection = await requireTagCollection(ctx, userId, tag);
     const now = Date.now();
     if (collection.label !== tag.trim() || collection.isPublic !== isPublic)
       await ctx.db.patch(collection._id, {
@@ -96,31 +109,17 @@ export const myPublic = query({
 });
 
 export const mine = query({
-  args: { cursor: v.optional(v.string()) },
-  returns: v.object({
-    collections: v.array(
-      v.object({
-        tag: v.string(),
-        count: v.number(),
-        posters: v.array(
-          v.object({
-            itemId: v.optional(v.string()),
-            title: v.string(),
-            posterPath: v.optional(v.string()),
-          }),
-        ),
-      }),
-    ),
-    nextCursor: v.optional(v.string()),
-  }),
-  handler: async (ctx, { cursor }) => {
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(tagPreviewValidator),
+  handler: async (ctx, { paginationOpts }) => {
     const userId = await requireUser(ctx);
     const page = await ctx.db
       .query('tagCollections')
       .withIndex('by_user_tag', (q) => q.eq('userId', userId))
-      .paginate({ cursor: cursor ?? null, numItems: 100 });
+      .paginate(paginationOpts);
     return {
-      collections: page.page
+      ...page,
+      page: page.page
         .filter((collection) => collection.memberCount > 0)
         .map((collection) => ({
           tag: collection.label,
@@ -132,7 +131,6 @@ export const mine = query({
           })),
         }))
         .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag)),
-      ...(!page.isDone && { nextCursor: page.continueCursor }),
     };
   },
 });
@@ -341,7 +339,7 @@ export const publicDetails = query({
           })
         : undefined;
     return {
-      tag: populatedCollections[0]!.label,
+      tag: collection.label,
       contributorCount: contributors.size,
       ...(nextCursor && { nextCursor }),
       titles: [...titles.values()].sort((left, right) => left.title.localeCompare(right.title)),

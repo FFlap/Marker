@@ -2,7 +2,7 @@ import { Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { TagGallery } from '@/components/TagGallery';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export type PublicTagPreview = {
   tag: string;
@@ -44,12 +44,15 @@ export function PublicTagsSection({
   );
 }
 
-const s = createStyles({
-  section: { marginTop: 34 },
-  sectionHead: {
-    paddingBottom: 11,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
+const s = createAppStyles(
+  {
+    section: { marginTop: 34 },
+    sectionHead: {
+      paddingBottom: 11,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    sectionTitle: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   },
-  sectionTitle: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-});
+  ['sectionTitle'] as const,
+);

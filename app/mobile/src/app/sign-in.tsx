@@ -6,7 +6,7 @@ import { ArrowLeft, LogIn, UserPlus } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Button, Input } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 import { usernameError } from '@/lib/profile';
 
 type AuthErrorContext = 'signIn' | 'signUp' | 'recovery' | 'verification' | 'session' | 'oauth';
@@ -454,7 +454,9 @@ export default function SignIn() {
                       ? !identifier.trim()
                       : recovery === 'password'
                         ? password.length < 8 || confirmPassword.length < 8
-                        : !identifier || password.length < 8 || (flow === 'signUp' && !username))
+                        : flow === 'signUp'
+                          ? !identifier || password.length < 8 || !username
+                          : !identifier || !password)
                 }
               />
               {!verification && !recovery && (
@@ -521,40 +523,43 @@ export default function SignIn() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    flexGrow: 1,
-    width: '100%',
-    maxWidth: 520,
-    alignSelf: 'center',
-    padding: 28,
-    justifyContent: 'space-between',
-    paddingTop: 72,
-    paddingBottom: 40,
-    gap: 56,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      flexGrow: 1,
+      width: '100%',
+      maxWidth: 520,
+      alignSelf: 'center',
+      padding: 28,
+      justifyContent: 'space-between',
+      paddingTop: 72,
+      paddingBottom: 40,
+      gap: 56,
+    },
+    logo: { color: colors.text, fontSize: 36, fontWeight: '700', letterSpacing: -1.2 },
+    lede: { color: colors.muted, fontSize: 16, marginTop: 8 },
+    form: { gap: 12 },
+    choiceActions: { gap: 12 },
+    choiceDetail: { color: colors.muted, fontSize: 14, lineHeight: 22, marginBottom: 10 },
+    fieldGroup: { gap: 10, marginVertical: 4 },
+    label: { color: colors.text, fontSize: 12, fontWeight: '700' },
+    usernameField: {
+      height: 52,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      paddingLeft: 15,
+    },
+    at: { color: colors.muted, fontSize: 16, fontWeight: '600' },
+    usernameInput: { flex: 1, height: 50, borderWidth: 0, backgroundColor: 'transparent' },
+    error: { color: colors.danger, fontSize: 13 },
+    divider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 4 },
+    dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+    dividerText: { color: colors.muted, fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
   },
-  logo: { color: colors.text, fontSize: 36, fontWeight: '700', letterSpacing: -1.2 },
-  lede: { color: colors.muted, fontSize: 16, marginTop: 8 },
-  form: { gap: 12 },
-  choiceActions: { gap: 12 },
-  choiceDetail: { color: colors.muted, fontSize: 14, lineHeight: 22, marginBottom: 10 },
-  fieldGroup: { gap: 10, marginVertical: 4 },
-  label: { color: colors.text, fontSize: 12, fontWeight: '700' },
-  usernameField: {
-    height: 52,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingLeft: 15,
-  },
-  at: { color: colors.muted, fontSize: 16, fontWeight: '600' },
-  usernameInput: { flex: 1, height: 50, borderWidth: 0, backgroundColor: 'transparent' },
-  error: { color: colors.danger, fontSize: 13 },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 4 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { color: colors.muted, fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
-});
+  ['logo', 'lede', 'choiceDetail', 'label', 'at', 'error', 'dividerText'] as const,
+);

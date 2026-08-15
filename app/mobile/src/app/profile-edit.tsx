@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { ProfileForm } from '@/components/ProfileForm';
 import { SecondaryHeader } from '@/components/BackButton';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export default function ProfileEdit() {
   const finish = () => {
@@ -20,14 +20,17 @@ export default function ProfileEdit() {
   );
 }
 
-const s = createStyles({
-  root: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    width: '100%',
-    maxWidth: 620,
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 96,
-    paddingBottom: 56,
+const s = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      width: '100%',
+      maxWidth: 620,
+      alignSelf: 'center',
+      paddingHorizontal: 20,
+      paddingTop: 96,
+      paddingBottom: 56,
+    },
   },
-});
+  [] as const,
+);

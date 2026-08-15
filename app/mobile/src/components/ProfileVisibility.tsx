@@ -2,7 +2,7 @@ import { Globe2, LockKeyhole } from 'lucide-react-native';
 import { Text, View } from 'react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 const choices = [
   {
@@ -59,43 +59,46 @@ export function ProfileVisibility({
   );
 }
 
-const s = createStyles({
-  group: { gap: 10 },
-  choice: {
-    minHeight: 78,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.surface,
+const s = createAppStyles(
+  {
+    group: { gap: 10 },
+    choice: {
+      minHeight: 78,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      padding: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: colors.surface,
+    },
+    choiceSelected: { borderColor: colors.text },
+    pressed: { opacity: 0.72 },
+    icon: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    iconSelected: { backgroundColor: colors.text, borderColor: colors.text },
+    copy: { flex: 1 },
+    title: { color: colors.text, fontSize: 14, fontWeight: '700' },
+    detail: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
+    radio: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: colors.muted,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    radioSelected: { borderColor: colors.text },
+    radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.text },
   },
-  choiceSelected: { borderColor: colors.text },
-  pressed: { opacity: 0.72 },
-  icon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconSelected: { backgroundColor: colors.text, borderColor: colors.text },
-  copy: { flex: 1 },
-  title: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  detail: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
-  radio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: colors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioSelected: { borderColor: colors.text },
-  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.text },
-});
+  ['title', 'detail'] as const,
+);

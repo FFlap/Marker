@@ -7,7 +7,7 @@ import { api } from '../../convex/_generated/api';
 import { Button } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 import { useMarkerAccount } from '@/hooks/useMarkerAccount';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 export function AuthBoundary({ children }: { children: ReactNode }) {
   const { signOut } = useClerk();
@@ -40,16 +40,19 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
   return children;
 }
 
-const styles = createStyles({
-  errorScreen: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 24,
-    backgroundColor: colors.bg,
+const styles = createAppStyles(
+  {
+    errorScreen: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      padding: 24,
+      backgroundColor: colors.bg,
+    },
+    title: { color: colors.text, fontSize: 20, fontWeight: '700', textAlign: 'center' },
+    message: { color: colors.muted, fontSize: 15, textAlign: 'center' },
+    actions: { width: '100%', maxWidth: 320, gap: 10, marginTop: 8 },
   },
-  title: { color: colors.text, fontSize: 20, fontWeight: '700', textAlign: 'center' },
-  message: { color: colors.muted, fontSize: 15, textAlign: 'center' },
-  actions: { width: '100%', maxWidth: 320, gap: 10, marginTop: 8 },
-});
+  ['title', 'message'] as const,
+);

@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { AppDrawer, type AppDrawerHandle } from '@/components/AppDrawer';
 import { Input } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
-import { createStyles } from '@/lib/typography';
+import { createAppStyles } from '@/lib/typography';
 
 type TabHeaderProps = Pick<
   TextInputProps,
@@ -28,23 +28,26 @@ export const TabHeader = forwardRef<AppDrawerHandle, TabHeaderProps>(function Ta
   );
 });
 
-const s = createStyles({
-  header: {
-    width: '100%',
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 8,
+const s = createAppStyles(
+  {
+    header: {
+      width: '100%',
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 20,
+      paddingTop: 16,
+      paddingBottom: 8,
+    },
+    searchInput: {
+      flex: 1,
+      minWidth: 0,
+      height: 36,
+      borderWidth: 0,
+      backgroundColor: colors.surface,
+      fontSize: 14,
+    },
   },
-  searchInput: {
-    flex: 1,
-    minWidth: 0,
-    height: 36,
-    borderWidth: 0,
-    backgroundColor: colors.surface,
-    fontSize: 14,
-  },
-});
+  ['searchInput'] as const,
+);
