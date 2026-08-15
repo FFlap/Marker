@@ -1,11 +1,11 @@
 import { ConvexError, v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
-import { internalAction, type ActionCtx } from './_generated/server';
-import { getClerkUserId } from './clerkAuth';
-import { releasedEpisodes } from './episodeAvailability';
-import { mappingIdentity } from './resolvedMetadataPublication.impl';
-import { refreshLeaseKey, requestKey, seasonRequestKey } from './resolvedMetadataRequests.impl';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import { internalAction, type ActionCtx } from '../_generated/server';
+import { getClerkUserId } from '../clerkAuth';
+import { releasedEpisodes } from '../episodeAvailability';
+import { mappingIdentity } from './publication';
+import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
   cleanEpisode,
   mergeEpisodes,
@@ -16,7 +16,7 @@ import {
   SEASON_FRESH_MS,
   type MediaType,
   type ResolvedTitle,
-} from './resolvedMetadataShared.impl';
+} from './shared';
 import {
   authorizeRefresh,
   errorCode,
@@ -26,7 +26,7 @@ import {
   settle,
   validateId,
   type ProviderOutcome,
-} from './resolvedMetadataTitleResolution.impl';
+} from './titleResolution';
 import {
   assertMetadataMutationSize,
   episodeChunks,
@@ -34,7 +34,7 @@ import {
   type AssembledSeason,
   type PrechunkedSeason,
   type ResolvedEpisode,
-} from './seasonStorage';
+} from '../seasonStorage';
 
 export async function resolveFreshSeason(
   ctx: ActionCtx,
@@ -126,11 +126,11 @@ export async function resolveAndCommitCanonical(
   const [queriedTitle, mapping] = await Promise.all([
     args.currentTitle
       ? Promise.resolve(args.currentTitle)
-      : (ctx.runQuery(internal.resolvedMetadata.readTitle, {
+      : (ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
           mediaType: args.mediaType,
           tmdbId: args.tmdbId,
         }) as Promise<Doc<'resolvedTitles'> | null>),
-    ctx.runQuery(internal.resolvedMetadata.readTitleMapping, {
+    ctx.runQuery(internal.resolvedMetadata.reads.readTitleMapping, {
       mediaType: args.mediaType,
       tmdbId: args.tmdbId,
     }) as Promise<Doc<'titleMappings'> | null>,
@@ -223,7 +223,7 @@ export async function resolveAndCommitCanonical(
     !title.seasons.some((entry) => entry.season === requestedSeason);
   if (args.mediaType === 'tv' && requestedSeason !== undefined && !seasonNotFound) {
     const storedSeason: AssembledSeason | null = await ctx.runQuery(
-      internal.resolvedMetadata.readSeason,
+      internal.resolvedMetadata.reads.readSeason,
       { tmdbId: args.tmdbId, season: requestedSeason },
     );
     const currentSeason = storedSeason;
@@ -303,7 +303,7 @@ export async function resolveAndCommitCanonical(
       ? candidateKeys.filter((key) => key.startsWith('season:'))
       : candidateKeys;
   const synchronousKeys = args.attemptToken.startsWith('synchronous:')
-    ? await ctx.runMutation(internal.resolvedMetadata.adoptRefreshRequests, {
+    ? await ctx.runMutation(internal.resolvedMetadata.requests.adoptRefreshRequests, {
         keys: adoptableCandidateKeys,
         attemptToken: args.attemptToken,
         leaseKey: args.leaseKey,
@@ -331,7 +331,7 @@ export async function resolveAndCommitCanonical(
   // Adoptable candidate keys are used instead of the earlier adoption snapshot
   // so eligible touches that arrived during provider work receive the same
   // healthy deadline.
-  await ctx.runMutation(internal.resolvedMetadata.renewRefreshAttempt, {
+  await ctx.runMutation(internal.resolvedMetadata.requests.renewRefreshAttempt, {
     key: args.leaseKey,
     token: args.leaseToken,
     leaseMs: REFRESH_LEASE_MS,
@@ -367,7 +367,10 @@ export async function resolveAndCommitCanonical(
     leaseToken: args.leaseToken,
   };
   assertMetadataMutationSize(coreArgs, 'commitRefresh');
-  let commitStatus = await ctx.runMutation(internal.resolvedMetadata.commitRefresh, coreArgs);
+  let commitStatus = await ctx.runMutation(
+    internal.resolvedMetadata.publication.commitRefresh,
+    coreArgs,
+  );
   const seasonFailed = outcomes.some(
     (outcome) => outcome.key.startsWith('season:') && outcome.state === 'failed',
   );
@@ -383,7 +386,7 @@ export async function resolveAndCommitCanonical(
       };
       assertMetadataMutationSize(appendArgs, 'appendRefreshSeasonChunk');
       const appended = await ctx.runMutation(
-        internal.resolvedMetadata.appendRefreshSeasonChunk,
+        internal.resolvedMetadata.publication.appendRefreshSeasonChunk,
         appendArgs,
       );
       if (!appended) throw new ConvexError({ code: 'refresh_superseded', retryable: true });
@@ -398,7 +401,7 @@ export async function resolveAndCommitCanonical(
       leaseKey: args.leaseKey,
       leaseToken: args.leaseToken,
     };
-    await ctx.runMutation(internal.resolvedMetadata.renewRefreshAttempt, {
+    await ctx.runMutation(internal.resolvedMetadata.requests.renewRefreshAttempt, {
       key: args.leaseKey,
       token: args.leaseToken,
       leaseMs: REFRESH_LEASE_MS,
@@ -407,7 +410,7 @@ export async function resolveAndCommitCanonical(
     });
     assertMetadataMutationSize(finalizeArgs, 'finalizeRefreshSeason');
     commitStatus = await ctx.runMutation(
-      internal.resolvedMetadata.finalizeRefreshSeason,
+      internal.resolvedMetadata.publication.finalizeRefreshSeason,
       finalizeArgs,
     );
   }
@@ -431,7 +434,7 @@ export async function waitForSeason(
   while (Date.now() < deadline) {
     await pause(150);
     const next: AssembledSeason | null = await ctx.runQuery(
-      internal.resolvedMetadata.readSeason,
+      internal.resolvedMetadata.reads.readSeason,
       args,
     );
     if (
@@ -454,18 +457,18 @@ export async function getOrRefreshSeason(
   validateId('season', args.season, 10_000);
   const userId = userIdOverride ?? (await requireUser(ctx));
   const current: AssembledSeason | null = await ctx.runQuery(
-    internal.resolvedMetadata.readSeason,
+    internal.resolvedMetadata.reads.readSeason,
     args,
   );
   if (seasonIsFresh(current)) return current!.episodes.slice(0, EPISODES_PER_CHUNK);
   const titleBeforeLease: Doc<'resolvedTitles'> | null = await ctx.runQuery(
-    internal.resolvedMetadata.readTitle,
+    internal.resolvedMetadata.reads.readTitle,
     { mediaType: 'tv', tmdbId: args.tmdbId },
   );
   if (!titleBeforeLease) throw new Error('Resolved title metadata is unavailable');
   const key = refreshLeaseKey('tv', args.tmdbId);
   const token = `synchronous:season:${Date.now()}:${crypto.randomUUID()}`;
-  const claimed = await ctx.runMutation(internal.resolvedMetadata.claimRefresh, {
+  const claimed = await ctx.runMutation(internal.resolvedMetadata.requests.claimRefresh, {
     key,
     token,
     leaseMs: REFRESH_LEASE_MS,
@@ -477,27 +480,30 @@ export async function getOrRefreshSeason(
     throw new ConvexError({ code: 'refresh_in_progress', retryable: true });
   }
   try {
-    await ctx.runMutation(internal.resolvedMetadata.admitSynchronousRefresh, {
+    await ctx.runMutation(internal.resolvedMetadata.requests.admitSynchronousRefresh, {
       userId,
       keys: [requestKey('tv', args.tmdbId), seasonRequestKey(args.tmdbId, args.season)],
     });
   } catch (error) {
     await ctx
-      .runMutation(internal.resolvedMetadata.releaseRefresh, { key, token })
+      .runMutation(internal.resolvedMetadata.requests.releaseRefresh, { key, token })
       .catch(() => undefined);
     throw error;
   }
-  const adoptedKeys = await ctx.runMutation(internal.resolvedMetadata.adoptRefreshRequests, {
-    keys: [requestKey('tv', args.tmdbId), seasonRequestKey(args.tmdbId, args.season)],
-    attemptToken: token,
-    leaseKey: key,
-    leaseToken: token,
-  });
+  const adoptedKeys = await ctx.runMutation(
+    internal.resolvedMetadata.requests.adoptRefreshRequests,
+    {
+      keys: [requestKey('tv', args.tmdbId), seasonRequestKey(args.tmdbId, args.season)],
+      attemptToken: token,
+      leaseKey: key,
+      leaseToken: token,
+    },
+  );
   const adoptedTitle = adoptedKeys.includes(requestKey('tv', args.tmdbId));
   let failureFinalized = false;
   const finalizeFailure = async (error: unknown) => {
     failureFinalized = true;
-    await ctx.runMutation(internal.resolvedMetadata.failSynchronousRefresh, {
+    await ctx.runMutation(internal.resolvedMetadata.orchestration.failSynchronousRefresh, {
       leaseKey: key,
       attemptToken: token,
       errorCode: errorCode(error),
@@ -506,7 +512,7 @@ export async function getOrRefreshSeason(
   try {
     await authorizeRefresh(ctx, String(userId));
     const title: Doc<'resolvedTitles'> | null = await ctx.runQuery(
-      internal.resolvedMetadata.readTitle,
+      internal.resolvedMetadata.reads.readTitle,
       { mediaType: 'tv', tmdbId: args.tmdbId },
     );
     if (!title) throw new Error('Resolved title metadata is unavailable');
@@ -539,7 +545,7 @@ export async function getOrRefreshSeason(
   } finally {
     if (!failureFinalized)
       await ctx
-        .runMutation(internal.resolvedMetadata.releaseRefresh, { key, token })
+        .runMutation(internal.resolvedMetadata.requests.releaseRefresh, { key, token })
         .catch(() => undefined);
   }
 }

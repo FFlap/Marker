@@ -12,7 +12,7 @@ jest.mock('convex/react', () => ({
   useAction: () => mockSearchMedia,
   useMutation: (ref: string) => (ref === 'profiles.follow' ? mockFollow : mockUnfollow),
   useQuery: (ref: string) => {
-    if (ref === 'library.listItems') return mockLibrary;
+    if (ref === 'library/items:listItems') return mockLibrary;
     if (ref === 'tags.searchPublic') return mockPublicTags;
     return mockPeople;
   },
@@ -20,7 +20,7 @@ jest.mock('convex/react', () => ({
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     tmdb: { searchMulti: 'tmdb.searchMulti' },
-    library: { listItems: 'library.listItems' },
+    library: { items: { listItems: 'library/items:listItems' } },
     tags: { searchPublic: 'tags.searchPublic' },
     profiles: {
       me: 'profiles.me',

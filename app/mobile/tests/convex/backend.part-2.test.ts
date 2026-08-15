@@ -50,7 +50,7 @@ describe('Marker backend', () => {
     );
     for (const season of [0, 1, 2]) {
       const count = season === 0 ? 1 : 2;
-      await t.mutation(internal.resolvedMetadata.putSeason, {
+      await t.mutation(internal.resolvedMetadata.requests.putSeason, {
         tmdbId,
         season,
         metadataProvider: 'tmdb',
@@ -65,7 +65,7 @@ describe('Marker backend', () => {
       });
     }
 
-    const itemId = await asUser.action(api.library.addItemAndMarkWatched, {
+    const itemId = await asUser.action(api.library.seasonWatched.addItemAndMarkWatched, {
       tmdbId,
       mediaType: 'tv',
       title: 'Breaking Bad',
@@ -75,11 +75,13 @@ describe('Marker backend', () => {
     });
 
     expect(
-      (await asUser.query(api.library.listItems, {})).find((item) => item._id === itemId),
+      (await asUser.query(api.library.items.listItems, {})).find((item) => item._id === itemId),
     ).toMatchObject({ status: 'watched', timesWatched: 1 });
     const watched = (
       await Promise.all(
-        [0, 1, 2].map((season) => asUser.query(api.library.listEpisodes, { itemId, season })),
+        [0, 1, 2].map((season) =>
+          asUser.query(api.library.episodes.listEpisodes, { itemId, season }),
+        ),
       )
     ).flat();
     expect(watched).toHaveLength(5);
@@ -107,7 +109,7 @@ describe('Marker backend', () => {
     ).rejects.toThrow('already taken');
 
     await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Public Movie', 88, 'movie', {
         status: 'watched',
         runtime: 100,
@@ -128,7 +130,7 @@ describe('Marker backend', () => {
     const { t, userId: ownerId, asUser: owner } = await setup();
     await owner.mutation(api.profiles.save, { username: 'private_owner', isPublic: false });
     await owner.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Private Movie', 901, 'movie', {
         status: 'watched',
         runtime: 90,

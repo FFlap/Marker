@@ -43,7 +43,7 @@ jest.mock('convex/react', () => ({
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     episodeHub: { overview: 'episodeHub.overview' },
-    library: { setEpisodeState: 'library.setEpisodeState' },
+    library: { episodes: { setEpisodeState: 'library/episodes:setEpisodeState' } },
   },
 }));
 jest.mock('../../src/components/AppDrawer', () => ({

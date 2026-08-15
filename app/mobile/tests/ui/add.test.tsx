@@ -15,11 +15,13 @@ jest.mock('convex/react', () => ({
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     tmdb: { searchMulti: 'search' },
-    resolvedMetadata: { getTitle: 'getTitle', touchTitle: 'touchTitle' },
+    resolvedMetadata: {
+      reads: { getTitle: 'getTitle' },
+      touch: { touchTitle: 'touchTitle' },
+    },
     library: {
-      addItem: 'add',
-      addItemAndMarkWatched: 'addItemAndMarkWatched',
-      listItems: 'list',
+      items: { addItem: 'add', listItems: 'list' },
+      seasonWatched: { addItemAndMarkWatched: 'addItemAndMarkWatched' },
     },
   },
 }));

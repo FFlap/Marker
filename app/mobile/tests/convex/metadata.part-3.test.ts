@@ -7,7 +7,7 @@ import { isTruncatedSnapshot, putNonFatal } from '../../convex/providerSnapshots
 import { MAX_METADATA_MUTATION_BYTES, serializedBytes } from '../../convex/seasonStorage';
 import { mapSeasonDetails } from '../../convex/tmdb';
 import { commitWatchWithOneRematch } from '../../convex/sync';
-import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata';
+import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata/seasonResolution';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
@@ -35,7 +35,7 @@ const movieTitle = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const addItem = (asUser: Awaited<ReturnType<typeof setup>>['asUser'], tmdbId = 88) =>
-  asUser.mutation(api.library.addItem, {
+  asUser.mutation(api.library.items.addItem, {
     tmdbId,
     mediaType: 'tv',
     title: 'Stored show',
@@ -85,7 +85,7 @@ describe('metadata pipeline', () => {
             expiresAt: Date.now() + 60_000,
           }),
         );
-        await t.mutation(internal.resolvedMetadata.claimRefresh, {
+        await t.mutation(internal.resolvedMetadata.requests.claimRefresh, {
           key: 'metadata:tv:88',
           token: leaseToken,
           leaseMs: 60_000,
@@ -97,7 +97,7 @@ describe('metadata pipeline', () => {
           name: `S${season}E${index + 1}`,
         }));
         await expect(
-          t.mutation(internal.resolvedMetadata.commitRefresh, {
+          t.mutation(internal.resolvedMetadata.publication.commitRefresh, {
             title: capturedTitle,
             titleWrite: 'seasonPatch',
             season: {
@@ -117,14 +117,14 @@ describe('metadata pipeline', () => {
             leaseToken,
           }),
         ).resolves.toBe(true);
-        await t.mutation(internal.resolvedMetadata.releaseRefresh, {
+        await t.mutation(internal.resolvedMetadata.requests.releaseRefresh, {
           key: 'metadata:tv:88',
           token: leaseToken,
         });
       }
 
       expect(
-        await t.query(internal.resolvedMetadata.readTitle, { mediaType: 'tv', tmdbId: 88 }),
+        await t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 88 }),
       ).toMatchObject({
         seasons: [
           { season: 1, episodeCount: 2 },
@@ -137,7 +137,7 @@ describe('metadata pipeline', () => {
   it('keeps current rows on page one after a 120-episode numbering shift', async () => {
     const { t, userId, asUser } = await setup();
     const itemId = await addItem(asUser);
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -165,7 +165,7 @@ describe('metadata pipeline', () => {
         });
     });
 
-    const page = await asUser.query(api.library.listEpisodes, { itemId, season: 1 });
+    const page = await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
     expect(page).toHaveLength(120);
     expect(page[0]?.episode).toBe(101);
     expect(page.at(-1)?.episode).toBe(220);
@@ -175,10 +175,10 @@ describe('metadata pipeline', () => {
     const { asUser } = await setup();
     const itemId = await addItem(asUser);
     await expect(
-      asUser.mutation(api.library.setEpisodeState, { itemId, season: 10_001, episode: 1 }),
+      asUser.mutation(api.library.episodes.setEpisodeState, { itemId, season: 10_001, episode: 1 }),
     ).rejects.toThrow('Season must be an integer between 0 and 10000');
     await expect(
-      asUser.mutation(api.library.setEpisodeState, { itemId, season: 1, episode: 10_001 }),
+      asUser.mutation(api.library.episodes.setEpisodeState, { itemId, season: 1, episode: 10_001 }),
     ).rejects.toThrow('Episode must be an integer between 0 and 10000');
   });
 
@@ -228,7 +228,7 @@ describe('metadata pipeline', () => {
       );
 
     await expect(
-      t.mutation(internal.library.setSeasonWatchedBatch, {
+      t.mutation(internal.library.seasonWatched.setSeasonWatchedBatch, {
         userId,
         itemId,
         season: 1,
@@ -253,7 +253,7 @@ describe('metadata pipeline', () => {
         updatedAt: Date.now(),
       }),
     );
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -268,13 +268,15 @@ describe('metadata pipeline', () => {
       orderEpoch: 0,
     });
 
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
       watched: true,
     });
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toEqual([
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toEqual([
       {
         season: 1,
         total: 1,
@@ -284,17 +286,25 @@ describe('metadata pipeline', () => {
         identityStale: false,
       },
     ]);
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
       watched: false,
     });
     await expect(
-      asUser.action(api.library.setSeasonWatched, { itemId, season: 1, watched: true }),
+      asUser.action(api.library.seasonWatched.setSeasonWatched, {
+        itemId,
+        season: 1,
+        watched: true,
+      }),
     ).resolves.toEqual({ processed: 3 });
     await expect(
-      asUser.action(api.library.setSeasonWatched, { itemId, season: 1, watched: false }),
+      asUser.action(api.library.seasonWatched.setSeasonWatched, {
+        itemId,
+        season: 1,
+        watched: false,
+      }),
     ).resolves.toEqual({ processed: 3 });
     await t.mutation(internal.sync.recordWatchInternal, {
       userId,
@@ -311,7 +321,9 @@ describe('metadata pipeline', () => {
       episode: 1,
     });
 
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toEqual([
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toEqual([
       {
         season: 1,
         total: 3,
@@ -340,7 +352,7 @@ describe('metadata pipeline', () => {
   it('reads an episode page from the current indexed identity despite bounded stale history', async () => {
     const { t, userId, asUser } = await setup();
     const itemId = await addItem(asUser);
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -374,7 +386,7 @@ describe('metadata pipeline', () => {
     });
 
     await expect(
-      asUser.query(api.library.listEpisodes, { itemId, season: 1 }),
+      asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
     ).resolves.toMatchObject([{ episode: 500, watched: true, metadataProvider: 'tmdb' }]);
   });
 
@@ -388,7 +400,7 @@ describe('metadata pipeline', () => {
       name: `Episode ${episode}`,
       providerEpisodeId: 100 + episode,
     }));
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -398,7 +410,7 @@ describe('metadata pipeline', () => {
       orderEpoch: 0,
     });
     for (const episode of [1, 2])
-      await asUser.mutation(api.library.setEpisodeState, {
+      await asUser.mutation(api.library.episodes.setEpisodeState, {
         itemId,
         season: 1,
         episode,
@@ -406,7 +418,7 @@ describe('metadata pipeline', () => {
       });
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -415,13 +427,13 @@ describe('metadata pipeline', () => {
       refreshAfter: 200 + 60_000,
       orderEpoch: 0,
     });
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toMatchObject([
-      { currentTotal: 2, currentWatchedCount: 2, identityStale: false },
-    ]);
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toMatchObject([{ currentTotal: 2, currentWatchedCount: 2, identityStale: false }]);
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toMatchObject([
-      { currentTotal: 2, currentWatchedCount: 2, identityStale: false },
-    ]);
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toMatchObject([{ currentTotal: 2, currentWatchedCount: 2, identityStale: false }]);
   });
 
   it('rebuilds current counters exactly after the stable provider/order identity changes', async () => {
@@ -434,7 +446,7 @@ describe('metadata pipeline', () => {
       name: `Episode ${episode}`,
       providerEpisodeId: 200 + episode,
     }));
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -444,7 +456,7 @@ describe('metadata pipeline', () => {
       orderEpoch: 0,
     });
     for (const episode of [1, 2])
-      await asUser.mutation(api.library.setEpisodeState, {
+      await asUser.mutation(api.library.episodes.setEpisodeState, {
         itemId,
         season: 1,
         episode,
@@ -458,7 +470,7 @@ describe('metadata pipeline', () => {
         .unique();
       await ctx.db.patch(mapping!._id, { orderEpoch: 1, updatedAt: 200 });
     });
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -468,9 +480,9 @@ describe('metadata pipeline', () => {
       orderEpoch: 1,
     });
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toMatchObject([
-      { currentTotal: 2, currentWatchedCount: 2, identityStale: false },
-    ]);
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toMatchObject([{ currentTotal: 2, currentWatchedCount: 2, identityStale: false }]);
   });
 
   it('continues a season batch after a same-epoch canonical refresh interleaves', async () => {
@@ -481,7 +493,7 @@ describe('metadata pipeline', () => {
       episode: index + 1,
       name: `Episode ${index + 1}`,
     }));
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -491,13 +503,13 @@ describe('metadata pipeline', () => {
       orderEpoch: 0,
     });
 
-    const plan = await t.query(internal.library.getSeasonWatchedPlan, {
+    const plan = await t.query(internal.library.seasonWatched.getSeasonWatchedPlan, {
       userId: (await t.run((ctx) => ctx.db.get(itemId)))!.userId,
       itemId,
       season: 1,
       watched: true,
     });
-    const first = await t.mutation(internal.library.setSeasonWatchedBatch, {
+    const first = await t.mutation(internal.library.seasonWatched.setSeasonWatchedBatch, {
       userId: (await t.run((ctx) => ctx.db.get(itemId)))!.userId,
       itemId,
       season: 1,
@@ -508,7 +520,7 @@ describe('metadata pipeline', () => {
       expectedMetadataProvider: plan.metadataProvider,
     });
     expect(first.processed).toBe(120);
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -517,7 +529,7 @@ describe('metadata pipeline', () => {
       refreshAfter: 200 + 60_000,
       orderEpoch: 0,
     });
-    const restarted = await t.mutation(internal.library.setSeasonWatchedBatch, {
+    const restarted = await t.mutation(internal.library.seasonWatched.setSeasonWatchedBatch, {
       userId: (await t.run((ctx) => ctx.db.get(itemId)))!.userId,
       itemId,
       season: 1,
@@ -530,9 +542,9 @@ describe('metadata pipeline', () => {
     expect(restarted).toMatchObject({ processed: 120, restarted: true, episodeCount: 1_201 });
 
     await expect(
-      asUser.action(api.library.setSeasonWatched, { itemId, season: 1 }),
+      asUser.action(api.library.seasonWatched.setSeasonWatched, { itemId, season: 1 }),
     ).resolves.toEqual({ processed: 1_201 });
-    const saved = await asUser.query(api.library.listEpisodes, {
+    const saved = await asUser.query(api.library.episodes.listEpisodes, {
       itemId,
       season: 1,
       pageCount: 11,
@@ -554,7 +566,7 @@ describe('metadata pipeline', () => {
       });
     });
     await expect(
-      t.mutation(internal.resolvedMetadata.pruneCanonicalData, { phase: 'titles' }),
+      t.mutation(internal.resolvedMetadata.cleanup.pruneCanonicalData, { phase: 'titles' }),
     ).resolves.toMatchObject({ deleted: 1 });
     const ids = await t.run(async (ctx) =>
       (await ctx.db.query('resolvedTitles').collect()).map((row) => row.tmdbId),
@@ -565,7 +577,7 @@ describe('metadata pipeline', () => {
 
   it('namespaces canonical title references by media type during garbage collection', async () => {
     const { t, asUser } = await setup();
-    await asUser.mutation(api.library.addItem, {
+    await asUser.mutation(api.library.items.addItem, {
       tmdbId: 77,
       mediaType: 'movie',
       title: 'Referenced movie',
@@ -581,20 +593,20 @@ describe('metadata pipeline', () => {
     });
 
     await expect(
-      t.mutation(internal.resolvedMetadata.pruneCanonicalData, { phase: 'titles' }),
+      t.mutation(internal.resolvedMetadata.cleanup.pruneCanonicalData, { phase: 'titles' }),
     ).resolves.toMatchObject({ deleted: 1 });
     await expect(
-      t.query(internal.resolvedMetadata.readTitle, { mediaType: 'movie', tmdbId: 77 }),
+      t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'movie', tmdbId: 77 }),
     ).resolves.toMatchObject({ title: 'Stored movie' });
     await expect(
-      t.query(internal.resolvedMetadata.readTitle, { mediaType: 'tv', tmdbId: 77 }),
+      t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 77 }),
     ).resolves.toBeNull();
   });
 
   it('seeds title and season snapshots at the active mapping epoch', async () => {
     const { t, asUser } = await setup();
     await addItem(asUser);
-    await asUser.mutation(api.library.addItem, {
+    await asUser.mutation(api.library.items.addItem, {
       tmdbId: 77,
       mediaType: 'movie',
       title: 'Seeded movie fallback',
@@ -645,19 +657,19 @@ describe('metadata pipeline', () => {
     });
 
     await expect(
-      t.action(internal.resolvedMetadata.seedFromProviderSnapshots, {}),
+      t.action(internal.resolvedMetadata.seed.seedFromProviderSnapshots, {}),
     ).resolves.toMatchObject({ found: 2, seeded: 2 });
     await expect(
-      t.query(internal.resolvedMetadata.readTitle, { mediaType: 'tv', tmdbId: 88 }),
+      t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 88 }),
     ).resolves.toMatchObject({ title: 'Seeded show', orderEpoch: 4 });
     await expect(
-      t.query(internal.resolvedMetadata.readSeason, { tmdbId: 88, season: 1 }),
+      t.query(internal.resolvedMetadata.reads.readSeason, { tmdbId: 88, season: 1 }),
     ).resolves.toMatchObject({ orderEpoch: 4, episodes: [{ name: 'Seeded episode' }] });
     await expect(
-      t.query(internal.resolvedMetadata.readTitleMapping, { mediaType: 'movie', tmdbId: 77 }),
+      t.query(internal.resolvedMetadata.reads.readTitleMapping, { mediaType: 'movie', tmdbId: 77 }),
     ).resolves.toMatchObject({ source: 'auto', orderEpoch: 0 });
     await expect(
-      t.query(internal.resolvedMetadata.readTitle, { mediaType: 'movie', tmdbId: 77 }),
+      t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'movie', tmdbId: 77 }),
     ).resolves.toMatchObject({ title: 'Seeded movie', orderEpoch: 0 });
   });
 });

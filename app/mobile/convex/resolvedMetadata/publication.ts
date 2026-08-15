@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Doc } from './_generated/dataModel';
-import { internalMutation, type MutationCtx } from './_generated/server';
-import { refreshLeaseKey, requestKey, seasonRequestKey } from './resolvedMetadataRequests.impl';
+import { internal } from '../_generated/api';
+import type { Doc } from '../_generated/dataModel';
+import { internalMutation, type MutationCtx } from '../_generated/server';
+import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
   FAILED_TOUCH_BACKOFF_MS,
   type MappingIdentity,
@@ -13,13 +13,13 @@ import {
   resolvedEpisodeValidator,
   type ResolvedTitle,
   resolvedTitleValidator,
-} from './resolvedMetadataShared.impl';
+} from './shared';
 import {
   appendPrechunkedSeasonChunk,
   assertMetadataMutationSize,
   beginPrechunkedSeasonWrite,
   finalizePrechunkedSeasonWrite,
-} from './seasonStorage';
+} from '../seasonStorage';
 
 type CanonicalPublication = {
   title: ResolvedTitle;
@@ -54,7 +54,7 @@ export async function publishCanonicalMetadata(
         : args.title;
     if (existingTitle) await ctx.db.replace(existingTitle._id, title);
     else await ctx.db.insert('resolvedTitles', title);
-    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.refreshItemProjections, {
+    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.publication.refreshItemProjections, {
       mediaType: title.mediaType,
       tmdbId: title.tmdbId,
     });
@@ -144,11 +144,15 @@ export const refreshItemProjections = internalMutation({
       }
     }
     if (!page.isDone)
-      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.refreshItemProjections, {
-        mediaType: type,
-        tmdbId,
-        cursor: page.continueCursor,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.resolvedMetadata.publication.refreshItemProjections,
+        {
+          mediaType: type,
+          tmdbId,
+          cursor: page.continueCursor,
+        },
+      );
     return { updated: page.page.length, isDone: page.isDone };
   },
 });

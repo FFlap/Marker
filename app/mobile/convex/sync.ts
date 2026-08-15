@@ -425,8 +425,9 @@ async function recordWatchForUser(
     metadataProvider?: 'tmdb' | 'tvdb';
   };
   let canonicalTitle: CanonicalTitle;
+  const resolveTitleForUser = internal.resolvedMetadata.titleResolution.resolveTitleForUser;
   try {
-    canonicalTitle = await ctx.runAction(internal.resolvedMetadata.resolveTitleForUser, {
+    canonicalTitle = await ctx.runAction(resolveTitleForUser, {
       userId,
       mediaType: 'tv',
       tmdbId: item.tmdbId,
@@ -440,7 +441,7 @@ async function recordWatchForUser(
   }
   const canonicalSeason = async (season: number): Promise<CanonicalSeasonMatch> => {
     try {
-      await ctx.runAction(internal.resolvedMetadata.resolveSeasonForUser, {
+      await ctx.runAction(internal.resolvedMetadata.seasonResolution.resolveSeasonForUser, {
         userId,
         tmdbId: item!.tmdbId,
         season,
@@ -448,13 +449,13 @@ async function recordWatchForUser(
     } catch (error) {
       if (!matchedExistingItem || !hasNumbers) throw error;
     }
-    const matchedSeason = await ctx.runQuery(internal.resolvedMetadata.readSeasonChunk, {
+    const matchedSeason = await ctx.runQuery(internal.resolvedMetadata.reads.readSeasonChunk, {
       tmdbId: item!.tmdbId,
       season,
     });
     const episodes: CanonicalEpisode[] = matchedSeason?.episodes ? [...matchedSeason.episodes] : [];
     for (let chunkIndex = 1; chunkIndex < (matchedSeason?.chunkCount ?? 0); chunkIndex += 1) {
-      const chunk = await ctx.runQuery(internal.resolvedMetadata.readSeasonChunk, {
+      const chunk = await ctx.runQuery(internal.resolvedMetadata.reads.readSeasonChunk, {
         tmdbId: item!.tmdbId,
         season,
         chunkIndex,
@@ -570,7 +571,7 @@ async function recordWatchForUser(
   };
   const committed = await commitWatchWithOneRematch(resolved, commit, matchEpisode, async () => {
     try {
-      canonicalTitle = await ctx.runAction(internal.resolvedMetadata.resolveTitleForUser, {
+      canonicalTitle = await ctx.runAction(resolveTitleForUser, {
         userId,
         mediaType: 'tv',
         tmdbId: item.tmdbId,

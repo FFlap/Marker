@@ -88,14 +88,14 @@ describe('review regressions', () => {
 
   it('can change visibility after the final item leaves a tag', async () => {
     const { asUser } = await setup();
-    const itemId = await asUser.mutation(api.library.addItem, {
+    const itemId = await asUser.mutation(api.library.items.addItem, {
       tmdbId: 502,
       mediaType: 'movie',
       title: 'Temporary Tag',
       status: 'watchlist',
       tags: ['Archive'],
     });
-    await asUser.mutation(api.library.updateItem, { itemId, tags: [] });
+    await asUser.mutation(api.library.items.updateItem, { itemId, tags: [] });
 
     await expect(
       asUser.mutation(api.tags.setVisibility, { tag: 'Archive', isPublic: true }),
@@ -107,7 +107,7 @@ describe('review regressions', () => {
 
   it('restarts public tag pagination when the cursor is malformed', async () => {
     const { asUser } = await setup();
-    await asUser.mutation(api.library.addItem, {
+    await asUser.mutation(api.library.items.addItem, {
       tmdbId: 503,
       mediaType: 'movie',
       title: 'Cursor Recovery',

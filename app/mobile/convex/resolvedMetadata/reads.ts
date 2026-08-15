@@ -1,15 +1,15 @@
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { internalQuery, query } from './_generated/server';
+import { internalQuery, query } from '../_generated/server';
 import {
   itemValidator,
   resolvedEpisodeValidator as publicResolvedEpisodeValidator,
   resolvedTitleValidator as publicResolvedTitleValidator,
   requestStateValidator,
-} from './publicValidators';
-import { requestKey, seasonRequestKey, visibleRequestState } from './resolvedMetadataRequests.impl';
-import { mediaType, metadataProvider, requireUser } from './resolvedMetadataShared.impl';
-import { readAssembledSeason } from './seasonStorage';
+} from '../publicValidators';
+import { requestKey, seasonRequestKey, visibleRequestState } from './requests';
+import { mediaType, metadataProvider, requireUser } from './shared';
+import { readAssembledSeason } from '../seasonStorage';
 
 export const readTitle = internalQuery({
   args: { mediaType, tmdbId: v.number() },

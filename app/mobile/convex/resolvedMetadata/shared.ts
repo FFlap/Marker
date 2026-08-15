@@ -1,10 +1,10 @@
 import { v } from 'convex/values';
-import type { Doc } from './_generated/dataModel';
-import { getClerkUserId } from './clerkAuth';
-import { releasedEpisodes } from './episodeAvailability';
-import { mergeGenres } from './mergePolicy';
-import { mergeSeasonDisplayNames } from './seasonNames';
-import { type ResolvedEpisode } from './seasonStorage';
+import type { Doc } from '../_generated/dataModel';
+import { getClerkUserId } from '../clerkAuth';
+import { releasedEpisodes } from '../episodeAvailability';
+import { mergeGenres } from '../mergePolicy';
+import { mergeSeasonDisplayNames } from '../seasonNames';
+import { type ResolvedEpisode } from '../seasonStorage';
 
 export const TITLE_FRESH_MS = 24 * 60 * 60 * 1000;
 export const SEASON_FRESH_MS = 6 * 60 * 60 * 1000;

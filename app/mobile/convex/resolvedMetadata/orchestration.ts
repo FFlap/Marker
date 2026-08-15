@@ -1,21 +1,16 @@
 import { ConvexError, v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Doc } from './_generated/dataModel';
+import { internal } from '../_generated/api';
+import type { Doc } from '../_generated/dataModel';
 import {
   internalAction,
   internalMutation,
   internalQuery,
   type ActionCtx,
-} from './_generated/server';
-import { refreshLeaseKey, requestKey } from './resolvedMetadataRequests.impl';
-import { resolveAndCommitCanonical } from './resolvedMetadataSeasonResolution.impl';
-import {
-  FAILED_TOUCH_BACKOFF_MS,
-  mediaType,
-  REFRESH_LEASE_MS,
-  REQUEST_LEASE_MS,
-} from './resolvedMetadataShared.impl';
-import { errorCode, pause } from './resolvedMetadataTitleResolution.impl';
+} from '../_generated/server';
+import { refreshLeaseKey, requestKey } from './requests';
+import { resolveAndCommitCanonical } from './seasonResolution';
+import { FAILED_TOUCH_BACKOFF_MS, mediaType, REFRESH_LEASE_MS, REQUEST_LEASE_MS } from './shared';
+import { errorCode, pause } from './titleResolution';
 
 const MAX_CLAIM_RETRIES = 60;
 
@@ -46,7 +41,7 @@ export const orchestrateRefresh = internalAction({
     const leaseToken = `scheduled:${args.attemptToken}`;
     let claimed = false;
     try {
-      claimed = await ctx.runMutation(internal.resolvedMetadata.claimRefresh, {
+      claimed = await ctx.runMutation(internal.resolvedMetadata.requests.claimRefresh, {
         key: leaseKey,
         token: leaseToken,
         leaseMs: REFRESH_LEASE_MS,
@@ -57,7 +52,7 @@ export const orchestrateRefresh = internalAction({
         const pending = await Promise.all(
           args.keys.map(
             (key) =>
-              ctx.runQuery(internal.resolvedMetadata.readRefreshRequest, {
+              ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
                 key,
               }) as Promise<Doc<'metadataRefreshRequests'> | null>,
           ),
@@ -73,15 +68,19 @@ export const orchestrateRefresh = internalAction({
           const claimRetry = args.claimRetry ?? 0;
           if (claimRetry >= MAX_CLAIM_RETRIES)
             throw new ConvexError({ code: 'refresh_claim_timeout', retryable: true });
-          await ctx.runMutation(internal.resolvedMetadata.renewRefreshRequests, {
+          await ctx.runMutation(internal.resolvedMetadata.requests.renewRefreshRequests, {
             keys: args.keys,
             attemptToken: args.attemptToken,
             requestMs: REQUEST_LEASE_MS,
           });
-          await ctx.scheduler.runAfter(1_000, internal.resolvedMetadata.orchestrateRefresh, {
-            ...args,
-            claimRetry: claimRetry + 1,
-          });
+          await ctx.scheduler.runAfter(
+            1_000,
+            internal.resolvedMetadata.orchestration.orchestrateRefresh,
+            {
+              ...args,
+              claimRetry: claimRetry + 1,
+            },
+          );
           return;
         }
         throw new ConvexError({ code: 'refresh_in_progress', retryable: true });
@@ -102,10 +101,14 @@ export const orchestrateRefresh = internalAction({
         leaseToken,
       });
       if (result.commitStatus === 'mappingChanged' && !args.mappingRetry) {
-        await ctx.scheduler.runAfter(100, internal.resolvedMetadata.orchestrateRefresh, {
-          ...args,
-          mappingRetry: true,
-        });
+        await ctx.scheduler.runAfter(
+          100,
+          internal.resolvedMetadata.orchestration.orchestrateRefresh,
+          {
+            ...args,
+            mappingRetry: true,
+          },
+        );
         return;
       }
       if (result.commitStatus === 'mappingChanged')
@@ -113,7 +116,7 @@ export const orchestrateRefresh = internalAction({
       if (!result.committed) return;
     } catch (error) {
       const settled = await ctx
-        .runMutation(internal.resolvedMetadata.settleScheduledRefresh, {
+        .runMutation(internal.resolvedMetadata.requests.settleScheduledRefresh, {
           mediaType: args.mediaType,
           tmdbId: args.tmdbId,
           ...(args.season !== undefined && { season: args.season }),
@@ -126,7 +129,7 @@ export const orchestrateRefresh = internalAction({
     } finally {
       if (claimed)
         await ctx
-          .runMutation(internal.resolvedMetadata.releaseRefresh, {
+          .runMutation(internal.resolvedMetadata.requests.releaseRefresh, {
             key: leaseKey,
             token: leaseToken,
           })
@@ -140,7 +143,7 @@ export async function waitForTitleRequest(ctx: ActionCtx, tmdbId: number) {
   let waited = false;
   while (Date.now() < deadline) {
     const row: Doc<'metadataRefreshRequests'> | null = await ctx.runQuery(
-      internal.resolvedMetadata.readRefreshRequest,
+      internal.resolvedMetadata.orchestration.readRefreshRequest,
       { key: requestKey('tv', tmdbId) },
     );
     if (!row || row.state !== 'inFlight' || row.expiresAt <= Date.now()) return waited;
@@ -166,13 +169,13 @@ export const orchestrateSeasonRefresh = internalAction({
     const leaseToken = `scheduled:${args.attemptToken}`;
     let claimed = false;
     try {
-      await ctx.runMutation(internal.resolvedMetadata.renewRefreshRequests, {
+      await ctx.runMutation(internal.resolvedMetadata.requests.renewRefreshRequests, {
         keys: [args.key],
         attemptToken: args.attemptToken,
         requestMs: REQUEST_LEASE_MS,
       });
       await waitForTitleRequest(ctx, args.tmdbId);
-      claimed = await ctx.runMutation(internal.resolvedMetadata.claimRefresh, {
+      claimed = await ctx.runMutation(internal.resolvedMetadata.requests.claimRefresh, {
         key: leaseKey,
         token: leaseToken,
         leaseMs: REFRESH_LEASE_MS,
@@ -181,7 +184,7 @@ export const orchestrateSeasonRefresh = internalAction({
       });
       if (!claimed) {
         const pending: Doc<'metadataRefreshRequests'> | null = await ctx.runQuery(
-          internal.resolvedMetadata.readRefreshRequest,
+          internal.resolvedMetadata.orchestration.readRefreshRequest,
           { key: args.key },
         );
         if (
@@ -192,10 +195,14 @@ export const orchestrateSeasonRefresh = internalAction({
           const claimRetry = args.claimRetry ?? 0;
           if (claimRetry >= MAX_CLAIM_RETRIES)
             throw new ConvexError({ code: 'refresh_claim_timeout', retryable: true });
-          await ctx.scheduler.runAfter(1_000, internal.resolvedMetadata.orchestrateSeasonRefresh, {
-            ...args,
-            claimRetry: claimRetry + 1,
-          });
+          await ctx.scheduler.runAfter(
+            1_000,
+            internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
+            {
+              ...args,
+              claimRetry: claimRetry + 1,
+            },
+          );
           return;
         }
         throw new ConvexError({ code: 'refresh_in_progress', retryable: true });
@@ -205,15 +212,15 @@ export const orchestrateSeasonRefresh = internalAction({
       });
       if (!allowed) throw new ConvexError({ code: 'throttled' });
       const [title, mapping, request] = await Promise.all([
-        ctx.runQuery(internal.resolvedMetadata.readTitle, {
+        ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
           mediaType: 'tv',
           tmdbId: args.tmdbId,
         }) as Promise<Doc<'resolvedTitles'> | null>,
-        ctx.runQuery(internal.resolvedMetadata.readTitleMapping, {
+        ctx.runQuery(internal.resolvedMetadata.reads.readTitleMapping, {
           mediaType: 'tv',
           tmdbId: args.tmdbId,
         }) as Promise<Doc<'titleMappings'> | null>,
-        ctx.runQuery(internal.resolvedMetadata.readRefreshRequest, {
+        ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
           key: args.key,
         }) as Promise<Doc<'metadataRefreshRequests'> | null>,
       ]);
@@ -239,10 +246,14 @@ export const orchestrateSeasonRefresh = internalAction({
         currentTitle: title,
       });
       if (result.commitStatus === 'mappingChanged' && !args.mappingRetry) {
-        await ctx.scheduler.runAfter(100, internal.resolvedMetadata.orchestrateSeasonRefresh, {
-          ...args,
-          mappingRetry: true,
-        });
+        await ctx.scheduler.runAfter(
+          100,
+          internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
+          {
+            ...args,
+            mappingRetry: true,
+          },
+        );
         return;
       }
       if (result.commitStatus === 'mappingChanged')
@@ -250,7 +261,7 @@ export const orchestrateSeasonRefresh = internalAction({
       if (!result.committed) return;
     } catch (error) {
       const settled = await ctx
-        .runMutation(internal.resolvedMetadata.settleScheduledRefresh, {
+        .runMutation(internal.resolvedMetadata.requests.settleScheduledRefresh, {
           mediaType: 'tv',
           tmdbId: args.tmdbId,
           season: args.season,
@@ -263,7 +274,7 @@ export const orchestrateSeasonRefresh = internalAction({
     } finally {
       if (claimed)
         await ctx
-          .runMutation(internal.resolvedMetadata.releaseRefresh, {
+          .runMutation(internal.resolvedMetadata.requests.releaseRefresh, {
             key: leaseKey,
             token: leaseToken,
           })
@@ -317,7 +328,7 @@ export const pruneRefreshLeases = internalMutation({
       .withIndex('by_expires', (query) => query.lt('expiresAt', now))
       .take(500);
     await Promise.all(leases.map((document) => ctx.db.delete(document._id)));
-    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.pruneCanonicalData, {});
+    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.cleanup.pruneCanonicalData, {});
     return {
       leases: leases.length,
     };

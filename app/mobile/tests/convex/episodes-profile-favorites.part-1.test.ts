@@ -78,7 +78,7 @@ describe('episode hub and profile favorites', () => {
         refreshedAt: Date.now(),
       });
     });
-    await asUser.mutation(api.library.addItem, add('Release Clock', 99, 'tv', 'watching'));
+    await asUser.mutation(api.library.items.addItem, add('Release Clock', 99, 'tv', 'watching'));
 
     expect((await asUser.query(api.episodeHub.overview, { today: '2026-08-10' })).watching).toEqual(
       [],
@@ -157,11 +157,11 @@ describe('episode hub and profile favorites', () => {
       }
     });
     const detailedId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Detailed Undated', 100, 'tv', 'watching'),
     );
     const placeholderId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Placeholder Undated', 101, 'tv', 'watching'),
     );
 
@@ -252,7 +252,7 @@ describe('episode hub and profile favorites', () => {
     });
 
     await expect(
-      t.mutation(internal.resolvedMetadata.refreshItemProjections, {
+      t.mutation(internal.resolvedMetadata.publication.refreshItemProjections, {
         mediaType: 'tv',
         tmdbId: 202,
       }),
@@ -528,7 +528,7 @@ describe('episode hub and profile favorites', () => {
       return row!.token;
     });
 
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 481,

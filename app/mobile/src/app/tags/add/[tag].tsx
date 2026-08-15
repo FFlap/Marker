@@ -20,8 +20,8 @@ const BATCH_SIZE = 100;
 export default function AddTitlesToTagScreen() {
   const params = useLocalSearchParams<{ tag?: string | string[] }>();
   const tag = Array.isArray(params.tag) ? params.tag[0] : (params.tag ?? '');
-  const items = useQuery(api.library.listItems);
-  const addTagToItems = useMutation(api.library.addTagToItems);
+  const items = useQuery(api.library.items.listItems);
+  const addTagToItems = useMutation(api.library.items.addTagToItems);
   const toast = useToast();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());

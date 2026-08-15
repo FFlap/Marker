@@ -1,8 +1,8 @@
-import { getClerkUserId } from './clerkAuth';
-import { type MutationCtx } from './_generated/server';
-import type { Doc, Id } from './_generated/dataModel';
+import { getClerkUserId } from '../clerkAuth';
+import { type MutationCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
-import { seasonSummaryIdentityKey } from './episodeSummaries';
+import { seasonSummaryIdentityKey } from '../episodeSummaries';
 
 export const status = v.union(
   v.literal('watched'),

@@ -61,17 +61,21 @@ jest.mock('convex/react', () => ({
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     library: {
-      getOwnedItemByTmdb: 'getOwnedItemByTmdb',
-      listTagSuggestions: 'listTagSuggestions',
-      addItem: 'addItem',
-      addItemAndMarkWatched: 'addItemAndMarkWatched',
+      items: {
+        getOwnedItemByTmdb: 'getOwnedItemByTmdb',
+        listTagSuggestions: 'listTagSuggestions',
+        addItem: 'addItem',
+      },
+      seasonWatched: { addItemAndMarkWatched: 'addItemAndMarkWatched' },
     },
     resolvedMetadata: {
-      getTitleView: 'getTitleView',
-      getTitleRequestState: 'getTitleRequestState',
-      getSeasonView: 'getSeasonView',
-      getSeasonRequestState: 'getSeasonRequestState',
-      touchTitle: 'touchTitle',
+      reads: {
+        getTitleView: 'getTitleView',
+        getTitleRequestState: 'getTitleRequestState',
+        getSeasonView: 'getSeasonView',
+        getSeasonRequestState: 'getSeasonRequestState',
+      },
+      touch: { touchTitle: 'touchTitle' },
       touchItemView: 'touchItemView',
     },
   },

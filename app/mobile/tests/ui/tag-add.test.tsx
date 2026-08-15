@@ -54,8 +54,10 @@ jest.mock('convex/react', () => ({
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     library: {
-      listItems: 'library.listItems',
-      addTagToItems: 'library.addTagToItems',
+      items: {
+        listItems: 'library/items:listItems',
+        addTagToItems: 'library/items:addTagToItems',
+      },
     },
   },
 }));

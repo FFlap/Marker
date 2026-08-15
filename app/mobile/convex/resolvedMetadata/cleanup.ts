@@ -1,9 +1,9 @@
 import { v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Doc } from './_generated/dataModel';
-import { internalMutation } from './_generated/server';
-import { refreshLeaseKey, requestKey, seasonRequestKey } from './resolvedMetadataRequests.impl';
-import { REFRESH_LEASE_MS, type MediaType } from './resolvedMetadataShared.impl';
+import { internal } from '../_generated/api';
+import type { Doc } from '../_generated/dataModel';
+import { internalMutation } from '../_generated/server';
+import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
+import { REFRESH_LEASE_MS, type MediaType } from './shared';
 
 export const CANONICAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const canonicalGcPhase = v.union(
@@ -212,7 +212,7 @@ export const pruneCanonicalData = internalMutation({
     }
 
     if (!page.isDone) {
-      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.pruneCanonicalData, {
+      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.cleanup.pruneCanonicalData, {
         phase,
         cursor: page.continueCursor,
       });
@@ -220,7 +220,7 @@ export const pruneCanonicalData = internalMutation({
       const phases = ['titles', 'seasons', 'chunks', 'mappings'] as const;
       const next = phases[phases.indexOf(phase) + 1];
       if (next)
-        await ctx.scheduler.runAfter(0, internal.resolvedMetadata.pruneCanonicalData, {
+        await ctx.scheduler.runAfter(0, internal.resolvedMetadata.cleanup.pruneCanonicalData, {
           phase: next,
         });
     }
@@ -237,7 +237,7 @@ export const pruneRefreshRequests = internalMutation({
       .paginate({ cursor: cursor ?? null, numItems: 200 });
     for (const request of page.page) await ctx.db.delete(request._id);
     if (!page.isDone)
-      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.pruneRefreshRequests, {
+      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.cleanup.pruneRefreshRequests, {
         cursor: page.continueCursor,
       });
     return { deleted: page.page.length, isDone: page.isDone };
@@ -257,7 +257,7 @@ export const pruneRequestThrottle = internalMutation({
         deleted += 1;
       }
     if (!page.isDone)
-      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.pruneRequestThrottle, {
+      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.cleanup.pruneRequestThrottle, {
         cursor: page.continueCursor,
       });
     return { deleted, isDone: page.isDone };

@@ -83,7 +83,7 @@ function Episodes() {
   const today = useLocalToday();
   const overview = useQuery(api.episodeHub.overview, { today }) as
     { watching: EpisodeHubItem[]; favorites: EpisodeHubItem[] } | undefined;
-  const setEpisode = useMutation(api.library.setEpisodeState);
+  const setEpisode = useMutation(api.library.episodes.setEpisodeState);
   const toast = useToast();
   const drawerRef = useRef<AppDrawerHandle>(null);
   const [tab, setTab] = useState<EpisodeTab>('watching');

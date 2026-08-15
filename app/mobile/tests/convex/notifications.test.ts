@@ -65,24 +65,24 @@ describe('notification activity feed', () => {
   it('writes only semantic transitions and applies per-kind settings', async () => {
     vi.useFakeTimers();
     const { t, actorId, actor, viewer } = await setup();
-    const itemId = await actor.mutation(api.library.addItem, addShow('Signal', 42));
+    const itemId = await actor.mutation(api.library.items.addItem, addShow('Signal', 42));
 
     vi.setSystemTime(10);
-    await actor.mutation(api.library.updateItem, { itemId, rating: 9.2 });
+    await actor.mutation(api.library.items.updateItem, { itemId, rating: 9.2 });
     vi.setSystemTime(20);
-    await actor.mutation(api.library.updateItem, { itemId, tags: ['quiet'] });
+    await actor.mutation(api.library.items.updateItem, { itemId, tags: ['quiet'] });
     vi.setSystemTime(30);
-    await actor.mutation(api.library.updateItem, { itemId, status: 'watching' });
+    await actor.mutation(api.library.items.updateItem, { itemId, status: 'watching' });
     vi.setSystemTime(40);
-    await actor.mutation(api.library.setEpisodeState, {
+    await actor.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 3,
       watched: true,
     });
     vi.setSystemTime(50);
-    await actor.mutation(api.library.updateItem, { itemId, status: 'watched' });
-    await actor.mutation(api.library.updateItem, { itemId, status: 'watched', rating: 9.2 });
+    await actor.mutation(api.library.items.updateItem, { itemId, status: 'watched' });
+    await actor.mutation(api.library.items.updateItem, { itemId, status: 'watched', rating: 9.2 });
 
     const stored = await t.run((ctx) =>
       ctx.db
@@ -113,11 +113,11 @@ describe('notification activity feed', () => {
     vi.useFakeTimers();
     const { viewer, pendingViewer, actor, secondActor } = await setup();
     vi.setSystemTime(100);
-    const first = await actor.mutation(api.library.addItem, addShow('Signal', 42));
-    await actor.mutation(api.library.updateItem, { itemId: first, status: 'watching' });
+    const first = await actor.mutation(api.library.items.addItem, addShow('Signal', 42));
+    await actor.mutation(api.library.items.updateItem, { itemId: first, status: 'watching' });
     vi.setSystemTime(200);
-    const second = await secondActor.mutation(api.library.addItem, addShow('Orbit', 43));
-    await secondActor.mutation(api.library.updateItem, { itemId: second, rating: 8 });
+    const second = await secondActor.mutation(api.library.items.addItem, addShow('Orbit', 43));
+    await secondActor.mutation(api.library.items.updateItem, { itemId: second, rating: 8 });
 
     const feed = await viewer.query(api.notifications.feed, {});
     expect(feed.map((entry) => entry.actorUsername)).toEqual(['noah', 'mika']);

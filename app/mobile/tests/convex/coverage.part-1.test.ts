@@ -68,56 +68,56 @@ describe('settings and ordering', () => {
 
   it('supports top, bottom, midpoint, and empty-list reorder ranks', async () => {
     const { asUser } = await setup();
-    const first = await asUser.mutation(api.library.addItem, add('First', 1));
-    const second = await asUser.mutation(api.library.addItem, add('Second', 2));
-    expect(await asUser.mutation(api.library.reorderItem, { itemId: second, afterId: first })).toBe(
-      0,
-    );
+    const first = await asUser.mutation(api.library.items.addItem, add('First', 1));
+    const second = await asUser.mutation(api.library.items.addItem, add('Second', 2));
     expect(
-      await asUser.mutation(api.library.reorderItem, { itemId: first, beforeId: second }),
+      await asUser.mutation(api.library.ordering.reorderItem, { itemId: second, afterId: first }),
+    ).toBe(0);
+    expect(
+      await asUser.mutation(api.library.ordering.reorderItem, { itemId: first, beforeId: second }),
     ).toBe(1);
-    expect(await asUser.mutation(api.library.reorderItem, { itemId: first })).toBe(-1);
+    expect(await asUser.mutation(api.library.ordering.reorderItem, { itemId: first })).toBe(-1);
   });
 
   it('recomputes stale reorder claims and rejects untrusted neighbors', async () => {
     const { t, asUser } = await setup();
     const ids = [];
     for (let index = 0; index < 5; index += 1)
-      ids.push(await asUser.mutation(api.library.addItem, add(`Item ${index}`, index + 10)));
+      ids.push(await asUser.mutation(api.library.items.addItem, add(`Item ${index}`, index + 10)));
 
     // Reversed and non-adjacent claims are projected onto an authoritative slot.
-    await asUser.mutation(api.library.reorderItem, {
+    await asUser.mutation(api.library.ordering.reorderItem, {
       itemId: ids[4],
       beforeId: ids[3],
       afterId: ids[1],
     });
-    await asUser.mutation(api.library.reorderItem, {
+    await asUser.mutation(api.library.ordering.reorderItem, {
       itemId: ids[0],
       beforeId: ids[1],
       afterId: ids[3],
     });
 
     const crossStatus = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Watching', 99, { status: 'watching' }),
     );
     await expect(
-      asUser.mutation(api.library.reorderItem, { itemId: ids[0], afterId: crossStatus }),
+      asUser.mutation(api.library.ordering.reorderItem, { itemId: ids[0], afterId: crossStatus }),
     ).rejects.toThrow('Neighbors must share a status');
 
     await t.run((ctx) => ctx.db.insert('users', { clerkId: 'user_reorder_other' }));
     const other = t.withIdentity({ subject: 'user_reorder_other' });
-    const foreign = await other.mutation(api.library.addItem, add('Foreign', 100));
+    const foreign = await other.mutation(api.library.items.addItem, add('Foreign', 100));
     await expect(
-      asUser.mutation(api.library.reorderItem, { itemId: ids[0], beforeId: foreign }),
+      asUser.mutation(api.library.ordering.reorderItem, { itemId: ids[0], beforeId: foreign }),
     ).rejects.toThrow('Item not found');
 
     for (let count = 0; count < 8; count += 1)
-      await asUser.mutation(api.library.reorderItem, {
+      await asUser.mutation(api.library.ordering.reorderItem, {
         itemId: ids[count % ids.length],
         afterId: ids[(count + 2) % ids.length],
       });
-    const ordered = (await asUser.query(api.library.listItems, {}))
+    const ordered = (await asUser.query(api.library.items.listItems, {}))
       .filter((item) => item.status === 'watchlist')
       .sort((a, b) => a.rank - b.rank || a._creationTime - b._creationTime);
     expect(new Set(ordered.map((item) => item.rank)).size).toBe(ordered.length);
@@ -130,13 +130,15 @@ describe('settings and ordering', () => {
     const { t, asUser } = await setup();
     const ids = [];
     for (let index = 0; index < 20; index += 1)
-      ids.push(await asUser.mutation(api.library.addItem, add(`Dense ${index}`, index + 200)));
+      ids.push(
+        await asUser.mutation(api.library.items.addItem, add(`Dense ${index}`, index + 200)),
+      );
     await t.run(async (ctx) => {
       await ctx.db.patch(ids[9], { rank: 10 });
       await ctx.db.patch(ids[10], { rank: 10 + 1e-12 });
     });
 
-    await asUser.mutation(api.library.reorderItem, {
+    await asUser.mutation(api.library.ordering.reorderItem, {
       itemId: ids[19],
       beforeId: ids[9],
       afterId: ids[10],
@@ -155,26 +157,30 @@ describe('rating clearing and stats', () => {
   it('clears item and episode ratings without changing other fields', async () => {
     const { asUser } = await setup();
     const itemId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Daredevil', 61889, { rating: 9, tags: ['hero'] }),
     );
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
       rating: 8.5,
       tags: ['pilot'],
     });
-    await asUser.mutation(api.library.updateItem, { itemId, clearRating: true });
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.items.updateItem, { itemId, clearRating: true });
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
       clearRating: true,
     });
-    expect((await asUser.query(api.library.listItems, {}))[0]).toMatchObject({ tags: ['hero'] });
-    expect((await asUser.query(api.library.listItems, {}))[0].rating).toBeUndefined();
-    const episode = (await asUser.query(api.library.listEpisodes, { itemId, season: 1 }))[0];
+    expect((await asUser.query(api.library.items.listItems, {}))[0]).toMatchObject({
+      tags: ['hero'],
+    });
+    expect((await asUser.query(api.library.items.listItems, {}))[0].rating).toBeUndefined();
+    const episode = (
+      await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 })
+    )[0];
     expect(episode).toMatchObject({ tags: ['pilot'] });
     expect(episode.rating).toBeUndefined();
   });
@@ -182,18 +188,18 @@ describe('rating clearing and stats', () => {
   it('uses runtime fallbacks, ignores unrated items, and orders tied tags alphabetically', async () => {
     const { t, userId, asUser } = await setup();
     const show = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Show', 10, { runtime: 45, rating: 8, tags: ['zeta', 'alpha'] }),
     );
-    const fallback = await asUser.mutation(api.library.addItem, add('Fallback', 11));
-    await asUser.mutation(api.library.addItem, add('Unrated', 12, { tags: ['beta'] }));
-    await asUser.mutation(api.library.setEpisodeState, {
+    const fallback = await asUser.mutation(api.library.items.addItem, add('Fallback', 11));
+    await asUser.mutation(api.library.items.addItem, add('Unrated', 12, { tags: ['beta'] }));
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId: show,
       season: 1,
       episode: 1,
       watched: true,
     });
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId: fallback,
       season: 1,
       episode: 1,
@@ -221,7 +227,7 @@ describe('rating clearing and stats', () => {
 
   it('counts zero watches as zero movie minutes', async () => {
     const { asUser } = await setup();
-    await asUser.mutation(api.library.addItem, {
+    await asUser.mutation(api.library.items.addItem, {
       ...add('Unwatched movie', 99, { status: 'watched', runtime: 120, timesWatched: 0 }),
       mediaType: 'movie',
     });

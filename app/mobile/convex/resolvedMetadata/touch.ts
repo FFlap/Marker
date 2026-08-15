@@ -1,14 +1,9 @@
 import { v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
-import { mutation, type MutationCtx } from './_generated/server';
-import { refreshResultValidator } from './publicValidators';
-import {
-  consumeRefreshAdmission,
-  refreshLeaseKey,
-  requestKey,
-  seasonRequestKey,
-} from './resolvedMetadataRequests.impl';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import { mutation, type MutationCtx } from '../_generated/server';
+import { refreshResultValidator } from '../publicValidators';
+import { consumeRefreshAdmission, refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
   DEBOUNCE_MS,
   FAILED_TOUCH_BACKOFF_MS,
@@ -17,8 +12,8 @@ import {
   REQUEST_LEASE_MS,
   requireUser,
   type MediaType,
-} from './resolvedMetadataShared.impl';
-import { validateId } from './resolvedMetadataTitleResolution.impl';
+} from './shared';
+import { validateId } from './titleResolution';
 
 export async function requestRefresh(
   ctx: MutationCtx,
@@ -165,15 +160,19 @@ export async function requestRefresh(
           const attemptToken = `${now}:title:${crypto.randomUUID()}`;
           const expiresAt = now + REQUEST_LEASE_MS;
           await writeRequest(keys[0], rows[0], attemptToken, expiresAt);
-          await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestrateRefresh, {
-            userId: args.userId,
-            mediaType: args.mediaType,
-            tmdbId: args.tmdbId,
-            ...(args.title !== undefined && { title: args.title }),
-            ...(args.force !== undefined && { force: args.force }),
-            keys: [keys[0]],
-            attemptToken,
-          });
+          await ctx.scheduler.runAfter(
+            0,
+            internal.resolvedMetadata.orchestration.orchestrateRefresh,
+            {
+              userId: args.userId,
+              mediaType: args.mediaType,
+              tmdbId: args.tmdbId,
+              ...(args.title !== undefined && { title: args.title }),
+              ...(args.force !== undefined && { force: args.force }),
+              keys: [keys[0]],
+              attemptToken,
+            },
+          );
           independentlyScheduledTitle = {
             scheduled: true,
             attemptToken,
@@ -186,14 +185,18 @@ export async function requestRefresh(
         const attemptToken = `${now}:season:${crypto.randomUUID()}`;
         const expiresAt = now + REQUEST_LEASE_MS;
         await writeRequest(keys[1], rows[1], attemptToken, expiresAt);
-        await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestrateSeasonRefresh, {
-          userId: args.userId,
-          tmdbId: args.tmdbId,
-          season: args.season,
-          ...(args.force !== undefined && { force: args.force }),
-          key: keys[1],
-          attemptToken,
-        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
+          {
+            userId: args.userId,
+            tmdbId: args.tmdbId,
+            season: args.season,
+            ...(args.force !== undefined && { force: args.force }),
+            key: keys[1],
+            attemptToken,
+          },
+        );
         const scheduledSeason = {
           scheduled: true as const,
           attemptToken,
@@ -231,7 +234,7 @@ export async function requestRefresh(
       const titleAttemptToken = `${now}:title:${crypto.randomUUID()}`;
       const titleExpiresAt = now + REQUEST_LEASE_MS;
       await writeRequest(keys[0], rows[0], titleAttemptToken, titleExpiresAt);
-      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestrateRefresh, {
+      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestration.orchestrateRefresh, {
         userId: args.userId,
         mediaType: args.mediaType,
         tmdbId: args.tmdbId,
@@ -252,14 +255,18 @@ export async function requestRefresh(
         const seasonAttemptToken = `${now}:season:${crypto.randomUUID()}`;
         const seasonExpiresAt = now + REQUEST_LEASE_MS;
         await writeRequest(keys[1], rows[1], seasonAttemptToken, seasonExpiresAt);
-        await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestrateSeasonRefresh, {
-          userId: args.userId,
-          tmdbId: args.tmdbId,
-          season: args.season,
-          ...(args.force !== undefined && { force: args.force }),
-          key: keys[1],
-          attemptToken: seasonAttemptToken,
-        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
+          {
+            userId: args.userId,
+            tmdbId: args.tmdbId,
+            season: args.season,
+            ...(args.force !== undefined && { force: args.force }),
+            key: keys[1],
+            attemptToken: seasonAttemptToken,
+          },
+        );
         const scheduledSeason = {
           scheduled: true,
           attemptToken: seasonAttemptToken,
@@ -289,14 +296,18 @@ export async function requestRefresh(
       const attemptToken = `${now}:season:${crypto.randomUUID()}`;
       const expiresAt = now + REQUEST_LEASE_MS;
       await writeRequest(keys[1], rows[1], attemptToken, expiresAt);
-      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestrateSeasonRefresh, {
-        userId: args.userId,
-        tmdbId: args.tmdbId,
-        season: args.season,
-        ...(args.force !== undefined && { force: args.force }),
-        key: keys[1],
-        attemptToken,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
+        {
+          userId: args.userId,
+          tmdbId: args.tmdbId,
+          season: args.season,
+          ...(args.force !== undefined && { force: args.force }),
+          key: keys[1],
+          attemptToken,
+        },
+      );
       const scheduledSeason = {
         scheduled: true as const,
         attemptToken,
@@ -398,7 +409,7 @@ export async function requestRefresh(
     await writeRequest(keys[0], rows[0], attemptToken, expiresAt);
     if (combinedSeason) await writeRequest(keys[1], rows[1], attemptToken, expiresAt);
     const claimedKeys = [keys[0], ...(combinedSeason ? [keys[1]] : [])];
-    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestrateRefresh, {
+    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestration.orchestrateRefresh, {
       userId: args.userId,
       mediaType: args.mediaType,
       tmdbId: args.tmdbId,
@@ -431,14 +442,18 @@ export async function requestRefresh(
   // orchestrator now commits through the same atomic mutation as combined work.
   const attemptToken = `${now}:season:${crypto.randomUUID()}`;
   await writeRequest(keys[1], rows[1], attemptToken, expiresAt);
-  await ctx.scheduler.runAfter(0, internal.resolvedMetadata.orchestrateSeasonRefresh, {
-    userId: args.userId,
-    tmdbId: args.tmdbId,
-    season: args.season!,
-    ...(args.force !== undefined && { force: args.force }),
-    key: keys[1],
-    attemptToken,
-  });
+  await ctx.scheduler.runAfter(
+    0,
+    internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
+    {
+      userId: args.userId,
+      tmdbId: args.tmdbId,
+      season: args.season!,
+      ...(args.force !== undefined && { force: args.force }),
+      key: keys[1],
+      attemptToken,
+    },
+  );
   const titleResult = titleDecision;
   const seasonResult = {
     scheduled: true as const,

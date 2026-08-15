@@ -27,43 +27,46 @@ describe('Marker backend', () => {
   it('validates runtime and genre metadata on additions', async () => {
     const { userId, asUser } = await setup();
     await expect(
-      asUser.mutation(api.library.addItem, add('Bad runtime', 11, 'movie', { runtime: Infinity })),
+      asUser.mutation(
+        api.library.items.addItem,
+        add('Bad runtime', 11, 'movie', { runtime: Infinity }),
+      ),
     ).rejects.toThrow('Runtime');
     await expect(
       asUser.mutation(
-        api.library.addItem,
+        api.library.items.addItem,
         add('Too many genres', 12, 'movie', { genres: Array(16).fill('Drama') }),
       ),
     ).rejects.toThrow('limited to 15');
     await expect(
       asUser.mutation(
-        api.library.addItem,
+        api.library.items.addItem,
         add('Bad release date', 13, 'movie', { releaseDate: '2026-02-30' }),
       ),
     ).rejects.toThrow('YYYY-MM-DD');
     await expect(
-      asUser.mutation(api.library.addItem, add('Bad TMDB id', -1, 'movie')),
+      asUser.mutation(api.library.items.addItem, add('Bad TMDB id', -1, 'movie')),
     ).rejects.toThrow('non-negative integer');
     await expect(
-      asUser.mutation(api.library.addItem, add('Fractional TMDB id', 1.5, 'movie')),
+      asUser.mutation(api.library.items.addItem, add('Fractional TMDB id', 1.5, 'movie')),
     ).rejects.toThrow('non-negative integer');
     await expect(
-      asUser.mutation(api.library.addItem, add('Oversized TMDB id', 2 ** 31 + 1, 'movie')),
+      asUser.mutation(api.library.items.addItem, add('Oversized TMDB id', 2 ** 31 + 1, 'movie')),
     ).rejects.toThrow('no greater than');
     await expect(
-      asUser.mutation(api.library.addItem, {
+      asUser.mutation(api.library.items.addItem, {
         ...add('Valid release date', 14, 'movie'),
         releaseDate: '2026-02-28',
       }),
     ).resolves.toBeDefined();
     await expect(
-      asUser.mutation(internal.library.addItemInternal, {
+      asUser.mutation(internal.library.items.addItemInternal, {
         userId,
         ...add('Bad internal date', 15, 'movie', { releaseDate: 'February 15, 2026' }),
       }),
     ).rejects.toThrow('YYYY-MM-DD');
     await expect(
-      asUser.action(api.library.addItemAndMarkWatched, {
+      asUser.action(api.library.seasonWatched.addItemAndMarkWatched, {
         ...add('Bad action id', -1, 'tv'),
         status: 'watched',
       }),
@@ -71,7 +74,9 @@ describe('Marker backend', () => {
   });
   it('requires auth and validates additions, duplicates, ratings, statuses, tags, and reorder', async () => {
     const { t, asUser } = await setup();
-    await expect(t.query(api.library.listItems, {})).rejects.toThrow('Authentication required');
+    await expect(t.query(api.library.items.listItems, {})).rejects.toThrow(
+      'Authentication required',
+    );
     const titles = [
       ['Avengers: Endgame', 299534, 'movie'],
       ['The Middle', 1422, 'tv'],
@@ -83,37 +88,40 @@ describe('Marker backend', () => {
     const ids = [];
     for (const [title, id, type] of titles)
       ids.push(
-        await asUser.mutation(api.library.addItem, add(title, id, type, { tags: ['favorite'] })),
+        await asUser.mutation(
+          api.library.items.addItem,
+          add(title, id, type, { tags: ['favorite'] }),
+        ),
       );
     await expect(
-      asUser.mutation(api.library.addItem, add(titles[0][0], titles[0][1], titles[0][2])),
+      asUser.mutation(api.library.items.addItem, add(titles[0][0], titles[0][1], titles[0][2])),
     ).rejects.toThrow('already exists');
     for (const rating of [-1, 10.5])
       await expect(
-        asUser.mutation(api.library.updateItem, { itemId: ids[0], rating }),
+        asUser.mutation(api.library.items.updateItem, { itemId: ids[0], rating }),
       ).rejects.toThrow('between 0 and 10');
-    await asUser.mutation(api.library.updateItem, {
+    await asUser.mutation(api.library.items.updateItem, {
       itemId: ids[0],
       status: 'watching',
       rating: 9.5,
       tags: ['marvel'],
     });
-    await asUser.mutation(api.library.updateItem, {
+    await asUser.mutation(api.library.items.updateItem, {
       itemId: ids[0],
       status: 'watched',
       timesWatched: 2,
     });
-    const midpoint = await asUser.mutation(api.library.reorderItem, {
+    const midpoint = await asUser.mutation(api.library.ordering.reorderItem, {
       itemId: ids[3],
       beforeId: ids[1],
       afterId: ids[2],
     });
     expect(midpoint).toBe(2.5);
-    await asUser.mutation(api.library.updateItem, {
+    await asUser.mutation(api.library.items.updateItem, {
       itemId: ids[1],
       status: 'dropped',
     });
-    const items = await asUser.query(api.library.listItems, {});
+    const items = await asUser.query(api.library.items.listItems, {});
     expect(items.find((i) => i._id === ids[0])).toMatchObject({
       status: 'watched',
       rating: 9.5,
@@ -126,14 +134,14 @@ describe('Marker backend', () => {
   it('persists anime classification separately from the Animation genre', async () => {
     const { asUser } = await setup();
     const animeId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('One Piece', 37854, 'tv', { genres: ['Animation', 'Anime'] }),
     );
     const animationId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Peppa Pig', 12225, 'tv', { genres: ['Animation', 'Kids'] }),
     );
-    const items = await asUser.query(api.library.listItems, {});
+    const items = await asUser.query(api.library.items.listItems, {});
     expect(items.find((item) => item._id === animeId)?.isAnime).toBe(true);
     expect(items.find((item) => item._id === animationId)?.isAnime).toBe(false);
   });
@@ -141,22 +149,22 @@ describe('Marker backend', () => {
   it('keeps independent per-tag ordering and removes stale tag ranks', async () => {
     const { asUser } = await setup();
     const first = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('First', 201, 'movie', { tags: ['Favorites', 'Weekend'] }),
     );
     const second = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Second', 202, 'movie', { tags: ['favorites', 'Weekend'] }),
     );
     const third = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Third', 203, 'movie', { tags: ['Favorites', 'Weekend'] }),
     );
-    expect(await asUser.query(api.library.listTagSuggestions, {})).toEqual([
+    expect(await asUser.query(api.library.items.listTagSuggestions, {})).toEqual([
       'Favorites',
       'Weekend',
     ]);
-    const originalItems = (await asUser.query(api.library.listItems, {})).map((item) => ({
+    const originalItems = (await asUser.query(api.library.items.listItems, {})).map((item) => ({
       id: item._id,
       title: item.title,
       status: item.status,
@@ -164,26 +172,28 @@ describe('Marker backend', () => {
       rank: item.rank,
     }));
 
-    await asUser.mutation(api.library.reorderTagItem, {
+    await asUser.mutation(api.library.ordering.reorderTagItem, {
       tag: 'FAVORITES',
       itemId: third,
       afterId: first,
     });
-    const favoriteRanks = await asUser.query(api.library.listTagRanks, { tag: 'favorites' });
+    const favoriteRanks = await asUser.query(api.library.items.listTagRanks, { tag: 'favorites' });
     const favoriteOrder = [...favoriteRanks]
       .sort((left, right) => left.rank - right.rank)
       .map((rank) => rank.itemId);
     expect(favoriteOrder).toEqual([third, first, second]);
     await asUser.mutation(api.tags.setVisibility, { tag: 'Weekend', isPublic: false });
-    await asUser.mutation(api.library.reorderTagItem, {
+    await asUser.mutation(api.library.ordering.reorderTagItem, {
       tag: 'Weekend',
       itemId: second,
     });
     expect(
-      (await asUser.query(api.library.listTagRanks, { tag: 'Weekend' })).map((rank) => rank.itemId),
+      (await asUser.query(api.library.items.listTagRanks, { tag: 'Weekend' })).map(
+        (rank) => rank.itemId,
+      ),
     ).toEqual([second, first, third]);
     expect(
-      (await asUser.query(api.library.listTagRanks, { tag: 'Favorites' })).map(
+      (await asUser.query(api.library.items.listTagRanks, { tag: 'Favorites' })).map(
         (rank) => rank.itemId,
       ),
     ).toEqual([third, first, second]);
@@ -201,7 +211,7 @@ describe('Marker backend', () => {
       { itemId: String(third) },
     ]);
     expect(
-      (await asUser.query(api.library.listItems, {})).map((item) => ({
+      (await asUser.query(api.library.items.listItems, {})).map((item) => ({
         id: item._id,
         title: item.title,
         status: item.status,
@@ -210,12 +220,12 @@ describe('Marker backend', () => {
       })),
     ).toEqual(originalItems);
 
-    await asUser.mutation(api.library.updateItem, {
+    await asUser.mutation(api.library.items.updateItem, {
       itemId: third,
       tags: ['Weekend'],
     });
     expect(
-      (await asUser.query(api.library.listTagRanks, { tag: 'Favorites' })).map(
+      (await asUser.query(api.library.items.listTagRanks, { tag: 'Favorites' })).map(
         (rank) => rank.itemId,
       ),
     ).not.toContain(third);
@@ -250,8 +260,10 @@ describe('Marker backend', () => {
       });
     });
 
-    expect(await asUser.query(api.library.listTagSuggestions, {})).not.toContain('Zulu Target');
-    expect(await asUser.query(api.library.listTagSuggestions, { prefix: 'zulu' })).toEqual([
+    expect(await asUser.query(api.library.items.listTagSuggestions, {})).not.toContain(
+      'Zulu Target',
+    );
+    expect(await asUser.query(api.library.items.listTagSuggestions, { prefix: 'zulu' })).toEqual([
       'Zulu Target',
     ]);
   });
@@ -259,28 +271,31 @@ describe('Marker backend', () => {
   it('adds one tag to many owned titles without duplicating tags or memberships', async () => {
     const { asUser } = await setup();
     const existing = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Existing', 211, 'movie', { tags: ['Favorites'] }),
     );
     const first = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('First addition', 212, 'movie', { tags: ['Weekend'] }),
     );
-    const second = await asUser.mutation(api.library.addItem, add('Second addition', 213, 'tv'));
+    const second = await asUser.mutation(
+      api.library.items.addItem,
+      add('Second addition', 213, 'tv'),
+    );
 
     await expect(
-      asUser.mutation(api.library.addTagToItems, {
+      asUser.mutation(api.library.items.addTagToItems, {
         itemIds: [existing, first, second, second],
         tag: ' favorites ',
       }),
     ).resolves.toEqual({ updated: 2 });
 
-    const items = await asUser.query(api.library.listItems, {});
+    const items = await asUser.query(api.library.items.listItems, {});
     expect(items.find((item) => item._id === existing)?.tags).toEqual(['Favorites']);
     expect(items.find((item) => item._id === first)?.tags).toEqual(['Weekend', 'favorites']);
     expect(items.find((item) => item._id === second)?.tags).toEqual(['favorites']);
     expect(
-      (await asUser.query(api.library.listTagRanks, { tag: 'FAVORITES' })).map(
+      (await asUser.query(api.library.items.listTagRanks, { tag: 'FAVORITES' })).map(
         (rank) => rank.itemId,
       ),
     ).toEqual([existing, first, second]);
@@ -298,18 +313,18 @@ describe('Marker backend', () => {
       isPublic: false,
     });
     const firstPublic = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Public Favorite', 801, 'movie', { tags: ['Favorites'] }),
     );
     const secondPublic = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Second Public Favorite', 803, 'movie', { tags: ['Favorites'] }),
     );
     await secondUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Private Favorite', 802, 'movie', { tags: ['Favorites'] }),
     );
-    await asUser.mutation(api.library.reorderTagItem, {
+    await asUser.mutation(api.library.ordering.reorderTagItem, {
       tag: 'Favorites',
       itemId: secondPublic,
       afterId: firstPublic,
@@ -364,7 +379,7 @@ describe('Marker backend', () => {
     });
     expect(privateProfile && 'stats' in privateProfile).toBe(false);
     await expect(
-      viewer.mutation(api.library.reorderTagItem, {
+      viewer.mutation(api.library.ordering.reorderTagItem, {
         tag: 'Favorites',
         itemId: firstPublic,
       }),
@@ -380,28 +395,28 @@ describe('Marker backend', () => {
   it('moves titles across status sections and enforces watched history', async () => {
     const { asUser } = await setup();
     const watchedNeighbor = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Already watched', 1, 'movie', { status: 'watched', timesWatched: 2 }),
     );
     const movie = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Move me', 2, 'movie', { status: 'watchlist', timesWatched: 0 }),
     );
     const dropped = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Drop me', 3, 'movie', { status: 'watchlist' }),
     );
 
-    await asUser.action(api.library.moveItemToWatched, {
+    await asUser.action(api.library.seasonWatched.moveItemToWatched, {
       itemId: movie,
       beforeId: watchedNeighbor,
     });
-    await asUser.mutation(api.library.reorderItem, {
+    await asUser.mutation(api.library.ordering.reorderItem, {
       itemId: dropped,
       status: 'dropped',
     });
 
-    const items = await asUser.query(api.library.listItems, {});
+    const items = await asUser.query(api.library.items.listItems, {});
     expect(items.find((item) => item._id === movie)).toMatchObject({
       status: 'watched',
       timesWatched: 1,
@@ -415,7 +430,7 @@ describe('Marker backend', () => {
   it('keeps canonical metadata and user episode state in separate queries', async () => {
     const { t, asUser } = await setup();
     const itemId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Daredevil', 61889, 'tv', { status: 'watching' }),
     );
     await t.run(async (ctx) => {
@@ -435,21 +450,24 @@ describe('Marker backend', () => {
         orderEpoch: 0,
       });
     });
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
       watched: true,
     });
 
-    const view = await asUser.query(api.resolvedMetadata.getItemView, { itemId });
+    const view = await asUser.query(api.resolvedMetadata.reads.getItemView, { itemId });
     expect(view?.item._id).toBe(itemId);
     expect(view?.title).toMatchObject({
       title: 'Daredevil',
       metadataProvider: 'tmdb',
     });
     expect(view).not.toHaveProperty('savedEpisodes');
-    const savedEpisodes = await asUser.query(api.library.listEpisodes, { itemId, season: 1 });
+    const savedEpisodes = await asUser.query(api.library.episodes.listEpisodes, {
+      itemId,
+      season: 1,
+    });
     expect(savedEpisodes[0]).toMatchObject({ season: 1, episode: 1, watched: true });
   });
 
@@ -457,7 +475,7 @@ describe('Marker backend', () => {
     vi.useFakeTimers();
     const { t, asUser } = await setup();
     const movie = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Avengers: Endgame', 299534, 'movie', {
         status: 'watched',
         runtime: 181,
@@ -467,10 +485,10 @@ describe('Marker backend', () => {
       }),
     );
     const show = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Daredevil', 61889, 'tv', { status: 'watched', runtime: 50, rating: 8, tags: ['Hero'] }),
     );
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId: show,
       season: 1,
       episode: 1,
@@ -480,7 +498,7 @@ describe('Marker backend', () => {
       tags: ['pilot'],
       name: 'Into the Ring',
     });
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId: show,
       season: 1,
       episode: 1,
@@ -488,13 +506,16 @@ describe('Marker backend', () => {
       rating: 8.5,
       tags: ['pilot', 'great'],
     });
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId: show,
       season: 1,
       episode: 2,
       watched: true,
     });
-    const episodes = await asUser.query(api.library.listEpisodes, { itemId: show, season: 1 });
+    const episodes = await asUser.query(api.library.episodes.listEpisodes, {
+      itemId: show,
+      season: 1,
+    });
     expect(episodes).toHaveLength(2);
     expect(episodes[0]).toMatchObject({ rating: 8.5, tags: ['pilot', 'great'] });
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
@@ -508,9 +529,9 @@ describe('Marker backend', () => {
       avgRating: 8.5,
     });
     expect(stats.topTags[0]).toEqual({ tag: 'hero', count: 2 });
-    await asUser.mutation(api.library.removeItem, { itemId: show });
+    await asUser.mutation(api.library.items.removeItem, { itemId: show });
     for (let pass = 0; pass < 8; pass += 1)
-      await t.mutation(internal.library.continueRemoveItem, { itemId: show });
+      await t.mutation(internal.library.items.continueRemoveItem, { itemId: show });
     expect(
       await t.run((ctx) =>
         ctx.db
@@ -524,7 +545,7 @@ describe('Marker backend', () => {
   it('derives season batches from canonical metadata and applies them idempotently', async () => {
     const { t, asUser } = await setup();
     const itemId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Daredevil', 61889, 'tv', { status: 'watching' }),
     );
     await t.run((ctx) =>
@@ -545,7 +566,7 @@ describe('Marker backend', () => {
         refreshAfter: Date.now() + 60_000,
       }),
     );
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 61889,
       season: 1,
       metadataProvider: 'tmdb',
@@ -557,7 +578,7 @@ describe('Marker backend', () => {
       refreshAfter: Date.now() + 60_000,
       orderEpoch: 0,
     });
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 61889,
       season: 2,
       metadataProvider: 'tmdb',
@@ -570,7 +591,7 @@ describe('Marker backend', () => {
       orderEpoch: 0,
     });
     const setSeason = (watched = true) =>
-      asUser.action(api.library.setSeasonWatched, {
+      asUser.action(api.library.seasonWatched.setSeasonWatched, {
         itemId,
         season: 1,
         watched,
@@ -578,7 +599,7 @@ describe('Marker backend', () => {
 
     await setSeason();
     await setSeason();
-    let episodes = await asUser.query(api.library.listEpisodes, { itemId, season: 1 });
+    let episodes = await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
     expect(episodes).toHaveLength(2);
     expect(episodes).toEqual(
       expect.arrayContaining([
@@ -587,22 +608,22 @@ describe('Marker backend', () => {
       ]),
     );
     await setSeason(false);
-    episodes = await asUser.query(api.library.listEpisodes, { itemId, season: 1 });
+    episodes = await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
     expect(episodes).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ season: 1, episode: 1, watched: false }),
         expect.objectContaining({ season: 1, episode: 2, watched: false }),
       ]),
     );
-    await asUser.action(api.library.moveItemToWatched, { itemId });
+    await asUser.action(api.library.seasonWatched.moveItemToWatched, { itemId });
     const watchedSeasons = await Promise.all([
-      asUser.query(api.library.listEpisodes, { itemId, season: 1 }),
-      asUser.query(api.library.listEpisodes, { itemId, season: 2 }),
+      asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
+      asUser.query(api.library.episodes.listEpisodes, { itemId, season: 2 }),
     ]);
     expect(watchedSeasons).toHaveLength(2);
     expect(watchedSeasons.every((season) => season.every((episode) => episode.watched))).toBe(true);
     expect(
-      (await asUser.query(api.library.listItems, {})).find((item) => item._id === itemId),
+      (await asUser.query(api.library.items.listItems, {})).find((item) => item._id === itemId),
     ).toMatchObject({ status: 'watched', timesWatched: 1 });
   });
 
@@ -610,7 +631,7 @@ describe('Marker backend', () => {
     vi.useFakeTimers();
     const { t, userId, asUser } = await setup();
     const itemId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Aggregate show', 700, 'tv', { status: 'watched', runtime: 45, tags: ['hero'] }),
     );
     await t.run((ctx) =>

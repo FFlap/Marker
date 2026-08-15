@@ -156,9 +156,9 @@ jest.mock('convex/react', () => ({
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     library: {
-      listItems: 'library.listItems',
-      reorderItem: 'library.reorderItem',
-      moveItemToWatched: 'library.moveItemToWatched',
+      items: { listItems: 'library/items:listItems' },
+      ordering: { reorderItem: 'library/ordering:reorderItem' },
+      seasonWatched: { moveItemToWatched: 'library/seasonWatched:moveItemToWatched' },
     },
     settings: { getSettings: 'settings.getSettings' },
     profiles: { me: 'profiles.me' },

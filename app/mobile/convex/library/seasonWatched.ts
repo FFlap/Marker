@@ -5,17 +5,17 @@ import {
   type ActionCtx,
   type MutationCtx,
   type QueryCtx,
-} from './_generated/server';
-import { internal } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
+} from '../_generated/server';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
 import { ConvexError, v } from 'convex/values';
-import { EPISODES_PER_CHUNK, MAX_SEASON_EPISODES } from './seasonStorage';
-import { seasonSummaryIdentityKey } from './episodeSummaries';
-import { writeActivityEvents, type ActivityEventWrite } from './activityEvents';
-import { refreshNextEpisode } from './nextEpisode';
-import { requestProfileStatsRefresh } from './profileStatsRefresh';
-import { addItemFields, ownedItem, requireUser } from './libraryShared.impl';
-import { setEpisode } from './libraryEpisodes.impl';
+import { EPISODES_PER_CHUNK, MAX_SEASON_EPISODES } from '../seasonStorage';
+import { seasonSummaryIdentityKey } from '../episodeSummaries';
+import { writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
+import { refreshNextEpisode } from '../nextEpisode';
+import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { addItemFields, ownedItem, requireUser } from './shared';
+import { setEpisode } from './episodes';
 
 const SEASON_WATCH_BATCH_SIZE = EPISODES_PER_CHUNK;
 const MAX_SEASON_WATCH_RESTARTS = 4;
@@ -240,7 +240,7 @@ async function applySeasonWatched(
 ) {
   if (!Number.isInteger(season) || season < 0 || season > 10_000)
     throw new Error('Season must be an integer between 0 and 10000');
-  const plan = await ctx.runQuery(internal.library.getSeasonWatchedPlan, {
+  const plan = await ctx.runQuery(internal.library.seasonWatched.getSeasonWatchedPlan, {
     userId,
     itemId,
     season,
@@ -255,7 +255,7 @@ async function applySeasonWatched(
   let refreshedAt = plan.refreshedAt;
   while (true) {
     if (processed >= episodeCount) {
-      const current = await ctx.runQuery(internal.library.getSeasonWatchedPlan, {
+      const current = await ctx.runQuery(internal.library.seasonWatched.getSeasonWatchedPlan, {
         userId,
         itemId,
         season,
@@ -273,7 +273,7 @@ async function applySeasonWatched(
     }
     batches += 1;
     if (batches > MAX_SEASON_WATCH_BATCHES) throw staleSeasonEpoch();
-    const result = await ctx.runMutation(internal.library.setSeasonWatchedBatch, {
+    const result = await ctx.runMutation(internal.library.seasonWatched.setSeasonWatchedBatch, {
       userId,
       itemId,
       season,
@@ -326,29 +326,38 @@ async function moveItemToWatchedForUser(
     afterId?: Id<'items'>;
   },
 ): Promise<number> {
-  const item: Doc<'items'> = await ctx.runQuery(internal.library.getOwnedItemForStatusMove, {
-    userId,
-    itemId: args.itemId,
-  });
-  if (item.mediaType === 'tv') {
-    const initialTitle = await ctx.runAction(internal.resolvedMetadata.resolveTitleForUser, {
+  const item: Doc<'items'> = await ctx.runQuery(
+    internal.library.ordering.getOwnedItemForStatusMove,
+    {
       userId,
-      mediaType: 'tv',
-      tmdbId: item.tmdbId,
-      title: item.title,
-    });
+      itemId: args.itemId,
+    },
+  );
+  if (item.mediaType === 'tv') {
+    const initialTitle = await ctx.runAction(
+      internal.resolvedMetadata.titleResolution.resolveTitleForUser,
+      {
+        userId,
+        mediaType: 'tv',
+        tmdbId: item.tmdbId,
+        title: item.title,
+      },
+    );
     if (!initialTitle?.seasons.length) throw new Error('Season information is unavailable');
     for (const seasonInfo of initialTitle.seasons.filter(
       (entry: { season: number }) => entry.season >= 0,
     )) {
-      const episodes = await ctx.runAction(internal.resolvedMetadata.resolveSeasonForUser, {
-        userId,
-        tmdbId: item.tmdbId,
-        season: seasonInfo.season,
-      });
+      const episodes = await ctx.runAction(
+        internal.resolvedMetadata.seasonResolution.resolveSeasonForUser,
+        {
+          userId,
+          tmdbId: item.tmdbId,
+          season: seasonInfo.season,
+        },
+      );
       if (seasonInfo.episodeCount > 0 && episodes.length === 0)
         throw new Error('Episode information is unavailable');
-      const currentTitle = await ctx.runQuery(internal.resolvedMetadata.readTitle, {
+      const currentTitle = await ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
         mediaType: 'tv',
         tmdbId: item.tmdbId,
       });
@@ -363,7 +372,7 @@ async function moveItemToWatchedForUser(
       });
     }
   }
-  return ctx.runMutation(internal.library.moveItemToSlotInternal, {
+  return ctx.runMutation(internal.library.ordering.moveItemToSlotInternal, {
     userId,
     itemId: item._id,
     status: 'watched',
@@ -392,7 +401,7 @@ export const addItemAndMarkWatched = action({
     if (args.mediaType !== 'tv' || args.status !== 'watched')
       throw new Error('This action only adds watched TV shows');
     const userId = await requireUser(ctx);
-    const itemId: Id<'items'> = await ctx.runMutation(internal.library.addItemInternal, {
+    const itemId: Id<'items'> = await ctx.runMutation(internal.library.items.addItemInternal, {
       userId,
       ...args,
       status: 'watchlist',
@@ -401,7 +410,7 @@ export const addItemAndMarkWatched = action({
       await moveItemToWatchedForUser(ctx, userId, { itemId });
     } catch (error) {
       await ctx
-        .runMutation(internal.library.discardAddedItem, { userId, itemId })
+        .runMutation(internal.library.seasonWatched.discardAddedItem, { userId, itemId })
         .catch(() => undefined);
       throw error;
     }
@@ -418,6 +427,6 @@ export const discardAddedItem = internalMutation({
       await ctx.db.patch(itemId, { deletingAt: Date.now() });
       await requestProfileStatsRefresh(ctx, userId);
     }
-    await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
+    await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
   },
 });

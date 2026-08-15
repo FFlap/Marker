@@ -54,9 +54,15 @@ describe('authenticated watch sync', () => {
 
   it('finds a TV item after same-title movies without calling TMDB', async () => {
     const { asUser } = await setup();
-    await asUser.mutation(api.library.addItem, add('Shared Title', 1, { mediaType: 'movie' }));
-    await asUser.mutation(api.library.addItem, add('Shared Title', 2, { mediaType: 'movie' }));
-    const tvId = await asUser.mutation(api.library.addItem, add('Shared Title', 3));
+    await asUser.mutation(
+      api.library.items.addItem,
+      add('Shared Title', 1, { mediaType: 'movie' }),
+    );
+    await asUser.mutation(
+      api.library.items.addItem,
+      add('Shared Title', 2, { mediaType: 'movie' }),
+    );
+    const tvId = await asUser.mutation(api.library.items.addItem, add('Shared Title', 3));
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
@@ -66,24 +72,24 @@ describe('authenticated watch sync', () => {
       episode: 1,
     });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(await asUser.query(api.library.listEpisodes, { itemId: tvId, season: 1 })).toHaveLength(
-      1,
-    );
+    expect(
+      await asUser.query(api.library.episodes.listEpisodes, { itemId: tvId, season: 1 }),
+    ).toHaveLength(1);
   });
 
   it('preserves watched and freshly ranks inactive items moved to watching', async () => {
     const { asUser } = await setup();
     const watchedId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Watched Show', 1, { status: 'watched' }),
     );
     const existingWatching = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Existing', 2, { status: 'watching' }),
     );
-    const watchlistId = await asUser.mutation(api.library.addItem, add('Watchlist Show', 3));
+    const watchlistId = await asUser.mutation(api.library.items.addItem, add('Watchlist Show', 3));
     const droppedId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Dropped Show', 4, { status: 'dropped' }),
     );
 
@@ -91,7 +97,7 @@ describe('authenticated watch sync', () => {
     await watch(asUser, 'Watchlist Show');
     await watch(asUser, 'Dropped Show');
 
-    const items = await asUser.query(api.library.listItems, {});
+    const items = await asUser.query(api.library.items.listItems, {});
     expect(items.find((item) => item._id === watchedId)?.status).toBe('watched');
     const moved = items.find((item) => item._id === watchlistId);
     const existing = items.find((item) => item._id === existingWatching);
@@ -172,12 +178,12 @@ describe('authenticated watch sync', () => {
         episodeTitle: 'My Senpai is a Bunny Girl',
       }),
     ).resolves.toEqual({ ok: true, season: 1, episode: 1 });
-    const items = await asUser.query(api.library.listItems, {});
+    const items = await asUser.query(api.library.items.listItems, {});
     expect(items).toMatchObject([
       { tmdbId: 82739, title: 'Rascal Does Not Dream of Bunny Girl Senpai' },
     ]);
     expect(
-      await asUser.query(api.library.listEpisodes, { itemId: items[0]!._id, season: 1 }),
+      await asUser.query(api.library.episodes.listEpisodes, { itemId: items[0]!._id, season: 1 }),
     ).toMatchObject([{ season: 1, episode: 1, name: 'My Senpai is a Bunny Girl' }]);
   });
 
@@ -211,19 +217,19 @@ describe('authenticated watch sync', () => {
 
   it('records the same episode idempotently', async () => {
     const { asUser } = await setup();
-    const itemId = await asUser.mutation(api.library.addItem, add('The Middle', 1422));
+    const itemId = await asUser.mutation(api.library.items.addItem, add('The Middle', 1422));
 
     await watch(asUser, 'the middle', { episodeTitle: 'Pilot' });
     await watch(asUser, 'the middle', { episodeTitle: 'Pilot' });
 
-    const episodes = await asUser.query(api.library.listEpisodes, { itemId, season: 1 });
+    const episodes = await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
     expect(episodes).toHaveLength(1);
     expect(episodes[0]).toMatchObject({ watched: true, name: 'Pilot' });
   });
 
   it('resolves a specials episode by its TMDB name', async () => {
     const { asUser } = await setup();
-    const itemId = await asUser.mutation(api.library.addItem, add('Special Show', 99));
+    const itemId = await asUser.mutation(api.library.items.addItem, add('Special Show', 99));
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
@@ -254,7 +260,9 @@ describe('authenticated watch sync', () => {
         episodeTitle: 'No Coincidences in This Summer Sky',
       }),
     ).resolves.toEqual({ ok: true, season: 0, episode: 5 });
-    expect(await asUser.query(api.library.listEpisodes, { itemId, season: 0 })).toMatchObject([
+    expect(
+      await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 0 }),
+    ).toMatchObject([
       { season: 0, episode: 5, name: 'No Coincidences in This Summer Sky', runtime: 24 },
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -262,7 +270,7 @@ describe('authenticated watch sync', () => {
 
   it('resolves a season-one episode by name without a season hint', async () => {
     const { asUser } = await setup();
-    const itemId = await asUser.mutation(api.library.addItem, add('Season One Show', 101));
+    const itemId = await asUser.mutation(api.library.items.addItem, add('Season One Show', 101));
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const match = String(input).match(/season\/(\d+)/);
@@ -300,9 +308,9 @@ describe('authenticated watch sync', () => {
         episodeTitle: 'The First Adventure',
       }),
     ).resolves.toEqual({ ok: true, season: 1, episode: 3 });
-    expect(await asUser.query(api.library.listEpisodes, { itemId, season: 1 })).toMatchObject([
-      { season: 1, episode: 3, name: 'The First Adventure', runtime: 24 },
-    ]);
+    expect(
+      await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
+    ).toMatchObject([{ season: 1, episode: 3, name: 'The First Adventure', runtime: 24 }]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -312,7 +320,7 @@ describe('authenticated watch sync', () => {
     ['a name duplicated across seasons', { 0: ['Recap'], 1: ['Recap'] }],
   ])('returns unmatched-episode for %s', async (_case, names) => {
     const { asUser } = await setup();
-    await asUser.mutation(api.library.addItem, add('Named Show', 100));
+    await asUser.mutation(api.library.items.addItem, add('Named Show', 100));
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const match = String(input).match(/season\/(\d+)/);
@@ -391,11 +399,11 @@ describe('authenticated watch sync', () => {
       ok: false,
       reason: 'unmatched-episode',
     });
-    const items = await asUser.query(api.library.listItems, {});
+    const items = await asUser.query(api.library.items.listItems, {});
     expect(items).toMatchObject([{ tmdbId: 501, title: 'Watching Show', status: 'watching' }]);
     expect(items).toHaveLength(1);
     expect(
-      await asUser.query(api.library.listEpisodes, { itemId: items[0]!._id, season: 1 }),
+      await asUser.query(api.library.episodes.listEpisodes, { itemId: items[0]!._id, season: 1 }),
     ).toEqual([]);
   });
 
@@ -428,7 +436,7 @@ describe('authenticated watch sync', () => {
     await expect(watch(asUser, 'Retry Show')).rejects.toMatchObject({
       data: { code: 'upstream' },
     });
-    expect(await asUser.query(api.library.listItems, {})).toEqual([]);
+    expect(await asUser.query(api.library.items.listItems, {})).toEqual([]);
 
     failDetails = false;
     await expect(watch(asUser, 'Retry Show')).resolves.toEqual({
@@ -436,17 +444,17 @@ describe('authenticated watch sync', () => {
       season: 1,
       episode: 1,
     });
-    const items = await asUser.query(api.library.listItems, {});
+    const items = await asUser.query(api.library.items.listItems, {});
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ tmdbId: 502, status: 'watching' });
     await expect(
-      asUser.query(api.library.listEpisodes, { itemId: items[0]!._id, season: 1 }),
+      asUser.query(api.library.episodes.listEpisodes, { itemId: items[0]!._id, season: 1 }),
     ).resolves.toMatchObject([{ episode: 1, watched: true }]);
   });
 
   it('stores an unlisted special by client episode number after zero TMDB name matches', async () => {
     const { asUser } = await setup();
-    const itemId = await asUser.mutation(api.library.addItem, add('Named Show', 100));
+    const itemId = await asUser.mutation(api.library.items.addItem, add('Named Show', 100));
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     const fetchMock = vi.fn(
       async (input: string | URL | Request) =>
@@ -471,7 +479,9 @@ describe('authenticated watch sync', () => {
         episodeTitle: 'Unlisted OVA',
       }),
     ).resolves.toEqual({ ok: true, season: 0, episode: 4, unverified: true });
-    expect(await asUser.query(api.library.listEpisodes, { itemId, season: 0 })).toMatchObject([
+    expect(
+      await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 0 }),
+    ).toMatchObject([
       { season: 0, episode: 4, name: 'Unlisted OVA', watched: true, unverified: true },
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -479,7 +489,7 @@ describe('authenticated watch sync', () => {
 
   it('returns unmatched without fetching specials when a show has no season zero', async () => {
     const { asUser } = await setup();
-    await asUser.mutation(api.library.addItem, add('No Specials', 104));
+    await asUser.mutation(api.library.items.addItem, add('No Specials', 104));
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     const fetchMock = vi.fn(
       async () =>
@@ -502,7 +512,7 @@ describe('authenticated watch sync', () => {
 
   it('treats a season details 404 as an empty episode list', async () => {
     const { asUser } = await setup();
-    await asUser.mutation(api.library.addItem, add('Stale Specials', 105));
+    await asUser.mutation(api.library.items.addItem, add('Stale Specials', 105));
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     const fetchMock = vi.fn(async (input: string | URL | Request) =>
       String(input).includes('/season/0')
@@ -531,7 +541,7 @@ describe('authenticated watch sync', () => {
 
   it('keeps a TMDB 500 classified as retryable upstream', async () => {
     const { asUser } = await setup();
-    await asUser.mutation(api.library.addItem, add('Broken Specials', 106));
+    await asUser.mutation(api.library.items.addItem, add('Broken Specials', 106));
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 500 })));
 
@@ -548,7 +558,7 @@ describe('authenticated watch sync', () => {
     'normalizes punctuation and whitespace in episode name %s',
     async (episodeTitle) => {
       const { asUser } = await setup();
-      await asUser.mutation(api.library.addItem, add('Variants', 101));
+      await asUser.mutation(api.library.items.addItem, add('Variants', 101));
       vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
       const fetchMock = vi.fn(
         async (input: string | URL | Request) =>
@@ -584,7 +594,7 @@ describe('authenticated watch sync', () => {
 
   it('scans only specials plus the supplied season and ignores unscanned names', async () => {
     const { asUser } = await setup();
-    await asUser.mutation(api.library.addItem, add('Scoped', 102));
+    await asUser.mutation(api.library.items.addItem, add('Scoped', 102));
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const match = String(input).match(/season\/(\d+)/);
@@ -625,7 +635,7 @@ describe('authenticated watch sync', () => {
 
   it('caps unverified season-zero records and preserves verified names', async () => {
     const { t, userId, asUser } = await setup();
-    const itemId = await asUser.mutation(api.library.addItem, add('Capped', 103));
+    const itemId = await asUser.mutation(api.library.items.addItem, add('Capped', 103));
     await t.run(async (ctx) => {
       for (let episode = 1; episode <= 50; episode += 1)
         await ctx.db.insert('episodes', {
@@ -657,7 +667,7 @@ describe('authenticated watch sync', () => {
       }),
     ).resolves.toEqual({ ok: false, reason: 'unmatched-episode' });
 
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
@@ -666,7 +676,7 @@ describe('authenticated watch sync', () => {
     });
     await watch(asUser, 'Capped', { episodeTitle: 'Wrong' });
     expect(
-      (await asUser.query(api.library.listEpisodes, { itemId, season: 1 })).find(
+      (await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 })).find(
         (episode) => episode.season === 1,
       )?.name,
     ).toBe('Canonical');

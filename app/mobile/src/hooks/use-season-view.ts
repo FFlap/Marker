@@ -44,7 +44,7 @@ export function useRouteSeason(routeKey: string): [number, Dispatch<SetStateActi
 /** Subscribes to one bounded season chunk at a time and accumulates loaded pages. */
 export function useSeasonView(args: { tmdbId: number; season: number } | undefined) {
   const season = args?.season;
-  const paginated = usePaginatedQuery(api.resolvedMetadata.getSeasonView, args ?? 'skip', {
+  const paginated = usePaginatedQuery(api.resolvedMetadata.reads.getSeasonView, args ?? 'skip', {
     initialNumItems: 1,
   });
   const { firstPage, episodes, pageCount } = useMemo(() => {

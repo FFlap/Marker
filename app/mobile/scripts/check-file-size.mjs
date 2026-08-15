@@ -14,11 +14,21 @@ const trackedFiles = execFileSync(
   .filter(existsSync)
   .filter((file) => !file.includes('/_generated/'));
 
+const roleSuffixedFiles = trackedFiles.filter(
+  (file) => file.includes('.impl.') || file.includes('.internal.'),
+);
+
 const oversized = trackedFiles.flatMap((file) => {
   const lineCount = readFileSync(file, 'utf8').replace(/\n$/u, '').split('\n').length;
   const limit = file.startsWith('tests/') ? TEST_LIMIT : PRODUCTION_LIMIT;
   return lineCount > limit ? [{ file, lineCount, limit }] : [];
 });
+
+if (roleSuffixedFiles.length) {
+  console.error('Files must use ordinary extensions and responsibility-based folders:');
+  for (const file of roleSuffixedFiles) console.error(`- ${file}`);
+  process.exitCode = 1;
+}
 
 if (oversized.length) {
   console.error('Files that need a smaller, single-purpose module:');
@@ -26,6 +36,6 @@ if (oversized.length) {
     console.error(`- ${file}: ${lineCount} lines (limit ${limit})`);
   }
   process.exitCode = 1;
-} else {
+} else if (!roleSuffixedFiles.length) {
   console.log('All maintained source files are within the readability limits.');
 }

@@ -1,11 +1,11 @@
-import { mutation, query, type MutationCtx } from './_generated/server';
-import type { Doc, Id } from './_generated/dataModel';
+import { mutation, query, type MutationCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
-import { EPISODES_PER_CHUNK, MAX_SEASON_EPISODES } from './seasonStorage';
-import { seasonSummaryIdentityKey, updateSummaryForEpisodeUpsert } from './episodeSummaries';
-import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from './activityEvents';
-import { episodeValidator } from './publicValidators';
-import { refreshNextEpisode } from './nextEpisode';
+import { EPISODES_PER_CHUNK, MAX_SEASON_EPISODES } from '../seasonStorage';
+import { seasonSummaryIdentityKey, updateSummaryForEpisodeUpsert } from '../episodeSummaries';
+import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
+import { episodeValidator } from '../publicValidators';
+import { refreshNextEpisode } from '../nextEpisode';
 import {
   boundedOptional,
   episodeMatchesStamp,
@@ -17,7 +17,7 @@ import {
   requireRating,
   requireRuntime,
   requireUser,
-} from './libraryShared.impl';
+} from './shared';
 
 const episodeArgs = {
   itemId: v.id('items'),

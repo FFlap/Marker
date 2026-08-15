@@ -18,8 +18,8 @@ export type NativeDragValues = NativePosterDragMotion & {
 };
 
 export function useLibraryReordering(items: LibraryItem[], filtersActive: boolean) {
-  const reorderItem = useMutation(api.library.reorderItem);
-  const moveItemToWatched = useAction(api.library.moveItemToWatched);
+  const reorderItem = useMutation(api.library.ordering.reorderItem);
+  const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const toast = useToast();
   const [optimisticOrders, setOptimisticOrders] = useState<Partial<Record<Status, string[]>>>({});
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});

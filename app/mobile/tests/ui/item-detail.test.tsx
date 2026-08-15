@@ -8,7 +8,6 @@ const mockRemoveItem = jest.fn().mockResolvedValue(undefined);
 const mockSetEpisodeState = jest.fn().mockResolvedValue(undefined);
 const mockSetSeasonWatched = jest.fn().mockResolvedValue(undefined);
 const mockMoveItemToWatched = jest.fn().mockResolvedValue(undefined);
-const mockResolveSeason = jest.fn().mockResolvedValue([]);
 const mockLoadMore = jest.fn();
 let itemView: any;
 let mockSeasonView: any;
@@ -138,31 +137,38 @@ jest.mock('convex/react', () => ({
       ? mockSetSeasonWatched
       : ref === 'moveItemToWatched'
         ? mockMoveItemToWatched
-        : ref === 'resolveSeason'
-          ? mockResolveSeason
-          : jest.fn().mockResolvedValue([]),
+        : jest.fn().mockResolvedValue([]),
 }));
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     library: {
-      listItems: 'listItems',
-      listEpisodes: 'listEpisodes',
-      listEpisodeProgress: 'listEpisodeProgress',
-      updateItem: 'updateItem',
-      removeItem: 'removeItem',
-      setEpisodeState: 'setEpisodeState',
-      setSeasonWatched: 'setSeasonWatched',
-      moveItemToWatched: 'moveItemToWatched',
+      items: {
+        listItems: 'listItems',
+        updateItem: 'updateItem',
+        removeItem: 'removeItem',
+      },
+      episodes: {
+        listEpisodes: 'listEpisodes',
+        listEpisodeProgress: 'listEpisodeProgress',
+        setEpisodeState: 'setEpisodeState',
+      },
+      seasonWatched: {
+        setSeasonWatched: 'setSeasonWatched',
+        moveItemToWatched: 'moveItemToWatched',
+      },
     },
     resolvedMetadata: {
-      getItemView: 'getItemView',
-      getSeasonView: 'getSeasonView',
-      getSeasonRequestState: 'getSeasonRequestState',
-      getTitleRequestState: 'getTitleRequestState',
-      getTitleView: 'getTitleView',
-      touchTitle: 'touchTitle',
-      touchItemView: 'touchItemView',
-      resolveSeason: 'resolveSeason',
+      reads: {
+        getItemView: 'getItemView',
+        getSeasonView: 'getSeasonView',
+        getSeasonRequestState: 'getSeasonRequestState',
+        getTitleRequestState: 'getTitleRequestState',
+        getTitleView: 'getTitleView',
+      },
+      touch: {
+        touchTitle: 'touchTitle',
+        touchItemView: 'touchItemView',
+      },
     },
   },
 }));
@@ -236,11 +242,6 @@ describe('item detail metadata subscriptions', () => {
     mockSetEpisodeState.mockReset().mockResolvedValue(undefined);
     mockSetSeasonWatched.mockReset().mockResolvedValue(undefined);
     mockMoveItemToWatched.mockReset().mockResolvedValue(undefined);
-    mockResolveSeason
-      .mockReset()
-      .mockImplementation(async ({ season }: { season: number }) => [
-        { season, episode: 1, name: `Episode ${season}` },
-      ]);
   });
 
   const renderScreen = async () =>

@@ -1,14 +1,14 @@
-import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
-import { internal } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
+import { internalMutation, mutation, query, type MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
-import { rankAtEnd } from './rank';
-import { syncItemTagMemberships } from './tagCollectionsModel';
-import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from './activityEvents';
-import { itemValidator } from './publicValidators';
-import { refreshNextEpisode } from './nextEpisode';
-import { requestProfileStatsRefresh } from './profileStatsRefresh';
-import { validateTmdbId } from './providerValidation';
+import { rankAtEnd } from '../rank';
+import { syncItemTagMemberships } from '../tagCollectionsModel';
+import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
+import { itemValidator } from '../publicValidators';
+import { refreshNextEpisode } from '../nextEpisode';
+import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { validateTmdbId } from '../providerValidation';
 import {
   addItemFields,
   type AddItemArgs,
@@ -25,7 +25,7 @@ import {
   mediaType,
   rating,
   status,
-} from './libraryShared.impl';
+} from './shared';
 
 export const listItems = query({
   args: {},
@@ -264,7 +264,7 @@ export const removeItem = mutation({
       await ctx.db.patch(itemId, { deletingAt: Date.now() });
       await requestProfileStatsRefresh(ctx, userId);
     }
-    await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
+    await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
   },
 });
 
@@ -281,7 +281,7 @@ export const continueRemoveItem = internalMutation({
       .take(REMOVE_BATCH_SIZE);
     if (episodes.length > 0) {
       for (const episode of episodes) await ctx.db.delete(episode._id);
-      await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
+      await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: episodes.length, done: false };
     }
     const summaries = await ctx.db
@@ -290,7 +290,7 @@ export const continueRemoveItem = internalMutation({
       .take(REMOVE_BATCH_SIZE);
     if (summaries.length > 0) {
       for (const summary of summaries) await ctx.db.delete(summary._id);
-      await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
+      await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: summaries.length, done: false };
     }
     const tagMemberships = await ctx.db
@@ -299,7 +299,7 @@ export const continueRemoveItem = internalMutation({
       .take(REMOVE_BATCH_SIZE);
     if (tagMemberships.length > 0) {
       for (const membership of tagMemberships) await ctx.db.delete(membership._id);
-      await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
+      await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: tagMemberships.length, done: false };
     }
     const profileFavorites = await ctx.db
@@ -308,7 +308,7 @@ export const continueRemoveItem = internalMutation({
       .take(REMOVE_BATCH_SIZE);
     if (profileFavorites.length > 0) {
       for (const favorite of profileFavorites) await ctx.db.delete(favorite._id);
-      await ctx.scheduler.runAfter(0, internal.library.continueRemoveItem, { itemId });
+      await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: profileFavorites.length, done: false };
     }
     const [coordinateRefresh, projectionRepair] = await Promise.all([

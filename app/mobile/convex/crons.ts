@@ -6,7 +6,7 @@ const crons = cronJobs();
 crons.hourly(
   'Prune metadata refresh leases',
   { minuteUTC: 17 },
-  internal.resolvedMetadata.pruneRefreshLeases,
+  internal.resolvedMetadata.orchestration.pruneRefreshLeases,
 );
 
 crons.hourly('Prune provider snapshots', { minuteUTC: 16 }, internal.providerSnapshots.prune, {});
@@ -16,14 +16,14 @@ crons.hourly('Prune avatar uploads', { minuteUTC: 13 }, internal.profiles.pruneA
 crons.hourly(
   'Prune metadata refresh requests',
   { minuteUTC: 15 },
-  internal.resolvedMetadata.pruneRefreshRequests,
+  internal.resolvedMetadata.cleanup.pruneRefreshRequests,
   {},
 );
 
 crons.hourly(
   'Prune expired request throttles',
   { minuteUTC: 14 },
-  internal.resolvedMetadata.pruneRequestThrottle,
+  internal.resolvedMetadata.cleanup.pruneRequestThrottle,
   {},
 );
 

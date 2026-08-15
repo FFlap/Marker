@@ -82,10 +82,10 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
       ? parsedPreview
       : undefined;
   const [selectedSeason, setSeason] = useRouteSeason(routeKey);
-  const addItem = useMutation(api.library.addItem);
-  const addItemAndMarkWatched = useAction(api.library.addItemAndMarkWatched);
+  const addItem = useMutation(api.library.items.addItem);
+  const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
   const existing = useQuery(
-    api.library.getOwnedItemByTmdb,
+    api.library.items.getOwnedItemByTmdb,
     mediaType && validId ? { mediaType, tmdbId } : 'skip',
   );
   const {
@@ -147,7 +147,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     mediaType === 'tv' && validId ? { tmdbId, season } : undefined,
   );
   const seasonRequestState = useQuery(
-    api.resolvedMetadata.getSeasonRequestState,
+    api.resolvedMetadata.reads.getSeasonRequestState,
     mediaType === 'tv' && validId ? { tmdbId, season } : 'skip',
   );
   const returnedSeasonRow = canonicalSeason.season as SeasonRow | undefined;
@@ -179,7 +179,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
 
   const suggestions =
     useQuery(
-      api.library.listTagSuggestions,
+      api.library.items.listTagSuggestions,
       entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
     ) ?? [];
   const meta = {

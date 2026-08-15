@@ -83,8 +83,8 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('convex/react', () => ({
   useQuery: (ref: string) => {
-    if (ref === 'library.listItems') return mockItems;
-    if (ref === 'library.listTagRanks') return [];
+    if (ref === 'library/items:listItems') return mockItems;
+    if (ref === 'library/items:listTagRanks') return [];
     if (ref === 'settings.getSettings') return { defaultView: 'list' };
     if (ref === 'tags.visibility') return { isPublic: false };
     if (ref === 'profiles.me') return { username: 'tester', isPublic: false };
@@ -97,7 +97,7 @@ jest.mock('convex/react', () => ({
   }),
   useMutation: (ref: string) => {
     if (ref === 'tags.setVisibility') return mockSetVisibility;
-    if (ref === 'library.reorderItem') return mockReorderItem;
+    if (ref === 'library/ordering:reorderItem') return mockReorderItem;
     return mockReorderTag;
   },
   useAction: () => mockMoveItemToWatched,
@@ -105,11 +105,15 @@ jest.mock('convex/react', () => ({
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     library: {
-      listItems: 'library.listItems',
-      listTagRanks: 'library.listTagRanks',
-      moveItemToWatched: 'library.moveItemToWatched',
-      reorderItem: 'library.reorderItem',
-      reorderTagItem: 'library.reorderTagItem',
+      items: {
+        listItems: 'library/items:listItems',
+        listTagRanks: 'library/items:listTagRanks',
+      },
+      seasonWatched: { moveItemToWatched: 'library/seasonWatched:moveItemToWatched' },
+      ordering: {
+        reorderItem: 'library/ordering:reorderItem',
+        reorderTagItem: 'library/ordering:reorderTagItem',
+      },
     },
     settings: { getSettings: 'settings.getSettings' },
     tags: {

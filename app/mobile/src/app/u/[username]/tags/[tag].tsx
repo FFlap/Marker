@@ -112,7 +112,7 @@ export default function UserTagScreen() {
     return { ...available[0], titles: [...titles.values()] };
   }, [cachedRouteKey, collectionPages, routeKey]);
   const nextCursor = collectionPages.at(-1)?.value?.nextCursor;
-  const library = useQuery(api.library.listItems);
+  const library = useQuery(api.library.items.listItems);
   const settings = useQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);
   const [search, setSearch] = useState('');

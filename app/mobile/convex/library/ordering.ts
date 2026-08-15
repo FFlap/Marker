@@ -1,10 +1,10 @@
-import { internalMutation, internalQuery, mutation, type MutationCtx } from './_generated/server';
-import type { Doc, Id } from './_generated/dataModel';
+import { internalMutation, internalQuery, mutation, type MutationCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
-import { refreshTagCollectionSummary } from './tagCollectionsModel';
-import { itemActivityBase, writeActivityEvents } from './activityEvents';
-import { requestProfileStatsRefresh } from './profileStatsRefresh';
-import { hasTag, normalizedTagKey, ownedItem, requireUser, status } from './libraryShared.impl';
+import { refreshTagCollectionSummary } from '../tagCollectionsModel';
+import { itemActivityBase, writeActivityEvents } from '../activityEvents';
+import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { hasTag, normalizedTagKey, ownedItem, requireUser, status } from './shared';
 
 type MoveItemArgs = {
   itemId: Id<'items'>;

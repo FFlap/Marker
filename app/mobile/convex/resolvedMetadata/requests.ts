@@ -1,7 +1,7 @@
 import { ConvexError, v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
-import { internalMutation, type MutationCtx } from './_generated/server';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import {
   FAILED_TOUCH_BACKOFF_MS,
   GLOBAL_TOUCHES_PER_MINUTE,
@@ -12,8 +12,8 @@ import {
   resolvedTitleValidator,
   TOUCHES_PER_MINUTE,
   type MediaType,
-} from './resolvedMetadataShared.impl';
-import { writeChunkedSeason } from './seasonStorage';
+} from './shared';
+import { writeChunkedSeason } from '../seasonStorage';
 
 export const putTitle = internalMutation({
   args: { value: resolvedTitleValidator },
@@ -25,7 +25,7 @@ export const putTitle = internalMutation({
       .unique();
     if (existing) await ctx.db.replace(existing._id, next);
     else await ctx.db.insert('resolvedTitles', next);
-    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.refreshItemProjections, {
+    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.publication.refreshItemProjections, {
       mediaType: next.mediaType,
       tmdbId: next.tmdbId,
     });

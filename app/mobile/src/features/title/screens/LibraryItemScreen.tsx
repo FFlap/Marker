@@ -53,8 +53,9 @@ export default function ItemDetailScreen() {
 }
 function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [selectedSeason, setSeason] = useRouteSeason(String(itemId));
-  const list = useQuery(api.library.listItems);
-  const itemView = useQuery(api.resolvedMetadata.getItemView, { itemId });
+  const episodeApi = api.library.episodes;
+  const list = useQuery(api.library.items.listItems);
+  const itemView = useQuery(api.resolvedMetadata.reads.getItemView, { itemId });
   const item = itemView?.item ?? list?.find((entry) => entry._id === itemId);
   const title = itemView?.title as Detail | null | undefined;
   const firstSeason = title?.seasons?.find((entry) => entry.season > 0)?.season ?? 1;
@@ -62,26 +63,26 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     title?.seasons?.some((entry) => entry.season === selectedSeason) === false
       ? firstSeason
       : selectedSeason;
-  const setSeasonWatched = useAction(api.library.setSeasonWatched);
-  const moveItemToWatched = useAction(api.library.moveItemToWatched);
-  const update = useMutation(api.library.updateItem),
-    remove = useMutation(api.library.removeItem),
-    setEpisode = useMutation(api.library.setEpisodeState);
+  const setSeasonWatched = useAction(api.library.seasonWatched.setSeasonWatched);
+  const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
+  const update = useMutation(api.library.items.updateItem),
+    remove = useMutation(api.library.items.removeItem),
+    setEpisode = useMutation(episodeApi.setEpisodeState);
   const toast = useToast();
   const seasonView = useSeasonView(
     item?.mediaType === 'tv' ? { tmdbId: item.tmdbId, season } : undefined,
   );
   const savedEpisodes = useQuery(
-    api.library.listEpisodes,
+    episodeApi.listEpisodes,
     item ? { itemId, season, pageCount: Math.max(1, seasonView.pageCount) } : 'skip',
   );
-  const episodeProgress = useQuery(api.library.listEpisodeProgress, item ? { itemId } : 'skip');
+  const episodeProgress = useQuery(episodeApi.listEpisodeProgress, item ? { itemId } : 'skip');
   const seasonRequestState = useQuery(
-    api.resolvedMetadata.getSeasonRequestState,
+    api.resolvedMetadata.reads.getSeasonRequestState,
     item?.mediaType === 'tv' ? { tmdbId: item.tmdbId, season } : 'skip',
   );
   const titleRequestState = useQuery(
-    api.resolvedMetadata.getTitleRequestState,
+    api.resolvedMetadata.reads.getTitleRequestState,
     item ? { mediaType: item.mediaType, tmdbId: item.tmdbId } : 'skip',
   );
   const [expanded, setExpanded] = useState<string>();

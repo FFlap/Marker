@@ -1,11 +1,11 @@
 import { ConvexError, v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
-import { internalAction, type ActionCtx } from './_generated/server';
-import { getClerkUserId } from './clerkAuth';
-import { releasedEpisodes } from './episodeAvailability';
-import { refreshLeaseKey, requestKey } from './resolvedMetadataRequests.impl';
-import { resolveAndCommitCanonical } from './resolvedMetadataSeasonResolution.impl';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import { internalAction, type ActionCtx } from '../_generated/server';
+import { getClerkUserId } from '../clerkAuth';
+import { releasedEpisodes } from '../episodeAvailability';
+import { refreshLeaseKey, requestKey } from './requests';
+import { resolveAndCommitCanonical } from './seasonResolution';
 import {
   cleanEpisode,
   mediaType,
@@ -20,9 +20,9 @@ import {
   type ProviderAnime,
   type ProviderTitle,
   type ResolvedTitle,
-} from './resolvedMetadataShared.impl';
-import { hideResolvedEmptySeasons } from './seasonNames';
-import { type AssembledSeason, type ResolvedEpisode } from './seasonStorage';
+} from './shared';
+import { hideResolvedEmptySeasons } from '../seasonNames';
+import { type AssembledSeason, type ResolvedEpisode } from '../seasonStorage';
 
 export async function authorizeRefresh(ctx: { runMutation: Function }, userId: string) {
   const allowed = await ctx.runMutation(internal.tmdb.consumeThrottle, {
@@ -158,7 +158,7 @@ export async function resolveFreshTitle(
   );
   if (args.mediaType === 'tv') {
     const resolvedSeasonCounts = (await ctx.runQuery(
-      internal.resolvedMetadata.readResolvedSeasonCounts,
+      internal.resolvedMetadata.reads.readResolvedSeasonCounts,
       { tmdbId: args.tmdbId },
     )) as { season: number; episodeCount: number }[];
     value.seasons = hideResolvedEmptySeasons(value.seasons, resolvedSeasonCounts);
@@ -183,7 +183,7 @@ export async function waitForTitle(
   while (Date.now() < deadline) {
     await pause(150);
     const next: Doc<'resolvedTitles'> | null = await ctx.runQuery(
-      internal.resolvedMetadata.readTitle,
+      internal.resolvedMetadata.reads.readTitle,
       args,
     );
     if (
@@ -206,13 +206,13 @@ export async function getOrRefreshTitle(
   if (args.title.length > 500) throw new Error('Title must be no longer than 500 characters');
   const userId = userIdOverride ?? (await requireUser(ctx));
   const current: Doc<'resolvedTitles'> | null = await ctx.runQuery(
-    internal.resolvedMetadata.readTitle,
+    internal.resolvedMetadata.reads.readTitle,
     { mediaType: args.mediaType, tmdbId: args.tmdbId },
   );
   if (titleIsFresh(current)) return current!;
   const key = refreshLeaseKey(args.mediaType, args.tmdbId);
   const token = `synchronous:title:${Date.now()}:${crypto.randomUUID()}`;
-  const claimed = await ctx.runMutation(internal.resolvedMetadata.claimRefresh, {
+  const claimed = await ctx.runMutation(internal.resolvedMetadata.requests.claimRefresh, {
     key,
     token,
     leaseMs: REFRESH_LEASE_MS,
@@ -224,26 +224,29 @@ export async function getOrRefreshTitle(
     throw new ConvexError({ code: 'refresh_in_progress', retryable: true });
   }
   try {
-    await ctx.runMutation(internal.resolvedMetadata.admitSynchronousRefresh, {
+    await ctx.runMutation(internal.resolvedMetadata.requests.admitSynchronousRefresh, {
       userId,
       keys: [requestKey(args.mediaType, args.tmdbId)],
     });
   } catch (error) {
     await ctx
-      .runMutation(internal.resolvedMetadata.releaseRefresh, { key, token })
+      .runMutation(internal.resolvedMetadata.requests.releaseRefresh, { key, token })
       .catch(() => undefined);
     throw error;
   }
-  const adoptedKeys = await ctx.runMutation(internal.resolvedMetadata.adoptRefreshRequests, {
-    keys: [requestKey(args.mediaType, args.tmdbId)],
-    attemptToken: token,
-    leaseKey: key,
-    leaseToken: token,
-  });
+  const adoptedKeys = await ctx.runMutation(
+    internal.resolvedMetadata.requests.adoptRefreshRequests,
+    {
+      keys: [requestKey(args.mediaType, args.tmdbId)],
+      attemptToken: token,
+      leaseKey: key,
+      leaseToken: token,
+    },
+  );
   let failureFinalized = false;
   const finalizeFailure = async (error: unknown) => {
     failureFinalized = true;
-    await ctx.runMutation(internal.resolvedMetadata.failSynchronousRefresh, {
+    await ctx.runMutation(internal.resolvedMetadata.orchestration.failSynchronousRefresh, {
       leaseKey: key,
       attemptToken: token,
       errorCode: errorCode(error),
@@ -275,7 +278,7 @@ export async function getOrRefreshTitle(
   } finally {
     if (!failureFinalized)
       await ctx
-        .runMutation(internal.resolvedMetadata.releaseRefresh, { key, token })
+        .runMutation(internal.resolvedMetadata.requests.releaseRefresh, { key, token })
         .catch(() => undefined);
   }
 }

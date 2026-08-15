@@ -7,7 +7,7 @@ import { isTruncatedSnapshot, putNonFatal } from '../../convex/providerSnapshots
 import { MAX_METADATA_MUTATION_BYTES, serializedBytes } from '../../convex/seasonStorage';
 import { mapSeasonDetails } from '../../convex/tmdb';
 import { commitWatchWithOneRematch } from '../../convex/sync';
-import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata';
+import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata/seasonResolution';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
@@ -38,7 +38,7 @@ const movieTitle = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const addItem = (asUser: Awaited<ReturnType<typeof setup>>['asUser'], tmdbId = 88) =>
-  asUser.mutation(api.library.addItem, {
+  asUser.mutation(api.library.items.addItem, {
     tmdbId,
     mediaType: 'tv',
     title: 'Stored show',
@@ -68,7 +68,7 @@ describe('watch sync', () => {
         mediaType: 'tv',
       }),
     );
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -87,7 +87,9 @@ describe('watch sync', () => {
       seasonNumber: 1,
       episodeNumber: 1,
     });
-    expect(await asUser.query(api.library.listEpisodes, { itemId, season: 1 })).toMatchObject([
+    expect(
+      await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
+    ).toMatchObject([
       {
         metadataProvider: 'tmdb',
         providerEpisodeId: 12345,
@@ -115,7 +117,7 @@ describe('watch sync', () => {
         mediaType: 'tv',
       }),
     );
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -124,7 +126,7 @@ describe('watch sync', () => {
       refreshAfter: Date.now() + 60_000,
       orderEpoch: 0,
     });
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -148,7 +150,9 @@ describe('watch sync', () => {
         matchedSeasonRefreshedAt: 100,
       }),
     ).rejects.toMatchObject({ data: { code: 'stale_season_version', retryable: true } });
-    expect(await asUser.query(api.library.listEpisodes, { itemId, season: 1 })).toEqual([]);
+    expect(await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 })).toEqual(
+      [],
+    );
 
     await expect(
       asUser.recordWatch({
@@ -157,9 +161,9 @@ describe('watch sync', () => {
         episodeTitle: 'Target episode',
       }),
     ).resolves.toMatchObject({ ok: true, season: 1, episode: 2 });
-    expect(await asUser.query(api.library.listEpisodes, { itemId, season: 1 })).toMatchObject([
-      { season: 1, episode: 2, watched: true },
-    ]);
+    expect(
+      await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
+    ).toMatchObject([{ season: 1, episode: 2, watched: true }]);
   });
 
   it('rejects a sync commit if its matched mapping changed', async () => {
@@ -203,7 +207,7 @@ describe('watch sync', () => {
         mediaType: 'tv',
       }),
     );
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -221,7 +225,7 @@ describe('watch sync', () => {
       matchedProvider: 'tmdb',
       matchedSeasonRefreshedAt: 100,
     });
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -231,10 +235,12 @@ describe('watch sync', () => {
       orderEpoch: 0,
     });
 
-    await expect(asUser.query(api.library.listEpisodes, { itemId, season: 1 })).resolves.toEqual(
-      [],
-    );
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toEqual([
+    await expect(
+      asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
+    ).resolves.toEqual([]);
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toEqual([
       {
         season: 1,
         watchedCount: 1,
@@ -245,7 +251,9 @@ describe('watch sync', () => {
       },
     ]);
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toEqual([
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toEqual([
       {
         season: 1,
         watchedCount: 1,
@@ -264,7 +272,7 @@ describe('watch sync', () => {
     vi.useFakeTimers();
     const { t, userId, asUser } = await setup();
     const itemId = await addItem(asUser);
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -282,7 +290,7 @@ describe('watch sync', () => {
       matchedProvider: 'tmdb',
       matchedSeasonRefreshedAt: 100,
     });
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -292,20 +300,30 @@ describe('watch sync', () => {
       orderEpoch: 0,
     });
 
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toMatchObject([
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toMatchObject([
       { season: 1, currentWatchedCount: 1, currentTotal: 1, identityStale: false },
     ]);
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toMatchObject([
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toMatchObject([
       { season: 1, currentWatchedCount: 0, currentTotal: 1, identityStale: false },
     ]);
     await expect(
-      asUser.action(api.library.setSeasonWatched, { itemId, season: 1, watched: true }),
+      asUser.action(api.library.seasonWatched.setSeasonWatched, {
+        itemId,
+        season: 1,
+        watched: true,
+      }),
     ).resolves.toEqual({ processed: 1 });
     await expect(
-      asUser.query(api.library.listEpisodes, { itemId, season: 1 }),
+      asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
     ).resolves.toMatchObject([{ episode: 101, providerEpisodeId: 101, watched: true }]);
-    await expect(asUser.query(api.library.listEpisodeProgress, { itemId })).resolves.toMatchObject([
+    await expect(
+      asUser.query(api.library.episodes.listEpisodeProgress, { itemId }),
+    ).resolves.toMatchObject([
       { season: 1, currentWatchedCount: 1, currentTotal: 1, identityStale: false },
     ]);
     await expect(

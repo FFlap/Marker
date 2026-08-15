@@ -48,10 +48,10 @@ export default function Add() {
     }
   }, [prefill]);
   const searchAction = useAction(api.tmdb.searchMulti);
-  const addItemAndMarkWatched = useAction(api.library.addItemAndMarkWatched);
-  const touchTitle = useMutation(api.resolvedMetadata.touchTitle);
-  const add = useMutation(api.library.addItem);
-  const libraryQuery = useQuery(api.library.listItems);
+  const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
+  const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
+  const add = useMutation(api.library.items.addItem);
+  const libraryQuery = useQuery(api.library.items.listItems);
   const library = libraryQuery ?? EMPTY_LIBRARY;
   const toast = useToast();
   const [query, setQuery] = useState(initialResult?.title ?? '');
@@ -63,7 +63,7 @@ export default function Add() {
   const [loadingQuery, setLoadingQuery] = useState<string>();
   const [picked, setPicked] = useState<SearchResult | undefined>(initialResult);
   const resolvedTitle = useQuery(
-    api.resolvedMetadata.getTitle,
+    api.resolvedMetadata.reads.getTitle,
     picked ? { mediaType: picked.mediaType, tmdbId: picked.id } : 'skip',
   );
   const requestGeneration = useRef(0);

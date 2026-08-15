@@ -7,7 +7,7 @@ import { isTruncatedSnapshot, putNonFatal } from '../../convex/providerSnapshots
 import { MAX_METADATA_MUTATION_BYTES, serializedBytes } from '../../convex/seasonStorage';
 import { mapSeasonDetails } from '../../convex/tmdb';
 import { commitWatchWithOneRematch } from '../../convex/sync';
-import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata';
+import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata/seasonResolution';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
@@ -35,7 +35,7 @@ const movieTitle = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const addItem = (asUser: Awaited<ReturnType<typeof setup>>['asUser'], tmdbId = 88) =>
-  asUser.mutation(api.library.addItem, {
+  asUser.mutation(api.library.items.addItem, {
     tmdbId,
     mediaType: 'tv',
     title: 'Stored show',
@@ -66,7 +66,7 @@ describe('metadata failure recovery', () => {
       mediaType: 'tv' as const,
     };
     await t.run((ctx) => ctx.db.insert('resolvedTitles', titleValue));
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -84,13 +84,13 @@ describe('metadata failure recovery', () => {
         expiresAt: now + 60_000,
       }),
     );
-    await t.mutation(internal.resolvedMetadata.claimRefresh, {
+    await t.mutation(internal.resolvedMetadata.requests.claimRefresh, {
       key: leaseKey,
       token: attemptToken,
       leaseMs: 60_000,
     });
     await expect(
-      t.mutation(internal.resolvedMetadata.commitRefresh, {
+      t.mutation(internal.resolvedMetadata.publication.commitRefresh, {
         title: { ...titleValue, title: 'Never published' },
         titleWrite: 'replace',
         season: {
@@ -118,10 +118,12 @@ describe('metadata failure recovery', () => {
       }),
     ).resolves.toBe('staged');
     expect(
-      await t.query(internal.resolvedMetadata.readRefreshRequest, { key: 'season:88:1' }),
+      await t.query(internal.resolvedMetadata.orchestration.readRefreshRequest, {
+        key: 'season:88:1',
+      }),
     ).toMatchObject({ state: 'inFlight', attemptToken });
     expect(
-      await t.query(internal.resolvedMetadata.readTitle, { mediaType: 'tv', tmdbId: 88 }),
+      await t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 88 }),
     ).toMatchObject({ title: 'Interrupted show' });
 
     await t.run(async (ctx) => {
@@ -136,7 +138,7 @@ describe('metadata failure recovery', () => {
       await ctx.db.patch(request!._id, { expiresAt: now - 1 });
       await ctx.db.patch(lease!._id, { expiresAt: now - 1 });
     });
-    const retry = (await asUser.mutation(api.resolvedMetadata.touchTitle, {
+    const retry = (await asUser.mutation(api.resolvedMetadata.touch.touchTitle, {
       mediaType: 'tv',
       tmdbId: 88,
       title: 'Interrupted show',
@@ -145,10 +147,10 @@ describe('metadata failure recovery', () => {
     expect(retry.scheduled).toBe(true);
     expect(retry.season.attemptToken).not.toBe(attemptToken);
     expect(
-      await t.query(internal.resolvedMetadata.readSeason, { tmdbId: 88, season: 1 }),
+      await t.query(internal.resolvedMetadata.reads.readSeason, { tmdbId: 88, season: 1 }),
     ).toMatchObject({ episodes: [{ name: 'Still visible' }] });
     expect(
-      await t.query(internal.resolvedMetadata.readTitle, { mediaType: 'tv', tmdbId: 88 }),
+      await t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 88 }),
     ).toMatchObject({ title: 'Interrupted show' });
   });
 
@@ -169,7 +171,7 @@ describe('metadata failure recovery', () => {
         updatedAt: Date.now(),
       }),
     );
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -178,13 +180,13 @@ describe('metadata failure recovery', () => {
       refreshAfter: 100 + 60_000,
       orderEpoch: 0,
     });
-    const plan = await t.query(internal.library.getSeasonWatchedPlan, {
+    const plan = await t.query(internal.library.seasonWatched.getSeasonWatchedPlan, {
       userId,
       itemId,
       season: 1,
       watched: true,
     });
-    await t.mutation(internal.library.setSeasonWatchedBatch, {
+    await t.mutation(internal.library.seasonWatched.setSeasonWatchedBatch, {
       userId,
       itemId,
       season: 1,
@@ -201,7 +203,7 @@ describe('metadata failure recovery', () => {
         .unique();
       await ctx.db.patch(mapping!._id, { orderEpoch: 1, updatedAt: Date.now() });
     });
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -211,7 +213,7 @@ describe('metadata failure recovery', () => {
       orderEpoch: 1,
     });
     await expect(
-      t.mutation(internal.library.setSeasonWatchedBatch, {
+      t.mutation(internal.library.seasonWatched.setSeasonWatchedBatch, {
         userId,
         itemId,
         season: 1,
@@ -224,10 +226,10 @@ describe('metadata failure recovery', () => {
     ).rejects.toMatchObject({ data: { code: 'stale_epoch', retryable: true } });
 
     await expect(
-      asUser.action(api.library.setSeasonWatched, { itemId, season: 1 }),
+      asUser.action(api.library.seasonWatched.setSeasonWatched, { itemId, season: 1 }),
     ).resolves.toEqual({ processed: 600 });
     expect(
-      await asUser.query(api.library.listEpisodes, { itemId, season: 1, pageCount: 5 }),
+      await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1, pageCount: 5 }),
     ).toHaveLength(600);
   });
 
@@ -239,7 +241,7 @@ describe('metadata failure recovery', () => {
       episode: index + 1,
       name: `Episode ${index + 1}`,
     }));
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -248,7 +250,7 @@ describe('metadata failure recovery', () => {
       refreshAfter: 100 + 60_000,
       orderEpoch: 0,
     });
-    const plan = await t.query(internal.library.getSeasonWatchedPlan, {
+    const plan = await t.query(internal.library.seasonWatched.getSeasonWatchedPlan, {
       userId,
       itemId,
       season: 1,
@@ -256,7 +258,7 @@ describe('metadata failure recovery', () => {
       orderEpoch: 0,
       metadataProvider: 'tmdb',
     });
-    await t.mutation(internal.library.setSeasonWatchedBatch, {
+    await t.mutation(internal.library.seasonWatched.setSeasonWatchedBatch, {
       userId,
       itemId,
       season: 1,
@@ -266,7 +268,7 @@ describe('metadata failure recovery', () => {
       expectedOrderEpoch: plan.orderEpoch,
       expectedMetadataProvider: plan.metadataProvider,
     });
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tvdb',
@@ -279,7 +281,7 @@ describe('metadata failure recovery', () => {
       orderEpoch: 0,
     });
     await expect(
-      t.mutation(internal.library.setSeasonWatchedBatch, {
+      t.mutation(internal.library.seasonWatched.setSeasonWatchedBatch, {
         userId,
         itemId,
         season: 1,
@@ -326,13 +328,13 @@ describe('metadata failure recovery', () => {
         expiresAt: now + 60_000,
       });
     });
-    await t.mutation(internal.resolvedMetadata.claimRefresh, {
+    await t.mutation(internal.resolvedMetadata.requests.claimRefresh, {
       key: 'metadata:tv:88',
       token: 'auto-lease',
       leaseMs: 60_000,
     });
 
-    await t.mutation(internal.resolvedMetadata.setTitleMapping, {
+    await t.mutation(internal.resolvedMetadata.seed.setTitleMapping, {
       tmdbId: 88,
       mediaType: 'tv',
       tvdbId: 111,
@@ -340,7 +342,7 @@ describe('metadata failure recovery', () => {
       source: 'manual',
     });
     await expect(
-      t.mutation(internal.resolvedMetadata.commitRefresh, {
+      t.mutation(internal.resolvedMetadata.publication.commitRefresh, {
         title: {
           ...movieTitle({
             tmdbId: 88,
@@ -375,13 +377,13 @@ describe('metadata failure recovery', () => {
       }),
     ).resolves.toBe('mappingChanged');
     await expect(
-      t.query(internal.resolvedMetadata.readTitle, { mediaType: 'tv', tmdbId: 88 }),
+      t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 88 }),
     ).resolves.toMatchObject({ title: 'Visible before refresh', orderEpoch: 0 });
     await expect(
-      t.query(internal.resolvedMetadata.readTitleMapping, { mediaType: 'tv', tmdbId: 88 }),
+      t.query(internal.resolvedMetadata.reads.readTitleMapping, { mediaType: 'tv', tmdbId: 88 }),
     ).resolves.toMatchObject({ source: 'manual', orderEpoch: 0 });
     await expect(
-      t.query(internal.resolvedMetadata.readRefreshRequest, { key: 'title:tv:88' }),
+      t.query(internal.resolvedMetadata.orchestration.readRefreshRequest, { key: 'title:tv:88' }),
     ).resolves.toMatchObject({ state: 'inFlight', attemptToken: 'auto-attempt' });
   });
 
@@ -440,7 +442,7 @@ describe('metadata failure recovery', () => {
     );
 
     await expect(
-      t.action(internal.resolvedMetadata.resolveTitleForUser, {
+      t.action(internal.resolvedMetadata.titleResolution.resolveTitleForUser, {
         userId,
         mediaType: 'tv',
         tmdbId: 124,

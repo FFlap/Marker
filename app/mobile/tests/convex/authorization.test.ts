@@ -7,51 +7,66 @@ const modules = import.meta.glob('../../convex/**/*.ts');
 
 describe('public API authorization', () => {
   it.each([
-    ['library.listItems', 'query', api.library.listItems, {}],
+    ['library/items:listItems', 'query', api.library.items.listItems, {}],
     [
-      'library.getOwnedItemByTmdb',
+      'library/items:getOwnedItemByTmdb',
       'query',
-      api.library.getOwnedItemByTmdb,
+      api.library.items.getOwnedItemByTmdb,
       { mediaType: 'movie', tmdbId: 1 },
     ],
-    ['library.listTagSuggestions', 'query', api.library.listTagSuggestions, {}],
+    ['library/items:listTagSuggestions', 'query', api.library.items.listTagSuggestions, {}],
     [
-      'library.addItem',
+      'library/items:addItem',
       'mutation',
-      api.library.addItem,
+      api.library.items.addItem,
       { tmdbId: 1, mediaType: 'movie', title: 'X', status: 'watchlist' },
     ],
-    ['library.updateItem', 'mutation', api.library.updateItem, { itemId: 'items:missing' }],
     [
-      'library.addTagToItems',
+      'library/items:updateItem',
       'mutation',
-      api.library.addTagToItems,
-      { itemIds: ['items:missing'], tag: 'Favorites' },
-    ],
-    ['library.removeItem', 'mutation', api.library.removeItem, { itemId: 'items:missing' }],
-    ['library.reorderItem', 'mutation', api.library.reorderItem, { itemId: 'items:missing' }],
-    [
-      'library.setEpisodeState',
-      'mutation',
-      api.library.setEpisodeState,
-      { itemId: 'items:missing', season: 0, episode: 1 },
-    ],
-    [
-      'library.listEpisodes',
-      'query',
-      api.library.listEpisodes,
-      { itemId: 'items:missing', season: 1 },
-    ],
-    [
-      'library.listEpisodeProgress',
-      'query',
-      api.library.listEpisodeProgress,
+      api.library.items.updateItem,
       { itemId: 'items:missing' },
     ],
     [
-      'library.setSeasonWatched',
+      'library/items:addTagToItems',
+      'mutation',
+      api.library.items.addTagToItems,
+      { itemIds: ['items:missing'], tag: 'Favorites' },
+    ],
+    [
+      'library/items:removeItem',
+      'mutation',
+      api.library.items.removeItem,
+      { itemId: 'items:missing' },
+    ],
+    [
+      'library/ordering:reorderItem',
+      'mutation',
+      api.library.ordering.reorderItem,
+      { itemId: 'items:missing' },
+    ],
+    [
+      'library/episodes:setEpisodeState',
+      'mutation',
+      api.library.episodes.setEpisodeState,
+      { itemId: 'items:missing', season: 0, episode: 1 },
+    ],
+    [
+      'library/episodes:listEpisodes',
+      'query',
+      api.library.episodes.listEpisodes,
+      { itemId: 'items:missing', season: 1 },
+    ],
+    [
+      'library/episodes:listEpisodeProgress',
+      'query',
+      api.library.episodes.listEpisodeProgress,
+      { itemId: 'items:missing' },
+    ],
+    [
+      'library/seasonWatched:setSeasonWatched',
       'action',
-      api.library.setSeasonWatched,
+      api.library.seasonWatched.setSeasonWatched,
       { itemId: 'items:missing', season: 1 },
     ],
     ['settings.getSettings', 'query', api.settings.getSettings, {}],
@@ -129,23 +144,25 @@ describe('public API authorization', () => {
       await t.run((ctx) => ctx.db.insert('users', { clerkId: 'user_authorization_other' }));
       const owner = t.withIdentity({ subject: 'user_authorization_owner' });
       const other = t.withIdentity({ subject: 'user_authorization_other' });
-      const itemId = await owner.mutation(api.library.addItem, {
+      const itemId = await owner.mutation(api.library.items.addItem, {
         tmdbId: 1,
         mediaType: 'tv',
         title: 'Private',
         status: 'watchlist',
       });
       const calls = {
-        updateItem: () => other.mutation(api.library.updateItem, { itemId, rating: 8 }),
+        updateItem: () => other.mutation(api.library.items.updateItem, { itemId, rating: 8 }),
         addTagToItems: () =>
-          other.mutation(api.library.addTagToItems, { itemIds: [itemId], tag: 'Favorites' }),
-        removeItem: () => other.mutation(api.library.removeItem, { itemId }),
-        reorderItem: () => other.mutation(api.library.reorderItem, { itemId }),
+          other.mutation(api.library.items.addTagToItems, { itemIds: [itemId], tag: 'Favorites' }),
+        removeItem: () => other.mutation(api.library.items.removeItem, { itemId }),
+        reorderItem: () => other.mutation(api.library.ordering.reorderItem, { itemId }),
         setEpisodeState: () =>
-          other.mutation(api.library.setEpisodeState, { itemId, season: 1, episode: 1 }),
-        listEpisodes: () => other.query(api.library.listEpisodes, { itemId, season: 1 }),
-        listEpisodeProgress: () => other.query(api.library.listEpisodeProgress, { itemId }),
-        setSeasonWatched: () => other.action(api.library.setSeasonWatched, { itemId, season: 1 }),
+          other.mutation(api.library.episodes.setEpisodeState, { itemId, season: 1, episode: 1 }),
+        listEpisodes: () => other.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
+        listEpisodeProgress: () =>
+          other.query(api.library.episodes.listEpisodeProgress, { itemId }),
+        setSeasonWatched: () =>
+          other.action(api.library.seasonWatched.setSeasonWatched, { itemId, season: 1 }),
       };
       await expect(calls[operation]()).rejects.toThrow('Item not found');
     },

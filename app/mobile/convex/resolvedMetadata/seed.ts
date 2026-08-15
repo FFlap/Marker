@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
-import { internal } from './_generated/api';
-import type { Doc } from './_generated/dataModel';
-import { internalAction, internalMutation, internalQuery } from './_generated/server';
+import { internal } from '../_generated/api';
+import type { Doc } from '../_generated/dataModel';
+import { internalAction, internalMutation, internalQuery } from '../_generated/server';
 import {
   mediaType,
   mergeEpisodes,
@@ -9,9 +9,9 @@ import {
   SEASON_FRESH_MS,
   type ProviderAnime,
   type ProviderTitle,
-} from './resolvedMetadataShared.impl';
-import { type ResolvedEpisode } from './seasonStorage';
-import { tvdbAnimeGuideKey, tvdbAnimeLookupKey } from './tvdbGuideKeys';
+} from './shared';
+import { type ResolvedEpisode } from '../seasonStorage';
+import { tvdbAnimeGuideKey, tvdbAnimeLookupKey } from '../tvdbGuideKeys';
 
 export const listSeedItems = internalQuery({
   args: { cursor: v.optional(v.string()) },
@@ -65,17 +65,17 @@ export const seedFromProviderSnapshots = internalAction({
   args: { cursor: v.optional(v.string()) },
   handler: async (ctx, { cursor }): Promise<{ found: number; seeded: number; isDone: boolean }> => {
     const page: { page: Doc<'items'>[]; continueCursor: string; isDone: boolean } =
-      await ctx.runQuery(internal.resolvedMetadata.listSeedItems, { cursor });
+      await ctx.runQuery(internal.resolvedMetadata.seed.listSeedItems, { cursor });
     const items = page.page;
     const readProviderSnapshot = internal.providerSnapshots.get;
     let seeded = 0;
     for (const item of items) {
-      const existing = await ctx.runQuery(internal.resolvedMetadata.readTitle, {
+      const existing = await ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
         mediaType: item.mediaType,
         tmdbId: item.tmdbId,
       });
       if (existing) continue;
-      const existingMapping = await ctx.runQuery(internal.resolvedMetadata.readTitleMapping, {
+      const existingMapping = await ctx.runQuery(internal.resolvedMetadata.reads.readTitleMapping, {
         mediaType: item.mediaType,
         tmdbId: item.tmdbId,
       });
@@ -88,7 +88,7 @@ export const seedFromProviderSnapshots = internalAction({
       const lookupValue = lookup?.value as { tvdbId?: unknown; order?: unknown } | undefined;
       const mapping =
         existingMapping ??
-        (await ctx.runMutation(internal.resolvedMetadata.setTitleMapping, {
+        (await ctx.runMutation(internal.resolvedMetadata.seed.setTitleMapping, {
           mediaType: item.mediaType,
           tmdbId: item.tmdbId,
           ...(typeof lookupValue?.tvdbId === 'number' && { tvdbId: lookupValue.tvdbId }),
@@ -148,12 +148,12 @@ export const seedFromProviderSnapshots = internalAction({
         ...mergeTitle(item.tmdbId, item.mediaType, base, anime, refreshedAt),
         orderEpoch: mapping.orderEpoch,
       };
-      await ctx.runMutation(internal.resolvedMetadata.putTitle, { value });
+      await ctx.runMutation(internal.resolvedMetadata.requests.putTitle, { value });
       const selectedEpisodes = (anime?.selectedEpisodes ??
         seasonSnapshot?.value ??
         []) as ResolvedEpisode[];
       if (selectedSeason !== undefined && selectedEpisodes.length)
-        await ctx.runMutation(internal.resolvedMetadata.putSeason, {
+        await ctx.runMutation(internal.resolvedMetadata.requests.putSeason, {
           tmdbId: item.tmdbId,
           season: selectedSeason,
           metadataProvider: value.metadataProvider,
@@ -165,7 +165,7 @@ export const seedFromProviderSnapshots = internalAction({
       seeded += 1;
     }
     if (!page.isDone)
-      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.seedFromProviderSnapshots, {
+      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.seed.seedFromProviderSnapshots, {
         cursor: page.continueCursor,
       });
     return { found: items.length, seeded, isDone: page.isDone };

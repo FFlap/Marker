@@ -53,7 +53,7 @@ export default function Explore() {
   }>({ query: '', results: [] });
   const [pendingPeople, setPendingPeople] = useState<Set<string>>(() => new Set());
   const generation = useRef(0);
-  const library = useQuery(api.library.listItems);
+  const library = useQuery(api.library.items.listItems);
   const people = useQuery(
     api.profiles.search,
     debounced.length >= 2 && (filter === 'all' || filter === 'people')

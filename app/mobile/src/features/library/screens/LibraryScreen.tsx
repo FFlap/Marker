@@ -67,7 +67,7 @@ export default function LibraryScreen() {
   );
 }
 function Library() {
-  const itemQuery = useQuery(api.library.listItems);
+  const itemQuery = useQuery(api.library.items.listItems);
   const items = itemQuery ?? EMPTY_ITEMS;
   const settings = useQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);

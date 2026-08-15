@@ -156,15 +156,15 @@ export function useTitleView(
   autoRecovery = true,
 ) {
   const view = useQuery(
-    api.resolvedMetadata.getTitleView,
+    api.resolvedMetadata.reads.getTitleView,
     args ? { mediaType: args.mediaType, tmdbId: args.tmdbId } : 'skip',
   );
   const subscribedRequestState = useQuery(
-    api.resolvedMetadata.getTitleRequestState,
+    api.resolvedMetadata.reads.getTitleRequestState,
     args ? { mediaType: args.mediaType, tmdbId: args.tmdbId } : 'skip',
   );
-  const touch = useMutation(api.resolvedMetadata.touchTitle);
-  const touchItem = useMutation(api.resolvedMetadata.touchItemView);
+  const touch = useMutation(api.resolvedMetadata.touch.touchTitle);
+  const touchItem = useMutation(api.resolvedMetadata.touch.touchItemView);
   const mediaType = args?.mediaType;
   const tmdbId = args?.tmdbId;
   const title = args?.title;

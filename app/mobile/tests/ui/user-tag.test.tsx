@@ -37,7 +37,7 @@ jest.mock('convex/react', () => ({
 jest.mock('../../convex/_generated/api', () => ({
   api: {
     tags: { publicByUser: 'tags.publicByUser' },
-    library: { listItems: 'library.listItems' },
+    library: { items: { listItems: 'library/items:listItems' } },
     settings: { getSettings: 'settings.getSettings', setSettings: 'settings.setSettings' },
   },
 }));

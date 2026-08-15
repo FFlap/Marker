@@ -239,7 +239,7 @@ describe('episode hub and profile favorites', () => {
       });
     });
     const itemId = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('One Piece', 37854, 'tv', 'watching'),
     );
 
@@ -251,7 +251,7 @@ describe('episode hub and profile favorites', () => {
       episode: 1,
       seasonName: 'East Blue Arc',
     });
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
@@ -272,7 +272,7 @@ describe('episode hub and profile favorites', () => {
       imageUrl: 'https://images.example/luffy.jpg',
       tags: ['Adventure'],
     });
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
@@ -281,14 +281,14 @@ describe('episode hub and profile favorites', () => {
     expect(
       (await asUser.query(api.episodeHub.overview, { today: '2026-08-11' })).watching[0],
     ).toMatchObject({ episode: 1, name: "I'm Luffy!" });
-    await asUser.mutation(api.library.setEpisodeState, {
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
       watched: true,
     });
 
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 37854,
       season: 1,
       metadataProvider: 'tvdb',
@@ -311,7 +311,7 @@ describe('episode hub and profile favorites', () => {
       nextEpisode: { episode: 2, name: 'Swordsman Re-published' },
     });
 
-    await t.mutation(internal.resolvedMetadata.setTitleMapping, {
+    await t.mutation(internal.resolvedMetadata.seed.setTitleMapping, {
       mediaType: 'tv',
       tmdbId: 37854,
       tvdbId: 81797,
@@ -320,7 +320,7 @@ describe('episode hub and profile favorites', () => {
     });
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect((await t.run((ctx) => ctx.db.get(itemId)))?.nextEpisode).toBeUndefined();
-    await t.mutation(internal.resolvedMetadata.putTitle, {
+    await t.mutation(internal.resolvedMetadata.requests.putTitle, {
       value: {
         tmdbId: 37854,
         mediaType: 'tv',
@@ -337,7 +337,7 @@ describe('episode hub and profile favorites', () => {
         orderEpoch: 5,
       },
     });
-    await t.mutation(internal.resolvedMetadata.putSeason, {
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
       tmdbId: 37854,
       season: 1,
       metadataProvider: 'tvdb',
@@ -363,22 +363,22 @@ describe('episode hub and profile favorites', () => {
   it('only accepts watched titles and preserves user-defined favorite order', async () => {
     const { asUser } = await setup();
     const watching = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Still Watching', 1, 'tv', 'watching'),
     );
     const first = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('First Movie', 2, 'movie', 'watched'),
     );
     const second = await asUser.mutation(
-      api.library.addItem,
+      api.library.items.addItem,
       add('Second Movie', 3, 'movie', 'watched'),
     );
-    const anime = await asUser.mutation(api.library.addItem, {
+    const anime = await asUser.mutation(api.library.items.addItem, {
       ...add('Favorite Anime', 4, 'tv', 'watched'),
       genres: ['Animation', 'Anime'],
     });
-    await asUser.mutation(api.library.addItem, add('Regular TV Show', 5, 'tv', 'watched'));
+    await asUser.mutation(api.library.items.addItem, add('Regular TV Show', 5, 'tv', 'watched'));
     await expect(asUser.mutation(api.profileFavorites.add, { itemId: watching })).rejects.toThrow(
       'Only watched titles',
     );
