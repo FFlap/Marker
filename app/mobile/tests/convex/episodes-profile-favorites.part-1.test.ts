@@ -74,7 +74,15 @@ describe('episode hub and profile favorites', () => {
         orderEpoch: 0,
         seasonVersion: 'release-boundary',
         chunkIndex: 0,
-        episodes: [{ season: 1, episode: 1, name: 'Boundary', airDate: '2026-08-11' }],
+        episodes: [
+          {
+            season: 1,
+            episode: 1,
+            name: 'Boundary',
+            overview: 'The release-window description.',
+            airDate: '2026-08-11',
+          },
+        ],
         refreshedAt: Date.now(),
       });
     });
@@ -84,8 +92,8 @@ describe('episode hub and profile favorites', () => {
       [],
     );
     expect(
-      (await asUser.query(api.episodeHub.overview, { today: '2026-08-11' })).watching[0]?.name,
-    ).toBe('Boundary');
+      (await asUser.query(api.episodeHub.overview, { today: '2026-08-11' })).watching[0],
+    ).toMatchObject({ name: 'Boundary', overview: 'The release-window description.' });
     expect(
       (await asUser.query(api.episodeHub.overview, { today: '2026-08-12' })).watching[0]?.name,
     ).toBe('Boundary');

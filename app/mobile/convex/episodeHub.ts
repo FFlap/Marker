@@ -89,6 +89,7 @@ export const overview = query({
           season: coordinate.season,
           episode: coordinate.episode,
           name: coordinate.name ?? `Episode ${coordinate.episode}`,
+          ...(coordinate.overview !== undefined && { overview: coordinate.overview }),
           ...(coordinate.runtime !== undefined && { runtime: coordinate.runtime }),
           ...(coordinate.imageUrl !== undefined && { imageUrl: coordinate.imageUrl }),
           ...(coordinate.airDate !== undefined && { airDate: coordinate.airDate }),

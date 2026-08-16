@@ -335,6 +335,7 @@ async function continueRefreshPage(
             chunkIndex,
             seasonName: seasonInfo.name,
             ...(candidate.name && { name: candidate.name }),
+            ...(candidate.overview && { overview: candidate.overview }),
             ...(candidate.airDate && { airDate: candidate.airDate }),
             ...(candidate.airDate === undefined && {
               undatedReleased: isEpisodeReleased(candidate),
