@@ -94,6 +94,10 @@ describe('episode hub and profile favorites', () => {
     expect(
       (await asUser.query(api.episodeHub.overview, { today: '2026-08-11' })).watching[0],
     ).toMatchObject({ name: 'Boundary', overview: 'The release-window description.' });
+    expect((await asUser.query(api.library.items.listItems, {}))[0]?.nextEpisode).toMatchObject({
+      name: 'Boundary',
+      overview: 'The release-window description.',
+    });
     expect(
       (await asUser.query(api.episodeHub.overview, { today: '2026-08-12' })).watching[0]?.name,
     ).toBe('Boundary');

@@ -35,6 +35,7 @@ export const nextEpisodeValidator = v.object({
   chunkIndex: v.optional(v.number()),
   seasonName: v.optional(v.string()),
   name: v.optional(v.string()),
+  overview: v.optional(v.string()),
   airDate: v.optional(v.string()),
   undatedReleased: v.optional(v.boolean()),
   runtime: v.optional(v.number()),
