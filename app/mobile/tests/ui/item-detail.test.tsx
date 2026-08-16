@@ -288,6 +288,27 @@ describe('item detail metadata subscriptions', () => {
     expect(mockTouchItemView).toHaveBeenCalledWith({ itemId: 'item', season: 2, force: true });
   });
 
+  it('keeps pull-to-refresh active until the metadata request finishes', async () => {
+    const view = await renderScreen();
+    let finishRefresh!: () => void;
+    mockTouchItemView.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishRefresh = resolve)),
+    );
+    let refreshPromise!: Promise<void>;
+
+    await act(async () => {
+      refreshPromise = view.getByTestId('episode-list').props.refreshControl.props.onRefresh();
+      await Promise.resolve();
+    });
+    expect(view.getByTestId('episode-list').props.refreshControl.props.refreshing).toBe(true);
+
+    await act(async () => {
+      finishRefresh();
+      await refreshPromise;
+    });
+    expect(view.getByTestId('episode-list').props.refreshControl.props.refreshing).toBe(false);
+  });
+
   it('shows a non-blocking failure note when cached metadata exists', async () => {
     itemView = {
       item,
@@ -462,7 +483,11 @@ describe('item detail metadata subscriptions', () => {
   it('changes an unwatched episode checkbox into an options button after watching', async () => {
     const view = await renderScreen();
     const user = userEvent.setup();
-    await user.press(view.getByLabelText('Mark episode 1 watched'));
+    const watchButton = view.getByLabelText('Mark episode 1 watched');
+    expect(watchButton.props.accessibilityHint).toBe(
+      'Opens episode options after marking it watched',
+    );
+    await user.press(watchButton);
     expect(mockSetEpisodeState).toHaveBeenCalledWith(
       expect.objectContaining({ itemId: 'item', season: 1, episode: 1, watched: true }),
     );

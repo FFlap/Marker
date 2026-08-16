@@ -281,4 +281,25 @@ describe('Explore title metadata subscriptions', () => {
     expect(view.queryByText('Wrongly labelled episode')).toBeNull();
     expect(view.getByLabelText('Loading')).toBeTruthy();
   });
+
+  it('keeps pull-to-refresh active until the metadata request finishes', async () => {
+    const view = await screen();
+    let finishRefresh!: () => void;
+    mockTouchTitle.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishRefresh = resolve)),
+    );
+    let refreshPromise!: Promise<void>;
+
+    await act(async () => {
+      refreshPromise = view.getByTestId('episode-list').props.refreshControl.props.onRefresh();
+      await Promise.resolve();
+    });
+    expect(view.getByTestId('episode-list').props.refreshControl.props.refreshing).toBe(true);
+
+    await act(async () => {
+      finishRefresh();
+      await refreshPromise;
+    });
+    expect(view.getByTestId('episode-list').props.refreshControl.props.refreshing).toBe(false);
+  });
 });

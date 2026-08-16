@@ -205,4 +205,73 @@ describe('metadata pipeline', () => {
     expect(requestedUrls.some((url) => url.includes('query=Authoritative%20Show'))).toBe(true);
     expect(requestedUrls.some((url) => url.includes('query=Authoritative%20Original'))).toBe(true);
   });
+
+  it('restarts season pagination when a new version is published', async () => {
+    const { t, asUser } = await setup();
+    const season = (prefix: string) =>
+      Array.from({ length: 121 }, (_, index) => ({
+        season: 1,
+        episode: index + 1,
+        name: `${prefix} ${index + 1}`,
+      }));
+    const write = (episodes: ReturnType<typeof season>) =>
+      t.mutation(internal.resolvedMetadata.requests.putSeason, {
+        tmdbId: 88,
+        season: 1,
+        metadataProvider: 'tmdb',
+        episodes,
+        refreshedAt: Date.now(),
+        refreshAfter: Date.now() + 60_000,
+        orderEpoch: 0,
+      });
+
+    await write(season('Old'));
+    const first = await asUser.query(api.resolvedMetadata.reads.getSeasonView, {
+      tmdbId: 88,
+      season: 1,
+      paginationOpts: { cursor: null, numItems: 1 },
+    });
+    expect(first.continueCursor).toMatch(/^chunk:.+:1$/);
+
+    await write(season('New'));
+    const restarted = await asUser.query(api.resolvedMetadata.reads.getSeasonView, {
+      tmdbId: 88,
+      season: 1,
+      paginationOpts: { cursor: first.continueCursor, numItems: 1 },
+    });
+    expect(restarted.page[0]).toMatchObject({ chunkIndex: 0, totalCount: 121 });
+    expect(restarted.page[0]?.episodes[0]).toMatchObject({ name: 'New 1' });
+  });
+
+  it('hides incomplete season parents without an episode count', async () => {
+    const { t, asUser } = await setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert('titleMappings', {
+        tmdbId: 88,
+        mediaType: 'tv',
+        source: 'auto',
+        orderEpoch: 0,
+        updatedAt: Date.now(),
+      });
+      await ctx.db.insert('resolvedSeasons', {
+        tmdbId: 88,
+        season: 1,
+        metadataProvider: 'tmdb',
+        chunkCount: 0,
+        chunksComplete: true,
+        seasonVersion: 'incomplete',
+        refreshedAt: Date.now(),
+        refreshAfter: Date.now() + 60_000,
+        orderEpoch: 0,
+      });
+    });
+
+    await expect(
+      asUser.query(api.resolvedMetadata.reads.getSeasonView, {
+        tmdbId: 88,
+        season: 1,
+        paginationOpts: { cursor: null, numItems: 1 },
+      }),
+    ).resolves.toEqual({ page: [], isDone: true, continueCursor: '' });
+  });
 });

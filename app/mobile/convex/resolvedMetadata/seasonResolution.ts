@@ -93,6 +93,13 @@ export async function resolveFreshSeason(
   const episodes = tvdbEpisodes.length
     ? mergeEpisodes(tvdbEpisodes, tmdbEpisodes)
     : releasedEpisodes(tmdbEpisodes).map(cleanEpisode);
+  if (episodes.length === 0 && !tmdbResult.ok && current)
+    return {
+      episodes: current.episodes,
+      partial: true,
+      persisted: false,
+      error: tmdbResult.error,
+    };
   const partial = !tmdbResult.ok;
   return { episodes, partial, persisted: true, error: undefined };
 }
@@ -502,12 +509,12 @@ export async function getOrRefreshSeason(
   const adoptedTitle = adoptedKeys.includes(requestKey('tv', args.tmdbId));
   let failureFinalized = false;
   const finalizeFailure = async (error: unknown) => {
-    failureFinalized = true;
     await ctx.runMutation(internal.resolvedMetadata.orchestration.failSynchronousRefresh, {
       leaseKey: key,
       attemptToken: token,
       errorCode: errorCode(error),
     });
+    failureFinalized = true;
   };
   try {
     await authorizeRefresh(ctx, String(userId));

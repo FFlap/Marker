@@ -209,7 +209,7 @@ export const getSeasonView = query({
         season: v.number(),
         metadataProvider,
         orderEpoch: v.number(),
-        totalCount: v.optional(v.number()),
+        totalCount: v.number(),
         chunkIndex: v.number(),
         episodes: v.array(publicResolvedEpisodeValidator),
       }),
@@ -235,6 +235,7 @@ export const getSeasonView = query({
       parent.orderEpoch !== mapping.orderEpoch ||
       parent.chunksComplete !== true ||
       parent.chunkCount === undefined ||
+      parent.episodeCount === undefined ||
       parent.orderEpoch === undefined ||
       parent.seasonVersion === undefined
     )
@@ -253,12 +254,16 @@ export const getSeasonView = query({
         isDone: true,
         continueCursor: '',
       };
-    const rawCursor = args.paginationOpts.cursor;
-    const requestedChunk = rawCursor?.startsWith('chunk:')
-      ? Number(rawCursor.slice('chunk:'.length))
-      : 0;
-    const chunkIndex = Number.isInteger(requestedChunk) && requestedChunk >= 0 ? requestedChunk : 0;
     const seasonVersion = parent.seasonVersion;
+    const rawCursor = args.paginationOpts.cursor;
+    const cursorValue = rawCursor?.startsWith('chunk:')
+      ? rawCursor.slice('chunk:'.length)
+      : undefined;
+    const cursorSeparator = cursorValue?.lastIndexOf(':') ?? -1;
+    const cursorVersion = cursorSeparator >= 0 ? cursorValue?.slice(0, cursorSeparator) : undefined;
+    const cursorChunk = cursorSeparator >= 0 ? cursorValue?.slice(cursorSeparator + 1) : undefined;
+    const requestedChunk = cursorVersion === seasonVersion ? Number(cursorChunk) : 0;
+    const chunkIndex = Number.isInteger(requestedChunk) && requestedChunk >= 0 ? requestedChunk : 0;
     const chunk = await ctx.db
       .query('resolvedSeasonChunks')
       .withIndex('by_tmdb_season_version_chunk', (q) =>
@@ -273,7 +278,7 @@ export const getSeasonView = query({
     return {
       page: chunk ? [{ ...summary, chunkIndex: chunk.chunkIndex, episodes: chunk.episodes }] : [],
       isDone: nextChunk >= parent.chunkCount,
-      continueCursor: `chunk:${nextChunk}`,
+      continueCursor: `chunk:${seasonVersion}:${nextChunk}`,
     };
   },
 });

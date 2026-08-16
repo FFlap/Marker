@@ -269,7 +269,7 @@ describe('Marker backend', () => {
   });
 
   it('adds one tag to many owned titles without duplicating tags or memberships', async () => {
-    const { asUser } = await setup();
+    const { t, asUser } = await setup();
     const existing = await asUser.mutation(
       api.library.items.addItem,
       add('Existing', 211, 'movie', { tags: ['Favorites'] }),
@@ -299,6 +299,33 @@ describe('Marker backend', () => {
         (rank) => rank.itemId,
       ),
     ).toEqual([existing, first, second]);
+    await expect(
+      t.run((ctx) =>
+        ctx.db
+          .query('tagCollections')
+          .withIndex('by_user_tag', (query) =>
+            query.eq('userId', items[0]!.userId).eq('tagKey', 'favorites'),
+          )
+          .unique(),
+      ),
+    ).resolves.toMatchObject({
+      memberCount: 3,
+      previewPosters: [{ itemId: existing }, { itemId: first }, { itemId: second }],
+    });
+
+    await asUser.mutation(api.library.items.removeItem, { itemId: first });
+    await t.mutation(internal.library.items.continueRemoveItem, { itemId: first });
+    await t.mutation(internal.library.items.continueRemoveItem, { itemId: first });
+    const collection = await t.run((ctx) =>
+      ctx.db
+        .query('tagCollections')
+        .withIndex('by_user_tag', (query) =>
+          query.eq('userId', items[0]!.userId).eq('tagKey', 'favorites'),
+        )
+        .unique(),
+    );
+    expect(collection).toMatchObject({ memberCount: 2 });
+    expect(collection?.previewPosters.map((poster) => poster.itemId)).not.toContain(first);
   });
 
   it('keeps tag visibility per person and only aggregates public collections', async () => {

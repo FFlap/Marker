@@ -221,8 +221,6 @@ export async function consumeRefreshAdmission(
   userId: Id<'users'>,
   newKeyCount: number,
 ) {
-  if (!(await consumeWindowBudget(ctx, 'metadata-touch:global', GLOBAL_TOUCHES_PER_MINUTE, 60_000)))
-    throw new ConvexError({ code: 'global_touch_budget', retryable: true });
   if (!(await consumeWindowBudget(ctx, `metadata-touch:${userId}`, TOUCHES_PER_MINUTE, 60_000)))
     throw new ConvexError({ code: 'touch_budget', retryable: true });
   if (
@@ -236,6 +234,8 @@ export async function consumeRefreshAdmission(
     ))
   )
     throw new ConvexError({ code: 'new_touch_key_budget', retryable: true });
+  if (!(await consumeWindowBudget(ctx, 'metadata-touch:global', GLOBAL_TOUCHES_PER_MINUTE, 60_000)))
+    throw new ConvexError({ code: 'global_touch_budget', retryable: true });
 }
 
 export const admitSynchronousRefresh = internalMutation({

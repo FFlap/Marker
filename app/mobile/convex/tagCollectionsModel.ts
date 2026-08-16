@@ -40,6 +40,28 @@ export async function refreshTagCollectionSummary(
   });
 }
 
+export type TagCollectionDeltas = Map<Id<'tagCollections'>, number>;
+
+export async function refreshChangedTagCollections(
+  ctx: MutationCtx,
+  countDeltas: TagCollectionDeltas,
+) {
+  for (const [collectionId, delta] of countDeltas) {
+    const collection = await ctx.db.get(collectionId);
+    if (!collection) continue;
+    await refreshTagCollectionSummary(
+      ctx,
+      collectionId,
+      Math.max(0, collection.memberCount + delta),
+    );
+  }
+}
+
+function mergeCollectionDeltas(target: TagCollectionDeltas, source: TagCollectionDeltas) {
+  for (const [collectionId, delta] of source)
+    target.set(collectionId, (target.get(collectionId) ?? 0) + delta);
+}
+
 export async function requireTagCollection(ctx: MutationCtx, userId: Id<'users'>, label: string) {
   const tagKey = normalizeTagKey(label);
   if (!tagKey || tagKey.length > 40) throw new Error('Tag not found');
@@ -61,6 +83,7 @@ export async function syncItemTagMemberships(
   ctx: MutationCtx,
   item: Doc<'items'>,
   nextTags: string[],
+  deferredDeltas?: TagCollectionDeltas,
 ) {
   const desired = new Map(nextTags.map((label) => [normalizeTagKey(label), label.trim()]));
   const existing = await ctx.db
@@ -69,12 +92,10 @@ export async function syncItemTagMemberships(
     .take(100);
   const existingByTag = new Map(existing.map((membership) => [membership.tagKey, membership]));
   const countDeltas = new Map<Id<'tagCollections'>, number>();
-  const changedCollections = new Set<Id<'tagCollections'>>();
   for (const membership of existing) {
     if (!desired.has(membership.tagKey)) {
       await ctx.db.delete(membership._id);
       countDeltas.set(membership.collectionId, (countDeltas.get(membership.collectionId) ?? 0) - 1);
-      changedCollections.add(membership.collectionId);
     }
   }
   for (const [tagKey, label] of desired) {
@@ -107,22 +128,12 @@ export async function syncItemTagMemberships(
         .first();
       rank = (tail?.rank ?? 0) + 1;
     }
-    const patch = membershipPatch(collection, { ...item, tags: nextTags }, rank);
-    if (current) await ctx.db.patch(current._id, patch);
-    else {
+    if (!current) {
+      const patch = membershipPatch(collection, { ...item, tags: nextTags }, rank);
       await ctx.db.insert('tagMemberships', { ...patch, createdAt: Date.now() });
       countDeltas.set(collection._id, (countDeltas.get(collection._id) ?? 0) + 1);
     }
-    changedCollections.add(collection._id);
   }
-  for (const collectionId of changedCollections) {
-    const collection = await ctx.db.get(collectionId);
-    if (!collection) continue;
-    const delta = countDeltas.get(collectionId) ?? 0;
-    await refreshTagCollectionSummary(
-      ctx,
-      collectionId,
-      Math.max(0, collection.memberCount + delta),
-    );
-  }
+  if (deferredDeltas) mergeCollectionDeltas(deferredDeltas, countDeltas);
+  else await refreshChangedTagCollections(ctx, countDeltas);
 }

@@ -14,12 +14,14 @@ import { PosterImage } from '@/components/ui/PosterImage';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
 import { useMetadataRecoveryTimers, useTitleView } from '@/hooks/use-title-view';
+import { useRefreshControl } from '@/hooks/use-refresh-control';
 import {
   SEASON_EPISODE_RENDER_BATCH,
   useRouteSeason,
   useSeasonView,
 } from '@/hooks/use-season-view';
 import { titleDetailScreenStyles as s } from './TitleDetailScreen.styles';
+import { selectAvailableSeason } from '../libraryItemTypes';
 import {
   type Episode,
   type MediaType,
@@ -111,11 +113,10 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     returnedDetail?.tmdbId === tmdbId && returnedDetail.mediaType === mediaType
       ? returnedDetail
       : undefined;
-  const firstSeason = detail?.seasons?.find((entry) => entry.season > 0)?.season ?? 1;
-  const season =
-    detail?.seasons?.some((entry) => entry.season === selectedSeason) === false
-      ? firstSeason
-      : selectedSeason;
+  const season = selectAvailableSeason(detail?.seasons, selectedSeason);
+  const metadataRefresh = useRefreshControl(() =>
+    touchTitle(mediaType === 'tv' ? { season, force: true } : { force: true }),
+  );
   const availableHeroOwner =
     detail !== undefined
       ? 'canonical'
@@ -367,10 +368,8 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         contentContainerStyle={s.content}
         refreshControl={
           <RefreshControl
-            refreshing={false}
-            onRefresh={() =>
-              touchTitle(mediaType === 'tv' ? { season, force: true } : { force: true })
-            }
+            refreshing={metadataRefresh.refreshing}
+            onRefresh={metadataRefresh.onRefresh}
             tintColor={colors.accent}
           />
         }

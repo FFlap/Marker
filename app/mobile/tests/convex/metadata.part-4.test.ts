@@ -7,7 +7,10 @@ import { isTruncatedSnapshot, putNonFatal } from '../../convex/providerSnapshots
 import { MAX_METADATA_MUTATION_BYTES, serializedBytes } from '../../convex/seasonStorage';
 import { mapSeasonDetails } from '../../convex/tmdb';
 import { commitWatchWithOneRematch } from '../../convex/sync';
-import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata/seasonResolution';
+import {
+  resolveFreshSeason,
+  titleWriteForCapturedTitle,
+} from '../../convex/resolvedMetadata/seasonResolution';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
@@ -43,6 +46,28 @@ const addItem = (asUser: Awaited<ReturnType<typeof setup>>['asUser'], tmdbId = 8
   });
 
 describe('metadata pipeline', () => {
+  it('keeps a populated season when the secondary provider fails and the primary is empty', async () => {
+    const providerError = new Error('TMDB unavailable');
+    const runAction = vi.fn().mockRejectedValueOnce(providerError).mockResolvedValueOnce([]);
+    const current = {
+      episodes: [{ season: 1, episode: 1, name: 'Existing episode' }],
+    } as any;
+
+    await expect(
+      resolveFreshSeason(
+        { runAction } as any,
+        { tmdbId: 88, season: 1 },
+        { metadataProvider: 'tvdb', tvdbId: 900, seasonOrder: 'official' } as any,
+        current,
+      ),
+    ).resolves.toEqual({
+      episodes: current.episodes,
+      partial: true,
+      persisted: false,
+      error: providerError,
+    });
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();

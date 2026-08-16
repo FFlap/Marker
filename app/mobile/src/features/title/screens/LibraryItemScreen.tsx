@@ -25,6 +25,7 @@ import { SecondaryHeader } from '@/components/BackButton';
 import { DetailPageSkeleton } from '@/components/PageSkeletons';
 import { SeasonPicker } from '@/components/SeasonPicker';
 import { useMetadataRecoveryTimers, useTitleView } from '@/hooks/use-title-view';
+import { useRefreshControl } from '@/hooks/use-refresh-control';
 import {
   SEASON_EPISODE_RENDER_BATCH,
   useRouteSeason,
@@ -39,6 +40,7 @@ import {
   isStaleSeasonError,
   type ItemDraft,
   sameValue,
+  selectAvailableSeason,
   type SeasonRow,
   statusOptions,
 } from '../libraryItemTypes';
@@ -58,11 +60,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const itemView = useQuery(api.resolvedMetadata.reads.getItemView, { itemId });
   const item = itemView?.item ?? list?.find((entry) => entry._id === itemId);
   const title = itemView?.title as Detail | null | undefined;
-  const firstSeason = title?.seasons?.find((entry) => entry.season > 0)?.season ?? 1;
-  const season =
-    title?.seasons?.some((entry) => entry.season === selectedSeason) === false
-      ? firstSeason
-      : selectedSeason;
+  const season = selectAvailableSeason(title?.seasons, selectedSeason);
   const setSeasonWatched = useAction(api.library.seasonWatched.setSeasonWatched);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const update = useMutation(api.library.items.updateItem),
@@ -88,6 +86,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [expanded, setExpanded] = useState<string>();
   const [editingEpisode, setEditingEpisode] = useState<string>();
   const { touchError, touchItemView } = useTitleView(undefined, itemId, titleRequestState, false);
+  const metadataRefresh = useRefreshControl(() =>
+    touchItemView(item?.mediaType === 'tv' ? { season, force: true } : { force: true }),
+  );
   const [pendingEpisodes, setPendingEpisodes] = useState<Set<string>>(() => new Set());
   const [removePending, setRemovePending] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
@@ -376,10 +377,8 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         contentContainerStyle={s.content}
         refreshControl={
           <RefreshControl
-            refreshing={false}
-            onRefresh={() =>
-              touchItemView(item.mediaType === 'tv' ? { season, force: true } : { force: true })
-            }
+            refreshing={metadataRefresh.refreshing}
+            onRefresh={metadataRefresh.onRefresh}
             tintColor={colors.accent}
           />
         }

@@ -8,9 +8,10 @@ export function useTagVisibility(tag: string) {
   const setVisibility = useMutation(api.tags.setVisibility);
   const toast = useToast();
   const [pending, setPending] = useState(false);
+  const loading = !tag || visibility === undefined;
 
   const update = async (isPublic: boolean) => {
-    if (pending || visibility?.isPublic === isPublic) return;
+    if (!tag || visibility === undefined || pending || visibility.isPublic === isPublic) return;
     setPending(true);
     try {
       await setVisibility({ tag, isPublic });
@@ -22,5 +23,5 @@ export function useTagVisibility(tag: string) {
     }
   };
 
-  return { isPublic: visibility?.isPublic === true, pending, update };
+  return { isPublic: visibility?.isPublic === true, loading, pending, update };
 }

@@ -1,8 +1,10 @@
 import React from 'react';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 const mockRespond = jest.fn();
 let mockProfileLoading = false;
+let mockFavoriteDragEnd:
+  ((event: { data: typeof mockFavorites; from: number; to: number }) => void) | undefined;
 const mockFavorites = [
   { _id: 'favorite-1', title: 'Spirited Away', mediaType: 'movie', isAnime: true, rank: 1 },
   { _id: 'favorite-2', title: 'One Piece', mediaType: 'tv', isAnime: true, rank: 2 },
@@ -61,15 +63,18 @@ jest.mock('react-native-draggable-flatlist', () => {
   const { View } = require('react-native');
   return {
     __esModule: true,
-    default: ({ data, renderItem }: any) => (
-      <View>
-        {data.map((item: any, index: number) => (
-          <View key={item._id}>
-            {renderItem({ item, getIndex: () => index, drag: jest.fn(), isActive: false })}
-          </View>
-        ))}
-      </View>
-    ),
+    default: ({ data, renderItem, onDragEnd }: any) => {
+      if (data.length === 2) mockFavoriteDragEnd = onDragEnd;
+      return (
+        <View>
+          {data.map((item: any, index: number) => (
+            <View key={item._id}>
+              {renderItem({ item, getIndex: () => index, drag: jest.fn(), isActive: false })}
+            </View>
+          ))}
+        </View>
+      );
+    },
   };
 });
 jest.mock('../../src/components/SkeletonShimmer', () => ({
@@ -80,6 +85,33 @@ import Profile from '../../src/app/(tabs)/profile';
 
 beforeEach(() => {
   mockProfileLoading = false;
+  mockFavoriteDragEnd = undefined;
+  mockRespond.mockReset().mockResolvedValue(undefined);
+});
+
+it('keeps an optimistic favorite order while a save is pending', async () => {
+  let finishSave!: () => void;
+  mockRespond.mockImplementationOnce(() => new Promise<void>((resolve) => (finishSave = resolve)));
+  const view = await render(<Profile />);
+  const favoriteOrder = () =>
+    view
+      .getAllByRole('button')
+      .map((node) => node.props.accessibilityLabel)
+      .filter((label) => label === 'Spirited Away' || label === 'One Piece');
+
+  await act(async () => {
+    mockFavoriteDragEnd?.({ data: mockFavorites, from: 0, to: 1 });
+    await Promise.resolve();
+  });
+  expect(favoriteOrder()).toEqual(['One Piece', 'Spirited Away']);
+
+  await act(async () => {
+    mockFavoriteDragEnd?.({ data: mockFavorites, from: 1, to: 0 });
+    await Promise.resolve();
+  });
+  expect(favoriteOrder()).toEqual(['One Piece', 'Spirited Away']);
+
+  await act(async () => finishSave());
 });
 
 it('uses a profile-shaped skeleton while profile data loads', async () => {

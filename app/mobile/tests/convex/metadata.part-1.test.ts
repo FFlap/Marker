@@ -43,6 +43,32 @@ const addItem = (asUser: Awaited<ReturnType<typeof setup>>['asUser'], tmdbId = 8
   });
 
 describe('metadata pipeline', () => {
+  it('does not consume global refresh capacity after a user reaches their own limit', async () => {
+    const { t, userId } = await setup();
+    await t.run((ctx) =>
+      ctx.db.insert('requestThrottle', {
+        key: `metadata-touch:${userId}`,
+        windowStart: Date.now(),
+        count: 60,
+      }),
+    );
+
+    await expect(
+      t.mutation(internal.resolvedMetadata.requests.admitSynchronousRefresh, {
+        userId,
+        keys: ['title:tv:88'],
+      }),
+    ).rejects.toMatchObject({ data: { code: 'touch_budget' } });
+    await expect(
+      t.run((ctx) =>
+        ctx.db
+          .query('requestThrottle')
+          .withIndex('by_key', (query) => query.eq('key', 'metadata-touch:global'))
+          .unique(),
+      ),
+    ).resolves.toBeNull();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();

@@ -400,7 +400,7 @@ export default function TagDetailScreen() {
       <TagHeader
         tag={tag}
         isPublic={tagVisibility.isPublic}
-        visibilityPending={tagVisibility.pending}
+        visibilityPending={tagVisibility.loading || tagVisibility.pending}
         onVisibilityChange={(isPublic) => void tagVisibility.update(isPublic)}
         filters={{
           active: filtersActive,
@@ -440,9 +440,8 @@ export default function TagDetailScreen() {
         >
           <PinchDensity
             columns={gridColumns}
-            onChange={(next) => {
-              if (view === 'posters') updateGridColumns(next);
-            }}
+            enabled={view === 'posters'}
+            onChange={updateGridColumns}
           >
             {visibleStatuses.map(([status, label]) => {
               const items = sectionItems(status);

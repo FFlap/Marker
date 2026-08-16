@@ -7,6 +7,7 @@ const mockMoveItemToWatched = jest.fn().mockResolvedValue(1.5);
 const mockSetVisibility = jest.fn().mockResolvedValue('collection');
 let mockRouteTag = 'Favorites';
 let mockDragEnd: ((event: { from: number; to: number }) => void) | undefined;
+let mockTagVisibility: { isPublic: boolean } | undefined = { isPublic: false };
 const mockTagPreviews = [
   {
     tag: 'Favorites',
@@ -86,7 +87,7 @@ jest.mock('convex/react', () => ({
     if (ref === 'library/items:listItems') return mockItems;
     if (ref === 'library/items:listTagRanks') return [];
     if (ref === 'settings.getSettings') return { defaultView: 'list' };
-    if (ref === 'tags.visibility') return { isPublic: false };
+    if (ref === 'tags.visibility') return mockTagVisibility;
     if (ref === 'profiles.me') return { username: 'tester', isPublic: false };
     return undefined;
   },
@@ -192,6 +193,7 @@ describe('Tags screens', () => {
   };
   beforeEach(() => {
     mockRouteTag = 'Favorites';
+    mockTagVisibility = { isPublic: false };
     mockDragEnd = undefined;
     mockedRouter.push.mockClear();
     mockedRouter.replace.mockClear();
@@ -244,6 +246,18 @@ describe('Tags screens', () => {
       itemId: 'a',
       beforeId: 'b',
     });
+  });
+
+  it('disables visibility choices until the saved setting loads', async () => {
+    mockTagVisibility = undefined;
+    const view = await render(<TagDetailScreen />);
+    const publicOption = view.getByRole('radio', { name: 'Public tag' });
+    const privateOption = view.getByRole('radio', { name: 'Private tag' });
+
+    expect(publicOption.props.accessibilityState).toMatchObject({ disabled: true });
+    expect(privateOption.props.accessibilityState).toMatchObject({ disabled: true });
+    await fireEvent.press(privateOption);
+    expect(mockSetVisibility).not.toHaveBeenCalled();
   });
 
   it('does not carry an optimistic order into another tag', async () => {

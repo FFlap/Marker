@@ -1,7 +1,6 @@
 import { Image } from 'expo-image';
 import { EllipsisVertical } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
-import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { RatingControl, TagEditor } from '@/components/ui/library-controls';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { colors } from '@/constants/colors';
@@ -50,7 +49,6 @@ export function EpisodeCard({
           ) : (
             <View style={s.episodeImageFallback}>
               <Text style={s.episodeImageNumber}>{episodeNumber}</Text>
-              <SkeletonShimmer />
             </View>
           )}
         </View>
@@ -80,6 +78,9 @@ export function EpisodeCard({
               saved?.watched
                 ? `Episode ${episode.episode} options`
                 : `Mark episode ${episode.episode} watched`
+            }
+            accessibilityHint={
+              saved?.watched ? undefined : 'Opens episode options after marking it watched'
             }
             accessibilityState={
               saved?.watched ? { disabled: pending } : { checked: false, disabled: pending }

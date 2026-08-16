@@ -84,10 +84,7 @@ export function ProfileFavorites({
 
   const move = async (section: FavoriteSection, from: number, to: number) => {
     const displayed = displayedFor(section);
-    if (reorderPending.current) {
-      setOrders((current) => ({ ...current, [section]: undefined }));
-      return;
-    }
+    if (reorderPending.current) return;
     if (from === to || !displayed[from]) return;
     const next = [...displayed];
     const [moved] = next.splice(from, 1);

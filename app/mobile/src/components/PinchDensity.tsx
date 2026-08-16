@@ -8,10 +8,12 @@ import { type GridColumns, stepGridColumns } from '@/lib/displayPreferences';
 export function PinchDensity({
   children,
   columns,
+  enabled = true,
   onChange,
 }: {
   children: ReactNode;
   columns: GridColumns;
+  enabled?: boolean;
   onChange: (columns: GridColumns) => void;
 }) {
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -67,6 +69,7 @@ export function PinchDensity({
 
   const applyPinch = useCallback(
     (gestureScale: number) => {
+      if (!enabled) return;
       const direction = gestureScale < 0.82 ? 'out' : gestureScale > 1.18 ? 'in' : undefined;
       if (!direction) return;
       const next = stepGridColumns(columns, direction);
@@ -75,21 +78,23 @@ export function PinchDensity({
         onChange(next);
       }
     },
-    [columns, onChange],
+    [columns, enabled, onChange],
   );
   const pinch = useMemo(
     () =>
-      Gesture.Pinch().onEnd((event) => {
-        runOnJS(applyPinch)(event.scale);
-      }),
-    [applyPinch],
+      Gesture.Pinch()
+        .enabled(enabled)
+        .onEnd((event) => {
+          runOnJS(applyPinch)(event.scale);
+        }),
+    [applyPinch, enabled],
   );
 
   return (
     <GestureDetector gesture={pinch}>
       <View>
         {children}
-        {announcedColumns !== undefined && (
+        {enabled && announcedColumns !== undefined && (
           <Animated.View
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants"

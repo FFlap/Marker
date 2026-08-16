@@ -3,7 +3,11 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
 import { rankAtEnd } from '../rank';
-import { syncItemTagMemberships } from '../tagCollectionsModel';
+import {
+  refreshChangedTagCollections,
+  syncItemTagMemberships,
+  type TagCollectionDeltas,
+} from '../tagCollectionsModel';
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
 import { itemValidator } from '../publicValidators';
 import { refreshNextEpisode } from '../nextEpisode';
@@ -242,10 +246,12 @@ export const addTagToItems = mutation({
     if (!updates.length) return { updated: 0 };
 
     const updatedAt = Date.now();
+    const collectionDeltas: TagCollectionDeltas = new Map();
     for (const update of updates) {
       await ctx.db.patch(update.item._id, { tags: update.tags, updatedAt });
-      await syncItemTagMemberships(ctx, update.item, update.tags);
+      await syncItemTagMemberships(ctx, update.item, update.tags, collectionDeltas);
     }
+    await refreshChangedTagCollections(ctx, collectionDeltas);
     await requestProfileStatsRefresh(ctx, userId);
     return { updated: updates.length };
   },
@@ -298,7 +304,15 @@ export const continueRemoveItem = internalMutation({
       .withIndex('by_item', (query) => query.eq('itemId', itemId))
       .take(REMOVE_BATCH_SIZE);
     if (tagMemberships.length > 0) {
-      for (const membership of tagMemberships) await ctx.db.delete(membership._id);
+      const collectionDeltas: TagCollectionDeltas = new Map();
+      for (const membership of tagMemberships) {
+        await ctx.db.delete(membership._id);
+        collectionDeltas.set(
+          membership.collectionId,
+          (collectionDeltas.get(membership.collectionId) ?? 0) - 1,
+        );
+      }
+      await refreshChangedTagCollections(ctx, collectionDeltas);
       await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: tagMemberships.length, done: false };
     }
