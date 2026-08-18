@@ -28,6 +28,7 @@ import { useMetadataRecoveryTimers, useTitleView } from '@/hooks/use-title-view'
 import { useRefreshControl } from '@/hooks/use-refresh-control';
 import {
   SEASON_EPISODE_RENDER_BATCH,
+  selectAvailableSeason,
   useRouteSeason,
   useSeasonView,
 } from '@/hooks/use-season-view';
@@ -40,7 +41,6 @@ import {
   isStaleSeasonError,
   type ItemDraft,
   sameValue,
-  selectAvailableSeason,
   type SeasonRow,
   statusOptions,
 } from '../libraryItemTypes';

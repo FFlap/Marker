@@ -246,6 +246,39 @@ describe('Explore title metadata subscriptions', () => {
     );
   });
 
+  it('touches the valid fallback when the selected season is no longer available', async () => {
+    const view = await screen();
+    await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
+    await fireEvent.press(view.getByLabelText('Select Season 2'));
+    await waitFor(() => expect(view.getByText('A New Journey')).toBeTruthy());
+
+    mockTouchTitle.mockClear();
+    titleView = {
+      ...titleView,
+      title: {
+        ...titleView.title,
+        seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+      },
+    };
+    await act(async () =>
+      view.rerender(
+        <ToastProvider>
+          <TitleDetail />
+        </ToastProvider>,
+      ),
+    );
+
+    await waitFor(() =>
+      expect(mockTouchTitle).toHaveBeenCalledWith({
+        mediaType: 'tv',
+        tmdbId: 209867,
+        title: 'Frieren',
+        season: 1,
+      }),
+    );
+    expect(mockTouchTitle).not.toHaveBeenCalledWith(expect.objectContaining({ season: 2 }));
+  });
+
   it('renders one season page and loads another bounded page', async () => {
     mockSeasonView[1].season.episodes = Array.from({ length: 121 }, (_, index) => ({
       season: 1,

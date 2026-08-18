@@ -42,16 +42,6 @@ export type SeasonRow = {
 export type ItemDraft = LibraryEntryDraft;
 export type EpisodeDraft = { rating?: number; tags: string[] };
 
-export function selectAvailableSeason(
-  seasons: { season: number }[] | undefined,
-  selectedSeason: number,
-) {
-  const firstSeason = seasons?.find((entry) => entry.season > 0)?.season ?? 1;
-  return seasons?.some((entry) => entry.season === selectedSeason) === false
-    ? firstSeason
-    : selectedSeason;
-}
-
 export const sameValue = (left: unknown, right: unknown) =>
   Array.isArray(left) && Array.isArray(right)
     ? left.length === right.length && left.every((value, index) => value === right[index])

@@ -17,11 +17,11 @@ import { useMetadataRecoveryTimers, useTitleView } from '@/hooks/use-title-view'
 import { useRefreshControl } from '@/hooks/use-refresh-control';
 import {
   SEASON_EPISODE_RENDER_BATCH,
+  selectAvailableSeason,
   useRouteSeason,
   useSeasonView,
 } from '@/hooks/use-season-view';
 import { titleDetailScreenStyles as s } from './TitleDetailScreen.styles';
-import { selectAvailableSeason } from '../libraryItemTypes';
 import {
   type Episode,
   type MediaType,

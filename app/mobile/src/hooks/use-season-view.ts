@@ -6,6 +6,16 @@ import { api } from '../../convex/_generated/api';
 // season so users can jump to any episode without waiting for another batch.
 export const SEASON_EPISODE_RENDER_BATCH = 120;
 
+export function selectAvailableSeason(
+  seasons: { season: number }[] | undefined,
+  selectedSeason: number,
+) {
+  const firstSeason = seasons?.find((entry) => entry.season > 0)?.season ?? 1;
+  return seasons?.some((entry) => entry.season === selectedSeason) === false
+    ? firstSeason
+    : selectedSeason;
+}
+
 type SeasonEpisode = {
   season: number;
   episode: number;

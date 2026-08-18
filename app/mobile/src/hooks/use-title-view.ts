@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
+import { selectAvailableSeason } from './use-season-view';
 
 export type MetadataRequestState = {
   state?: 'inFlight' | 'succeeded' | 'failed' | 'notFound';
@@ -168,7 +169,10 @@ export function useTitleView(
   const mediaType = args?.mediaType;
   const tmdbId = args?.tmdbId;
   const title = args?.title;
-  const selectedSeason = args?.season;
+  const selectedSeason =
+    args?.season === undefined
+      ? undefined
+      : selectAvailableSeason(view?.title?.seasons, args.season);
   const key =
     mediaType && tmdbId !== undefined
       ? `${mediaType}:${tmdbId}`
