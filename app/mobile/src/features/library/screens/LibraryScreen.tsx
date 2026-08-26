@@ -72,8 +72,7 @@ function Library() {
   const settings = useQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);
   const toast = useToast();
-  const [viewOverride, setViewOverride] = useState<'list' | 'posters'>();
-  const view = viewOverride ?? settings?.defaultView ?? 'list';
+  const view = settings?.defaultView ?? 'list';
   const [gridOverride, setGridOverride] = useState<{
     base: GridColumns | undefined;
     value: GridColumns;
@@ -271,8 +270,6 @@ function Library() {
             setType,
           }}
           onDrawerChange={setDrawerHandle}
-          onToggleView={() => setViewOverride(view === 'list' ? 'posters' : 'list')}
-          view={view}
         />
       </Animated.View>
       <LibraryScrollComponent

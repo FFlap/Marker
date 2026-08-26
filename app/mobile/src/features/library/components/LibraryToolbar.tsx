@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { LayoutGrid, List, SlidersHorizontal } from 'lucide-react-native';
+import { SlidersHorizontal } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 import type { AppDrawerHandle } from '@/components/AppDrawer';
 import { TabHeader } from '@/components/TabHeader';
@@ -38,15 +38,11 @@ type FilterActions = {
 export function LibraryToolbar({
   filters,
   onDrawerChange,
-  onToggleView,
   setFilters,
-  view,
 }: {
   filters: LibraryFilters;
   onDrawerChange: (drawer: AppDrawerHandle | null) => void;
-  onToggleView: () => void;
   setFilters: FilterActions;
-  view: 'list' | 'posters';
 }) {
   const selectedTags = new Set(filters.selectedTags);
 
@@ -62,19 +58,6 @@ export function LibraryToolbar({
       maxWidth={880}
       trailing={
         <View style={s.actions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={view === 'list' ? 'Show poster view' : 'Show list view'}
-            accessibilityState={{ selected: view === 'posters' }}
-            onPress={onToggleView}
-            style={s.icon}
-          >
-            {view === 'list' ? (
-              <LayoutGrid size={18} color={colors.text} strokeWidth={1.7} />
-            ) : (
-              <List size={18} color={colors.text} strokeWidth={1.7} />
-            )}
-          </Pressable>
           <Drawer>
             <DrawerTrigger asChild>
               <Pressable

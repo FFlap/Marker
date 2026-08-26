@@ -515,17 +515,6 @@ describe('Marker library', () => {
     });
   });
 
-  it('overrides the saved view from the library header for this session', async () => {
-    const q = await view();
-    expect(q.getByLabelText('Show poster view')).toBeTruthy();
-    await fireEvent.press(q.getByLabelText('Show poster view'));
-    expect(q.getByLabelText('Show list view')).toBeTruthy();
-    expect(StyleSheet.flatten(q.getByLabelText('The Middle').parent?.props.style)).toMatchObject({
-      width: '31%',
-    });
-    expect(mockReorderItem).not.toHaveBeenCalled();
-  });
-
   it('persists drag-and-drop ordering from poster view', async () => {
     mockUseQuery.mockImplementation((ref: unknown) =>
       String(ref).includes('getSettings') ? { defaultView: 'posters' } : items,
