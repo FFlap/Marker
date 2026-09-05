@@ -130,15 +130,8 @@ export function normalizeBookmarkStore(value: unknown): BookmarkStore {
   for (const [key, bookmark] of Object.entries(
     candidate.bookmarks as Record<string, unknown>,
   )) {
-    const migrated =
-      bookmark &&
-      typeof bookmark === "object" &&
-      !Array.isArray(bookmark) &&
-      (bookmark as Record<string, unknown>).platform === undefined
-        ? { ...bookmark, platform: "crunchyroll" }
-        : bookmark;
-    if (isBookmark(migrated) && key === bookmarkKey(migrated))
-      bookmarks[key] = migrated;
+    if (isBookmark(bookmark) && key === bookmarkKey(bookmark))
+      bookmarks[key] = bookmark;
   }
   return { version: 1, bookmarks };
 }
