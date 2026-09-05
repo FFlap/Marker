@@ -1,0 +1,85 @@
+import { colors } from '@/constants/colors';
+import { createAppStyles } from '@/lib/typography';
+
+export const TOOLBAR_HEIGHT = 60;
+export const MOBILE_NAV_HEIGHT = 66;
+
+export const libraryScreenStyles = createAppStyles(
+  {
+    root: { flex: 1, backgroundColor: colors.bg },
+    content: {
+      width: '100%',
+      maxWidth: 880,
+      alignSelf: 'center',
+      padding: 20,
+      paddingTop: TOOLBAR_HEIGHT,
+      paddingBottom: 112,
+    },
+    toolbar: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+      backgroundColor: colors.bg,
+    },
+    icon: {
+      width: 44,
+      height: 44,
+      flexShrink: 0,
+      borderRadius: 18,
+      backgroundColor: 'transparent',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    iconActive: {},
+    activeDot: {
+      position: 'absolute',
+      right: 5,
+      top: 5,
+      width: 4,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.text,
+    },
+    addButtonShell: {
+      position: 'absolute',
+      right: 24,
+      bottom: 88,
+      width: 56,
+      height: 56,
+      elevation: 5,
+      zIndex: 2,
+    },
+    addButton: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.text,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    addButtonPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
+    hint: { color: colors.muted, fontSize: 11, marginTop: 12, marginBottom: 4 },
+    filterGroup: { gap: 10 },
+    filterLabel: { color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
+    filterWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    confirmMessage: { color: colors.text, fontSize: 14, lineHeight: 20 },
+    section: { marginTop: 24 },
+    categoryDropActive: { backgroundColor: colors.surface, borderRadius: 12 },
+    sectionHead: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingBottom: 11,
+      borderBottomWidth: 1,
+      borderColor: colors.border,
+    },
+    sectionTitle: { color: colors.muted, fontSize: 12, letterSpacing: 0.2, fontWeight: '600' },
+    count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
+    listGridRow: { gap: '3.5%' },
+    grid: { paddingTop: 16, paddingBottom: 4 },
+    gridRow: { gap: '3.5%', marginBottom: 12 },
+  },
+  ['hint', 'filterLabel', 'confirmMessage', 'sectionTitle', 'count'] as const,
+);
