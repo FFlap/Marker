@@ -459,21 +459,13 @@ export const publicProfile = query({
       .query('tagCollections')
       .withIndex('by_user_tag', (q) => q.eq('userId', user._id))
       .take(500);
-    const publicTags = (
-      await Promise.all(
-        collections
-          .filter((collection) => collection.isPublic)
-          .map(async (collection) => ({
-            tag: collection.label,
-            count: collection.memberCount,
-            posters: collection.previewPosters.map(({ title, posterPath }) => ({
-              title,
-              posterPath,
-            })),
-          })),
-      )
-    )
-      .filter((collection) => collection.count > 0)
+    const publicTags = collections
+      .filter((collection) => collection.isPublic && collection.memberCount > 0)
+      .map((collection) => ({
+        tag: collection.label,
+        count: collection.memberCount,
+        posters: collection.previewPosters.map(({ title, posterPath }) => ({ title, posterPath })),
+      }))
       .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
     if (
       user.isPublic !== true &&

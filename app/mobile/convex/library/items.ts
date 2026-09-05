@@ -237,7 +237,7 @@ export const addTagToItems = mutation({
     const userId = await requireUser(ctx);
     if (args.itemIds.length > 100) throw new Error('Add tags to at most 100 titles at a time');
     const [tag] = normalizeTags([args.tag]);
-    const uniqueIds = [...new Map(args.itemIds.map((itemId) => [String(itemId), itemId])).values()];
+    const uniqueIds = [...new Set(args.itemIds)];
     const items = await Promise.all(uniqueIds.map((itemId) => ownedItem(ctx, itemId, userId)));
     const updates = items.flatMap((item) => {
       if (hasTag(item, normalizedTagKey(tag))) return [];

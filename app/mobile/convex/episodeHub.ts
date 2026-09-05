@@ -145,7 +145,6 @@ export const overview = query({
           },
         ];
       })
-      .filter((episode) => episode !== null)
       .sort(
         (left, right) =>
           right.rating - left.rating ||

@@ -96,20 +96,13 @@ export const myPublic = query({
       .query('tagCollections')
       .withIndex('by_user_tag', (q) => q.eq('userId', userId))
       .take(500);
-    const previews = await Promise.all(
-      collections
-        .filter((collection) => collection.isPublic)
-        .map(async (collection) => ({
-          tag: collection.label,
-          count: collection.memberCount,
-          posters: collection.previewPosters.map(({ title, posterPath }) => ({
-            title,
-            posterPath,
-          })),
-        })),
-    );
-    return previews
-      .filter((collection) => collection.count > 0)
+    return collections
+      .filter((collection) => collection.isPublic && collection.memberCount > 0)
+      .map((collection) => ({
+        tag: collection.label,
+        count: collection.memberCount,
+        posters: collection.previewPosters.map(({ title, posterPath }) => ({ title, posterPath })),
+      }))
       .sort((left, right) => right.count - left.count || left.tag.localeCompare(right.tag));
   },
 });
