@@ -39,7 +39,7 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
       </View>
     );
   if (!isAuthenticated && !publicRoute) return <Redirect href="/sign-in" />;
-  if (isAuthenticated && (!accountReady || profile === undefined)) return null;
+  if (isAuthenticated && (!accountReady || profile === undefined)) return <AuthLoadingScreen />;
   if (isAuthenticated && !profile?.username && !setupRoute)
     return <Redirect href="/profile-setup" />;
   if (isAuthenticated && profile?.username && (segments[0] === 'sign-in' || setupRoute)) {

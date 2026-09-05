@@ -8,6 +8,7 @@ let mockClerkSignedIn = false;
 let mockConvexAuthenticated = false;
 let mockConvexLoading = false;
 let mockSegments: string[] = ['item', 'example-id'];
+const mockEnsureAccount = jest.fn().mockResolvedValue(undefined);
 jest.mock('@clerk/expo', () => ({
   useAuth: () => ({
     isLoaded: mockClerkLoaded,
@@ -23,7 +24,7 @@ jest.mock('convex/react', () => ({
     isLoading: mockConvexLoading,
   }),
   useQuery: () => undefined,
-  useMutation: () => jest.fn(),
+  useMutation: () => mockEnsureAccount,
 }));
 jest.mock('../../convex/_generated/api', () => ({
   api: {
@@ -99,4 +100,16 @@ it('shows visible progress while Convex authenticates a valid Clerk session', as
 
   expect(view.getByLabelText('Loading your account')).toBeTruthy();
   expect(mockRedirect).not.toHaveBeenCalled();
+});
+
+it('keeps progress visible while the authenticated profile loads', async () => {
+  mockClerkSignedIn = true;
+  mockConvexAuthenticated = true;
+  const view = await render(
+    <AuthBoundary>
+      <Text>Protected screen</Text>
+    </AuthBoundary>,
+  );
+  expect(view.getByLabelText('Loading your account')).toBeTruthy();
+  expect(view.queryByText('Protected screen')).toBeNull();
 });
