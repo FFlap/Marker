@@ -15,6 +15,7 @@ export type SyncResult = Record<string, unknown> & {
   retryable: boolean;
   error?: string;
 };
+export const SYNC_ACCOUNT_KEY = "sync.accountId";
 export const SYNC_OUTBOX_KEY = "sync.outbox";
 export const SYNC_RETRY_KEY = "sync.outboxRetry";
 export const SYNC_RETRY_ALARM = "sync.outboxRetry";
@@ -181,25 +182,30 @@ async function enqueueWatchEvent(
 
 async function flushWatchOutbox(
   storage: SyncStorage,
-  post: (payload: WatchPayload) => Promise<SyncResult>,
-): Promise<boolean> {
-  const stored = await storage.get(SYNC_OUTBOX_KEY);
+  post: (payload: WatchPayload, accountId?: string) => Promise<SyncResult>,
+  serialize: <T>(operation: () => Promise<T>, prepare?: boolean) => Promise<T>,
+  isCurrent: () => boolean,
+): Promise<void> {
+  const stored = await serialize(() => storage.get([SYNC_OUTBOX_KEY, SYNC_ACCOUNT_KEY]));
   const outbox = normalizeOutbox(stored[SYNC_OUTBOX_KEY]);
   const storedOutbox = stored[SYNC_OUTBOX_KEY];
   const droppedInvalid = Array.isArray(storedOutbox) && storedOutbox.length !== outbox.length;
   let sent = 0;
   for (const payload of outbox) {
+    if (!isCurrent()) break;
     let result: SyncResult;
     try {
-      result = await post(payload);
+      const accountId = stored[SYNC_ACCOUNT_KEY];
+      result = typeof accountId === "string" ? await post(payload, accountId) : await post(payload);
     } catch {
       break;
     }
     if (result.retryable) break;
     sent += 1;
   }
-  if (sent > 0 || droppedInvalid) {
-    const latestStored = await storage.get(SYNC_OUTBOX_KEY);
+  await serialize(async () => {
+    const latestStored = await storage.get([SYNC_OUTBOX_KEY, SYNC_ACCOUNT_KEY]);
+    if (!isCurrent() || stored[SYNC_ACCOUNT_KEY] !== latestStored[SYNC_ACCOUNT_KEY] || !(sent > 0 || droppedInvalid)) return;
     const latest = normalizeOutbox(latestStored[SYNC_OUTBOX_KEY]);
     const delivered = outbox.slice(0, sent);
     await storage.set({
@@ -207,13 +213,12 @@ async function flushWatchOutbox(
         (entry) => !delivered.some((payload) => sameEpisode(entry, payload)),
       ),
     });
-  }
-  return sent === outbox.length;
+  }, false);
 }
 
 export function createOutboxManager(
   storage: SyncStorage,
-  post: (payload: WatchPayload) => Promise<SyncResult>,
+  post: (payload: WatchPayload, accountId?: string) => Promise<SyncResult>,
   options: { now?: () => number; alarms?: AlarmScheduler; prepare?: () => Promise<void> } = {},
 ) {
   const now = options.now ?? Date.now;
@@ -235,22 +240,33 @@ export function createOutboxManager(
     const stored = await storage.get(SYNC_RETRY_KEY);
     const previous = stored[SYNC_RETRY_KEY] as Partial<RetryState> | null;
     const attempt =
-      !resetAttempt && typeof previous?.attempt === "number"
+      resetAttempt ? 0 : typeof previous?.attempt === "number"
         ? Math.max(1, previous.attempt + 1)
         : 1;
-    const delay = RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)]!;
+    const delay = RETRY_DELAYS_MS[Math.min(Math.max(0, attempt - 1), RETRY_DELAYS_MS.length - 1)]!;
     const retry = { attempt, nextRetryAt: now() + delay };
     await storage.set({ [SYNC_RETRY_KEY]: retry });
     await options.alarms?.schedule(SYNC_RETRY_ALARM, retry.nextRetryAt);
   };
-  const runFlush = async (resetAttempt = false) => {
-    const complete = await flushWatchOutbox(storage, post);
-    await updateSchedule(complete, resetAttempt);
-    return complete;
+  let generation = 0;
+  let flushing: Promise<boolean> | undefined;
+  const flush = () => {
+    if (flushing) return flushing;
+    const currentGeneration = generation;
+    flushing = (async () => {
+      await flushWatchOutbox(storage, post, serialize, () => currentGeneration === generation);
+      return serialize(async () => {
+        const stored = await storage.get(SYNC_OUTBOX_KEY);
+        const complete = normalizeOutbox(stored[SYNC_OUTBOX_KEY]).length === 0;
+        if (currentGeneration === generation) await updateSchedule(complete);
+        return complete;
+      }, false);
+    })().finally(() => { flushing = undefined; });
+    return flushing;
   };
-  const flush = () => serialize(runFlush);
   const clear = () =>
     serialize(async () => {
+      generation += 1;
       if (storage.remove) {
         await storage.remove(SYNC_OUTBOX_KEY);
         await storage.remove(SYNC_RETRY_KEY);
@@ -266,18 +282,15 @@ export function createOutboxManager(
     clear,
     flush,
     async alarmFired() {
-      return serialize(async () => {
-        const stored = await storage.get(SYNC_RETRY_KEY);
-        const retry = stored[SYNC_RETRY_KEY] as Partial<RetryState> | null;
-        if (typeof retry?.nextRetryAt !== "number" || retry.nextRetryAt > now()) return false;
-        return runFlush();
-      });
+      const stored = await storage.get(SYNC_RETRY_KEY);
+      const retry = stored[SYNC_RETRY_KEY] as Partial<RetryState> | null;
+      if (typeof retry?.nextRetryAt !== "number" || retry.nextRetryAt > now()) return false;
+      return flush();
     },
     enqueue(payload: WatchPayload) {
       return serialize(async () => {
         await enqueueWatchEvent(storage, payload);
-        await options.alarms?.clear(SYNC_RETRY_ALARM);
-        return runFlush(true);
+        await updateSchedule(false, true);
       });
     },
   };

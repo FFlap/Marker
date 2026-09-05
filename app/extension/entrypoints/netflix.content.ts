@@ -4,7 +4,6 @@ import {
 } from "../src/domain/netflix-parser";
 import {
   persistDetectedEpisode,
-  syncDetectedEpisode,
 } from "../src/domain/tracking";
 
 export default defineContentScript({
@@ -42,8 +41,7 @@ export default defineContentScript({
       saveInFlight = true;
       document.documentElement.dataset.markerNetflix = "saving";
       try {
-        const changed = await persistDetectedEpisode(bookmark);
-        if (changed) void syncDetectedEpisode(bookmark);
+        await persistDetectedEpisode(bookmark);
         lastSavedVideoId = bookmark.episodeId;
         document.documentElement.dataset.markerNetflix = "tracked";
       } catch (error: unknown) {

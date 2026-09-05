@@ -178,7 +178,9 @@ describe("background-owned sync outbox", () => {
     const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { order.push("persist"); Object.assign(values, next); } };
     const manager = createOutboxManager(storage, async () => { order.push("deliver"); return { ok: true, retryable: false }; });
     await manager.enqueue(payload);
-    expect(order.slice(0, 2)).toEqual(["persist", "deliver"]);
+    expect(order).not.toContain("deliver");
+    await manager.flush();
+    expect(order.indexOf("deliver")).toBeGreaterThan(order.indexOf("persist"));
   });
   it("keeps retryable results queued and dequeues terminal results", async () => {
     const values: Record<string, unknown> = {}; const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
@@ -193,8 +195,10 @@ describe("background-owned sync outbox", () => {
     const alarms = { schedule: vi.fn(), clear: vi.fn() };
     const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }), { now: () => 1_000, alarms });
     await manager.enqueue(payload);
-    expect(values[SYNC_RETRY_KEY]).toEqual({ attempt: 1, nextRetryAt: 61_000 });
+    expect(values[SYNC_RETRY_KEY]).toEqual({ attempt: 0, nextRetryAt: 61_000 });
     expect(alarms.schedule).toHaveBeenCalledWith(SYNC_RETRY_ALARM, 61_000);
+    await manager.flush();
+    expect(values[SYNC_RETRY_KEY]).toEqual({ attempt: 1, nextRetryAt: 61_000 });
     await manager.flush();
     expect(values[SYNC_RETRY_KEY]).toEqual({ attempt: 2, nextRetryAt: 301_000 });
   });
@@ -259,4 +263,18 @@ it('keeps distinct numbered episodes that share a title', async () => {
   await manager.enqueue({ ...payload, seasonNumber: 2, episodeTitle: 'Episode One' });
   await manager.enqueue({ ...payload, episodeNumber: 3, episodeTitle: 'Episode One' });
   expect(values[SYNC_OUTBOX_KEY]).toHaveLength(3);
+});
+
+it('does not resume or restore a batch cleared during delivery', async () => {
+  const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload, { ...payload, episodeNumber: 3 }] };
+  const gate = deferred<void>();
+  const post = vi.fn(async () => { await gate.promise; return { ok: true, retryable: false }; });
+  const manager = createOutboxManager(storageFor(values), post);
+  const flushing = manager.flush();
+  await vi.waitFor(() => expect(post).toHaveBeenCalledOnce());
+  await manager.clear();
+  gate.resolve();
+  await flushing;
+  expect(post).toHaveBeenCalledOnce();
+  expect(values[SYNC_OUTBOX_KEY]).toBeNull();
 });

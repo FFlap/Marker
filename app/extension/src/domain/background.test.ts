@@ -258,3 +258,71 @@ describe("outbox account ownership", () => {
     expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
   });
 });
+
+const trackedBookmark = {
+  platform: 'netflix' as const,
+  seriesId: 'dark',
+  seriesTitle: 'Dark',
+  seriesUrl: 'https://www.netflix.com/title/dark',
+  seasonNumber: '1',
+  episodeNumber: '2',
+  episodeTitle: 'Lies',
+  episodeId: 'dark-2',
+  watchUrl: 'https://www.netflix.com/watch/dark-2',
+  updatedAt: 1,
+};
+
+it('durably queues an unchanged bookmark after its first enqueue failed', async () => {
+  const x = setup();
+  x.client.getSession.mockResolvedValue(null);
+  let failOnce = true;
+  x.storage.set.mockImplementation(async (items) => {
+    if (SYNC_OUTBOX_KEY in items && failOnce) {
+      failOnce = false;
+      throw new Error('Storage unavailable');
+    }
+    Object.assign(x.values, items);
+  });
+  const message = { type: 'bookmark/save', bookmark: trackedBookmark };
+  await expect(x.background.handler(message)).rejects.toThrow('Storage unavailable');
+  expect(normalizeBookmarkStore(x.values[BOOKMARKS_STORAGE_KEY]).bookmarks['netflix:dark']).toBeDefined();
+  await expect(x.background.handler(message)).resolves.toEqual({ changed: false });
+  expect(x.values[SYNC_OUTBOX_KEY]).toMatchObject([{ seriesTitle: 'Dark', episodeNumber: 2 }]);
+  expect(x.values['sync.outboxRetry']).toBeDefined();
+});
+
+it('acknowledges and preserves new saves while a previous delivery is in flight', async () => {
+  const x = setup();
+  const gate = deferred<unknown>();
+  x.client.record.mockReturnValue(gate.promise);
+  await x.background.handler({ type: 'bookmark/save', bookmark: trackedBookmark });
+  await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
+  const inFlight = x.background.flush();
+  await expect(x.background.handler({ type: 'bookmark/save', bookmark: {
+    ...trackedBookmark, episodeNumber: '3', episodeId: 'dark-3', episodeTitle: 'Past and Present',
+  } })).resolves.toEqual({ changed: true });
+  expect(x.values[SYNC_OUTBOX_KEY]).toHaveLength(2);
+  gate.resolve({ ok: true });
+  await inFlight;
+  expect(x.values[SYNC_OUTBOX_KEY]).toMatchObject([{ episodeNumber: 3 }]);
+  expect(x.values['sync.outboxRetry']).toMatchObject({ nextRetryAt: expect.any(Number) });
+});
+
+it('keeps the new account queue when an old account delivery finishes', async () => {
+  const x = setup();
+  x.values[SYNC_OUTBOX_KEY] = [{ ...payload, episodeNumber: 1 }, payload];
+  x.values['sync.accountId'] = 'viewer';
+  const gate = deferred<unknown>();
+  x.client.record.mockReturnValue(gate.promise);
+  const inFlight = x.background.flush();
+  await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
+  x.client.getSession.mockResolvedValue({ token: 'other-token', accountId: 'other', accountLabel: 'Other' });
+  await x.background.handler({ type: 'bookmark/save', bookmark: trackedBookmark });
+  gate.resolve({ ok: true });
+  await inFlight;
+  expect(x.client.record).toHaveBeenCalledOnce();
+  expect(x.client.record).toHaveBeenCalledWith(token, expect.any(Object));
+  expect(x.values[SYNC_OUTBOX_KEY]).toMatchObject([{ seriesTitle: 'Dark', episodeNumber: 2 }]);
+  expect(x.values['sync.accountId']).toBe('other');
+  expect(x.values['sync.lastResult']).toBeUndefined();
+});

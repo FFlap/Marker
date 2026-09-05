@@ -1,7 +1,6 @@
 import { parseEpisodePage, parseWatchPath } from "../src/domain/episode-parser";
 import {
   persistDetectedEpisode,
-  syncDetectedEpisode,
 } from "../src/domain/tracking";
 
 export default defineContentScript({
@@ -30,9 +29,7 @@ export default defineContentScript({
         saveInFlight = true;
         document.documentElement.dataset.markerCrunchyroll = "saving";
         try {
-          const changed = await persistDetectedEpisode(bookmark);
-          if (changed)
-            void syncDetectedEpisode(bookmark);
+          await persistDetectedEpisode(bookmark);
           lastSentEpisodeId = bookmark.episodeId;
           document.documentElement.dataset.markerCrunchyroll = "tracked";
         } catch (error: unknown) {

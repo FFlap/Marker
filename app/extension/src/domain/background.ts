@@ -6,6 +6,8 @@ import type { EpisodeBookmark } from "./types";
 import { BOOKMARKS_STORAGE_KEY } from "../messages";
 import {
   createOutboxManager,
+  buildWatchPayload,
+  SYNC_ACCOUNT_KEY,
   parseWatchPayload,
   SYNC_LAST_RESULT_KEY,
   SYNC_OUTBOX_KEY,
@@ -35,8 +37,6 @@ type ErrorLike = {
   message?: unknown;
 };
 export type DeliveryClassification = "retryable" | "auth" | "terminal";
-
-const SYNC_ACCOUNT_KEY = "sync.accountId";
 
 export interface AuthClient {
   getSession(): Promise<{ token: string; accountId: string; accountLabel: string } | null>;
@@ -108,9 +108,11 @@ export function createMessageHandler(
   client: AuthClient,
   options: { now?: () => number; alarms?: AlarmScheduler } = {},
 ) {
-  const deliver = async (payload: WatchPayload): Promise<SyncResult> => {
+  let accountRevision = 0;
+  const deliver = async (payload: WatchPayload, accountId?: string): Promise<SyncResult> => {
+    const revision = accountRevision;
     const current = await client.getSession();
-    if (!current)
+    if (!current || (accountId !== undefined && current.accountId !== accountId))
       return { ok: false, reason: "not-signed-in", retryable: true };
     const stored = await storage.get(SYNC_ACCOUNT_KEY);
     if (stored[SYNC_ACCOUNT_KEY] && stored[SYNC_ACCOUNT_KEY] !== current.accountId)
@@ -135,6 +137,7 @@ export function createMessageHandler(
               retryable: false,
             },
         payload.seriesTitle,
+        revision,
       );
     } catch (error) {
       const classification = classifyDeliveryError(error);
@@ -145,10 +148,11 @@ export function createMessageHandler(
           classification === "retryable"
             ? { ok: false, retryable: true }
             : { ok: false, reason: "rejected", retryable: false };
-      return recordResult(result, payload.seriesTitle);
+      return recordResult(result, payload.seriesTitle, revision);
     }
   };
-  const recordResult = async (result: SyncResult, seriesTitle?: string) => {
+  const recordResult = async (result: SyncResult, seriesTitle?: string, revision?: number) => {
+    if (revision !== undefined && revision !== accountRevision) return result;
     await storage.set({
       [SYNC_LAST_RESULT_KEY]: {
         ok: result.ok,
@@ -168,6 +172,7 @@ export function createMessageHandler(
       const stored = await storage.get(SYNC_ACCOUNT_KEY);
       const previous = stored[SYNC_ACCOUNT_KEY];
       if (previous === current.accountId) return;
+      accountRevision += 1;
       if (previous) {
         await storage.remove(SYNC_OUTBOX_KEY);
         await storage.remove(SYNC_RETRY_KEY);
@@ -197,6 +202,7 @@ export function createMessageHandler(
         }
       }
       case "sync/signOut":
+        accountRevision += 1;
         await client.signOut();
         await outbox.clear();
         await storage.remove(SYNC_ACCOUNT_KEY);
@@ -213,6 +219,7 @@ export function createMessageHandler(
         if (!payload)
           return { ok: false, reason: "rejected", retryable: false };
         await outbox.enqueue(payload);
+        await outbox.flush();
         return { ok: true };
       }
       case "sync/unsupported":
@@ -242,7 +249,15 @@ export function createMessageHandler(
           );
           return { changed: false, reason: "unsupported-episode" };
         }
-        return { changed: await bookmarks.save(bookmark) };
+        const changed = await bookmarks.save(bookmark);
+        const payload = buildWatchPayload(bookmark);
+        if (payload) {
+          await outbox.enqueue(payload);
+          void outbox.flush().catch(() => undefined);
+        } else {
+          await recordResult({ ok: false, reason: "unsupported-episode", retryable: false }, bookmark.seriesTitle);
+        }
+        return { changed };
       }
       case "bookmark/remove":
         await bookmarks.remove(message.key);

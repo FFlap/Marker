@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { persistDetectedEpisode, syncDetectedEpisode } from "./tracking";
+import { persistDetectedEpisode } from "./tracking";
 
 const bookmark = {
   platform: "netflix" as const,
@@ -29,25 +29,13 @@ describe("background-owned tracking", () => {
     ).resolves.toBe(false);
   });
 
-  it("asks the background to record an unsupported episode", async () => {
-    const send = vi.fn(async () => undefined);
-    await syncDetectedEpisode(
-      { ...bookmark, seriesTitle: "x".repeat(301) },
-      send,
-    );
-    expect(send).toHaveBeenCalledWith({
-      type: "sync/unsupported",
-      seriesTitle: "x".repeat(300),
-    });
-  });
-
   it.each([undefined, { ok: false, reason: "background-error" }])("retries a failed background save: %o", async (response) => {
     await expect(
       persistDetectedEpisode(bookmark, async () => response),
     ).rejects.toThrow("The background could not save the episode");
   });
 
-  it("uses browser.runtime as the receiver for default bookmark and sync messages", async () => {
+  it("uses browser.runtime as the receiver for default bookmark messages", async () => {
     const runtime = {
       sendMessage: vi.fn(function (this: unknown, message: unknown) {
         if (this !== runtime) throw new Error("wrong receiver");
@@ -60,8 +48,7 @@ describe("background-owned tracking", () => {
     };
     vi.stubGlobal("browser", { runtime });
     await persistDetectedEpisode(bookmark);
-    await syncDetectedEpisode(bookmark);
 
-    expect(runtime.sendMessage).toHaveBeenCalledTimes(2);
+    expect(runtime.sendMessage).toHaveBeenCalledTimes(1);
   });
 });
