@@ -19,9 +19,7 @@ export function AuthGate({
     api.profiles.me,
     !isAuthenticated || !accountReady ? "skip" : {},
   );
-  const location = useRouterState({
-    select: (state) => state.resolvedLocation ?? state.location,
-  });
+  const location = useRouterState({ select: (state) => state.location });
 
   if (accountError) return <AccountLinkError onRetry={retryAccountLink} />;
   if (
@@ -33,9 +31,9 @@ export function AuthGate({
 
   const next = `${location.pathname}${location.searchStr}`;
   if (!isAuthenticated)
-    return <Navigate to="/login" search={{ next }} replace />;
+    return location.pathname === "/login" ? <AccountLoading /> : <Navigate to="/login" search={{ next }} replace />;
   if (!profile?.username && !setup)
-    return <Navigate to="/setup" search={{ next }} replace />;
+    return location.pathname === "/setup" ? <AccountLoading /> : <Navigate to="/setup" search={{ next }} replace />;
   if (profile?.username && setup) {
     const searchNext = (location.search as { next?: unknown }).next;
     return (

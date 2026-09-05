@@ -10,7 +10,8 @@ vi.mock("@/pages/login", () => ({ LoginPage: () => <h1>Login screen</h1> }));
 import { router } from "@/router";
 afterEach(cleanup);
 it("redirects an anonymous deep link once and preserves its destination", async () => {
-  router.update({ history: createMemoryHistory({ initialEntries: ["/extension/connect"] }) });
+  vi.stubGlobal("scrollTo", vi.fn<() => void>());
+  router.update({ scrollRestoration: false, history: createMemoryHistory({ initialEntries: ["/extension/connect"] }) });
   render(<RouterProvider router={router} />);
   expect(await screen.findByRole("heading", { name: "Login screen" })).toBeInTheDocument();
   expect(router.state.location.pathname).toBe("/login");
