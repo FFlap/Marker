@@ -242,3 +242,12 @@ describe("background-owned sync outbox", () => {
     expect(post).not.toHaveBeenCalled();
   });
 });
+
+it('clears the outbox even when authentication preparation fails', async () => {
+  const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload] };
+  const manager = createOutboxManager(storageFor(values), vi.fn(), {
+    prepare: async () => { throw new Error('Authentication unavailable'); },
+  });
+  await manager.clear();
+  expect(values[SYNC_OUTBOX_KEY]).toBeNull();
+});

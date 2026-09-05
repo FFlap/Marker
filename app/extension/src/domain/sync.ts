@@ -218,9 +218,9 @@ export function createOutboxManager(
 ) {
   const now = options.now ?? Date.now;
   let operations = Promise.resolve();
-  const serialize = <T>(operation: () => Promise<T>) => {
+  const serialize = <T>(operation: () => Promise<T>, prepare = true) => {
     const result = operations.then(async () => {
-      await options.prepare?.();
+      if (prepare) await options.prepare?.();
       return operation();
     });
     operations = result.then(() => undefined, () => undefined);
@@ -261,7 +261,7 @@ export function createOutboxManager(
         });
       }
       await options.alarms?.clear(SYNC_RETRY_ALARM);
-    });
+    }, false);
   return {
     clear,
     flush,
