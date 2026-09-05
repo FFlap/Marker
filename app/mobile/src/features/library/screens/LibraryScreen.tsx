@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useMutation, useQuery } from 'convex/react';
+import { useQuery } from 'convex/react';
 import { api } from '@convex/_generated/api';
 import { router } from 'expo-router';
 import {
@@ -25,6 +25,7 @@ import { colors } from '@/constants/colors';
 import type { LibraryItem } from '@/types';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { PinchDensity } from '@/components/PinchDensity';
+import { useGridColumns } from '@/hooks/use-grid-columns';
 import { LibraryPageSkeleton } from '@/components/PageSkeletons';
 import type { AppDrawerHandle } from '@/components/AppDrawer';
 import { MobileNav } from '@/components/MobileNav';
@@ -32,11 +33,7 @@ import { NativePosterDragPreview } from '@/components/NativePosterDragPreview';
 import { NativeDraggableGrid } from '@/components/NativeDraggableGrid';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Plus } from 'lucide-react-native';
-import {
-  DEFAULT_DISPLAY_PREFERENCES,
-  gridItemWidth,
-  type GridColumns,
-} from '@/lib/displayPreferences';
+import { DEFAULT_DISPLAY_PREFERENCES, gridItemWidth } from '@/lib/displayPreferences';
 import {
   LIBRARY_STATUSES,
   matchesMediaType,
@@ -70,17 +67,9 @@ function Library() {
   const itemQuery = useQuery(api.library.items.listItems);
   const items = itemQuery ?? EMPTY_ITEMS;
   const settings = useQuery(api.settings.getSettings);
-  const setSettings = useMutation(api.settings.setSettings);
   const toast = useToast();
   const view = settings?.defaultView ?? 'list';
-  const [gridOverride, setGridOverride] = useState<{
-    base: GridColumns | undefined;
-    value: GridColumns;
-  }>();
-  const gridColumns =
-    gridOverride && settings?.gridColumns === gridOverride.base
-      ? gridOverride.value
-      : (settings?.gridColumns ?? DEFAULT_DISPLAY_PREFERENCES.gridColumns);
+  const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const listColumns = settings?.listColumns ?? DEFAULT_DISPLAY_PREFERENCES.listColumns;
   const listTextSize = settings?.listTextSize ?? DEFAULT_DISPLAY_PREFERENCES.listTextSize;
   const [search, setSearch] = useState('');
@@ -193,13 +182,6 @@ function Library() {
     setStatusFilter('all');
     setMin(0);
     setTags([]);
-  };
-  const updateGridColumns = (next: GridColumns) => {
-    setGridOverride({ base: settings?.gridColumns, value: next });
-    void setSettings({ gridColumns: next }).catch(() => {
-      setGridOverride(undefined);
-      toast.show('Couldn’t save grid scale');
-    });
   };
   const updateToolbarFromScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

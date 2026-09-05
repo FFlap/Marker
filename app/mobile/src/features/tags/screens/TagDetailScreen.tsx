@@ -16,6 +16,7 @@ import {
 } from 'react-native-draggable-flatlist';
 import { api } from '@convex/_generated/api';
 import { PinchDensity } from '@/components/PinchDensity';
+import { useGridColumns } from '@/hooks/use-grid-columns';
 import { EmptyState } from '@/components/ui/primitives';
 import {
   NativeDraggableGrid,
@@ -27,11 +28,7 @@ import {
   type NativePosterDragLayout,
 } from '@/components/NativePosterDragPreview';
 import { useToast } from '@/components/ui/Toast';
-import {
-  DEFAULT_DISPLAY_PREFERENCES,
-  gridItemWidth,
-  type GridColumns,
-} from '@/lib/displayPreferences';
+import { DEFAULT_DISPLAY_PREFERENCES, gridItemWidth } from '@/lib/displayPreferences';
 import type { Status } from '@/types';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import { tagDetailStyles as s } from './TagDetailScreen.styles';
@@ -57,7 +54,6 @@ export default function TagDetailScreen() {
   const library = useQuery(api.library.items.listItems);
   const ranks = useQuery(api.library.items.listTagRanks, tag ? { tag } : 'skip');
   const settings = useQuery(api.settings.getSettings);
-  const setSettings = useMutation(api.settings.setSettings);
   const reorderItem = useMutation(api.library.ordering.reorderItem);
   const reorderTagItem = useMutation(api.library.ordering.reorderTagItem);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
@@ -149,23 +145,9 @@ export default function TagDetailScreen() {
     visibleStatuses,
   } = collection;
   const view = settings?.defaultView ?? 'list';
-  const [gridOverride, setGridOverride] = useState<{
-    base: GridColumns | undefined;
-    value: GridColumns;
-  }>();
-  const gridColumns =
-    gridOverride && settings?.gridColumns === gridOverride.base
-      ? gridOverride.value
-      : (settings?.gridColumns ?? DEFAULT_DISPLAY_PREFERENCES.gridColumns);
+  const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const listColumns = settings?.listColumns ?? DEFAULT_DISPLAY_PREFERENCES.listColumns;
   const listTextSize = settings?.listTextSize ?? DEFAULT_DISPLAY_PREFERENCES.listTextSize;
-  const updateGridColumns = (next: GridColumns) => {
-    setGridOverride({ base: settings?.gridColumns, value: next });
-    void setSettings({ gridColumns: next }).catch(() => {
-      setGridOverride(undefined);
-      toast.show('Couldn’t save grid scale');
-    });
-  };
 
   const reorder = async (status: Status, items: RankedItem[], from: number, to: number) => {
     if (filtersActive || from === to) return;
