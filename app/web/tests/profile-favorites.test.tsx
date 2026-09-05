@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -92,6 +92,16 @@ describe("profile favorites", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open actions for One Piece" }));
     expect(screen.getByRole("button", { name: "Move up" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Move down" })).toBeInTheDocument();
+  });
+
+  it("shows a failed add inside the picker and allows retry", async () => {
+    mocks.add.mockRejectedValueOnce(new Error("offline"));
+    render(<ProfileFavorites favorites={favorites} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add favorite TV show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Severance" }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(await dialog.findByRole("alert")).toHaveTextContent("Couldn’t add this favorite.");
+    expect(dialog.getByRole("button", { name: "Severance" })).toBeEnabled();
   });
 
   it("keeps anime out of the TV picker", () => {
