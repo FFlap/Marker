@@ -41,16 +41,28 @@ const retryableCodes = [
   'provider_global_limiter',
   'stale_season_version',
   'stale_epoch',
+  'refresh_in_progress',
+  'refresh_superseded',
+  'mapping_changed',
+  'title_unavailable',
 ];
 
 function isRetryable(error: unknown) {
-  const structured =
-    typeof error === 'object' && error !== null && 'data' in error
-      ? (error as { data?: { code?: unknown } }).data?.code
-      : undefined;
-  return retryableCodes.some((code) =>
-    structured !== undefined ? structured === code : String(error).includes(code),
-  );
+  let data: unknown =
+    typeof error === 'object' && error !== null && 'data' in error ? error.data : undefined;
+  if (data === undefined) {
+    // Action boundaries can preserve the ConvexError payload only in the message.
+    const serialized = String(error).match(/\bConvexError:\s*(\{[^\n]*\})/u)?.[1];
+    if (!serialized) return false;
+    try {
+      data = JSON.parse(serialized);
+    } catch {
+      return false;
+    }
+  }
+  if (!data || typeof data !== 'object') return false;
+  if ('retryable' in data && typeof data.retryable === 'boolean') return data.retryable;
+  return 'code' in data && retryableCodes.some((code) => data.code === code);
 }
 
 export const recordWatch = httpAction(async (ctx, request) => {

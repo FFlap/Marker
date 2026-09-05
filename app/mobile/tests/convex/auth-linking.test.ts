@@ -10,19 +10,32 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe('extension provider failures', () => {
   it.each([
-    'timeout',
-    'provider_global_limiter',
-    'upstream',
-    'stale_epoch',
-    'stale_season_version',
-  ])('keeps %s failures retryable', async (code) => {
+    ...[
+      'timeout',
+      'provider_global_limiter',
+      'upstream',
+      'stale_epoch',
+      'stale_season_version',
+      'refresh_in_progress',
+      'refresh_superseded',
+      'mapping_changed',
+      'title_unavailable',
+      'touch_budget',
+    ].map((code) => [new ConvexError({ code, retryable: true }), 503] as const),
+    [new Error('Uncaught ConvexError: {"code":"refresh_in_progress"}'), 503],
+    [new Error('Uncaught ConvexError: {"code":"touch_budget","retryable":true}'), 503],
+    [new ConvexError({ code: 'timeout', retryable: false }), 400],
+    [new Error('Invalid payload: timeout upstream refresh_in_progress'), 400],
+    [new Error('Invalid payload: "ConvexError: {\\"code\\":\\"timeout\\"}"'), 400],
+    [new ConvexError({ code: 'invalid-request' }), 400],
+  ])('classifies %s as HTTP %s', async (error, status) => {
     const t = convexTest(schema, {
       ...modules,
       '../../convex/sync.ts': async () => ({
         recordWatchFromExtensionInternal: internalAction({
           args: { userId: v.id('users') },
           handler: async () => {
-            throw new ConvexError({ code, retryable: true });
+            throw error;
           },
         }),
       }),
@@ -35,8 +48,10 @@ describe('extension provider failures', () => {
       headers: { Origin: origin, 'Content-Type': 'application/json' },
       body: '{}',
     });
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: 'upstream' });
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({
+      error: status === 503 ? 'upstream' : 'invalid-request',
+    });
   });
 });
 
