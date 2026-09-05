@@ -110,7 +110,8 @@ const publicRoutes = [
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/tag/$tag",
-    component: PublicTagPage,
+    validateSearch: (search: Record<string, unknown>): { cursor?: string } => ({ cursor: typeof search.cursor === "string" ? search.cursor : undefined }),
+    component: () => <AuthGate><PublicTagPage /></AuthGate>,
   }),
   createRoute({
     getParentRoute: () => rootRoute,
@@ -120,6 +121,7 @@ const publicRoutes = [
   createRoute({
     getParentRoute: () => rootRoute,
     path: "/u/$username/tags/$tag",
+    validateSearch: (search: Record<string, unknown>): { cursor?: string } => ({ cursor: typeof search.cursor === "string" ? search.cursor : undefined }),
     component: PublicUserTagPage,
   }),
 ];

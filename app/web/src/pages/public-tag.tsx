@@ -1,27 +1,21 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
+import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { gridWidth } from "@/lib/display-preferences";
 import { posterUrl } from "@/lib/utils";
 
-type PublicTitle = {
-  tmdbId: number;
-  mediaType: "movie" | "tv";
-  title: string;
-  posterPath?: string;
-  overview?: string;
-  releaseDate?: string;
-  contributorCount: number;
-};
+
 
 export function PublicTagPage() {
   const { tag } = useParams({ from: "/tag/$tag" });
   const { isAuthenticated } = useConvexAuth();
-  const collection = useQuery(api.tags.publicDetails, { tag });
-  const library = useQuery(api.library.listItems, isAuthenticated ? {} : "skip");
+  const { cursor } = useSearch({ from: "/tag/$tag" });
+  const collection = useQuery(api.tags.publicDetails, { tag, cursor });
+  const library = useQuery(api.library.items.listItems, isAuthenticated ? {} : "skip");
   const settings = useQuery(api.settings.getSettings, isAuthenticated ? {} : "skip");
   const [search, setSearch] = useState("");
   const gridColumns = settings?.gridColumns ?? 3;
@@ -37,7 +31,7 @@ export function PublicTagPage() {
   );
   const titles = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    return ((collection?.titles ?? []) as PublicTitle[]).filter(
+    return (collection?.titles ?? []).filter(
       (title) => !query || title.title.toLocaleLowerCase().includes(query),
     );
   }, [collection, search]);
@@ -72,7 +66,7 @@ export function PublicTagPage() {
         <>
           <p className="mt-4 text-xs text-muted-foreground">
             {titles.length}{" "}
-            {titles.length === 1 ? "title" : "titles"} from{" "}
+            {titles.length === 1 ? "title" : "titles"} on this page from{" "}
             {collection.contributorCount}{" "}
             {collection.contributorCount === 1 ? "person" : "people"}
           </p>
@@ -111,12 +105,6 @@ export function PublicTagPage() {
                           <strong className="mt-2 block truncate text-xs">
                             {title.title}
                           </strong>
-                          <span className="mt-1 block text-[10px] text-muted-foreground">
-                            {title.contributorCount}{" "}
-                            {title.contributorCount === 1
-                              ? "collection"
-                              : "collections"}
-                          </span>
                         </>
                       );
                       return itemId ? (
@@ -171,6 +159,11 @@ export function PublicTagPage() {
           </div>}
         </>
       )}
+      {collection?.nextCursor ? (
+        <Button asChild variant="outline" className="mt-6 w-full">
+          <Link to="/tag/$tag" params={{ tag }} search={{ cursor: collection.nextCursor }}>Next titles</Link>
+        </Button>
+      ) : null}
     </Page>
   );
 }

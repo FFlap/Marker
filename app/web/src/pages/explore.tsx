@@ -22,7 +22,7 @@ type Person = {
 };
 type PublicTag = {
   tag: string;
-  titleCount: number;
+  entryCount: number;
   contributorCount: number;
   posters: Array<{ title: string; posterPath?: string }>;
 };
@@ -172,7 +172,7 @@ function TagRow({ tag }: { tag: PublicTag }) {
       <span className="min-w-0 flex-1">
         <strong className="block truncate text-sm">{tag.tag}</strong>
         <span className="mt-1 block text-xs text-muted-foreground">
-          {tag.titleCount} {tag.titleCount === 1 ? "title" : "titles"} ·{" "}
+          {tag.entryCount} {tag.entryCount === 1 ? "entry" : "entries"} ·{" "}
           {tag.contributorCount} {tag.contributorCount === 1 ? "person" : "people"}
         </span>
       </span>
@@ -192,7 +192,7 @@ export function ExplorePage() {
   const searchMedia = useAction(api.tmdb.searchMulti);
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
-  const library = useQuery(api.library.listItems, {});
+  const library = useQuery(api.library.items.listItems, {});
   const people = useQuery(
     api.profiles.search,
     debounced.length >= 2 && (filter === "all" || filter === "people")

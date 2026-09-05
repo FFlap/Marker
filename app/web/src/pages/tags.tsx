@@ -1,22 +1,19 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Tags as TagsIcon } from "lucide-react";
-import { useQuery } from "convex/react";
+import { usePaginatedQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { SearchField } from "@/components/ui/search-field";
+import { Button } from "@/components/ui/button";
 import { Page, PageHeader } from "@/components/page";
 import { posterUrl } from "@/lib/utils";
 
-type TagPreview = {
-  tag: string;
-  count: number;
-  posters: Array<{ itemId: string; title: string; posterPath?: string }>;
-};
+
 
 export function TagsPage() {
-  const queried = useQuery(api.tags.mine, {});
+  const { results, status, loadMore } = usePaginatedQuery(api.tags.mine, {}, { initialNumItems: 100 });
   const [search, setSearch] = useState("");
-  const collections = queried as TagPreview[] | undefined;
+  const collections = results;
   const visible = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return (collections ?? []).filter(
@@ -33,7 +30,7 @@ export function TagsPage() {
         onChange={(event) => setSearch(event.target.value)}
         placeholder="Search your tags"
       />
-      {queried === undefined ? (
+      {status === "LoadingFirstPage" ? (
         <div className="mt-4 grid grid-cols-2 gap-5 sm:grid-cols-3">
           {[0, 1, 2].map((key) => (
             <div key={key} className="h-56 animate-pulse rounded-xl bg-card" />
@@ -88,6 +85,11 @@ export function TagsPage() {
           </p>
         </div>
       )}
+      {status === "CanLoadMore" || status === "LoadingMore" ? (
+        <Button variant="outline" className="mt-6 w-full" disabled={status === "LoadingMore"} onClick={() => loadMore(100)}>
+          {status === "LoadingMore" ? "Loading…" : "Load more tags"}
+        </Button>
+      ) : null}
     </Page>
   );
 }

@@ -1,27 +1,17 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { FilterDialog, type LibraryFilters } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
+import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { gridWidth } from "@/lib/display-preferences";
 import { matchesMediaType } from "@/lib/library-filters";
 import { posterUrl } from "@/lib/utils";
 
-type PublicTitle = {
-  tmdbId: number;
-  mediaType: "movie" | "tv";
-  title: string;
-  posterPath?: string;
-  overview?: string;
-  releaseDate?: string;
-  status: "watched" | "watching" | "watchlist" | "dropped";
-  rating?: number;
-  rank: number;
-  isAnime?: boolean;
-};
+
 
 const labels = {
   watched: "Watched",
@@ -33,8 +23,9 @@ const labels = {
 export function PublicUserTagPage() {
   const { username, tag } = useParams({ from: "/u/$username/tags/$tag" });
   const { isAuthenticated } = useConvexAuth();
-  const collection = useQuery(api.tags.publicByUser, { username, tag });
-  const library = useQuery(api.library.listItems, isAuthenticated ? {} : "skip");
+  const { cursor } = useSearch({ from: "/u/$username/tags/$tag" });
+  const collection = useQuery(api.tags.publicByUser, { username, tag, cursor });
+  const library = useQuery(api.library.items.listItems, isAuthenticated ? {} : "skip");
   const settings = useQuery(api.settings.getSettings, isAuthenticated ? {} : "skip");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>({
@@ -56,7 +47,7 @@ export function PublicUserTagPage() {
   );
   const titles = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    return ((collection?.titles ?? []) as PublicTitle[]).filter(
+    return (collection?.titles ?? []).filter(
       (title) =>
         (!query || title.title.toLocaleLowerCase().includes(query)) &&
         matchesMediaType(title, filters.media) &&
@@ -72,7 +63,7 @@ export function PublicUserTagPage() {
   const watchedRank = useMemo(
     () =>
       new Map(
-        ((collection?.titles ?? []) as PublicTitle[])
+        (collection?.titles ?? [])
           .filter((title) => title.status === "watched")
           .toSorted((left, right) => left.rank - right.rank)
           .map((title, index) => [
@@ -143,7 +134,7 @@ export function PublicUserTagPage() {
                               )}
                             </div>
                             <strong className="mt-2 block truncate text-xs">
-                              {status === "watched"
+                              {status === "watched" && !cursor
                                 ? `${watchedRank.get(`${title.mediaType}:${title.tmdbId}`) ?? entries.indexOf(title) + 1}. `
                                 : ""}
                               {title.title}
@@ -214,6 +205,11 @@ export function PublicUserTagPage() {
           )}
         </div>
       )}
+      {collection?.nextCursor ? (
+        <Button asChild variant="outline" className="mt-6 w-full">
+          <Link to="/u/$username/tags/$tag" params={{ username, tag }} search={{ cursor: collection.nextCursor }}>Next titles</Link>
+        </Button>
+      ) : null}
     </Page>
   );
 }
