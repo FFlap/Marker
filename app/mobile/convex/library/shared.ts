@@ -148,7 +148,7 @@ export const episodeMetadataStamp = async (
     resolved.chunksComplete === true &&
     resolved.chunkCount !== undefined &&
     resolved.seasonVersion !== undefined &&
-    (resolved.metadataProvider === 'tmdb' ||
+    ((resolved.metadataProvider === 'tmdb' && !mapping) ||
       (mapping !== null && resolved.orderEpoch === mapping.orderEpoch))
       ? resolved
       : undefined;

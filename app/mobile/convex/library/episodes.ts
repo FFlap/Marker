@@ -233,7 +233,7 @@ export const listEpisodes = query({
     ]);
     const activeSeason =
       resolvedSeason &&
-      (resolvedSeason.metadataProvider === 'tmdb' ||
+      ((resolvedSeason.metadataProvider === 'tmdb' && !mapping) ||
         (mapping !== null && resolvedSeason.orderEpoch === mapping.orderEpoch))
         ? resolvedSeason
         : null;
@@ -329,7 +329,7 @@ export const listEpisodeProgress = query({
       const resolved = seasonByNumber.get(summary.season);
       const active =
         resolved &&
-        (resolved.metadataProvider === 'tmdb' ||
+        ((resolved.metadataProvider === 'tmdb' && !mapping) ||
           (mapping !== null && resolved.orderEpoch === mapping.orderEpoch)) &&
         resolved.chunkCount !== undefined &&
         resolved.seasonVersion !== undefined &&
