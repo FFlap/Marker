@@ -15,6 +15,10 @@ const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 export default function CalendarDayScreen() {
   const params = useLocalSearchParams<{ date?: string | string[] }>();
   const date = Array.isArray(params.date) ? (params.date[0] ?? '') : (params.date ?? '');
+  return <CalendarDay key={date} date={date} />;
+}
+
+function CalendarDay({ date }: { date: string }) {
   const upcoming = useAction(api.calendar.upcoming);
   const [events, setEvents] = useState<CalendarEvent[]>();
   const [error, setError] = useState(false);

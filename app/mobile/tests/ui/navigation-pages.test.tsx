@@ -109,4 +109,19 @@ describe('secondary mobile pages', () => {
     const view = await render(<CalendarScreen />);
     await waitFor(() => expect(view.getByText('Some titles could not be loaded.')).toBeTruthy());
   });
+
+  it('clears a failed day when navigating to a different date', async () => {
+    mockDate = '2026-09-01';
+    mockUpcoming.mockRejectedValueOnce(new Error('offline'));
+    const view = await render(<CalendarDayScreen />);
+    await waitFor(() => expect(view.getByText(/Couldn’t load this day/)).toBeTruthy());
+    mockDate = '2026-09-02';
+    mockUpcoming.mockResolvedValueOnce({
+      events: [{ id: 'release', date: mockDate, kind: 'movie', title: 'Arrival' }],
+      failedTitles: { count: 0, names: [] },
+    });
+    await view.rerender(<CalendarDayScreen />);
+    await waitFor(() => expect(view.getByText('Arrival')).toBeTruthy());
+    expect(view.queryByText(/Couldn’t load this day/)).toBeNull();
+  });
 });
