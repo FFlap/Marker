@@ -66,3 +66,43 @@ describe('provider HTTP reliability', () => {
     await assertion;
   });
 });
+
+it('keeps the timeout active while a successful response body is stalled', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async (_url: string, init?: RequestInit) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              init?.signal?.addEventListener('abort', () =>
+                controller.error(new DOMException('The operation was aborted', 'AbortError')),
+              );
+            },
+          }),
+          { status: 200 },
+        ),
+    ),
+  );
+  try {
+    const request = providerFetch(
+      'https://example.test/title',
+      {},
+      {
+        provider: 'tmdb',
+        operation: '/title',
+        retries: 0,
+        timeoutMs: 50,
+      },
+    );
+    const assertion = expect(request).rejects.toMatchObject({
+      data: { code: 'timeout', provider: 'tmdb', retryable: true },
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    await assertion;
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
+});
