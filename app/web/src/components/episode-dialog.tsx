@@ -34,10 +34,10 @@ export function EpisodeDialog({
   children: ReactNode;
   episode: EpisodeView;
 }) {
-  const setEpisodeState = useMutation(api.library.setEpisodeState);
+  const setEpisodeState = useMutation(api.library.episodes.setEpisodeState);
   const [open, setOpen] = useState(false);
   const suggestions = useQuery(
-    api.library.listTagSuggestions,
+    api.library.items.listTagSuggestions,
     !open ? "skip" : {},
   );
   const [rating, setRating] = useState<number | undefined>(
@@ -82,6 +82,7 @@ export function EpisodeDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (busy && !next) return;
         setOpen(next);
         if (next) {
           setRating(episode.rating);
@@ -93,7 +94,7 @@ export function EpisodeDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogTitle className="sr-only">Episode options</DialogTitle>
-        <div>
+        <fieldset disabled={busy}>
           <RatingControl
             value={rating}
             onChange={(next) => {
@@ -121,7 +122,7 @@ export function EpisodeDialog({
               }}
             />
           </div>
-        </div>
+        </fieldset>
         {error && (
           <p role="alert" className="text-xs text-destructive">
             {error}
