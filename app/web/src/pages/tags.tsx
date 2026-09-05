@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Page, PageHeader } from "@/components/page";
 import { posterUrl } from "@/lib/utils";
 
-
-
 export function TagsPage() {
-  const { results, status, loadMore } = usePaginatedQuery(api.tags.mine, {}, { initialNumItems: 100 });
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.tags.mine,
+    {},
+    { initialNumItems: 100 },
+  );
   const [search, setSearch] = useState("");
   const collections = results;
   const visible = useMemo(() => {
@@ -86,7 +88,12 @@ export function TagsPage() {
         </div>
       )}
       {status === "CanLoadMore" || status === "LoadingMore" ? (
-        <Button variant="outline" className="mt-6 w-full" disabled={status === "LoadingMore"} onClick={() => loadMore(100)}>
+        <Button
+          variant="outline"
+          className="mt-6 w-full"
+          disabled={status === "LoadingMore"}
+          onClick={() => loadMore(100)}
+        >
           {status === "LoadingMore" ? "Loading…" : "Load more tags"}
         </Button>
       ) : null}

@@ -8,8 +8,6 @@ import { SearchField } from "@/components/ui/search-field";
 import { gridWidth } from "@/lib/display-preferences";
 import { posterUrl } from "@/lib/utils";
 
-
-
 export function PublicTagPage() {
   const { tag } = useParams({ from: "/tag/$tag" });
   const { isAuthenticated } = useConvexAuth();
@@ -161,7 +159,13 @@ export function PublicTagPage() {
       )}
       {collection?.nextCursor ? (
         <Button asChild variant="outline" className="mt-6 w-full">
-          <Link to="/tag/$tag" params={{ tag }} search={{ cursor: collection.nextCursor }}>Next titles</Link>
+          <Link
+            to="/tag/$tag"
+            params={{ tag }}
+            search={{ cursor: collection.nextCursor }}
+          >
+            Next titles
+          </Link>
         </Button>
       ) : null}
     </Page>

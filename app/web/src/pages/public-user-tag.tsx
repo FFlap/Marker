@@ -11,8 +11,6 @@ import { gridWidth } from "@/lib/display-preferences";
 import { matchesMediaType } from "@/lib/library-filters";
 import { posterUrl } from "@/lib/utils";
 
-
-
 const labels = {
   watched: "Watched",
   watching: "Watching",
@@ -25,8 +23,14 @@ export function PublicUserTagPage() {
   const { isAuthenticated } = useConvexAuth();
   const { cursor } = useSearch({ from: "/u/$username/tags/$tag" });
   const collection = useQuery(api.tags.publicByUser, { username, tag, cursor });
-  const library = useQuery(api.library.items.listItems, isAuthenticated ? {} : "skip");
-  const settings = useQuery(api.settings.getSettings, isAuthenticated ? {} : "skip");
+  const library = useQuery(
+    api.library.items.listItems,
+    isAuthenticated ? {} : "skip",
+  );
+  const settings = useQuery(
+    api.settings.getSettings,
+    isAuthenticated ? {} : "skip",
+  );
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>({
     media: "all",
@@ -76,11 +80,7 @@ export function PublicUserTagPage() {
 
   return (
     <Page width="wide" className="max-w-4xl">
-      <PageHeader
-        title={collection?.tag ?? tag}
-        back
-        backFallback="/explore"
-      />
+      <PageHeader title={collection?.tag ?? tag} back backFallback="/explore" />
       <div className="mt-6 flex gap-2">
         <SearchField
           aria-label={`Search ${username}'s ${tag} tag`}
@@ -207,7 +207,13 @@ export function PublicUserTagPage() {
       )}
       {collection?.nextCursor ? (
         <Button asChild variant="outline" className="mt-6 w-full">
-          <Link to="/u/$username/tags/$tag" params={{ username, tag }} search={{ cursor: collection.nextCursor }}>Next titles</Link>
+          <Link
+            to="/u/$username/tags/$tag"
+            params={{ username, tag }}
+            search={{ cursor: collection.nextCursor }}
+          >
+            Next titles
+          </Link>
         </Button>
       ) : null}
     </Page>
