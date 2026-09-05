@@ -1,4 +1,3 @@
-import type { SessionStorage } from "./session";
 import {
   createBookmarkOperations,
   validateBookmark,
@@ -13,6 +12,7 @@ import {
   SYNC_RETRY_KEY,
   type AlarmScheduler,
   type SyncResult,
+  type SyncStorage,
   type WatchPayload,
 } from "./sync";
 
@@ -104,7 +104,7 @@ function isBackgroundMessage(value: unknown): value is BackgroundMessage {
 }
 
 export function createMessageHandler(
-  storage: SessionStorage,
+  storage: SyncStorage & { remove(key: string): Promise<void> },
   client: AuthClient,
   options: { now?: () => number; alarms?: AlarmScheduler } = {},
 ) {
