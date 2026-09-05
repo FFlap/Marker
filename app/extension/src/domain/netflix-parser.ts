@@ -80,20 +80,15 @@ function parseEmbeddedSummary(
     const videosIndex = source.indexOf('"videos"', cacheIndex);
     const videoIndex = source.indexOf(`"${videoId}"`, videosIndex);
     if (videosIndex < 0 || videoIndex < 0) continue;
-    const section = source.slice(videoIndex, videoIndex + 2500);
-    const type = /"type"\s*:\s*"(episode|movie)"/.exec(section)?.[1] as
-      | 'episode'
-      | 'movie'
-      | undefined;
-    if (!type) continue;
-    const episode = /"episode"\s*:\s*(\d+)/.exec(section)?.[1];
-    const season = /"season"\s*:\s*(\d+)/.exec(section)?.[1];
-    return {
-      type,
-      id: videoId,
-      episode: episode ? Number(episode) : undefined,
-      season: season ? Number(season) : undefined,
-    };
+    // Only accept this video's flat summary; the metadata bridge handles other cache shapes.
+    const match = /^"\d+"\s*:\s*\{\s*"summary"\s*:\s*\{[^{}]*"value"\s*:\s*(\{[^{}]*\})/.exec(source.slice(videoIndex));
+    if (!match?.[1]) continue;
+    try {
+      const summary = asSummary({ id: videoId, ...JSON.parse(match[1]) });
+      if (summary && String(summary.id) === videoId) return summary;
+    } catch {
+      // Wait for the metadata bridge when the script is not valid JSON.
+    }
   }
   return null;
 }

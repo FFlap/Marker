@@ -287,3 +287,14 @@ describe('parseNetflixPage', () => {
     });
   });
 });
+
+it('does not take an episode number from a neighboring cached video', () => {
+  const document = makeDocument(`
+    <script>netflix.falcorCache = {"videos": {
+      "111": {"summary": {"value": {"id": 111}}},
+      "222": {"summary": {"value": {"id": 222, "type": "episode", "episode": 7, "season": 2}}}
+    }};</script>
+    <div data-uia="video-title"><h4>Example Show</h4><span>E1</span><span>Pilot</span></div>
+  `);
+  expect(parseNetflixPage(document, new URL('https://www.netflix.com/watch/111'))).toBeNull();
+});
