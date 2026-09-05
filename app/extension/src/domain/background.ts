@@ -109,10 +109,13 @@ export function createMessageHandler(
   options: { now?: () => number; alarms?: AlarmScheduler } = {},
 ) {
   let accountRevision = 0;
-  const deliver = async (payload: WatchPayload, accountId?: string): Promise<SyncResult> => {
+  const deliver = async (
+    payload: WatchPayload,
+    accountId?: string,
+  ): Promise<SyncResult> => {
     const revision = accountRevision;
     const current = await client.getSession();
-    if (!current || (accountId !== undefined && current.accountId !== accountId))
+    if (!current || accountId === undefined || current.accountId !== accountId)
       return { ok: false, reason: "not-signed-in", retryable: true };
     const stored = await storage.get(SYNC_ACCOUNT_KEY);
     if (stored[SYNC_ACCOUNT_KEY] && stored[SYNC_ACCOUNT_KEY] !== current.accountId)
@@ -151,7 +154,11 @@ export function createMessageHandler(
       return recordResult(result, payload.seriesTitle, revision);
     }
   };
-  const recordResult = async (result: SyncResult, seriesTitle?: string, revision?: number) => {
+  const recordResult = async (
+    result: SyncResult,
+    seriesTitle?: string,
+    revision?: number,
+  ) => {
     if (revision !== undefined && revision !== accountRevision) return result;
     await storage.set({
       [SYNC_LAST_RESULT_KEY]: {
@@ -255,7 +262,10 @@ export function createMessageHandler(
           await outbox.enqueue(payload);
           void outbox.flush().catch(() => undefined);
         } else {
-          await recordResult({ ok: false, reason: "unsupported-episode", retryable: false }, bookmark.seriesTitle);
+          await recordResult(
+            { ok: false, reason: "unsupported-episode", retryable: false },
+            bookmark.seriesTitle,
+          );
         }
         return { changed };
       }

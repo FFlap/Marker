@@ -146,16 +146,21 @@ export function parseWatchPayload(value: unknown): WatchPayload | null {
 const normalizeIdentity = (value: string) =>
   value.normalize("NFKC").trim().toLowerCase();
 const sameEpisode = (left: WatchPayload, right: WatchPayload) => {
-  if (left.service !== right.service ||
-      normalizeIdentity(left.seriesTitle) !== normalizeIdentity(right.seriesTitle) ||
-      normalizeIdentity(left.seasonTitle ?? "") !== normalizeIdentity(right.seasonTitle ?? "")) return false;
+  if (
+    left.service !== right.service ||
+    normalizeIdentity(left.seriesTitle) !== normalizeIdentity(right.seriesTitle) ||
+    normalizeIdentity(left.seasonTitle ?? "") !==
+      normalizeIdentity(right.seasonTitle ?? "")
+  ) return false;
   if (left.seasonNumber !== undefined && right.seasonNumber !== undefined) {
     if (left.seasonNumber !== right.seasonNumber) return false;
     if (left.episodeNumber !== undefined && right.episodeNumber !== undefined)
       return left.episodeNumber === right.episodeNumber;
   }
-  return Boolean(left.episodeTitle && right.episodeTitle &&
-    normalizeIdentity(left.episodeTitle) === normalizeIdentity(right.episodeTitle));
+  return Boolean(
+    left.episodeTitle && right.episodeTitle &&
+    normalizeIdentity(left.episodeTitle) === normalizeIdentity(right.episodeTitle),
+  );
 };
 
 function normalizeOutbox(value: unknown): WatchPayload[] {
@@ -186,7 +191,9 @@ async function flushWatchOutbox(
   serialize: <T>(operation: () => Promise<T>, prepare?: boolean) => Promise<T>,
   isCurrent: () => boolean,
 ): Promise<void> {
-  const stored = await serialize(() => storage.get([SYNC_OUTBOX_KEY, SYNC_ACCOUNT_KEY]));
+  const stored = await serialize(() =>
+    storage.get([SYNC_OUTBOX_KEY, SYNC_ACCOUNT_KEY]),
+  );
   const outbox = normalizeOutbox(stored[SYNC_OUTBOX_KEY]);
   const storedOutbox = stored[SYNC_OUTBOX_KEY];
   const droppedInvalid = Array.isArray(storedOutbox) && storedOutbox.length !== outbox.length;
@@ -196,7 +203,9 @@ async function flushWatchOutbox(
     let result: SyncResult;
     try {
       const accountId = stored[SYNC_ACCOUNT_KEY];
-      result = typeof accountId === "string" ? await post(payload, accountId) : await post(payload);
+      result = typeof accountId === "string"
+        ? await post(payload, accountId)
+        : await post(payload);
     } catch {
       break;
     }
@@ -205,7 +214,11 @@ async function flushWatchOutbox(
   }
   await serialize(async () => {
     const latestStored = await storage.get([SYNC_OUTBOX_KEY, SYNC_ACCOUNT_KEY]);
-    if (!isCurrent() || stored[SYNC_ACCOUNT_KEY] !== latestStored[SYNC_ACCOUNT_KEY] || !(sent > 0 || droppedInvalid)) return;
+    if (
+      !isCurrent() ||
+      stored[SYNC_ACCOUNT_KEY] !== latestStored[SYNC_ACCOUNT_KEY] ||
+      !(sent > 0 || droppedInvalid)
+    ) return;
     const latest = normalizeOutbox(latestStored[SYNC_OUTBOX_KEY]);
     const delivered = outbox.slice(0, sent);
     await storage.set({
@@ -219,7 +232,11 @@ async function flushWatchOutbox(
 export function createOutboxManager(
   storage: SyncStorage,
   post: (payload: WatchPayload, accountId?: string) => Promise<SyncResult>,
-  options: { now?: () => number; alarms?: AlarmScheduler; prepare?: () => Promise<void> } = {},
+  options: {
+    now?: () => number;
+    alarms?: AlarmScheduler;
+    prepare?: () => Promise<void>;
+  } = {},
 ) {
   const now = options.now ?? Date.now;
   let operations = Promise.resolve();
@@ -240,10 +257,14 @@ export function createOutboxManager(
     const stored = await storage.get(SYNC_RETRY_KEY);
     const previous = stored[SYNC_RETRY_KEY] as Partial<RetryState> | null;
     const attempt =
-      resetAttempt ? 0 : typeof previous?.attempt === "number"
-        ? Math.max(1, previous.attempt + 1)
-        : 1;
-    const delay = RETRY_DELAYS_MS[Math.min(Math.max(0, attempt - 1), RETRY_DELAYS_MS.length - 1)]!;
+      resetAttempt
+        ? 0
+        : typeof previous?.attempt === "number"
+          ? Math.max(1, previous.attempt + 1)
+          : 1;
+    const delay = RETRY_DELAYS_MS[
+      Math.min(Math.max(0, attempt - 1), RETRY_DELAYS_MS.length - 1)
+    ]!;
     const retry = { attempt, nextRetryAt: now() + delay };
     await storage.set({ [SYNC_RETRY_KEY]: retry });
     await options.alarms?.schedule(SYNC_RETRY_ALARM, retry.nextRetryAt);
@@ -254,14 +275,18 @@ export function createOutboxManager(
     if (flushing) return flushing;
     const currentGeneration = generation;
     flushing = (async () => {
-      await flushWatchOutbox(storage, post, serialize, () => currentGeneration === generation);
+      await flushWatchOutbox(
+        storage, post, serialize, () => currentGeneration === generation,
+      );
       return serialize(async () => {
         const stored = await storage.get(SYNC_OUTBOX_KEY);
         const complete = normalizeOutbox(stored[SYNC_OUTBOX_KEY]).length === 0;
         if (currentGeneration === generation) await updateSchedule(complete);
         return complete;
       }, false);
-    })().finally(() => { flushing = undefined; });
+    })().finally(() => {
+      flushing = undefined;
+    });
     return flushing;
   };
   const clear = () =>

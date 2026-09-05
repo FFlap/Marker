@@ -68,7 +68,7 @@ describe("background delivery classification", () => {
   it("serializes classified results before returning them across messaging", async () => {
     const x = setup();
     x.client.record.mockRejectedValue({ data: { code: "validation" } });
-    await expect(x.background.deliver(payload)).resolves.toEqual({
+    await expect(x.background.deliver(payload, "viewer")).resolves.toEqual({
       ok: false,
       reason: "rejected",
       retryable: false,
@@ -84,7 +84,7 @@ describe("background delivery classification", () => {
       data: { code: "upstream" },
     });
     x.client.record.mockRejectedValue(error);
-    await expect(x.background.deliver(payload)).resolves.toMatchObject({
+    await expect(x.background.deliver(payload, "viewer")).resolves.toMatchObject({
       retryable: true,
     });
     expect(error.data.code).toBe("upstream");
@@ -325,4 +325,21 @@ it('keeps the new account queue when an old account delivery finishes', async ()
   expect(x.values[SYNC_OUTBOX_KEY]).toMatchObject([{ seriesTitle: 'Dark', episodeNumber: 2 }]);
   expect(x.values['sync.accountId']).toBe('other');
   expect(x.values['sync.lastResult']).toBeUndefined();
+});
+
+it('waits to bind an unowned batch when sign-in finishes after its snapshot', async () => {
+  const x = setup();
+  x.values[SYNC_OUTBOX_KEY] = [payload];
+  x.client.getSession.mockResolvedValueOnce(null);
+  x.client.record.mockResolvedValue({ ok: true });
+
+  await x.background.flush();
+  expect(x.client.record).not.toHaveBeenCalled();
+  expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
+  expect(x.values['sync.accountId']).toBeUndefined();
+
+  await x.background.flush();
+  expect(x.client.record).toHaveBeenCalledExactlyOnceWith(token, payload);
+  expect(x.values['sync.accountId']).toBe('viewer');
+  expect(x.values[SYNC_OUTBOX_KEY]).toEqual([]);
 });
