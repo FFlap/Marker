@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Navigate, useRouterState } from "@tanstack/react-router";
+import { Navigate, useRouterState, useSearch } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { safeInternalPath } from "@/lib/utils";
@@ -13,12 +13,18 @@ export function AuthGate({
   children: ReactNode;
   setup?: boolean;
 }) {
-  const { isAuthenticated, isLoading, accountReady, accountError, retryAccountLink } =
-    useMarkerAccount();
+  const {
+    isAuthenticated,
+    isLoading,
+    accountReady,
+    accountError,
+    retryAccountLink,
+  } = useMarkerAccount();
   const profile = useQuery(
     api.profiles.me,
     !isAuthenticated || !accountReady ? "skip" : {},
   );
+  const search = useSearch({ strict: false });
   const location = useRouterState({ select: (state) => state.location });
 
   if (accountError) return <AccountLinkError onRetry={retryAccountLink} />;
@@ -31,11 +37,20 @@ export function AuthGate({
 
   const next = `${location.pathname}${location.searchStr}`;
   if (!isAuthenticated)
-    return location.pathname === "/login" ? <AccountLoading /> : <Navigate to="/login" search={{ next }} replace />;
+    return location.pathname === "/login" ? (
+      <AccountLoading />
+    ) : (
+      <Navigate to="/login" search={{ next }} replace />
+    );
   if (!profile?.username && !setup)
-    return location.pathname === "/setup" ? <AccountLoading /> : <Navigate to="/setup" search={{ next }} replace />;
+    return location.pathname === "/setup" ? (
+      <AccountLoading />
+    ) : (
+      <Navigate to="/setup" search={{ next }} replace />
+    );
   if (profile?.username && setup) {
-    const searchNext = (location.search as { next?: unknown }).next;
+    if (location.pathname !== "/setup") return <AccountLoading />;
+    const searchNext = (search as { next?: unknown }).next;
     return (
       <Navigate
         to={safeInternalPath(
