@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { openPersistedWatchUrl, Popup } from "./main";
 
@@ -12,7 +12,7 @@ let sendMessage: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   sendMessage = vi.fn(async (message: { type: string }) => {
-    if (message.type === "sync/status") return { signedIn: false };
+    if (message.type === "sync/status" || message.type === "sync/signOut") return { signedIn: false };
     if (message.type.startsWith("bookmark/")) return { ok: true };
     return undefined;
   });
@@ -166,6 +166,29 @@ describe("popup entrypoint sync integration", () => {
     expect(
       await screen.findByText("Couldn’t sign out. Please try again."),
     ).toBeInTheDocument();
+    expect(screen.getByText("@viewer")).toBeInTheDocument();
+  });
+});
+
+
+describe("independent popup hydration", () => {
+  it("still hydrates sign-in when a bookmark update arrives during loading", async () => {
+    let resolveStatus!: (value: unknown) => void;
+    sendMessage.mockReturnValue(new Promise((resolve) => { resolveStatus = resolve; }));
+    render(<Popup />);
+    await act(async () => {
+      storageListener({ "markerBookmarks": { newValue: { version: 1, bookmarks: {} } } }, "local");
+      resolveStatus({ signedIn: true, accountLabel: "@viewer" });
+    });
+    expect(await screen.findByText("@viewer")).toBeInTheDocument();
+  });
+
+  it("preserves signed-in state when background sign-out returns an error", async () => {
+    sendMessage.mockResolvedValueOnce({ signedIn: true, accountLabel: "@viewer" });
+    await openSync();
+    sendMessage.mockResolvedValueOnce({ ok: false, reason: "background-error" });
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(await screen.findByText("Couldn’t sign out. Please try again.")).toBeInTheDocument();
     expect(screen.getByText("@viewer")).toBeInTheDocument();
   });
 });

@@ -33,6 +33,8 @@ export function openPersistedWatchUrl(url: string) {
   return true;
 }
 
+type LastSyncResult = NonNullable<React.ComponentProps<typeof App>["sync"]>["lastResult"];
+
 export function Popup() {
   const hydrationRevision = React.useRef(0);
   const [bookmarks, setBookmarks] = React.useState<EpisodeBookmark[]>([]);
@@ -40,9 +42,7 @@ export function Popup() {
   const [sync, setSync] = React.useState({
     signedIn: false,
     accountLabel: undefined as string | undefined,
-    lastResult: undefined as
-      | { ok: boolean; at: number; reason?: string; seriesTitle?: string }
-      | undefined,
+    lastResult: undefined as LastSyncResult,
   });
   const [syncError, setSyncError] = React.useState<string>();
   const [syncNotice, setSyncNotice] = React.useState<string>();
@@ -50,85 +50,46 @@ export function Popup() {
   React.useEffect(() => {
     const revision = ++hydrationRevision.current;
     let active = true;
-    const isCurrent = () => active && hydrationRevision.current === revision;
+    let bookmarksChanged = false;
+    let lastResultChanged = false;
     void readBookmarks()
       .then((next) => {
-        if (isCurrent()) setBookmarks(next);
+        if (active && !bookmarksChanged) setBookmarks(next);
       })
       .catch(() => {
-        if (isCurrent()) setBookmarkError("Couldn’t read saved episodes");
+        if (active && !bookmarksChanged) setBookmarkError("Couldn’t read saved episodes");
       });
-    void browser.storage.local
-      .get([SYNC_LAST_RESULT_KEY])
-      .then(async (stored) => {
-        try {
-          const status = (await browser.runtime.sendMessage({
-            type: "sync/status",
-          })) as { signedIn: boolean; accountLabel?: string };
-          if (!isCurrent()) return;
-          setSync({
-            signedIn: status.signedIn,
-            accountLabel: status.accountLabel,
-            lastResult: stored[SYNC_LAST_RESULT_KEY] as
-              | {
-                  ok: boolean;
-                  at: number;
-                  reason?: string;
-                  seriesTitle?: string;
-                  unverified?: boolean;
-                }
-              | undefined,
-          });
-        } catch {
-          if (!isCurrent()) return;
-          setSyncError("Couldn't check sign-in status");
-          setSync((current) => ({
-            ...current,
-            lastResult: stored[SYNC_LAST_RESULT_KEY] as
-              | {
-                  ok: boolean;
-                  at: number;
-                  reason?: string;
-                  seriesTitle?: string;
-                  unverified?: boolean;
-                }
-              | undefined,
-          }));
+    void browser.storage.local.get(SYNC_LAST_RESULT_KEY)
+      .then((stored) => {
+        if (active && !lastResultChanged) {
+          setSync((current) => ({ ...current, lastResult: stored[SYNC_LAST_RESULT_KEY] as LastSyncResult }));
         }
       })
       .catch(() => {
-        if (isCurrent()) setSyncError("Couldn’t check sign-in status");
+        if (active && !lastResultChanged) setSyncError("Couldn’t read the last sync result");
+      });
+    void browser.runtime.sendMessage({ type: "sync/status" })
+      .then((status: { signedIn: boolean; accountLabel?: string }) => {
+        if (active && hydrationRevision.current === revision) {
+          setSync((current) => ({ ...current, signedIn: status.signedIn, accountLabel: status.accountLabel }));
+        }
+      })
+      .catch(() => {
+        if (active && hydrationRevision.current === revision) setSyncError("Couldn’t check sign-in status");
       });
     const onStorageChanged = (
       changes: Record<string, Browser.storage.StorageChange>,
       areaName: string,
     ) => {
       if (areaName !== "local") return;
-      if (changes[BOOKMARKS_STORAGE_KEY] || changes[SYNC_LAST_RESULT_KEY]) {
-        hydrationRevision.current += 1;
-      }
       if (changes[BOOKMARKS_STORAGE_KEY]) {
-        setBookmarks(
-          sortBookmarks(
-            normalizeBookmarkStore(changes[BOOKMARKS_STORAGE_KEY].newValue)
-              .bookmarks,
-          ),
-        );
+        bookmarksChanged = true;
+        setBookmarks(sortBookmarks(normalizeBookmarkStore(changes[BOOKMARKS_STORAGE_KEY].newValue).bookmarks));
       }
       const lastResultChange = changes[SYNC_LAST_RESULT_KEY];
       if (lastResultChange) {
-        setSync((current) => ({
-          ...current,
-          lastResult: lastResultChange.newValue as
-            | {
-                ok: boolean;
-                at: number;
-                reason?: string;
-                seriesTitle?: string;
-                unverified?: boolean;
-              }
-            | undefined,
-        }));
+        lastResultChanged = true;
+        setSync((current) => ({ ...current, lastResult: lastResultChange.newValue as LastSyncResult }));
       }
     };
     const unsubscribe = subscribeToStorageChanges(onStorageChanged);
@@ -207,7 +168,8 @@ export function Popup() {
           hydrationRevision.current += 1;
           setSyncError(undefined);
           try {
-            await browser.runtime.sendMessage({ type: "sync/signOut" });
+            const status = await browser.runtime.sendMessage({ type: "sync/signOut" });
+            if (status?.signedIn !== false) throw new Error("Sign-out failed");
             setSync((current) => ({
               ...current,
               signedIn: false,
