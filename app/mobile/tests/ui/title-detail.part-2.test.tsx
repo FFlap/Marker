@@ -279,6 +279,24 @@ describe('Explore title metadata subscriptions', () => {
     expect(mockTouchTitle).not.toHaveBeenCalledWith(expect.objectContaining({ season: 2 }));
   });
 
+  it('loads season zero when only specials are available', async () => {
+    titleView.title.seasons = [{ season: 0, name: 'Specials', episodeCount: 1 }];
+    mockSeasonView = {
+      0: {
+        season: {
+          season: 0,
+          metadataProvider: 'tmdb',
+          orderEpoch: 1,
+          episodes: [{ season: 0, episode: 1, name: 'Special episode' }],
+        },
+        requestState: { state: 'succeeded' },
+      },
+    };
+    const view = await screen();
+    expect(view.getByText('Special episode')).toBeTruthy();
+    expect(mockTouchTitle).toHaveBeenCalledWith(expect.objectContaining({ season: 0 }));
+  });
+
   it('renders one season page and loads another bounded page', async () => {
     mockSeasonView[1].season.episodes = Array.from({ length: 121 }, (_, index) => ({
       season: 1,
