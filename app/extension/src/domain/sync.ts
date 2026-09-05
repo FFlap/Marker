@@ -220,10 +220,12 @@ async function flushWatchOutbox(
       !(sent > 0 || droppedInvalid)
     ) return;
     const latest = normalizeOutbox(latestStored[SYNC_OUTBOX_KEY]);
-    const delivered = outbox.slice(0, sent);
+    const delivered = new Set(
+      outbox.slice(0, sent).map((payload) => JSON.stringify(payload)),
+    );
     await storage.set({
       [SYNC_OUTBOX_KEY]: latest.filter(
-        (entry) => !delivered.some((payload) => sameEpisode(entry, payload)),
+        (entry) => !delivered.has(JSON.stringify(entry)),
       ),
     });
   }, false);

@@ -278,3 +278,21 @@ it('does not resume or restore a batch cleared during delivery', async () => {
   expect(post).toHaveBeenCalledOnce();
   expect(values[SYNC_OUTBOX_KEY]).toBeNull();
 });
+
+it('preserves corrected metadata queued during a terminal delivery', async () => {
+  const original = { ...payload, episodeTitle: 'Wrong title' };
+  const corrected = { ...payload, episodeTitle: 'Correct title' };
+  const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [original] };
+  const gate = deferred<void>();
+  const post = vi.fn(async () => {
+    await gate.promise;
+    return { ok: false, reason: 'unmatched-episode', retryable: false };
+  });
+  const manager = createOutboxManager(storageFor(values), post);
+  const flushing = manager.flush();
+  await vi.waitFor(() => expect(post).toHaveBeenCalledOnce());
+  await manager.enqueue(corrected);
+  gate.resolve();
+  await flushing;
+  expect(values[SYNC_OUTBOX_KEY]).toEqual([corrected]);
+});
