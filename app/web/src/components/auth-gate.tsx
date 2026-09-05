@@ -19,7 +19,9 @@ export function AuthGate({
     api.profiles.me,
     !isAuthenticated || !accountReady ? "skip" : {},
   );
-  const location = useRouterState({ select: (state) => state.location });
+  const location = useRouterState({
+    select: (state) => state.resolvedLocation ?? state.location,
+  });
 
   if (accountError) return <AccountLinkError onRetry={retryAccountLink} />;
   if (
