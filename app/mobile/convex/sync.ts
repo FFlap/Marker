@@ -200,7 +200,7 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
         }
       : undefined,
     {
-      runtime: a.runtime ?? old?.runtime,
+      runtime: display.runtime ?? old?.runtime,
       unverified: a.unverified,
       tags: old?.tags ?? [],
     },

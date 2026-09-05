@@ -53,6 +53,43 @@ describe('watch sync', () => {
     vi.unstubAllEnvs();
   });
 
+  it('counts the canonical runtime written by an offline watch sync', async () => {
+    const { t, userId, asUser } = await setup();
+    const itemId = await addItem(asUser);
+    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+      tmdbId: 88,
+      season: 1,
+      metadataProvider: 'tmdb',
+      episodes: [{ season: 1, episode: 1, name: 'Pilot', runtime: 24 }],
+      refreshedAt: Date.now(),
+      refreshAfter: Date.now() + 60_000,
+      orderEpoch: 0,
+    });
+    await t.mutation(internal.sync.recordWatchInternal, {
+      userId,
+      itemId,
+      season: 1,
+      episode: 1,
+    });
+    const summary = await t.run((ctx) =>
+      ctx.db
+        .query('episodeSummaries')
+        .withIndex('by_item', (q) => q.eq('itemId', itemId))
+        .unique(),
+    );
+    expect(summary).toMatchObject({ watchedRuntimeMinutes: 24, watchedRuntimeFallbackCount: 0 });
+    await t.mutation(internal.sync.recordWatchInternal, {
+      userId,
+      itemId,
+      season: 1,
+      episode: 1,
+    });
+    expect(await t.run((ctx) => ctx.db.get(summary!._id))).toMatchObject({
+      watchedRuntimeMinutes: 24,
+      watchedRuntimeFallbackCount: 0,
+    });
+  });
+
   it('recordWatch stamps the canonical provider episode id', async () => {
     const { t, asUser } = await setup();
     const itemId = await addItem(asUser);
