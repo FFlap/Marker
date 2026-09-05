@@ -116,6 +116,21 @@ describe("login page", () => {
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: "/" }));
   });
 
+  it("prevents switching accounts while sign-in is pending", async () => {
+    let finish!: (value: { error: null }) => void;
+    mocks.signIn.password.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    render(<LoginPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.change(screen.getByLabelText("Username or email"), { target: { value: "viewer@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByRole("button", { name: "Account options" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "New here? Create an account" })).toBeDisabled();
+    finish({ error: null });
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: "Account options" })).toBeEnabled();
+  });
+
   it("reveals the custom Clerk account-creation form", () => {
     render(<LoginPage />);
 

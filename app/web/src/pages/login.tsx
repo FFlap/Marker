@@ -86,7 +86,6 @@ export function LoginPage() {
   >(null);
   const [recovery, setRecovery] = useState<RecoveryStage | null>(null);
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const chooseFlow = (nextFlow: "signIn" | "signUp") => {
@@ -98,7 +97,6 @@ export function LoginPage() {
     setVerification(null);
     setRecovery(null);
     setConfirmPassword("");
-    setNotice("");
     setError("");
   };
   const returnToChoices = () => {
@@ -112,7 +110,6 @@ export function LoginPage() {
     setVerification(null);
     setRecovery(null);
     setConfirmPassword("");
-    setNotice("");
     setError("");
   };
   useEffect(() => {
@@ -128,7 +125,6 @@ export function LoginPage() {
     event.preventDefault();
     setBusy(true);
     setError("");
-    setNotice("");
     try {
       if (recovery === "identifier") {
         throwIfError(await signIn.create({ identifier: identifier.trim() }));
@@ -242,7 +238,6 @@ export function LoginPage() {
     setPassword("");
     setConfirmPassword("");
     setError("");
-    setNotice("");
   };
   const signInWithGoogle = async () => {
     setBusy(true);
@@ -303,6 +298,7 @@ export function LoginPage() {
             <button
               type="button"
               className="mb-7 inline-flex min-h-11 items-center gap-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+              disabled={busy}
               onClick={returnToChoices}
             >
               <ArrowLeft className="size-4" /> Account options
@@ -482,11 +478,6 @@ export function LoginPage() {
                     {error}
                   </p>
                 )}
-                {notice && (
-                  <output className="text-xs leading-5 text-foreground">
-                    {notice}
-                  </output>
-                )}
                 <Button
                   type="submit"
                   size="lg"
@@ -539,7 +530,6 @@ export function LoginPage() {
                     void signIn.reset();
                     setPassword("");
                     setError("");
-                    setNotice("");
                     setRecovery("identifier");
                   }}
                 >
@@ -549,6 +539,7 @@ export function LoginPage() {
               <button
                 type="button"
                 className="mt-6 min-h-11 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                disabled={busy}
                 onClick={() => {
                   if (recovery) {
                     resetToSignIn();
