@@ -116,7 +116,7 @@ function ProfileFormFields({
       }
       const uploadPath = await generateUploadUrl();
       const siteUrl = getConvexSiteUrl();
-      const token = await getToken({ template: 'convex' });
+      const token = await getToken();
       if (!siteUrl || !token) throw new Error('Avatar uploads are unavailable');
       const response = await fetch(new URL(uploadPath, siteUrl).toString(), {
         method: 'POST',
