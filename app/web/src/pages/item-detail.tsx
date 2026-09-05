@@ -216,7 +216,7 @@ export function ItemDetailPage() {
   const savedEpisodes = useQuery(
     api.library.episodes.listEpisodes,
     item?.mediaType === "tv"
-      ? { itemId: item._id as Id<"items">, season, pageCount: 20 }
+      ? { itemId: item._id as Id<"items">, season, pageCount: Math.max(1, seasonView.results.length) }
       : "skip",
   );
   const episodeProgress = useQuery(
