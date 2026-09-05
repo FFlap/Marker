@@ -10,13 +10,14 @@ import { afterEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   stored: { defaultView: "list" },
   save: vi.fn<() => Promise<void>>(),
+  signOut: vi.fn<() => Promise<void>>(),
 }));
 vi.mock("convex/react", () => ({
   useQuery: () => mocks.stored,
   useMutation: () => mocks.save,
 }));
 vi.mock("@clerk/react", () => ({
-  useClerk: () => ({ signOut: vi.fn<() => Promise<void>>() }),
+  useClerk: () => ({ signOut: mocks.signOut }),
 }));
 vi.mock("../../mobile/convex/_generated/api", () => ({
   api: { settings: { getSettings: "get", setSettings: "set" } },
@@ -43,4 +44,12 @@ it("follows server preferences after an optimistic save completes", async () => 
     "aria-pressed",
     "true",
   );
+});
+
+it("reports failed sign-out and allows another attempt", async () => {
+  mocks.signOut.mockRejectedValueOnce(new Error("offline"));
+  render(<SettingsPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t sign out.");
+  expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
 });
