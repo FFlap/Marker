@@ -113,11 +113,17 @@ export function SettingsPage() {
     key: K,
     value: Preferences[K],
   ) => {
-    setOverrides((old) => ({ ...old, [key]: value }));
+    if (saving) return;
+    setOverrides({ [key]: value });
     setSaving(key);
     setError("");
     try {
       await save({ [key]: value });
+      setOverrides((old) => {
+        const next = { ...old };
+        delete next[key];
+        return next;
+      });
       setFailedPreference(undefined);
     } catch {
       setFailedPreference({ key, value } as FailedPreference);
