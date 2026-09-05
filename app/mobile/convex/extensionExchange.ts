@@ -35,17 +35,22 @@ export const options = httpAction(async (_ctx, request) => {
   });
 });
 
-function errorCode(error: unknown) {
+const retryableCodes = [
+  'upstream',
+  'timeout',
+  'provider_global_limiter',
+  'stale_season_version',
+  'stale_epoch',
+];
+
+function isRetryable(error: unknown) {
   const structured =
     typeof error === 'object' && error !== null && 'data' in error
       ? (error as { data?: { code?: unknown } }).data?.code
       : undefined;
-  if (structured !== undefined) return structured;
-  const message = String(error);
-  if (message.includes('stale_season_version')) return 'stale_season_version';
-  if (message.includes('stale_epoch')) return 'stale_epoch';
-  if (message.includes('upstream')) return 'upstream';
-  return undefined;
+  return retryableCodes.some((code) =>
+    structured !== undefined ? structured === code : String(error).includes(code),
+  );
 }
 
 export const recordWatch = httpAction(async (ctx, request) => {
@@ -84,8 +89,7 @@ export const recordWatch = httpAction(async (ctx, request) => {
     } as never);
     return new Response(JSON.stringify(result), { status: 200, headers });
   } catch (error) {
-    const code = errorCode(error);
-    if (code === 'upstream' || code === 'stale_epoch' || code === 'stale_season_version')
+    if (isRetryable(error))
       return new Response(JSON.stringify({ error: 'upstream' }), { status: 503, headers });
     return new Response(JSON.stringify({ error: 'invalid-request' }), { status: 400, headers });
   }

@@ -2,9 +2,43 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
+import { ConvexError, v } from 'convex/values';
+import { internalAction } from '../../convex/_generated/server';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 afterEach(() => vi.unstubAllEnvs());
+
+describe('extension provider failures', () => {
+  it.each([
+    'timeout',
+    'provider_global_limiter',
+    'upstream',
+    'stale_epoch',
+    'stale_season_version',
+  ])('keeps %s failures retryable', async (code) => {
+    const t = convexTest(schema, {
+      ...modules,
+      '../../convex/sync.ts': async () => ({
+        recordWatchFromExtensionInternal: internalAction({
+          args: { userId: v.id('users') },
+          handler: async () => {
+            throw new ConvexError({ code, retryable: true });
+          },
+        }),
+      }),
+    });
+    await t.run((ctx) => ctx.db.insert('users', { clerkId: 'sync_user' }));
+    const origin = 'chrome-extension://abcdefghijklmnopabcdefghijklmnop';
+    vi.stubEnv('EXTENSION_ORIGINS', origin);
+    const response = await t.withIdentity({ subject: 'sync_user' }).fetch('/extension/watch', {
+      method: 'POST',
+      headers: { Origin: origin, 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'upstream' });
+  });
+});
 
 describe('Clerk account identity linking', () => {
   it('creates a complete Marker profile for a new Clerk identity', async () => {
