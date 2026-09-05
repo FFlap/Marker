@@ -61,30 +61,7 @@ export function useTagCollection({
 
   const itemsForStatus = (target: Status) => {
     const visible = filtered.filter((item) => item.status === target);
-    const expected = optimisticOrders[target];
-    const persisted = (items ?? [])
-      .filter(
-        (item) =>
-          item.status === target &&
-          item.tags.some((tag) => tag.trim().toLocaleLowerCase() === tagKey),
-      )
-      .sort((left, right) => {
-        const leftRank = rankByItem.get(String(left._id));
-        const rightRank = rankByItem.get(String(right._id));
-        if (leftRank !== undefined && rightRank !== undefined) return leftRank - rightRank;
-        if (leftRank !== undefined) return -1;
-        if (rightRank !== undefined) return 1;
-        return left.rank - right.rank;
-      })
-      .map((item) => String(item._id));
-    const order =
-      expected &&
-      !(
-        persisted.length === expected.length &&
-        persisted.every((id, index) => id === expected[index])
-      )
-        ? expected
-        : undefined;
+    const order = optimisticOrders[target];
     if (!order) return visible;
     const orderIndexById = new Map(order.map((id, index) => [id, index]));
     return [...visible].sort((left, right) => {

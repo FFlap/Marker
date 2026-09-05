@@ -191,13 +191,14 @@ export default function TagDetailScreen() {
         afterId: next[to + 1]?._id,
       });
     } catch {
+      toast.show('Couldn’t save this tag order');
+    } finally {
       if (reorderVersions.current[versionKey] === version)
         setOptimisticState((current) =>
           current.tagKey === tagKey
             ? { tagKey, orders: { ...current.orders, [status]: undefined } }
             : current,
         );
-      toast.show('Couldn’t save this tag order');
     }
   };
   const performCategoryMove = async (item: RankedItem, targetStatus: Status) => {
@@ -232,7 +233,18 @@ export default function TagDetailScreen() {
       };
       if (targetStatus === 'watched') await moveItemToWatched(placement);
       else await reorderItem({ ...placement, status: targetStatus });
+      try {
+        await reorderTagItem({ tag, itemId: item._id, beforeId: targetItems.at(-1)?._id });
+      } catch {
+        toast.show('Title moved, but its tag order couldn’t be saved');
+      }
     } catch {
+      toast.show(
+        targetStatus === 'watched'
+          ? 'Couldn’t mark every episode watched'
+          : 'Couldn’t move this title',
+      );
+    } finally {
       setOptimisticStatuses((current) => {
         const next = { ...current };
         delete next[String(item._id)];
@@ -250,32 +262,9 @@ export default function TagDetailScreen() {
             }
           : current,
       );
-      toast.show(
-        targetStatus === 'watched'
-          ? 'Couldn’t mark every episode watched'
-          : 'Couldn’t move this title',
-      );
       statusMovePendingRef.current = false;
       setStatusMovePending(false);
-      return;
     }
-
-    try {
-      await reorderTagItem({
-        tag,
-        itemId: item._id,
-        beforeId: targetItems.at(-1)?._id,
-      });
-    } catch {
-      setOptimisticState((current) =>
-        current.tagKey === tagKey
-          ? { tagKey, orders: { ...current.orders, [targetStatus]: undefined } }
-          : current,
-      );
-      toast.show('Title moved, but its tag order couldn’t be saved');
-    }
-    statusMovePendingRef.current = false;
-    setStatusMovePending(false);
   };
   const requestCategoryMove = (itemId: string, targetStatus: Status) => {
     if (filtersActive || statusMovePendingRef.current) return;

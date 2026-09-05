@@ -53,38 +53,13 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const draggedItemRef = useRef<typeof draggedItem>(undefined);
   const targetStatusRef = useRef<Status | undefined>(undefined);
 
-  const persistedOrders = useMemo(
-    () =>
-      LIBRARY_STATUSES.reduce(
-        (orders, [status]) => {
-          orders[status] = items
-            .filter((item) => item.status === status)
-            .sort((left, right) => left.rank - right.rank)
-            .map((item) => item._id);
-          return orders;
-        },
-        {} as Record<Status, string[]>,
-      ),
-    [items],
-  );
-
-  const activeOptimisticOrder = (status: Status) => {
-    const expected = optimisticOrders[status];
-    if (!expected) return undefined;
-    const persisted = persistedOrders[status];
-    return persisted.length === expected.length &&
-      persisted.every((id, index) => id === expected[index])
-      ? undefined
-      : expected;
-  };
-
   function effectiveStatus(item: LibraryItem) {
     const optimistic = optimisticStatuses[item._id];
     return optimistic && optimistic !== item.status ? optimistic : item.status;
   }
 
   const orderedForStatus = (status: Status) => {
-    const order = activeOptimisticOrder(status);
+    const order = optimisticOrders[status];
     return items
       .filter((item) => effectiveStatus(item) === status)
       .sort((left, right) => {
@@ -118,6 +93,8 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         afterId: data[to + 1]?._id,
       });
     } catch {
+      toast.show('Couldn’t save order');
+    } finally {
       if (reorderVersions.current[status] === version) {
         setOptimisticOrders((current) => {
           const next = { ...current };
@@ -125,7 +102,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
           return next;
         });
       }
-      toast.show('Couldn’t save order');
     }
   };
 
@@ -146,12 +122,11 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
       const placement = { itemId: item._id, beforeId: targetItems.at(-1)?._id };
       if (target === 'watched') await moveItemToWatched(placement);
       else await reorderItem({ ...placement, status: target });
-      setOptimisticStatuses((current) => {
-        const next = { ...current };
-        delete next[item._id];
-        return next;
-      });
     } catch {
+      toast.show(
+        target === 'watched' ? 'Couldn’t mark every episode watched' : 'Couldn’t move this title',
+      );
+    } finally {
       setOptimisticStatuses((current) => {
         const next = { ...current };
         delete next[item._id];
@@ -163,10 +138,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         delete next[target];
         return next;
       });
-      toast.show(
-        target === 'watched' ? 'Couldn’t mark every episode watched' : 'Couldn’t move this title',
-      );
-    } finally {
       statusMovePendingRef.current = false;
       setStatusMovePending(false);
     }

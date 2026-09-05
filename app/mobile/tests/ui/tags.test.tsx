@@ -261,6 +261,7 @@ describe('Tags screens', () => {
   });
 
   it('does not carry an optimistic order into another tag', async () => {
+    mockReorderTag.mockImplementationOnce(() => new Promise(() => {}));
     const view = await render(<TagDetailScreen />);
     await act(async () => mockDragEnd?.({ from: 0, to: 1 }));
     expect(
@@ -278,6 +279,26 @@ describe('Tags screens', () => {
         .map((node) => node.props.accessibilityLabel)
         .filter((label) => /^\d+\./.test(label ?? '')),
     ).toEqual(['1. First Movie', '2. Second Show']);
+  });
+
+  it('releases a saved optimistic order so server changes remain visible', async () => {
+    let finish!: () => void;
+    mockReorderTag.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = await render(<TagDetailScreen />);
+    await act(async () => mockDragEnd?.({ from: 0, to: 1 }));
+    const titles = () =>
+      view
+        .getAllByRole('button')
+        .map((node) => node.props.accessibilityLabel)
+        .filter((label) => /^\d+\./.test(label ?? ''));
+    expect(titles()).toEqual(['1. Second Show', '2. First Movie']);
+    await act(async () => finish());
+    expect(titles()).toEqual(['1. First Movie', '2. Second Show']);
   });
 
   it('moves a tagged title into another library status', async () => {

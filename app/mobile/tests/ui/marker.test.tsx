@@ -425,7 +425,30 @@ describe('Marker library', () => {
     expect(await q.findByText('Couldn’t save order')).toBeTruthy();
   });
 
+  it('releases saved optimistic orders so later server updates remain visible', async () => {
+    let finish!: () => void;
+    mockReorderItem.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const q = await view();
+    await act(async () => {
+      mockDragEnds.get('a,d,e')?.({ data: [items[3], items[4], items[0]], from: 0, to: 2 });
+    });
+    const titles = () =>
+      q
+        .getAllByRole('button')
+        .map((node) => node.props.accessibilityLabel)
+        .filter((label) => ['Avengers: Endgame', 'The Middle', 'Oshi no Ko'].includes(label));
+    expect(titles()).toEqual(['The Middle', 'Oshi no Ko', 'Avengers: Endgame']);
+    await act(async () => finish());
+    expect(titles()).toEqual(['Avengers: Endgame', 'The Middle', 'Oshi no Ko']);
+  });
+
   it('reorders with accessibility move actions using exact neighbors', async () => {
+    mockReorderItem.mockImplementationOnce(() => new Promise(() => {}));
     const q = await view();
     await act(async () => {
       fireEvent(q.getByLabelText('The Middle'), 'accessibilityAction', {
