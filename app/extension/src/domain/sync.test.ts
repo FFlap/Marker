@@ -251,3 +251,12 @@ it('clears the outbox even when authentication preparation fails', async () => {
   await manager.clear();
   expect(values[SYNC_OUTBOX_KEY]).toBeNull();
 });
+
+it('keeps distinct numbered episodes that share a title', async () => {
+  const values: Record<string, unknown> = {};
+  const manager = createOutboxManager(storageFor(values), async () => ({ ok: false, retryable: true }));
+  await manager.enqueue({ ...payload, episodeTitle: 'Episode One' });
+  await manager.enqueue({ ...payload, seasonNumber: 2, episodeTitle: 'Episode One' });
+  await manager.enqueue({ ...payload, episodeNumber: 3, episodeTitle: 'Episode One' });
+  expect(values[SYNC_OUTBOX_KEY]).toHaveLength(3);
+});

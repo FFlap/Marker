@@ -144,16 +144,17 @@ export function parseWatchPayload(value: unknown): WatchPayload | null {
 
 const normalizeIdentity = (value: string) =>
   value.normalize("NFKC").trim().toLowerCase();
-const outboxKeys = (payload: WatchPayload) => {
-  const prefix = `${payload.service}:${normalizeIdentity(payload.seriesTitle)}${
-    payload.seasonTitle ? `:season-title:${normalizeIdentity(payload.seasonTitle)}` : ""
-  }`;
-  return [
-    ...(payload.seasonNumber !== undefined && payload.episodeNumber !== undefined
-      ? [`${prefix}:${payload.seasonNumber}:${payload.episodeNumber}`]
-      : []),
-    ...(payload.episodeTitle ? [`${prefix}:title:${normalizeIdentity(payload.episodeTitle)}`] : []),
-  ];
+const sameEpisode = (left: WatchPayload, right: WatchPayload) => {
+  if (left.service !== right.service ||
+      normalizeIdentity(left.seriesTitle) !== normalizeIdentity(right.seriesTitle) ||
+      normalizeIdentity(left.seasonTitle ?? "") !== normalizeIdentity(right.seasonTitle ?? "")) return false;
+  if (left.seasonNumber !== undefined && right.seasonNumber !== undefined) {
+    if (left.seasonNumber !== right.seasonNumber) return false;
+    if (left.episodeNumber !== undefined && right.episodeNumber !== undefined)
+      return left.episodeNumber === right.episodeNumber;
+  }
+  return Boolean(left.episodeTitle && right.episodeTitle &&
+    normalizeIdentity(left.episodeTitle) === normalizeIdentity(right.episodeTitle));
 };
 
 function normalizeOutbox(value: unknown): WatchPayload[] {
@@ -172,8 +173,7 @@ async function enqueueWatchEvent(
 ): Promise<void> {
   const stored = await storage.get(SYNC_OUTBOX_KEY);
   const current = normalizeOutbox(stored[SYNC_OUTBOX_KEY]);
-  const keys = new Set(outboxKeys(payload));
-  const deduped = current.filter((entry) => !outboxKeys(entry).some((key) => keys.has(key)));
+  const deduped = current.filter((entry) => !sameEpisode(entry, payload));
   await storage.set({
     [SYNC_OUTBOX_KEY]: [...deduped, payload].slice(-SYNC_OUTBOX_MAX),
   });
@@ -201,10 +201,10 @@ async function flushWatchOutbox(
   if (sent > 0 || droppedInvalid) {
     const latestStored = await storage.get(SYNC_OUTBOX_KEY);
     const latest = normalizeOutbox(latestStored[SYNC_OUTBOX_KEY]);
-    const deliveredKeys = new Set(outbox.slice(0, sent).flatMap(outboxKeys));
+    const delivered = outbox.slice(0, sent);
     await storage.set({
       [SYNC_OUTBOX_KEY]: latest.filter(
-        (entry) => !outboxKeys(entry).some((key) => deliveredKeys.has(key)),
+        (entry) => !delivered.some((payload) => sameEpisode(entry, payload)),
       ),
     });
   }
