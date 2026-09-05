@@ -41,10 +41,10 @@ describe("background-owned tracking", () => {
     });
   });
 
-  it("treats a missing background response as unchanged", async () => {
+  it.each([undefined, { ok: false, reason: "background-error" }])("retries a failed background save: %o", async (response) => {
     await expect(
-      persistDetectedEpisode(bookmark, async () => undefined),
-    ).resolves.toBe(false);
+      persistDetectedEpisode(bookmark, async () => response),
+    ).rejects.toThrow("The background could not save the episode");
   });
 
   it("uses browser.runtime as the receiver for default bookmark and sync messages", async () => {

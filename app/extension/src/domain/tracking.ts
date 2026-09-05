@@ -29,5 +29,7 @@ export async function persistDetectedEpisode(
   const response = (await send({ type: "bookmark/save", bookmark })) as {
     changed?: unknown;
   } | undefined;
-  return response?.changed === true;
+  if (typeof response?.changed !== "boolean")
+    throw new Error("The background could not save the episode");
+  return response.changed;
 }
