@@ -231,7 +231,7 @@ export function TagDetailPage() {
       const index = order.indexOf(id);
       return index < 0 ? Number.MAX_SAFE_INTEGER : index;
     };
-    return [...items].toSorted(
+    return items.toSorted(
       (left, right) =>
         position(String(left._id)) - position(String(right._id)) || left.rank - right.rank,
     );

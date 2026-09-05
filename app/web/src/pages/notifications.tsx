@@ -45,8 +45,7 @@ function activityText(activity: Activity) {
 }
 
 export function NotificationsPage() {
-  const queriedActivity = useQuery(api.notifications.feed, {});
-  const activity = queriedActivity;
+  const activity = useQuery(api.notifications.feed, {});
   return (
     <Page width="compact">
       <PageHeader title="Notifications" />
@@ -60,7 +59,7 @@ export function NotificationsPage() {
             </span>
           }
         />
-        {queriedActivity === undefined ? (
+        {activity === undefined ? (
           <div className="mt-4 grid gap-2">
             {[0, 1, 2].map((key) => (
               <div

@@ -28,15 +28,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { WebLibraryItem } from "@/types";
+import type { WebLibraryItem as LibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-
-type LibraryItem = WebLibraryItem & {
-  tmdbId?: number;
-  timesWatched?: number;
-  genres?: string[];
-  runtime?: number;
-};
 
 type TitleDetail = {
   title?: string;
@@ -330,8 +323,6 @@ export function ItemDetailPage() {
     !seasonRow &&
     (seasonRequestState?.state === "failed" ||
       seasonRequestState?.state === "notFound");
-  const visibleSeasons = seasons;
-  const visibleEpisodes = episodes;
 
   return (
     <Page width="wide" className="max-w-5xl">
@@ -493,14 +484,14 @@ export function ItemDetailPage() {
       {item.mediaType === "tv" && (
         <section className="mt-12">
           <SectionHeader title="Episodes" />
-          {visibleSeasons.length > 0 && (
+          {seasons.length > 0 && (
             <select
               aria-label="Season"
               value={season}
               onChange={(event) => setSeason(Number(event.target.value))}
               className="mt-5 h-14 w-full rounded-[14px] border border-border bg-card px-5 text-base font-semibold"
             >
-              {visibleSeasons.map((entry) => (
+              {seasons.map((entry) => (
                 <option key={entry.season} value={entry.season}>
                   {entry.name || `Season ${entry.season}`}
                 </option>
@@ -577,9 +568,9 @@ export function ItemDetailPage() {
                 />
               ))}
             </div>
-          ) : visibleEpisodes.length ? (
+          ) : episodes.length ? (
             <div className="mt-5 divide-y divide-border">
-              {visibleEpisodes.map((episode) => {
+              {episodes.map((episode) => {
                 const saved = savedByEpisode.get(episode.episode);
                 const key = `${episode.season}:${episode.episode}`;
                 const expanded = expandedEpisode === key;

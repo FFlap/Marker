@@ -21,49 +21,47 @@ export function ProfilePage() {
   const stats = useQuery(api.stats.profile, {});
   const publicTags = useQuery(api.tags.myPublic, {});
   const [tab, setTab] = useState<"collection" | "stats">("collection");
-  const identity = profile;
-  const metrics = stats;
   const cards = [
     {
       label: "Watch time",
-      value: metrics
-        ? `${Math.floor(metrics.totalWatchMinutes / 1440)}d ${Math.floor((metrics.totalWatchMinutes % 1440) / 60)}h`
+      value: stats
+        ? `${Math.floor(stats.totalWatchMinutes / 1440)}d ${Math.floor((stats.totalWatchMinutes % 1440) / 60)}h`
         : "—",
-      detail: metrics ? `${metrics.totalWatchMinutes.toLocaleString()} minutes` : undefined,
+      detail: stats ? `${stats.totalWatchMinutes.toLocaleString()} minutes` : undefined,
     },
-    { label: "Episodes", value: metrics?.episodesWatched.toLocaleString() ?? "—", detail: undefined },
-    { label: "Movies Watched", value: metrics?.moviesWatched.toLocaleString() ?? "—", detail: undefined },
-    { label: "Shows Watched", value: metrics?.showsWatched.toLocaleString() ?? "—", detail: undefined },
-    { label: "Library Items", value: metrics?.totalItems.toLocaleString() ?? "—", detail: undefined },
-    { label: "Average Rating", value: metrics?.avgRating !== undefined ? metrics.avgRating.toFixed(1) : "—", detail: undefined },
+    { label: "Episodes", value: stats?.episodesWatched.toLocaleString() ?? "—", detail: undefined },
+    { label: "Movies Watched", value: stats?.moviesWatched.toLocaleString() ?? "—", detail: undefined },
+    { label: "Shows Watched", value: stats?.showsWatched.toLocaleString() ?? "—", detail: undefined },
+    { label: "Library Items", value: stats?.totalItems.toLocaleString() ?? "—", detail: undefined },
+    { label: "Average Rating", value: stats?.avgRating !== undefined ? stats.avgRating.toFixed(1) : "—", detail: undefined },
   ];
 
   return (
     <Page width="wide" className="max-w-4xl">
       <PageHeader title="Profile" />
-      {!identity || !metrics ? (
+      {!profile || !stats ? (
         <div className="mt-6 h-72 animate-pulse rounded-xl bg-card" />
       ) : (
         <>
           <section className="mt-6 flex flex-col gap-5 pb-7 sm:flex-row sm:items-center">
             <div className="grid size-[104px] shrink-0 place-items-center overflow-hidden rounded-full bg-card text-2xl font-bold">
-              {identity.avatarUrl ? (
-                <img src={identity.avatarUrl} alt="" className="size-full object-cover" />
+              {profile.avatarUrl ? (
+                <img src={profile.avatarUrl} alt="" className="size-full object-cover" />
               ) : (
-                identity.username?.[0]?.toUpperCase() ?? "M"
+                profile.username?.[0]?.toUpperCase() ?? "M"
               )}
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-2xl font-bold tracking-[-.03em]">
-                @{identity.username ?? "profile"}
+                @{profile.username ?? "profile"}
               </h2>
               <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                {identity.isPublic ? <Globe2 className="size-3.5" /> : <LockKeyhole className="size-3.5" />}
-                {identity.isPublic ? "Public profile" : "Private profile"}
+                {profile.isPublic ? <Globe2 className="size-3.5" /> : <LockKeyhole className="size-3.5" />}
+                {profile.isPublic ? "Public profile" : "Private profile"}
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
-                {identity.followerCount.toLocaleString()} followers ·{" "}
-                {identity.followingCount.toLocaleString()} following
+                {profile.followerCount.toLocaleString()} followers ·{" "}
+                {profile.followingCount.toLocaleString()} following
               </p>
             </div>
             <Button variant="outline" asChild>
@@ -87,11 +85,11 @@ export function ProfilePage() {
 
           {tab === "collection" ? (
             <TabsContent value="collection" className="mt-10 grid gap-12">
-              <ProfileFavorites favorites={metrics.favorites} />
+              <ProfileFavorites favorites={stats.favorites} />
               <section>
                 <SectionHeader title="Top tags" />
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {metrics.topTags.length ? metrics.topTags.map((tag) => (
+                  {stats.topTags.length ? stats.topTags.map((tag) => (
                     <Link
                       key={tag.tag}
                       to="/tags/$tag"
@@ -103,8 +101,8 @@ export function ProfilePage() {
                   )) : <span className="text-sm text-muted-foreground">No tags yet.</span>}
                 </div>
               </section>
-              {identity.username ? (
-                <PublicTags username={identity.username} tags={publicTags ?? []} />
+              {profile.username ? (
+                <PublicTags username={profile.username} tags={publicTags ?? []} />
               ) : null}
             </TabsContent>
           ) : (
