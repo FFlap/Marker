@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import {
@@ -64,18 +64,6 @@ function parsePreview(value: string | undefined): SearchResult | undefined {
   }
 }
 
-function TrackTitleDialog({
-  selection,
-  onAdded,
-  children,
-}: {
-  selection: SearchResult;
-  onAdded: (itemId: string) => void;
-  children: ReactNode;
-}) {
-  return <AddTitleDialog initialSelection={selection} onAdded={onAdded}>{children}</AddTitleDialog>;
-}
-
 export function TitleDetailPage() {
   const { mediaType: rawMediaType, tmdbId: rawTmdbId } = useParams({
     from: "/app/title/$mediaType/$tmdbId",
@@ -100,31 +88,31 @@ export function TitleDetailPage() {
       : undefined;
   }, [mediaType, rawPreview, tmdbId]);
   const existing = useConvexQuery(
-    api.library.getOwnedItemByTmdb,
+    api.library.items.getOwnedItemByTmdb,
     mediaType && valid ? { mediaType, tmdbId } : "skip",
   );
   const titleView = useConvexQuery(
-    api.resolvedMetadata.getTitleView,
+    api.resolvedMetadata.reads.getTitleView,
     mediaType && valid ? { mediaType, tmdbId } : "skip",
   );
   const titleRequestState = useConvexQuery(
-    api.resolvedMetadata.getTitleRequestState,
+    api.resolvedMetadata.reads.getTitleRequestState,
     mediaType && valid ? { mediaType, tmdbId } : "skip",
   );
-  const touchTitle = useMutation(api.resolvedMetadata.touchTitle);
+  const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const detail = titleView?.title as Detail | null | undefined;
   const meta = detail ?? preview;
   const [season, setSeason] = useState(1);
   const [touchError, setTouchError] = useState(false);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const seasonView = usePaginatedQuery(
-    api.resolvedMetadata.getSeasonView,
+    api.resolvedMetadata.reads.getSeasonView,
     mediaType === "tv" && valid ? { tmdbId, season } : "skip",
     { initialNumItems: 1 },
   );
   const seasonPages = seasonView.results as SeasonPage[];
   const seasonRequestState = useConvexQuery(
-    api.resolvedMetadata.getSeasonRequestState,
+    api.resolvedMetadata.reads.getSeasonRequestState,
     mediaType === "tv" && valid ? { tmdbId, season } : "skip",
   );
   const episodes = useMemo(
@@ -309,11 +297,11 @@ export function TitleDetailPage() {
                 This title isn’t in your library yet.
               </p>
               {selection && (
-                <TrackTitleDialog selection={selection} onAdded={handleAdded}>
+                <AddTitleDialog initialSelection={selection} onAdded={handleAdded}>
                   <Button variant="outline">
                     Add Entry
                   </Button>
-                </TrackTitleDialog>
+                </AddTitleDialog>
               )}
             </div>
           </section>
@@ -365,11 +353,11 @@ export function TitleDetailPage() {
                   </select>
                   <div className="mt-4 flex justify-end">
                     {selection && (
-                      <TrackTitleDialog selection={selection} onAdded={handleAdded}>
+                      <AddTitleDialog initialSelection={selection} onAdded={handleAdded}>
                         <Button variant="outline">
                           Add to track
                         </Button>
-                      </TrackTitleDialog>
+                      </AddTitleDialog>
                     )}
                   </div>
                 </>
@@ -461,7 +449,7 @@ export function TitleDetailPage() {
                             ) : null}
                           </button>
                           {selection ? (
-                            <TrackTitleDialog selection={selection} onAdded={handleAdded}>
+                            <AddTitleDialog initialSelection={selection} onAdded={handleAdded}>
                               <Button
                                 variant="outline"
                                 size="icon"
@@ -470,7 +458,7 @@ export function TitleDetailPage() {
                               >
                                 +
                               </Button>
-                            </TrackTitleDialog>
+                            </AddTitleDialog>
                           ) : (
                             <span className="grid size-10 place-items-center rounded-full border border-border text-muted-foreground">
                               +
@@ -488,14 +476,14 @@ export function TitleDetailPage() {
                               episodes watched.
                             </p>
                             {selection && (
-                              <TrackTitleDialog selection={selection} onAdded={handleAdded}>
+                              <AddTitleDialog initialSelection={selection} onAdded={handleAdded}>
                                 <Button
                                   variant="outline"
                                   className="mt-3"
                                 >
                                   Add Entry
                                 </Button>
-                              </TrackTitleDialog>
+                              </AddTitleDialog>
                             )}
                           </div>
                         )}

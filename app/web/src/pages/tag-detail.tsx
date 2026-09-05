@@ -155,12 +155,12 @@ function VisibilityDialog({
 
 export function TagDetailPage() {
   const { tag } = useParams({ from: "/app/tags/$tag" });
-  const libraryQuery = useQuery(api.library.listItems, {});
-  const rankQuery = useQuery(api.library.listTagRanks, { tag });
+  const libraryQuery = useQuery(api.library.items.listItems, {});
+  const rankQuery = useQuery(api.library.items.listTagRanks, { tag });
   const settings = useQuery(api.settings.getSettings, {});
-  const reorderTagItem = useMutation(api.library.reorderTagItem);
-  const reorderItem = useMutation(api.library.reorderItem);
-  const moveItemToWatched = useAction(api.library.moveItemToWatched);
+  const reorderTagItem = useMutation(api.library.ordering.reorderTagItem);
+  const reorderItem = useMutation(api.library.ordering.reorderItem);
+  const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const library = libraryQuery as WebLibraryItem[] | undefined;
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>({

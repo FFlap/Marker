@@ -38,13 +38,12 @@ vi.mock("convex/react", () => ({
 vi.mock("../../mobile/convex/_generated/api", () => ({
   api: {
     library: {
-      addItem: "library.addItem",
-      listTagSuggestions: "library.listTagSuggestions",
-      addItemAndMarkWatched: "library.addItemAndMarkWatched",
+      items: { addItem: "library.addItem", listTagSuggestions: "library.listTagSuggestions" },
+      seasonWatched: { addItemAndMarkWatched: "library.addItemAndMarkWatched" },
     },
     resolvedMetadata: {
-      getTitle: "resolvedMetadata.getTitle",
-      touchTitle: "resolvedMetadata.touchTitle",
+      reads: { getTitle: "resolvedMetadata.getTitle" },
+      touch: { touchTitle: "resolvedMetadata.touchTitle" },
     },
     tmdb: { searchMulti: "tmdb.searchMulti" },
   },

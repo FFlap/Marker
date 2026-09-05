@@ -62,7 +62,7 @@ function useLocalToday() {
 export function EpisodesPage() {
   const today = useLocalToday();
   const queried = useQuery(api.episodeHub.overview, { today });
-  const setEpisode = useMutation(api.library.setEpisodeState);
+  const setEpisode = useMutation(api.library.episodes.setEpisodeState);
   const data = queried as
     { watching: Episode[]; favorites: Episode[] } | undefined;
   const [tab, setTab] = useState<"watching" | "favorites">("watching");

@@ -79,12 +79,12 @@ function EntryDialog({
   onRemoved: () => void;
   children: ReactNode;
 }) {
-  const updateItem = useMutation(api.library.updateItem);
-  const removeItem = useMutation(api.library.removeItem);
-  const moveItemToWatched = useAction(api.library.moveItemToWatched);
+  const updateItem = useMutation(api.library.items.updateItem);
+  const removeItem = useMutation(api.library.items.removeItem);
+  const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const [open, setOpen] = useState(false);
   const suggestions = useQuery(
-    api.library.listTagSuggestions,
+    api.library.items.listTagSuggestions,
     !open ? "skip" : {},
   );
   const [draft, setDraft] = useState<EntryDraft>({
@@ -188,11 +188,11 @@ function EntryDialog({
 export function ItemDetailPage() {
   const { itemId } = useParams({ from: "/app/item/$itemId" });
   const navigate = useNavigate();
-  const listQuery = useQuery(api.library.listItems, {});
-  const touchItemView = useMutation(api.resolvedMetadata.touchItemView);
-  const setSeasonWatched = useAction(api.library.setSeasonWatched);
+  const listQuery = useQuery(api.library.items.listItems, {});
+  const touchItemView = useMutation(api.resolvedMetadata.touch.touchItemView);
+  const setSeasonWatched = useAction(api.library.seasonWatched.setSeasonWatched);
   const itemView = useQuery(
-    api.resolvedMetadata.getItemView,
+    api.resolvedMetadata.reads.getItemView,
     { itemId: itemId as Id<"items"> },
   );
   const item = (itemView?.item ??
@@ -205,34 +205,34 @@ export function ItemDetailPage() {
   const [season, setSeason] = useState(1);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const [episodePending, setEpisodePending] = useState<string>();
-  const setEpisodeState = useMutation(api.library.setEpisodeState);
+  const setEpisodeState = useMutation(api.library.episodes.setEpisodeState);
   const seasonView = usePaginatedQuery(
-    api.resolvedMetadata.getSeasonView,
+    api.resolvedMetadata.reads.getSeasonView,
     item?.mediaType === "tv" && item.tmdbId !== undefined
       ? { tmdbId: item.tmdbId, season }
       : "skip",
     { initialNumItems: 1 },
   );
   const savedEpisodes = useQuery(
-    api.library.listEpisodes,
+    api.library.episodes.listEpisodes,
     item?.mediaType === "tv"
       ? { itemId: item._id as Id<"items">, season, pageCount: 20 }
       : "skip",
   );
   const episodeProgress = useQuery(
-    api.library.listEpisodeProgress,
+    api.library.episodes.listEpisodeProgress,
     item?.mediaType === "tv"
       ? { itemId: item._id as Id<"items"> }
       : "skip",
   );
   const titleRequestState = useQuery(
-    api.resolvedMetadata.getTitleRequestState,
+    api.resolvedMetadata.reads.getTitleRequestState,
     item?.tmdbId !== undefined
       ? { mediaType: item.mediaType, tmdbId: item.tmdbId }
       : "skip",
   );
   const seasonRequestState = useQuery(
-    api.resolvedMetadata.getSeasonRequestState,
+    api.resolvedMetadata.reads.getSeasonRequestState,
     item?.mediaType === "tv" && item.tmdbId !== undefined
       ? { tmdbId: item.tmdbId, season }
       : "skip",

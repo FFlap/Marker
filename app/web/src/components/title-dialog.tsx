@@ -80,9 +80,9 @@ export function AddTitleDialog({
   onAdded?: (itemId: string) => void;
 }) {
   const searchTitles = useAction(api.tmdb.searchMulti);
-  const addItemAndMarkWatched = useAction(api.library.addItemAndMarkWatched);
-  const addItem = useMutation(api.library.addItem);
-  const touchTitle = useMutation(api.resolvedMetadata.touchTitle);
+  const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
+  const addItem = useMutation(api.library.items.addItem);
+  const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const [open, setOpen] = useState(false);
   const [state, dispatch] = useReducer(dialogReducer, {
     ...initialState,
@@ -100,11 +100,11 @@ export function AddTitleDialog({
     error,
   } = state;
   const resolvedTitle = useQuery(
-    api.resolvedMetadata.getTitle,
-    selected ? { mediaType: selected.mediaType, tmdbId: selected.id } : "skip",
+    api.resolvedMetadata.reads.getTitle,
+    open && selected ? { mediaType: selected.mediaType, tmdbId: selected.id } : "skip",
   );
   const suggestions = useQuery(
-    api.library.listTagSuggestions,
+    api.library.items.listTagSuggestions,
     !open || !selected ? "skip" : {},
   );
   const canonicalRuntime =
@@ -282,6 +282,7 @@ export function AddTitleDialog({
               {!initialSelection && (
                 <Button
                   variant="ghost"
+                  disabled={busy}
                   onClick={() =>
                     dispatch({
                       type: "patch",

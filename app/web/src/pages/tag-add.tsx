@@ -12,9 +12,9 @@ import { posterUrl } from "@/lib/utils";
 
 export function TagAddPage() {
   const { tag } = useParams({ from: "/app/tags/$tag/add" });
-  const itemQuery = useQuery(api.library.listItems, {});
+  const itemQuery = useQuery(api.library.items.listItems, {});
   const items = itemQuery as WebLibraryItem[] | undefined;
-  const addTagToItems = useMutation(api.library.addTagToItems);
+  const addTagToItems = useMutation(api.library.items.addTagToItems);
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => new Set());

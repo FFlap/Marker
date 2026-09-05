@@ -95,10 +95,10 @@ function PosterItem({ item, index, ranked }: { item: WebLibraryItem; index: numb
 }
 
 export function LibraryPage() {
-  const queried = useQuery(api.library.listItems, {});
+  const queried = useQuery(api.library.items.listItems, {});
   const settings = useQuery(api.settings.getSettings, {});
-  const reorderItem = useMutation(api.library.reorderItem);
-  const moveItemToWatched = useAction(api.library.moveItemToWatched);
+  const reorderItem = useMutation(api.library.ordering.reorderItem);
+  const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const items = queried as WebLibraryItem[] | undefined;
   const { view, setView } = useSessionLibraryView(
     settings?.defaultView ?? "list",
