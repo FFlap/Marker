@@ -50,7 +50,7 @@ export function ProfileSetupPage() {
         <p className="text-[10px] font-bold uppercase tracking-[.15em] text-muted-foreground">Marker</p>
         <h1 className="mt-3 text-[34px] font-bold tracking-[-.035em]">Create your profile</h1>
         <p className="mt-2.5 max-w-md text-sm leading-5 text-muted-foreground">
-          Choose how you’ll appear and who can see your watch activity.
+          Choose how you’ll appear. You can change profile visibility later.
         </p>
         <form onSubmit={submit} className="mt-12 grid gap-4">
           <div className="mb-3 flex items-center gap-5">

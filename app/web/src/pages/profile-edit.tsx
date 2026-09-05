@@ -140,7 +140,7 @@ export function ProfileEditPage() {
                 <LockKeyhole className="size-5" />
                 <span>
                   <strong className="block text-sm">Private</strong>
-                  <span className="text-xs text-muted-foreground">Only you can see your profile activity.</span>
+                  <span className="text-xs text-muted-foreground">You and approved followers can see your activity. Public tags remain visible to everyone.</span>
                 </span>
               </button>
             </div>
