@@ -1,5 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["src/app/**/*.{ts,tsx}", "convex/**/*.ts", "babel.config.js"],
-  "ignoreDependencies": ["expo-font", "expo-updates"]
+  "entry": ["src/app/**/*.{ts,tsx}", "convex/**/*.ts"],
+  "ignoreDependencies": ["expo-font"]
 }
