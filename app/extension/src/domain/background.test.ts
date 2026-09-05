@@ -31,8 +31,9 @@ const setup = () => {
   };
   const client = {
     getSession: vi.fn(
-      async (): Promise<{ token: string; accountLabel: string } | null> => ({
+      async (): Promise<{ token: string; accountId: string; accountLabel: string } | null> => ({
         token,
+        accountId: "viewer",
         accountLabel: "@viewer",
       }),
     ),
@@ -225,5 +226,35 @@ describe("background queue behavior", () => {
       "sync.outboxRetry",
       301_000,
     );
+  });
+});
+
+describe("outbox account ownership", () => {
+  it("never sends a previous account's queued history after a worker restart", async () => {
+    const x = setup();
+    x.client.record.mockRejectedValue({ status: 503 });
+    await x.background.handler({ type: "sync/enqueue", payload });
+    x.client.getSession.mockResolvedValue({ token: "other-token", accountId: "other", accountLabel: "Other" });
+    x.client.record.mockClear();
+    const restarted = createMessageHandler(x.storage, x.client);
+    await restarted.flush();
+    expect(x.client.record).not.toHaveBeenCalled();
+    expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
+    await restarted.handler({ type: "sync/enqueue", payload: { ...payload, episodeNumber: 3 } });
+    expect(x.client.record).toHaveBeenCalledWith("other-token", { ...payload, episodeNumber: 3 });
+  });
+
+  it("stops an in-flight batch if the account switches between deliveries", async () => {
+    const x = setup();
+    x.values[SYNC_OUTBOX_KEY] = [payload, { ...payload, episodeNumber: 3 }];
+    x.client.record.mockImplementation(async () => {
+      x.client.getSession.mockResolvedValue({ token: "other-token", accountId: "other", accountLabel: "Other" });
+      return { ok: true };
+    });
+    await x.background.flush();
+    expect(x.client.record).toHaveBeenCalledOnce();
+    await x.background.flush();
+    expect(x.client.record).toHaveBeenCalledOnce();
+    expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
   });
 });

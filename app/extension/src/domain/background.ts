@@ -9,6 +9,8 @@ import {
   createOutboxManager,
   parseWatchPayload,
   SYNC_LAST_RESULT_KEY,
+  SYNC_OUTBOX_KEY,
+  SYNC_RETRY_KEY,
   type AlarmScheduler,
   type SyncResult,
   type WatchPayload,
@@ -34,8 +36,10 @@ type ErrorLike = {
 };
 export type DeliveryClassification = "retryable" | "auth" | "terminal";
 
+const SYNC_ACCOUNT_KEY = "sync.accountId";
+
 export interface AuthClient {
-  getSession(): Promise<{ token: string; accountLabel: string } | null>;
+  getSession(): Promise<{ token: string; accountId: string; accountLabel: string } | null>;
   connect(): Promise<void>;
   signOut(): Promise<void>;
   record(token: string, payload: Record<string, unknown>): Promise<unknown>;
@@ -108,6 +112,9 @@ export function createMessageHandler(
     const current = await client.getSession();
     if (!current)
       return { ok: false, reason: "not-signed-in", retryable: true };
+    const stored = await storage.get(SYNC_ACCOUNT_KEY);
+    if (stored[SYNC_ACCOUNT_KEY] && stored[SYNC_ACCOUNT_KEY] !== current.accountId)
+      return { ok: false, reason: "not-signed-in", retryable: true };
     try {
       const result = (await client.record(current.token, { ...payload })) as {
         ok?: unknown;
@@ -153,7 +160,22 @@ export function createMessageHandler(
     });
     return result;
   };
-  const outbox = createOutboxManager(storage, deliver, options);
+  const outbox = createOutboxManager(storage, deliver, {
+    ...options,
+    prepare: async () => {
+      const current = await client.getSession();
+      if (!current) return;
+      const stored = await storage.get(SYNC_ACCOUNT_KEY);
+      const previous = stored[SYNC_ACCOUNT_KEY];
+      if (previous === current.accountId) return;
+      if (previous) {
+        await storage.remove(SYNC_OUTBOX_KEY);
+        await storage.remove(SYNC_RETRY_KEY);
+        await storage.remove(SYNC_LAST_RESULT_KEY);
+      }
+      await storage.set({ [SYNC_ACCOUNT_KEY]: current.accountId });
+    },
+  });
   const bookmarks = createBookmarkOperations(storage, BOOKMARKS_STORAGE_KEY);
   const handler = async (message: unknown) => {
     if (!isBackgroundMessage(message))
@@ -177,6 +199,7 @@ export function createMessageHandler(
       case "sync/signOut":
         await client.signOut();
         await outbox.clear();
+        await storage.remove(SYNC_ACCOUNT_KEY);
         await storage.remove(SYNC_LAST_RESULT_KEY);
         return { signedIn: false };
       case "sync/status": {

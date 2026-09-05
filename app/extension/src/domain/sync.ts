@@ -214,12 +214,15 @@ async function flushWatchOutbox(
 export function createOutboxManager(
   storage: SyncStorage,
   post: (payload: WatchPayload) => Promise<SyncResult>,
-  options: { now?: () => number; alarms?: AlarmScheduler } = {},
+  options: { now?: () => number; alarms?: AlarmScheduler; prepare?: () => Promise<void> } = {},
 ) {
   const now = options.now ?? Date.now;
   let operations = Promise.resolve();
   const serialize = <T>(operation: () => Promise<T>) => {
-    const result = operations.then(operation, operation);
+    const result = operations.then(async () => {
+      await options.prepare?.();
+      return operation();
+    });
     operations = result.then(() => undefined, () => undefined);
     return result;
   };

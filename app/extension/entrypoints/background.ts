@@ -30,7 +30,7 @@ export default defineBackground(() => {
     const accountLabel = user.username
       ? `@${user.username}`
       : (user.primaryEmailAddress?.emailAddress ?? "Marker account");
-    return { token, accountLabel };
+    return { token, accountId: user.id, accountLabel };
   };
 
   const authenticatedPost = async (
@@ -104,11 +104,11 @@ export default defineBackground(() => {
   });
   void clerkPromise
     .then((clerk) => {
-      let wasSignedIn = Boolean(clerk.session && clerk.user);
+      let accountId = clerk.user?.id;
       clerk.addListener(() => {
-        const isSignedIn = Boolean(clerk.session && clerk.user);
-        if (isSignedIn === wasSignedIn) return;
-        wasSignedIn = isSignedIn;
+        const nextAccountId = clerk.user?.id;
+        if (nextAccountId === accountId) return;
+        accountId = nextAccountId;
         void background.flush().catch(() => undefined);
       });
       return background.flush();
