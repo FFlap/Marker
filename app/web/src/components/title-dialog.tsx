@@ -9,7 +9,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { Check, Search } from "lucide-react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { LibraryEntryControls } from "@/components/library-entry-controls";
+import { LibraryEntryControls, type EntryDraft } from "@/components/library-entry-controls";
 import {
   Dialog,
   DialogContent,
@@ -30,34 +30,26 @@ export type SearchResult = {
   genres?: string[];
 };
 
-type DialogState = {
+type DialogState = EntryDraft & {
   query: string;
   results: SearchResult[];
   selected?: SearchResult;
-  status: "watching" | "watchlist" | "watched" | "dropped";
-  rating: string;
-  timesWatched: string;
-  tags: string;
   busy: boolean;
   error: string;
 };
 
-const initialState: DialogState = {
-  query: "",
-  results: [],
+const freshTitleFields: EntryDraft & { error: string } = {
   status: "watchlist",
-  rating: "",
-  timesWatched: "0",
-  tags: "",
-  busy: false,
+  rating: undefined,
+  timesWatched: 0,
+  tags: [],
   error: "",
 };
-const freshTitleFields = {
-  status: "watchlist" as const,
-  rating: "",
-  timesWatched: "0",
-  tags: "",
-  error: "",
+const initialState: DialogState = {
+  ...freshTitleFields,
+  query: "",
+  results: [],
+  busy: false,
 };
 
 type DialogAction =
@@ -146,13 +138,11 @@ export function AddTitleDialog({
 
   const save = async () => {
     if (!selected) return;
-    const numericRating = rating === "" ? undefined : Number(rating);
-    const numericTimesWatched = Number(timesWatched);
     if (
-      numericRating !== undefined &&
-      (!Number.isFinite(numericRating) ||
-        numericRating < 0 ||
-        numericRating > 10)
+      rating !== undefined &&
+      (!Number.isFinite(rating) ||
+        rating < 0 ||
+        rating > 10)
     ) {
       dispatch({
         type: "patch",
@@ -160,7 +150,7 @@ export function AddTitleDialog({
       });
       return;
     }
-    if (!Number.isInteger(numericTimesWatched) || numericTimesWatched < 0) {
+    if (!Number.isInteger(timesWatched) || timesWatched < 0) {
       dispatch({
         type: "patch",
         value: { error: "Times watched must be a non-negative number." },
@@ -181,12 +171,9 @@ export function AddTitleDialog({
           genres: resolvedTitle?.genres ?? selected.genres,
         }),
         status,
-        ...(numericRating !== undefined && { rating: numericRating }),
-        timesWatched: numericTimesWatched,
-        tags: tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
+        ...(rating !== undefined && { rating }),
+        timesWatched,
+        tags,
       };
       const itemId =
         selected.mediaType === "tv" && status === "watched"
@@ -250,28 +237,9 @@ export function AddTitleDialog({
               </div>
             ) : null}
             <LibraryEntryControls
-              value={{
-                status,
-                rating: rating === "" ? undefined : Number(rating),
-                timesWatched: Number(timesWatched),
-                tags: tags
-                  .split(",")
-                  .map((tag) => tag.trim())
-                  .filter(Boolean),
-              }}
+              value={{ status, rating, timesWatched, tags }}
               suggestions={suggestions ?? []}
-              onChange={(next) =>
-                dispatch({
-                  type: "patch",
-                  value: {
-                    status: next.status,
-                    rating:
-                      next.rating === undefined ? "" : String(next.rating),
-                    timesWatched: String(next.timesWatched),
-                    tags: next.tags.join(", "),
-                  },
-                })
-              }
+              onChange={(next) => dispatch({ type: "patch", value: next })}
             />
             {error && (
               <p role="alert" className="text-xs text-destructive">
