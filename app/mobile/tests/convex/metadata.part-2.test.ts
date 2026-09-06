@@ -1,3 +1,4 @@
+import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -253,7 +254,7 @@ describe('metadata pipeline', () => {
     expect(snapshot?.refreshedAt).toBeTypeOf('number');
     expect(isTruncatedSnapshot(snapshot?.value)).toBe(true);
 
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -318,7 +319,7 @@ describe('metadata pipeline', () => {
         providerEpisodeId: 9001,
       });
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tvdb',
@@ -348,7 +349,7 @@ describe('metadata pipeline', () => {
       overview: 'o'.repeat(800),
       imageUrl: `https://example.test/${'i'.repeat(600)}`,
     }));
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -407,7 +408,7 @@ describe('metadata pipeline', () => {
       mediaType: 'tv' as const,
     };
     await t.run((ctx) => ctx.db.insert('resolvedTitles', titleValue));
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -586,7 +587,7 @@ describe('metadata pipeline', () => {
       name: `Episode ${index + 1}`,
       providerEpisodeId: 10_000 + index,
     }));
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',

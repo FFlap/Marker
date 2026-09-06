@@ -1,3 +1,4 @@
+import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -373,7 +374,7 @@ describe('metadata pipeline', () => {
         mediaType: 'tv',
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',

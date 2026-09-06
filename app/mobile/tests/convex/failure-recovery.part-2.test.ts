@@ -1,3 +1,4 @@
+import { putSeason, setTitleMapping } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -66,7 +67,7 @@ describe('metadata failure recovery', () => {
       mediaType: 'tv' as const,
     };
     await t.run((ctx) => ctx.db.insert('resolvedTitles', titleValue));
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -171,7 +172,7 @@ describe('metadata failure recovery', () => {
         updatedAt: Date.now(),
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -203,7 +204,7 @@ describe('metadata failure recovery', () => {
         .unique();
       await ctx.db.patch(mapping!._id, { orderEpoch: 1, updatedAt: Date.now() });
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -241,7 +242,7 @@ describe('metadata failure recovery', () => {
       episode: index + 1,
       name: `Episode ${index + 1}`,
     }));
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -268,7 +269,7 @@ describe('metadata failure recovery', () => {
       expectedOrderEpoch: plan.orderEpoch,
       expectedMetadataProvider: plan.metadataProvider,
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tvdb',
@@ -334,7 +335,7 @@ describe('metadata failure recovery', () => {
       leaseMs: 60_000,
     });
 
-    await t.mutation(internal.resolvedMetadata.seed.setTitleMapping, {
+    await setTitleMapping(t, {
       tmdbId: 88,
       mediaType: 'tv',
       tvdbId: 111,

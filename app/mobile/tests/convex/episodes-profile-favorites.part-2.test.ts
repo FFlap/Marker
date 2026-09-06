@@ -1,3 +1,4 @@
+import { putTitle, putSeason, setTitleMapping } from './metadata-fixtures';
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
@@ -288,7 +289,7 @@ describe('episode hub and profile favorites', () => {
       watched: true,
     });
 
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 37854,
       season: 1,
       metadataProvider: 'tvdb',
@@ -311,7 +312,7 @@ describe('episode hub and profile favorites', () => {
       nextEpisode: { episode: 2, name: 'Swordsman Re-published' },
     });
 
-    await t.mutation(internal.resolvedMetadata.seed.setTitleMapping, {
+    await setTitleMapping(t, {
       mediaType: 'tv',
       tmdbId: 37854,
       tvdbId: 81797,
@@ -320,7 +321,7 @@ describe('episode hub and profile favorites', () => {
     });
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect((await t.run((ctx) => ctx.db.get(itemId)))?.nextEpisode).toBeUndefined();
-    await t.mutation(internal.resolvedMetadata.requests.putTitle, {
+    await putTitle(t, {
       value: {
         tmdbId: 37854,
         mediaType: 'tv',
@@ -337,7 +338,7 @@ describe('episode hub and profile favorites', () => {
         orderEpoch: 5,
       },
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 37854,
       season: 1,
       metadataProvider: 'tvdb',

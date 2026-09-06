@@ -1,3 +1,4 @@
+import { putSeason, setTitleMapping } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -384,7 +385,7 @@ describe('metadata failure recovery', () => {
       token: 'lease',
       leaseMs: 60_000,
     });
-    await t.mutation(internal.resolvedMetadata.seed.setTitleMapping, {
+    await setTitleMapping(t, {
       tmdbId: 77,
       mediaType: 'movie',
       tvdbId: 200,
@@ -428,7 +429,7 @@ describe('metadata failure recovery', () => {
         updatedAt: Date.now(),
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -456,7 +457,7 @@ describe('metadata failure recovery', () => {
         updatedAt: Date.now(),
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tvdb',

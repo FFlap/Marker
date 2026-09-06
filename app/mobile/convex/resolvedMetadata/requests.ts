@@ -1,5 +1,4 @@
 import { ConvexError, v } from 'convex/values';
-import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import {
@@ -8,62 +7,9 @@ import {
   mediaType,
   NEW_TOUCH_KEYS_PER_HOUR,
   refreshOutcomeValidator,
-  resolvedEpisodeValidator,
-  resolvedTitleValidator,
   TOUCHES_PER_MINUTE,
   type MediaType,
 } from './shared';
-import { writeChunkedSeason } from '../seasonStorage';
-
-export const putTitle = internalMutation({
-  args: { value: resolvedTitleValidator },
-  handler: async (ctx, { value }) => {
-    const next = value;
-    const existing = await ctx.db
-      .query('resolvedTitles')
-      .withIndex('by_tmdb', (q) => q.eq('mediaType', next.mediaType).eq('tmdbId', next.tmdbId))
-      .unique();
-    if (existing) await ctx.db.replace(existing._id, next);
-    else await ctx.db.insert('resolvedTitles', next);
-    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.publication.refreshItemProjections, {
-      mediaType: next.mediaType,
-      tmdbId: next.tmdbId,
-    });
-  },
-});
-
-export const putSeason = internalMutation({
-  args: {
-    tmdbId: v.number(),
-    season: v.number(),
-    metadataProvider: v.union(v.literal('tmdb'), v.literal('tvdb')),
-    episodes: v.array(resolvedEpisodeValidator),
-    refreshedAt: v.number(),
-    refreshAfter: v.number(),
-    orderEpoch: v.number(),
-  },
-  handler: async (ctx, args) => {
-    await writeChunkedSeason(ctx, args);
-    const mapping = await ctx.db
-      .query('titleMappings')
-      .withIndex('by_tmdb', (query) => query.eq('mediaType', 'tv').eq('tmdbId', args.tmdbId))
-      .unique();
-    if (!mapping)
-      await ctx.db.insert('titleMappings', {
-        tmdbId: args.tmdbId,
-        mediaType: 'tv',
-        source: 'auto',
-        orderEpoch: args.orderEpoch,
-        updatedAt: args.refreshedAt,
-      });
-    else if (mapping.orderEpoch === args.orderEpoch)
-      await ctx.db.patch(mapping._id, { updatedAt: args.refreshedAt });
-    await ctx.scheduler.runAfter(0, internal.episodeSummaries.reconcileSeasonSummaries, {
-      tmdbId: args.tmdbId,
-      season: args.season,
-    });
-  },
-});
 
 export const claimRefresh = internalMutation({
   args: {

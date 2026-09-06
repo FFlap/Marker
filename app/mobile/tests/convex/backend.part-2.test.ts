@@ -1,3 +1,4 @@
+import { putSeason } from './metadata-fixtures';
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import schema from '../../convex/schema';
@@ -50,7 +51,7 @@ describe('Marker backend', () => {
     );
     for (const season of [0, 1, 2]) {
       const count = season === 0 ? 1 : 2;
-      await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+      await putSeason(t, {
         tmdbId,
         season,
         metadataProvider: 'tmdb',

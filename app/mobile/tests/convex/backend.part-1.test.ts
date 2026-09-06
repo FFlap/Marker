@@ -1,3 +1,4 @@
+import { putSeason } from './metadata-fixtures';
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import schema from '../../convex/schema';
@@ -593,7 +594,7 @@ describe('Marker backend', () => {
         refreshAfter: Date.now() + 60_000,
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 61889,
       season: 1,
       metadataProvider: 'tmdb',
@@ -605,7 +606,7 @@ describe('Marker backend', () => {
       refreshAfter: Date.now() + 60_000,
       orderEpoch: 0,
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 61889,
       season: 2,
       metadataProvider: 'tmdb',

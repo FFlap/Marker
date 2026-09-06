@@ -43,7 +43,6 @@ import type * as resolvedMetadata_publication from "../resolvedMetadata/publicat
 import type * as resolvedMetadata_reads from "../resolvedMetadata/reads.js";
 import type * as resolvedMetadata_requests from "../resolvedMetadata/requests.js";
 import type * as resolvedMetadata_seasonResolution from "../resolvedMetadata/seasonResolution.js";
-import type * as resolvedMetadata_seed from "../resolvedMetadata/seed.js";
 import type * as resolvedMetadata_shared from "../resolvedMetadata/shared.js";
 import type * as resolvedMetadata_titleResolution from "../resolvedMetadata/titleResolution.js";
 import type * as resolvedMetadata_touch from "../resolvedMetadata/touch.js";
@@ -102,7 +101,6 @@ declare const fullApi: ApiFromModules<{
   "resolvedMetadata/reads": typeof resolvedMetadata_reads;
   "resolvedMetadata/requests": typeof resolvedMetadata_requests;
   "resolvedMetadata/seasonResolution": typeof resolvedMetadata_seasonResolution;
-  "resolvedMetadata/seed": typeof resolvedMetadata_seed;
   "resolvedMetadata/shared": typeof resolvedMetadata_shared;
   "resolvedMetadata/titleResolution": typeof resolvedMetadata_titleResolution;
   "resolvedMetadata/touch": typeof resolvedMetadata_touch;
