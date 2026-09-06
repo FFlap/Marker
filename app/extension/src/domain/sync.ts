@@ -49,37 +49,15 @@ export function buildWatchPayload(
     !specials && seasonNumber === undefined ? rawSeason.trim() : undefined;
   const episodeNumber = cleanInteger(bookmark.episodeNumber);
   const reliableNumbers = seasonNumber !== undefined && episodeNumber !== undefined && !(specials && episodeTitle);
-  if (
-    !seriesTitle ||
-    seriesTitle.length > TEXT_MAX ||
-    rawSeason.trim().length > TEXT_MAX ||
-    episodeTitle.length > TEXT_MAX ||
-    (!reliableNumbers && !episodeTitle)
-  )
-    return null;
-  const candidateUrl = bookmark.watchUrl.trim();
-  let url: string | undefined;
-  if (candidateUrl) {
-    try {
-      const parsed = new URL(candidateUrl);
-      if (
-        candidateUrl.length > URL_MAX ||
-        (parsed.protocol !== "https:" && parsed.protocol !== "http:")
-      ) return null;
-      url = candidateUrl;
-    } catch {
-      return null;
-    }
-  }
-
-  return {
+  if (rawSeason.trim().length > TEXT_MAX) return null;
+  return parseWatchPayload({
     service: bookmark.platform,
     seriesTitle,
-    ...(seasonTitle && seasonTitle.length <= TEXT_MAX ? { seasonTitle } : {}),
+    ...(seasonTitle ? { seasonTitle } : {}),
     ...(reliableNumbers ? { seasonNumber, episodeNumber } : episodeNumber !== undefined ? { episodeNumber } : {}),
     ...(episodeTitle ? { episodeTitle } : {}),
-    ...(url ? { url } : {}),
-  };
+    url: bookmark.watchUrl,
+  });
 }
 
 export function parseWatchPayload(value: unknown): WatchPayload | null {
