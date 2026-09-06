@@ -34,7 +34,6 @@ import {
 import { libraryItemScreenStyles as s } from './LibraryItemScreen.styles';
 import { EpisodeCard } from '../components/EpisodeCard';
 import {
-  type Detail,
   type Episode,
   type EpisodeDraft,
   isStaleSeasonError,
@@ -58,7 +57,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const list = useQuery(api.library.items.listItems);
   const itemView = useQuery(api.resolvedMetadata.reads.getItemView, { itemId });
   const item = itemView?.item ?? list?.find((entry) => entry._id === itemId);
-  const title = itemView?.title as Detail | null | undefined;
+  const title = itemView?.title;
   const season = selectAvailableSeason(title?.seasons, selectedSeason);
   const setSeasonWatched = useAction(api.library.seasonWatched.setSeasonWatched);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
@@ -153,7 +152,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     touchItemView(itemMediaType === 'tv' ? { season } : undefined);
   }, [itemMediaType, itemId, season, touchItemView]);
   const detail = title;
-  const returnedSeasonRow = seasonView.season as SeasonRow | undefined;
+  const returnedSeasonRow = seasonView.season;
   const seasonRow = returnedSeasonRow?.season === season ? returnedSeasonRow : undefined;
   const episodes = seasonRow ? seasonView.episodes : [];
   const loadedSeason = seasonRow?.season;

@@ -1,3 +1,5 @@
+import type { FunctionReturnType } from 'convex/server';
+import type { api } from '@convex/_generated/api';
 import type { LibraryEntryDraft } from '@/components/LibraryEntryDrawer';
 
 export const statusOptions = [
@@ -7,38 +9,11 @@ export const statusOptions = [
   { label: 'Dropped', value: 'dropped' },
 ] as const;
 
-export type Detail = {
-  tmdbId?: number;
-  title: string;
-  posterPath?: string;
-  overview?: string;
-  releaseDate?: string;
-  firstAirDate?: string;
-  runtime?: number;
-  episodeRunTime?: number[];
-  genres?: string[];
-  seasons?: { season: number; name: string; episodeCount: number }[];
-  cast?: { name: string; character: string; profilePath?: string }[];
-  metadataProvider?: 'tmdb' | 'tvdb';
-  tvdbId?: number;
-  seasonOrder?: string;
-  orderEpoch?: number;
-};
-export type Episode = {
-  season: number;
-  episode: number;
-  name: string;
-  overview?: string;
-  runtime?: number;
-  imageUrl?: string;
-  airDate?: string;
-};
-export type SeasonRow = {
-  season: number;
-  metadataProvider: 'tmdb' | 'tvdb';
-  orderEpoch: number;
-  totalCount: number;
-};
+type SeasonPage = FunctionReturnType<
+  typeof api.resolvedMetadata.reads.getSeasonView
+>['page'][number];
+export type Episode = SeasonPage['episodes'][number];
+export type SeasonRow = Omit<SeasonPage, 'episodes' | 'chunkIndex'>;
 export type ItemDraft = LibraryEntryDraft;
 export type EpisodeDraft = { rating?: number; tags: string[] };
 

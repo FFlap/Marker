@@ -17,25 +17,6 @@ export function selectAvailableSeason(
     : selectedSeason;
 }
 
-type SeasonEpisode = {
-  season: number;
-  episode: number;
-  name: string;
-  overview?: string;
-  runtime?: number;
-  imageUrl?: string;
-  airDate?: string;
-};
-
-type SeasonPage = {
-  season: number;
-  metadataProvider: 'tmdb' | 'tvdb';
-  orderEpoch: number;
-  totalCount: number;
-  chunkIndex: number;
-  episodes: SeasonEpisode[];
-};
-
 /** Subscribes to one bounded season chunk at a time and accumulates loaded pages. */
 export function useSeasonView(args: { tmdbId: number; season: number } | undefined) {
   const season = args?.season;
@@ -43,7 +24,7 @@ export function useSeasonView(args: { tmdbId: number; season: number } | undefin
     initialNumItems: 1,
   });
   const { firstPage, episodes, pageCount } = useMemo(() => {
-    const pages = (paginated.results as SeasonPage[]).filter(
+    const pages = paginated.results.filter(
       (page) => season !== undefined && page.season === season,
     );
     return {

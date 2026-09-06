@@ -1,3 +1,4 @@
+import type { Episode } from '../libraryItemTypes';
 import { useMemo, useState } from 'react';
 import { FlatList, Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -22,12 +23,9 @@ import {
 } from '@/hooks/use-season-view';
 import { titleDetailScreenStyles as s } from './TitleDetailScreen.styles';
 import {
-  type Episode,
   type MediaType,
   parseTitleRoute,
   parseTitlePreview,
-  type SeasonRow,
-  type TitleDetail,
   type TitleRouteParams,
 } from '../titleRoute';
 
@@ -107,7 +105,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     false,
   );
   const toast = useToast();
-  const returnedDetail = titleView?.title as TitleDetail | null | undefined;
+  const returnedDetail = titleView?.title;
   const detail =
     returnedDetail?.tmdbId === tmdbId && returnedDetail.mediaType === mediaType
       ? returnedDetail
@@ -141,7 +139,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     api.resolvedMetadata.reads.getSeasonRequestState,
     mediaType === 'tv' && validId ? { tmdbId, season } : 'skip',
   );
-  const returnedSeasonRow = canonicalSeason.season as SeasonRow | undefined;
+  const returnedSeasonRow = canonicalSeason.season;
   const seasonRow = returnedSeasonRow?.season === season ? returnedSeasonRow : undefined;
   const episodes = seasonRow ? canonicalSeason.episodes : [];
   const loadedSeason = seasonRow?.season;

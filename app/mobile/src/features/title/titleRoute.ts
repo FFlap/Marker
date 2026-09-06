@@ -1,39 +1,6 @@
 import type { SearchResult } from '@/types';
 
 export type MediaType = 'movie' | 'tv';
-export type Episode = {
-  season: number;
-  episode: number;
-  name: string;
-  overview?: string;
-  runtime?: number;
-  imageUrl?: string;
-  airDate?: string;
-};
-export type SeasonRow = {
-  season: number;
-  metadataProvider: 'tmdb' | 'tvdb';
-  orderEpoch: number;
-  totalCount: number;
-};
-export type TitleDetail = {
-  tmdbId?: number;
-  title: string;
-  mediaType: MediaType;
-  posterPath?: string;
-  overview?: string;
-  releaseDate?: string;
-  firstAirDate?: string;
-  voteAverage?: number;
-  runtime?: number;
-  episodeRunTime?: number[];
-  genres: string[];
-  cast: { name: string; character: string; profilePath?: string }[];
-  seasons?: { season: number; name: string; episodeCount: number }[];
-  metadataProvider?: 'tmdb' | 'tvdb';
-  tvdbId?: number;
-  seasonOrder?: string;
-};
 export type TitleRouteParams = {
   mediaType?: string;
   tmdbId?: string;
