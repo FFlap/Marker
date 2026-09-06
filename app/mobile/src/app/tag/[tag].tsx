@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
@@ -35,56 +35,20 @@ type PublicCollection = {
 export default function GlobalTagScreen() {
   const params = useLocalSearchParams<{ tag?: string | string[] }>();
   const tag = Array.isArray(params.tag) ? params.tag[0] : (params.tag ?? '');
+  return <GlobalTagRoute key={tag} tag={tag} />;
+}
+
+function GlobalTagRoute({ tag }: { tag: string }) {
   const [pageCursor, setPageCursor] = useState<string>();
-  const [collectionPages, setCollectionPages] = useState<
-    { cursor?: string; value: PublicCollection | null }[]
-  >([]);
-  const [cachedTag, setCachedTag] = useState(tag);
+  const [previousPages, setPreviousPages] = useState<PublicCollection[]>([]);
   const collectionPage = useQuery(
     api.tags.publicDetails,
     tag ? { tag, cursor: pageCursor } : 'skip',
   ) as PublicCollection | null | undefined;
-  useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setPageCursor(undefined);
-      setCollectionPages([]);
-      setCachedTag(tag);
-    });
-    return () => {
-      active = false;
-    };
-  }, [tag]);
-  useEffect(() => {
-    if (collectionPage === undefined) return;
-    if (
-      collectionPage !== null &&
-      collectionPage.tag.toLocaleLowerCase() !== tag.trim().toLocaleLowerCase()
-    )
-      return;
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setCollectionPages((current) => {
-        const index = current.findIndex((page) => page.cursor === pageCursor);
-        const next = { cursor: pageCursor, value: collectionPage };
-        if (index < 0) return [...current, next];
-        if (JSON.stringify(current[index]?.value) === JSON.stringify(collectionPage))
-          return current;
-        return [...current.slice(0, index), next];
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, [collectionPage, pageCursor, tag]);
   const collection = useMemo(() => {
-    const loaded = collectionPages.map((page) => page.value);
-    if (cachedTag !== tag) return undefined;
-    if (!loaded.length) return undefined;
-    const available = loaded.filter((page): page is PublicCollection => page !== null);
-    if (!available.length) return null;
+    if (collectionPage === null) return null;
+    const available = collectionPage ? [...previousPages, collectionPage] : previousPages;
+    if (!available.length) return undefined;
     const titles = new Map<string, PublicTitle>();
     for (const page of available)
       for (const title of page.titles) {
@@ -95,8 +59,13 @@ export default function GlobalTagScreen() {
       ...available[0],
       titles: [...titles.values()].sort((left, right) => left.title.localeCompare(right.title)),
     };
-  }, [cachedTag, collectionPages, tag]);
-  const nextCursor = collectionPages.at(-1)?.value?.nextCursor;
+  }, [collectionPage, previousPages]);
+  const nextCursor = collectionPage?.nextCursor;
+  const loadMore = () => {
+    if (!collectionPage || !nextCursor) return;
+    setPreviousPages((current) => [...current, collectionPage]);
+    setPageCursor(nextCursor);
+  };
   const library = useQuery(api.library.items.listItems);
   const settings = useQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);
@@ -188,13 +157,7 @@ export default function GlobalTagScreen() {
               onPress={openTitle}
               columns={gridColumns}
             />
-            {nextCursor && (
-              <Button
-                title="Load more titles"
-                variant="outline"
-                onPress={() => setPageCursor(nextCursor)}
-              />
-            )}
+            {nextCursor && <Button title="Load more titles" variant="outline" onPress={loadMore} />}
           </PinchDensity>
         )}
       </ScrollView>
