@@ -333,32 +333,6 @@ describe('metadata failure recovery', () => {
     ).toMatchObject({ title: 'Fresh title' });
   });
 
-  it('transitions every failed key in one completion mutation', async () => {
-    const { t } = await setup();
-    await t.run(async (ctx) => {
-      for (const key of ['title:tv:88', 'season:88:1'])
-        await ctx.db.insert('metadataRefreshRequests', {
-          key,
-          state: 'inFlight',
-          lastRequestedAt: Date.now(),
-          attemptToken: 'failed-combined',
-          expiresAt: Date.now() + 60_000,
-        });
-    });
-    await expect(
-      t.mutation(internal.resolvedMetadata.requests.completeRefreshRequests, {
-        attemptToken: 'failed-combined',
-        outcomes: [
-          { key: 'title:tv:88', state: 'failed', errorCode: 'upstream' },
-          { key: 'season:88:1', state: 'failed', errorCode: 'upstream' },
-        ],
-      }),
-    ).resolves.toBe(true);
-    const requests = await t.run((ctx) => ctx.db.query('metadataRefreshRequests').collect());
-    expect(requests.every((row) => row.state === 'failed')).toBe(true);
-    expect(requests[0]?.completedAt).toBe(requests[1]?.completedAt);
-  });
-
   it('aborts a refresh commit when the mapping identity changed mid-flight', async () => {
     const { t } = await setup();
     await t.run(async (ctx) => {

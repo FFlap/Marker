@@ -6,7 +6,6 @@ import {
   GLOBAL_TOUCHES_PER_MINUTE,
   mediaType,
   NEW_TOUCH_KEYS_PER_HOUR,
-  refreshOutcomeValidator,
   TOUCHES_PER_MINUTE,
   type MediaType,
 } from './shared';
@@ -197,61 +196,6 @@ export const admitSynchronousRefresh = internalMutation({
       ),
     );
     await consumeRefreshAdmission(ctx, userId, rows.filter((row) => !row).length);
-    return true;
-  },
-});
-
-export const completeRefreshRequest = internalMutation({
-  args: {
-    key: v.string(),
-    attemptToken: v.string(),
-    state: v.union(v.literal('succeeded'), v.literal('failed'), v.literal('notFound')),
-    errorCode: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const row = await ctx.db
-      .query('metadataRefreshRequests')
-      .withIndex('by_key', (q) => q.eq('key', args.key))
-      .unique();
-    if (!row || row.attemptToken !== args.attemptToken) return false;
-    const completedAt = Date.now();
-    await ctx.db.patch(row._id, {
-      state: args.state,
-      completedAt,
-      expiresAt: completedAt,
-      retryAt: args.state === 'failed' ? completedAt + FAILED_TOUCH_BACKOFF_MS : undefined,
-      ...(args.errorCode ? { errorCode: args.errorCode } : { errorCode: undefined }),
-    });
-    return true;
-  },
-});
-
-export const completeRefreshRequests = internalMutation({
-  args: {
-    attemptToken: v.string(),
-    outcomes: v.array(refreshOutcomeValidator),
-  },
-  handler: async (ctx, { attemptToken, outcomes }) => {
-    const now = Date.now();
-    const rows = await Promise.all(
-      outcomes.map((outcome) =>
-        ctx.db
-          .query('metadataRefreshRequests')
-          .withIndex('by_key', (query) => query.eq('key', outcome.key))
-          .unique(),
-      ),
-    );
-    if (rows.some((row) => !row || row.attemptToken !== attemptToken)) return false;
-    for (const [index, row] of rows.entries()) {
-      const outcome = outcomes[index]!;
-      await ctx.db.patch(row!._id, {
-        state: outcome.state,
-        completedAt: now,
-        expiresAt: now,
-        retryAt: outcome.state === 'failed' ? now + FAILED_TOUCH_BACKOFF_MS : undefined,
-        ...(outcome.errorCode ? { errorCode: outcome.errorCode } : { errorCode: undefined }),
-      });
-    }
     return true;
   },
 });

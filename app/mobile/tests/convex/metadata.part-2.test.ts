@@ -240,7 +240,7 @@ describe('metadata pipeline', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const ingested = await t.action(internal.tmdb.internalSeasonDetails, {
+    const ingested = await t.action(internal.tmdb.refreshSeasonDetails, {
       tmdbId: 88,
       season: 1,
     });
@@ -264,7 +264,7 @@ describe('metadata pipeline', () => {
       orderEpoch: 0,
     });
     await expect(
-      t.action(internal.tmdb.internalSeasonDetails, { tmdbId: 88, season: 1 }),
+      t.action(internal.tmdb.refreshSeasonDetails, { tmdbId: 88, season: 1 }),
     ).resolves.toHaveLength(1_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(

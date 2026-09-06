@@ -309,18 +309,3 @@ export const refreshSeasonDetails = internalAction({
         });
   },
 });
-export const internalSeasonDetails = internalAction({
-  args: { tmdbId: v.number(), season: v.number() },
-  handler: async (ctx, a): Promise<TmdbSeasonEpisode[]> =>
-    snapshot(
-      ctx,
-      `tmdb:season:${a.tmdbId}:${a.season}`,
-      async () => mapSeasonDetails(await request(ctx, `/tv/${a.tmdbId}/season/${a.season}`, true)),
-      async (): Promise<TmdbSeasonEpisode[] | null> => {
-        const durable = (await ctx.runQuery(internal.seasonStorage.readCanonicalSeason, a)) as {
-          episodes: TmdbSeasonEpisode[];
-        } | null;
-        return durable?.episodes ?? null;
-      },
-    ),
-});
