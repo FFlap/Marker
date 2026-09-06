@@ -86,6 +86,7 @@ const protectedRoutes = [
     getParentRoute: () => protectedLayout,
     path: "/item/$itemId",
     component: ItemDetailPage,
+    remountDeps: ({ params }) => params.itemId,
   }),
   createRoute({
     getParentRoute: () => protectedLayout,
