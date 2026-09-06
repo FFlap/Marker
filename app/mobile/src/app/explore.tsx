@@ -85,6 +85,9 @@ export default function Explore() {
           toast.show('Search is unavailable right now');
         }
       });
+    return () => {
+      generation.current += 1;
+    };
   }, [debounced, filter, searchMedia, toast]);
 
   const openTitle = (result: SearchResult) => {

@@ -94,7 +94,10 @@ export default function Add() {
       }
       if (generation === requestGeneration.current) setLoadingQuery(undefined);
     }, 350);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      requestGeneration.current += 1;
+    };
   }, [query, picked, searchAction, toast]);
   const changeStatus = (nextStatus: Status) => {
     setStatus(nextStatus);
