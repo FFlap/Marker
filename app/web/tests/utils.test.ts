@@ -6,7 +6,7 @@ describe('safeInternalPath', () => {
     expect(safeInternalPath('/extension/connect?state=safe')).toBe('/extension/connect?state=safe');
   });
 
-  it.each(['https://evil.test', '//evil.test', '/safe\nLocation:https://evil.test', undefined])(
+  it.each(['https://evil.test', '//evil.test', '/safe\nLocation:https://evil.test', undefined, '/login/', '/setup/', '/other/../login', '/LOGIN', '/%6cogin', '/%invalid'])(
     'rejects untrusted redirect %s',
     (value) => expect(safeInternalPath(value)).toBe('/'),
   );
