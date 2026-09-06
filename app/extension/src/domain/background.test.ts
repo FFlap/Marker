@@ -9,6 +9,8 @@ const payload = {
   seriesTitle: "Dark",
   seasonNumber: 1,
   episodeNumber: 2,
+  episodeTitle: "Lies",
+  url: "https://www.netflix.com/watch/dark-2",
 };
 const token = "t".repeat(64);
 const deferred = <T>() => {
@@ -51,15 +53,19 @@ const setup = () => {
 
 describe("background delivery classification", () => {
   it.each([
-    [{ data: { code: "upstream" } }, "retryable"],
     [new TypeError("Failed to fetch"), "retryable"],
     [
       Object.assign(new Error("timed out"), { name: "AbortError" }),
       "retryable",
     ],
     [{ status: 401 }, "auth"],
+    [{ status: 403 }, "auth"],
+    [{ status: 409 }, "auth"],
+    [{ status: 408 }, "retryable"],
+    [{ status: 429 }, "retryable"],
+    [new DOMException("Expired", "TimeoutError"), "retryable"],
     [{ status: 503 }, "retryable"],
-    [{ data: { code: "validation" } }, "terminal"],
+    [{ status: 400 }, "terminal"],
     [new Error("server exploded"), "terminal"],
   ] as const)("classifies %o as %s", (error, expected) =>
     expect(classifyDeliveryError(error)).toBe(expected),
@@ -67,7 +73,7 @@ describe("background delivery classification", () => {
 
   it("serializes classified results before returning them across messaging", async () => {
     const x = setup();
-    x.client.record.mockRejectedValue({ data: { code: "validation" } });
+    x.client.record.mockRejectedValue({ status: 400 });
     await expect(x.background.deliver(payload, "viewer")).resolves.toEqual({
       ok: false,
       reason: "rejected",
@@ -78,16 +84,16 @@ describe("background delivery classification", () => {
       reason: "rejected",
     });
   });
-  it("preserves server error data and classifies upstream failures as retryable", async () => {
+  it("preserves HTTP status and classifies upstream failures as retryable", async () => {
     const x = setup();
     const error = Object.assign(new Error("upstream"), {
-      data: { code: "upstream" },
+      status: 503,
     });
     x.client.record.mockRejectedValue(error);
     await expect(x.background.deliver(payload, "viewer")).resolves.toMatchObject({
       retryable: true,
     });
-    expect(error.data.code).toBe("upstream");
+    expect(error.status).toBe(503);
   });
 });
 
@@ -132,7 +138,7 @@ describe("background sign-out cleanup", () => {
     const gate = deferred<unknown>();
     x.client.record.mockReturnValue(gate.promise);
 
-    const enqueue = x.background.handler({ type: "sync/enqueue", payload });
+    const enqueue = x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
     await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
     const signOut = x.background.handler({ type: "sync/signOut" });
     gate.resolve({ ok: true });
@@ -192,10 +198,11 @@ describe("background website connection", () => {
 });
 
 describe("background queue behavior", () => {
-  it("auth failure pauses the queued event and later flushes skip delivery without a Clerk session", async () => {
+  it.each([401, 409, 429])("HTTP %s pauses the queued event and later flushes skip delivery without a Clerk session", async (status) => {
     const x = setup();
-    x.client.record.mockRejectedValue({ status: 401 });
-    await x.background.handler({ type: "sync/enqueue", payload });
+    x.client.record.mockRejectedValue({ status });
+    await x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
+    await x.background.flush();
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
     x.client.getSession.mockResolvedValue(null);
     x.client.record.mockClear();
@@ -206,7 +213,8 @@ describe("background queue behavior", () => {
   it("dequeues malformed server failures as rejected", async () => {
     const x = setup();
     x.client.record.mockRejectedValue(new Error("bad response"));
-    await x.background.handler({ type: "sync/enqueue", payload });
+    await x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
+    await x.background.flush();
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([]);
     expect(x.values["sync.lastResult"]).toMatchObject({ reason: "rejected" });
   });
@@ -233,14 +241,16 @@ describe("outbox account ownership", () => {
   it("never sends a previous account's queued history after a worker restart", async () => {
     const x = setup();
     x.client.record.mockRejectedValue({ status: 503 });
-    await x.background.handler({ type: "sync/enqueue", payload });
+    await x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
+    await x.background.flush();
     x.client.getSession.mockResolvedValue({ token: "other-token", accountId: "other", accountLabel: "Other" });
     x.client.record.mockClear();
     const restarted = createMessageHandler(x.storage, x.client);
     await restarted.flush();
     expect(x.client.record).not.toHaveBeenCalled();
     expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
-    await restarted.handler({ type: "sync/enqueue", payload: { ...payload, episodeNumber: 3 } });
+    await restarted.handler({ type: "bookmark/save", bookmark: { ...trackedBookmark, episodeNumber: "3" } });
+    await restarted.flush();
     expect(x.client.record).toHaveBeenCalledWith("other-token", { ...payload, episodeNumber: 3 });
   });
 
