@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
-    "audit:prod": "node scripts/audit-production.mjs",
+    "audit:prod": "node ../../scripts/audit-production.mjs",
     "build:check": "npm run with-check-env -- wxt build",
     "check": "npm run typecheck && npm test && npm run build:check && npm run audit:prod",
     "zip": "wxt zip",
-    "test": "vitest run",
+    "test": "vitest run && node --test ../../scripts/audit-report.test.mjs",
     "test:watch": "vitest",
     "typecheck": "npm run with-check-env -- wxt prepare && npm run with-check-env -- tsc --noEmit",
     "with-check-env": "node scripts/with-check-env.mjs"
