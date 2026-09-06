@@ -18,7 +18,6 @@ import { useRefreshControl } from '@/hooks/use-refresh-control';
 import {
   SEASON_EPISODE_RENDER_BATCH,
   selectAvailableSeason,
-  useRouteSeason,
   useSeasonView,
 } from '@/hooks/use-season-view';
 import { titleDetailScreenStyles as s } from './TitleDetailScreen.styles';
@@ -77,13 +76,13 @@ export default function TitleDetailScreen() {
 }
 
 function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
-  const { mediaType, routeKey, tmdbId, validId } = parseTitleRoute(params);
+  const { mediaType, tmdbId, validId } = parseTitleRoute(params);
   const parsedPreview = useMemo(() => parseTitlePreview(params.preview), [params.preview]);
   const preview =
     parsedPreview?.id === tmdbId && parsedPreview.mediaType === mediaType
       ? parsedPreview
       : undefined;
-  const [selectedSeason, setSeason] = useRouteSeason(routeKey);
+  const [selectedSeason, setSeason] = useState(1);
   const addItem = useMutation(api.library.items.addItem);
   const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
   const existing = useQuery(
@@ -123,19 +122,10 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
       : preview !== undefined && titleView !== undefined
         ? 'preview'
         : undefined;
-  const [storedHeroSelection, setHeroSelection] = useState<{
-    key: string;
-    owner: 'canonical' | 'preview' | undefined;
-  }>({ key: routeKey, owner: availableHeroOwner });
-  let heroSelection = storedHeroSelection;
-  if (storedHeroSelection.key !== routeKey) {
-    heroSelection = { key: routeKey, owner: availableHeroOwner };
-    setHeroSelection(heroSelection);
-  } else if (storedHeroSelection.owner === undefined && availableHeroOwner !== undefined) {
-    heroSelection = { ...storedHeroSelection, owner: availableHeroOwner };
-    setHeroSelection(heroSelection);
-  }
-  const heroOwner = heroSelection.owner;
+  const [storedHeroOwner, setHeroOwner] = useState(availableHeroOwner);
+  const heroOwner = storedHeroOwner ?? availableHeroOwner;
+  if (storedHeroOwner === undefined && availableHeroOwner !== undefined)
+    setHeroOwner(availableHeroOwner);
   const hero = heroOwner === 'canonical' ? detail : heroOwner === 'preview' ? preview : undefined;
   const loading =
     !detail && titleView?.requestState?.state !== 'failed' && touchError === undefined;

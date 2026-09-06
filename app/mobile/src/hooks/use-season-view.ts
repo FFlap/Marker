@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useMemo } from 'react';
 import { usePaginatedQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 
@@ -35,22 +35,6 @@ type SeasonPage = {
   chunkIndex: number;
   episodes: SeasonEpisode[];
 };
-
-/** Makes a route identity change observe season 1 during that same render. */
-export function useRouteSeason(routeKey: string): [number, Dispatch<SetStateAction<number>>] {
-  const [selection, setSelection] = useState(() => ({ routeKey, season: 1 }));
-  const season = selection.routeKey === routeKey ? selection.season : 1;
-  const setSeason = useCallback<Dispatch<SetStateAction<number>>>(
-    (value) =>
-      setSelection((current) => {
-        const currentSeason = current.routeKey === routeKey ? current.season : 1;
-        const nextSeason = typeof value === 'function' ? value(currentSeason) : value;
-        return { routeKey, season: nextSeason };
-      }),
-    [routeKey],
-  );
-  return [season, setSeason];
-}
 
 /** Subscribes to one bounded season chunk at a time and accumulates loaded pages. */
 export function useSeasonView(args: { tmdbId: number; season: number } | undefined) {

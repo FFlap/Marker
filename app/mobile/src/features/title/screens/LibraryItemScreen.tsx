@@ -29,7 +29,6 @@ import { useRefreshControl } from '@/hooks/use-refresh-control';
 import {
   SEASON_EPISODE_RENDER_BATCH,
   selectAvailableSeason,
-  useRouteSeason,
   useSeasonView,
 } from '@/hooks/use-season-view';
 import { libraryItemScreenStyles as s } from './LibraryItemScreen.styles';
@@ -54,7 +53,7 @@ export default function ItemDetailScreen() {
   );
 }
 function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
-  const [selectedSeason, setSeason] = useRouteSeason(String(itemId));
+  const [selectedSeason, setSeason] = useState(1);
   const episodeApi = api.library.episodes;
   const list = useQuery(api.library.items.listItems);
   const itemView = useQuery(api.resolvedMetadata.reads.getItemView, { itemId });
