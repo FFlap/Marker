@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSignIn, useSignUp } from "@clerk/react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, LogIn, UserPlus } from "lucide-react";
@@ -76,13 +76,13 @@ export function LoginPage() {
   const { signIn } = useSignIn();
   const { signUp } = useSignUp();
   const navigate = useNavigate();
-  const [flow, setFlow] = useState<"choose" | "signIn" | "signUp">("choose");
+  const [chosenFlow, setFlow] = useState<"choose" | "signIn" | "signUp">("choose");
   const [identifier, setIdentifier] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const [verification, setVerification] = useState<
-    "signUp" | "clientTrust" | "oauthUsername" | null
+  const [chosenVerification, setVerification] = useState<
+    "signUp" | "clientTrust" | null
   >(null);
   const [recovery, setRecovery] = useState<RecoveryStage | null>(null);
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -112,15 +112,11 @@ export function LoginPage() {
     setConfirmPassword("");
     setError("");
   };
-  useEffect(() => {
-    if (
-      signUp.status === "missing_requirements" &&
-      signUp.missingFields.includes("username")
-    ) {
-      setFlow("signUp");
-      setVerification("oauthUsername");
-    }
-  }, [signUp.missingFields, signUp.status]);
+  const needsOAuthUsername =
+    signUp.status === "missing_requirements" &&
+    signUp.missingFields.includes("username");
+  const flow = needsOAuthUsername ? "signUp" : chosenFlow;
+  const verification = needsOAuthUsername ? "oauthUsername" : chosenVerification;
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
