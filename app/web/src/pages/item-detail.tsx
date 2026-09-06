@@ -89,17 +89,6 @@ function EntryDialog({
   const [busy, setBusy] = useState<"save" | "remove">();
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (open) return;
-    setDraft({
-      status: item.status,
-      rating: item.rating,
-      timesWatched: item.timesWatched ?? (item.status === "watched" ? 1 : 0),
-      tags: item.tags,
-    });
-    setError("");
-  }, [item, open]);
-
   const save = async () => {
     setBusy("save");
     setError("");
@@ -144,6 +133,15 @@ function EntryDialog({
       open={open}
       onOpenChange={(next) => {
         if (busy && !next) return;
+        if (next) {
+          setDraft({
+            status: item.status,
+            rating: item.rating,
+            timesWatched: item.timesWatched ?? (item.status === "watched" ? 1 : 0),
+            tags: item.tags,
+          });
+          setError("");
+        }
         setOpen(next);
       }}
     >
@@ -195,7 +193,12 @@ export function ItemDetailPage() {
     () => title?.seasons?.filter((entry) => entry.season >= 0) ?? [],
     [title?.seasons],
   );
-  const [season, setSeason] = useState(1);
+  const [selectedSeason, setSeason] = useState(1);
+  const season = seasons.some((entry) => entry.season === selectedSeason)
+    ? selectedSeason
+    : (seasons.find((entry) => entry.season > 0)?.season ??
+      seasons[0]?.season ??
+      1);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const [episodePending, setEpisodePending] = useState<string>();
   const setEpisodeState = useMutation(api.library.episodes.setEpisodeState);
@@ -270,16 +273,6 @@ export function ItemDetailPage() {
       ...(touchMediaType === "tv" && { season }),
     }).catch(() => undefined);
   }, [season, touchItemId, touchItemView, touchMediaType]);
-
-  useEffect(() => {
-    const first =
-      seasons.find((entry) => entry.season > 0)?.season ?? seasons[0]?.season;
-    if (
-      first !== undefined &&
-      !seasons.some((entry) => entry.season === season)
-    )
-      setSeason(first);
-  }, [season, seasons]);
 
   if (itemView === undefined || (!item && listQuery === undefined)) {
     return (

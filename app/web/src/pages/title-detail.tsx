@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { Navigate, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import {
   useMutation,
@@ -102,7 +102,13 @@ export function TitleDetailPage() {
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const detail = titleView?.title as Detail | null | undefined;
   const meta = detail ?? preview;
-  const [season, setSeason] = useState(1);
+  const seasons = detail?.seasons?.filter((entry) => entry.season >= 0) ?? [];
+  const [selectedSeason, setSeason] = useState(1);
+  const season = seasons.some((entry) => entry.season === selectedSeason)
+    ? selectedSeason
+    : (seasons.find((entry) => entry.season > 0)?.season ??
+      seasons[0]?.season ??
+      1);
   const [touchError, setTouchError] = useState(false);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const seasonView = usePaginatedQuery(
@@ -141,28 +147,15 @@ export function TitleDetailPage() {
     };
   }, [mediaType, preview?.title, season, tmdbId, touchTitle, valid]);
 
-  useEffect(() => {
-    if (existing) {
-      void navigate({
-        to: "/item/$itemId",
-        params: { itemId: String(existing._id) },
-        replace: true,
-      });
-    }
-  }, [existing, navigate]);
-
-  useEffect(() => {
-    const available =
-      detail?.seasons?.filter((entry) => entry.season >= 0) ?? [];
-    const first =
-      available.find((entry) => entry.season > 0)?.season ??
-      available[0]?.season;
-    if (
-      first !== undefined &&
-      !available.some((entry) => entry.season === season)
-    )
-      setSeason(first);
-  }, [detail?.seasons, season]);
+  if (existing) {
+    return (
+      <Navigate
+        to="/item/$itemId"
+        params={{ itemId: String(existing._id) }}
+        replace
+      />
+    );
+  }
 
   if (!valid) {
     return (
@@ -175,7 +168,6 @@ export function TitleDetailPage() {
     );
   }
 
-  const seasons = detail?.seasons?.filter((entry) => entry.season >= 0) ?? [];
   const releaseDate =
     detail?.releaseDate ?? detail?.firstAirDate ?? preview?.releaseDate;
   const runtime =
