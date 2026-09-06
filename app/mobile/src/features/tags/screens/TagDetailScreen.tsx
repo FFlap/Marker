@@ -69,25 +69,6 @@ export default function TagDetailScreen() {
   const statusMovePendingRef = useRef(false);
   const [pendingWatchedMove, setPendingWatchedMove] = useState<RankedItem>();
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});
-  useEffect(() => {
-    if (!library) return;
-    const timer = setTimeout(
-      () =>
-        setOptimisticStatuses((current) => {
-          let changed = false;
-          const next = { ...current };
-          for (const [itemId, status] of Object.entries(current)) {
-            if (library.find((item) => String(item._id) === itemId)?.status === status) {
-              delete next[itemId];
-              changed = true;
-            }
-          }
-          return changed ? next : current;
-        }),
-      0,
-    );
-    return () => clearTimeout(timer);
-  }, [library]);
   const [nativeTargetStatus, setNativeTargetStatus] = useState<Status>();
   const [nativeListTops, setNativeListTops] = useState<Partial<Record<Status, number>>>({});
   const [sectionLayouts, setSectionLayouts] = useState<

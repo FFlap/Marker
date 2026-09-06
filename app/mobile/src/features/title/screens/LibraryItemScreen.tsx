@@ -93,29 +93,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
   const [entrySaving, setEntrySaving] = useState(false);
   const [seasonPending, setSeasonPending] = useState(false);
-  const [draft, setDraft] = useState<ItemDraft>();
+  const draft = item;
   const [episodeDrafts, setEpisodeDrafts] = useState<Record<string, EpisodeDraft>>({});
   const fieldVersions = useRef(new Map<string, number>());
-  useEffect(() => {
-    if (!item) return;
-    setDraft((current) => {
-      for (const field of ['status', 'rating', 'timesWatched', 'tags'] as const) {
-        const pending = fieldVersions.current.get(field);
-        if (pending !== undefined && sameValue(item[field], current?.[field]))
-          fieldVersions.current.delete(field);
-      }
-      return {
-        status: fieldVersions.current.has('status')
-          ? (current?.status ?? item.status)
-          : item.status,
-        rating: fieldVersions.current.has('rating') ? current?.rating : item.rating,
-        timesWatched: fieldVersions.current.has('timesWatched')
-          ? (current?.timesWatched ?? item.timesWatched)
-          : item.timesWatched,
-        tags: fieldVersions.current.has('tags') ? (current?.tags ?? item.tags) : item.tags,
-      };
-    });
-  }, [item]);
   useEffect(() => {
     if (!savedEpisodes) return;
     setEpisodeDrafts((current) => {
@@ -300,7 +280,6 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         timesWatched: entryForm.timesWatched,
         tags: entryForm.tags,
       });
-      setDraft(entryForm);
       setEntryOpen(false);
       toast.show('Entry updated');
     } catch {
