@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { classifyDeliveryError, createMessageHandler } from "./background";
 import { SYNC_OUTBOX_KEY } from "./sync";
-import { normalizeBookmarkStore } from "./bookmarks";
-import { BOOKMARKS_STORAGE_KEY } from "../messages";
+import { BOOKMARKS_STORAGE_KEY, normalizeBookmarkStore } from "./bookmarks";
 
 const payload = {
   service: "netflix" as const,

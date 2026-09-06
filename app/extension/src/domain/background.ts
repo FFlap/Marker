@@ -1,9 +1,9 @@
 import {
+  BOOKMARKS_STORAGE_KEY,
   createBookmarkOperations,
   validateBookmark,
 } from "./bookmarks";
 import type { EpisodeBookmark } from "./types";
-import { BOOKMARKS_STORAGE_KEY } from "../messages";
 import {
   createOutboxManager,
   buildWatchPayload,

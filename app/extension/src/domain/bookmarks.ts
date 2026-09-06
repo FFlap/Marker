@@ -1,5 +1,7 @@
 import type { BookmarkStore, EpisodeBookmark } from "./types";
 
+export const BOOKMARKS_STORAGE_KEY = 'markerBookmarks';
+
 const EMPTY_BOOKMARK_STORE: BookmarkStore = {
   version: 1,
   bookmarks: {},
