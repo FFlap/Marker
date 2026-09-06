@@ -20,7 +20,6 @@ import {
 } from 'react-native-draggable-flatlist';
 import { Button, EmptyState } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
-import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
 import type { LibraryItem } from '@/types';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
@@ -67,7 +66,6 @@ function Library() {
   const itemQuery = useQuery(api.library.items.listItems);
   const items = itemQuery ?? EMPTY_ITEMS;
   const settings = useQuery(api.settings.getSettings);
-  const toast = useToast();
   const view = settings?.defaultView ?? 'list';
   const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const listColumns = settings?.listColumns ?? DEFAULT_DISPLAY_PREFERENCES.listColumns;
