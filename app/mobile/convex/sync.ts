@@ -125,9 +125,7 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
     readAssembledSeason(ctx, item.tmdbId, a.season),
   ]);
   const activeResolvedSeason =
-    resolvedSeason &&
-    ((resolvedSeason.metadataProvider === 'tmdb' && !mapping) ||
-      (mapping !== null && resolvedSeason.orderEpoch === mapping.orderEpoch))
+    resolvedSeason && mapping !== null && resolvedSeason.orderEpoch === mapping.orderEpoch
       ? resolvedSeason
       : undefined;
   const activeTitle =
