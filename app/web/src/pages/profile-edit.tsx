@@ -7,7 +7,7 @@ import { Page, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAvatarUpload } from "@/hooks/use-avatar-upload";
-import { USERNAME_PATTERN } from "@/lib/profile";
+import { USERNAME_PATTERN } from "@/lib/utils";
 
 export function ProfileEditPage() {
   const profile = useQuery(api.profiles.me, {});
