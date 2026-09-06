@@ -217,7 +217,6 @@ export {
   mockAddItem,
   mockAddItemAndMarkWatched,
   mockLoadMore,
-  mockUseQuery,
   episodeData,
   screen,
   TitleDetail,
