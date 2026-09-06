@@ -26,8 +26,6 @@ import { FullWindowOverlay as RNFullWindowOverlay } from 'react-native-screens';
 const DrawerTrigger = DialogPrimitive.Trigger;
 const DrawerClose = DialogPrimitive.Close;
 
-const DrawerPortal = DialogPrimitive.Portal;
-
 const FullWindowOverlay = Platform.OS === 'ios' ? RNFullWindowOverlay : React.Fragment;
 const enterEasing = Easing.bezier(0.22, 1, 0.36, 1);
 const exitEasing = Easing.bezier(0.25, 1, 0.5, 1);
@@ -122,17 +120,6 @@ function Drawer({
     </DrawerMotionContext.Provider>
   );
 }
-
-const DrawerBackdrop = React.forwardRef<
-  React.ComponentRef<typeof Pressable>,
-  React.ComponentProps<typeof Pressable>
->(function DrawerBackdrop({ children, ...props }, ref) {
-  return (
-    <Pressable ref={ref} {...props}>
-      {children}
-    </Pressable>
-  );
-});
 
 function DrawerBackdropTint() {
   const { progress } = useDrawerMotion();
@@ -231,27 +218,16 @@ const DrawerSheet = React.forwardRef<
 function DrawerOverlay({
   className,
   children,
-  onPress,
   ...props
-}: Omit<React.ComponentProps<typeof Pressable>, 'style'> & {
-  children?: React.ReactNode;
-}) {
+}: Omit<React.ComponentProps<typeof DialogPrimitive.Overlay>, 'style'>) {
   const { interactive } = useDrawerMotion();
-  const { onOpenChange } = DialogPrimitive.useRootContext();
-
-  function onOverlayPress(event: Parameters<NonNullable<typeof onPress>>[0]) {
-    onPress?.(event);
-    onOpenChange(false);
-  }
-
   return (
     <FullWindowOverlay>
-      <DrawerBackdrop
+      <DialogPrimitive.Overlay
         className={cn('absolute bottom-0 left-0 right-0 top-0 flex justify-end', className)}
         {...props}
         accessibilityElementsHidden={!interactive}
         importantForAccessibility={interactive ? 'auto' : 'no-hide-descendants'}
-        onPress={onOverlayPress}
         pointerEvents={interactive ? 'auto' : 'none'}
         style={styles.overlay}
       >
@@ -259,7 +235,7 @@ function DrawerOverlay({
         <Pressable onPress={() => undefined} style={styles.sheetPressGuard}>
           {children}
         </Pressable>
-      </DrawerBackdrop>
+      </DialogPrimitive.Overlay>
     </FullWindowOverlay>
   );
 }
@@ -284,7 +260,7 @@ function DrawerContent({
   const body = header ? contentChildren.slice(1) : contentChildren;
 
   return (
-    <DrawerPortal hostName={portalHost}>
+    <DialogPrimitive.Portal hostName={portalHost}>
       <DrawerMotionContext.Provider value={motion}>
         <DrawerOverlay>
           <DialogPrimitive.Content asChild {...props}>
@@ -317,7 +293,7 @@ function DrawerContent({
           </DialogPrimitive.Content>
         </DrawerOverlay>
       </DrawerMotionContext.Provider>
-    </DrawerPortal>
+    </DialogPrimitive.Portal>
   );
 }
 
