@@ -10,8 +10,6 @@ import { validateInteger, validateTmdbId } from './providerValidation';
 type Json = Record<string, unknown>;
 type SnapshotCtx = { runQuery: Function; runMutation: Function };
 type ProviderRequestCtx = { runMutation: Function };
-const DETAIL_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
-const SEASON_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
 const string = (x: unknown) => (typeof x === 'string' ? x : undefined);
 const number = (x: unknown) => (typeof x === 'number' ? x : undefined);
 const identifier = (x: unknown) =>
@@ -143,40 +141,21 @@ export function mapSeasonDetails(r: Json): TmdbSeasonEpisode[] {
 async function snapshot<T>(
   ctx: SnapshotCtx,
   key: string,
-  freshnessMs: number,
   load: () => Promise<T>,
   readTruncated?: () => Promise<T | null>,
 ): Promise<T> {
   const stored = await ctx.runQuery(internal.providerSnapshots.get, { key });
-  if (stored && stored.refreshedAt > Date.now() - freshnessMs) {
+  if (stored && stored.refreshedAt > Date.now() - SNAPSHOT_TTL_MS) {
     if (!isTruncatedSnapshot(stored.value)) return stored.value as T;
     const durable = await readTruncated?.();
     if (durable !== null && durable !== undefined) return durable;
     // A truncation marker without durable chunks is a cold cache miss.
   }
-  const loaded = await load();
-  const value = (
-    key.startsWith('tmdb:season:') && Array.isArray(loaded)
-      ? loaded.map((episode: TmdbSeasonEpisode) => ({
-          ...boundedEpisode(episode),
-          ...(episode.stillPath && { stillPath: episode.stillPath.slice(0, 500) }),
-        }))
-      : loaded
-  ) as T;
-  await putNonFatal(ctx, { key, value, metricKey: 'tmdb' });
-  return value;
+  return refreshSnapshot(ctx, key, load);
 }
 
 async function refreshSnapshot<T>(ctx: SnapshotCtx, key: string, load: () => Promise<T>) {
-  const loaded = await load();
-  const value = (
-    key.startsWith('tmdb:season:') && Array.isArray(loaded)
-      ? loaded.map((episode: TmdbSeasonEpisode) => ({
-          ...boundedEpisode(episode),
-          ...(episode.stillPath && { stillPath: episode.stillPath.slice(0, 500) }),
-        }))
-      : loaded
-  ) as T;
+  const value = await load();
   await putNonFatal(ctx, { key, value, metricKey: 'tmdb' });
   return value;
 }
@@ -295,7 +274,7 @@ export const refreshMovieDetails = internalAction({
       mapMovieDetails(await request(ctx, `/movie/${tmdbId}?append_to_response=credits`));
     return force
       ? refreshSnapshot(ctx, `tmdb:movie:${tmdbId}`, load)
-      : snapshot(ctx, `tmdb:movie:${tmdbId}`, DETAIL_SNAPSHOT_MS, load);
+      : snapshot(ctx, `tmdb:movie:${tmdbId}`, load);
   },
 });
 export const refreshTvDetails = internalAction({
@@ -306,7 +285,7 @@ export const refreshTvDetails = internalAction({
       mapTvDetails(await request(ctx, `/tv/${tmdbId}?append_to_response=credits`));
     return force
       ? refreshSnapshot(ctx, `tmdb:tv:full:${tmdbId}`, load)
-      : snapshot(ctx, `tmdb:tv:full:${tmdbId}`, DETAIL_SNAPSHOT_MS, load);
+      : snapshot(ctx, `tmdb:tv:full:${tmdbId}`, load);
   },
 });
 export const refreshSeasonDetails = internalAction({
@@ -321,19 +300,13 @@ export const refreshSeasonDetails = internalAction({
       );
     return force
       ? refreshSnapshot(ctx, key, load)
-      : snapshot(
-          ctx,
-          key,
-          SEASON_SNAPSHOT_MS,
-          load,
-          async (): Promise<TmdbSeasonEpisode[] | null> => {
-            const durable = (await ctx.runQuery(
-              internal.seasonStorage.readCanonicalSeason,
-              args,
-            )) as { episodes: TmdbSeasonEpisode[] } | null;
-            return durable?.episodes ?? null;
-          },
-        );
+      : snapshot(ctx, key, load, async (): Promise<TmdbSeasonEpisode[] | null> => {
+          const durable = (await ctx.runQuery(
+            internal.seasonStorage.readCanonicalSeason,
+            args,
+          )) as { episodes: TmdbSeasonEpisode[] } | null;
+          return durable?.episodes ?? null;
+        });
   },
 });
 export const internalSeasonDetails = internalAction({
@@ -342,7 +315,6 @@ export const internalSeasonDetails = internalAction({
     snapshot(
       ctx,
       `tmdb:season:${a.tmdbId}:${a.season}`,
-      SEASON_SNAPSHOT_MS,
       async () => mapSeasonDetails(await request(ctx, `/tv/${a.tmdbId}/season/${a.season}`, true)),
       async (): Promise<TmdbSeasonEpisode[] | null> => {
         const durable = (await ctx.runQuery(internal.seasonStorage.readCanonicalSeason, a)) as {
