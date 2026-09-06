@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Camera, Globe2, LockKeyhole, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
@@ -13,20 +13,14 @@ export function ProfileEditPage() {
   const profile = useQuery(api.profiles.me, {});
   const save = useMutation(api.profiles.save);
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [isPublic, setIsPublic] = useState(false);
+  const [usernameDraft, setUsername] = useState<string>();
+  const [isPublicDraft, setIsPublic] = useState<boolean>();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const { pending: photoPending, upload, clear: clearAvatar } =
     useAvatarUpload(setError);
-  const profileUsername = profile?.username;
-  const profileIsPublic = profile?.isPublic;
-
-  useEffect(() => {
-    if (profileIsPublic === undefined) return;
-    setUsername(profileUsername ?? "");
-    setIsPublic(profileIsPublic);
-  }, [profileIsPublic, profileUsername]);
+  const username = usernameDraft ?? profile?.username ?? "";
+  const isPublic = isPublicDraft ?? profile?.isPublic ?? false;
 
   const submit = async () => {
     const value = username.trim();
