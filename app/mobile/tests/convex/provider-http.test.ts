@@ -34,6 +34,36 @@ describe('provider HTTP reliability', () => {
     expect(beforeRequest).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['status', 'body'] as const)(
+    'does not repeat POST after a response %s failure',
+    async (failure) => {
+      const response =
+        failure === 'status'
+          ? new Response('{}', { status: 503 })
+          : new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.error(new Error('Body interrupted'));
+                },
+              }),
+            );
+      const fetchMock = vi.fn().mockResolvedValue(response);
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        providerFetch(
+          'https://example.test/login',
+          { method: 'POST', body: '{}' },
+          {
+            provider: 'tvdb',
+            operation: '/login',
+            retries: 1,
+          },
+        ),
+      ).rejects.toMatchObject({ data: { code: 'upstream', provider: 'tvdb' } });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('aborts a stalled provider request at the configured deadline', async () => {
     vi.useFakeTimers();
     vi.stubGlobal(

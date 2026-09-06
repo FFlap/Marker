@@ -38,7 +38,8 @@ const backoffMs = (attempt: number, response?: Response) => {
 
 export async function providerFetch(url: string, init: RequestInit, options: ProviderFetchOptions) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const retries = options.retries ?? DEFAULT_RETRIES;
+  const method = (init.method ?? 'GET').toUpperCase();
+  const retries = method === 'GET' || method === 'HEAD' ? (options.retries ?? DEFAULT_RETRIES) : 0;
   const startedAt = Date.now();
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
