@@ -268,40 +268,9 @@ export function useTitleView(
     [itemId, touchItem],
   );
   useEffect(() => {
-    if (!mediaType || tmdbId === undefined) return;
     // Displaying a title synchronizes it with the external metadata cache.
-    const routeKey = `${mediaType}:${tmdbId}`;
-    const requestKey =
-      selectedSeason === undefined ? `title:${routeKey}` : `season:${routeKey}:${selectedSeason}`;
-    const generation = ++requestGeneration.current;
-    activeRequest.current = { routeKey, requestKey, generation };
-    void touch({
-      mediaType,
-      tmdbId,
-      ...(title !== undefined && { title }),
-      ...(selectedSeason !== undefined && { season: selectedSeason }),
-    })
-      .then(() => {
-        const active = activeRequest.current;
-        if (
-          activeRouteKey.current === routeKey &&
-          active?.routeKey === routeKey &&
-          active.requestKey === requestKey &&
-          active.generation === generation
-        )
-          setTouchErrorState(undefined);
-      })
-      .catch((error) => {
-        const active = activeRequest.current;
-        if (
-          activeRouteKey.current === routeKey &&
-          active?.routeKey === routeKey &&
-          active.requestKey === requestKey &&
-          active.generation === generation
-        )
-          setTouchErrorState({ routeKey, requestKey, generation, error });
-      });
-  }, [mediaType, selectedSeason, title, tmdbId, touch]);
+    void touchTitle();
+  }, [touchTitle]);
   const requestState = args ? subscribedRequestState : itemRequestState;
   const retouch = args ? touchTitle : touchItemView;
   useMetadataExpiryTimer(autoRecovery ? displayedRequestKey : undefined, requestState, retouch);
