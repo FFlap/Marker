@@ -1,0 +1,63 @@
+name: Check apps
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: true
+      EXPO_NO_TELEMETRY: 1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            app/mobile/package-lock.json
+            app/web/package-lock.json
+            app/extension/package-lock.json
+      - name: Install dependencies
+        run: |
+          npm ci --prefix app/mobile
+          npm ci --prefix app/web
+          npm ci --prefix app/extension
+      - name: Check mobile
+        working-directory: app/mobile
+        run: |
+          npm run check
+          npm run audit:prod
+      - name: Check web
+        working-directory: app/web
+        env:
+          VITE_CONVEX_URL: https://marker-check.convex.cloud
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsubWFya2VyLmV4YW1wbGUuY29tJA
+        run: |
+          npm run check
+          npm audit --omit=dev --audit-level=high
+      - name: Check extension
+        working-directory: app/extension
+        run: npm run check
+      - name: Export mobile bundles
+        working-directory: app/mobile
+        env:
+          EXPO_PUBLIC_CONVEX_URL: https://marker-check.convex.cloud
+          EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsubWFya2VyLmV4YW1wbGUuY29tJA
+        run: |
+          npx expo export --platform ios --max-workers 2 --output-dir /tmp/marker-ios
+          npx expo export --platform android --max-workers 2 --output-dir /tmp/marker-android
