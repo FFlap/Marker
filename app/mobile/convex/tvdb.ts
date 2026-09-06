@@ -5,7 +5,6 @@ import { providerFetch } from './providerHttp';
 import { isAnime } from './mergePolicy';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
 import { MAX_SEASON_EPISODES } from './seasonStorage';
-import { tvdbAnimeGuideKey, tvdbAnimeLookupKey } from './tvdbGuideKeys';
 import {
   authoritativeNames,
   boundedAnimeEpisode,
@@ -43,6 +42,14 @@ export {
   selectSeasonOrder,
 } from './tvdbParsing';
 export type { AnimeDetails, AnimeEpisode, SeasonRecord } from './tvdbParsing';
+
+const TVDB_ANIME_GUIDE_VERSION = 'v7';
+
+const tvdbAnimeGuideKey = (tmdbId: number, tvdbId: number, order: string) =>
+  `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:${tmdbId}:${tvdbId}:${order}`;
+
+const tvdbAnimeLookupKey = (tmdbId: number) =>
+  `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:lookup:${tmdbId}`;
 
 const API_ROOT = 'https://api4.thetvdb.com/v4';
 const GUIDE_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
