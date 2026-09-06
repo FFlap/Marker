@@ -1,10 +1,8 @@
 import { cn } from "@/lib/utils";
 
 export function Brand({
-  compact = false,
   className,
 }: {
-  compact?: boolean;
   className?: string;
 }) {
   return (
@@ -21,11 +19,7 @@ export function Brand({
           className="absolute bottom-1.5 h-[2px] w-3 rounded-full bg-black"
         />
       </div>
-      {compact ? (
-        <span className="sr-only">Marker</span>
-      ) : (
-        <span className="text-[15px] font-bold tracking-[-0.03em]">Marker</span>
-      )}
+      <span className="text-[15px] font-bold tracking-[-0.03em]">Marker</span>
     </div>
   );
 }
