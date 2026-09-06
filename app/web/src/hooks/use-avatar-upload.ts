@@ -36,6 +36,12 @@ export function useAvatarUpload(onError: (message: string) => void) {
         );
       if (!siteUrl) throw new Error("Convex site URL is required");
       const uploadUrl = new URL(uploadPath, siteUrl);
+      const isLocalDevelopment =
+        import.meta.env.DEV &&
+        uploadUrl.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(uploadUrl.hostname);
+      if (uploadUrl.protocol !== "https:" && !isLocalDevelopment)
+        throw new Error("Upload requires HTTPS");
       if (uploadUrl.origin !== new URL(siteUrl).origin)
         throw new Error("Invalid upload origin");
       const response = await fetch(uploadUrl, {

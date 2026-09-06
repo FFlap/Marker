@@ -76,3 +76,33 @@ it("does not send a token to an unrelated upload origin", async () => {
     "Couldn’t update your profile photo.",
   );
 });
+
+it.each([
+  ["https://marker-test.convex.site", false, true],
+  ["http://marker-test.convex.site", false, false],
+  ["http://marker-test.convex.site", true, false],
+  ["http://localhost:3211", true, true],
+  ["http://127.0.0.1:3211", true, true],
+  ["http://[::1]:3211", true, true],
+  ["http://localhost:3211", false, false],
+  ["http://localhost.example:3211", true, false],
+])(
+  "guards upload transport for %s (development: %s)",
+  async (siteUrl, dev, allowed) => {
+    mocks.generateUploadUrl.mockResolvedValue("/avatar/upload?uploadId=upload");
+    mocks.getToken.mockResolvedValue("test-token");
+    mocks.setAvatar.mockResolvedValue(undefined);
+    vi.stubEnv("VITE_CONVEX_SITE_URL", siteUrl);
+    vi.stubEnv("DEV", dev);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ storageId: "stored-image" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useAvatarUpload(vi.fn()));
+    await act(async () => {
+      await result.current.upload(new File(["image"], "photo.png"));
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(allowed ? 1 : 0);
+    expect(mocks.setAvatar).toHaveBeenCalledTimes(allowed ? 1 : 0);
+  },
+);
