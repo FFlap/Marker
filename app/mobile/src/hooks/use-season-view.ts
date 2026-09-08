@@ -11,7 +11,11 @@ export function selectAvailableSeason(
   selectedSeason: number,
 ) {
   const firstSeason =
-    seasons?.find((entry) => entry.season > 0)?.season ?? seasons?.[0]?.season ?? 1;
+    seasons
+      ?.filter((entry) => entry.season > 0)
+      .sort((left, right) => left.season - right.season)[0]?.season ??
+    seasons?.[0]?.season ??
+    1;
   return seasons?.some((entry) => entry.season === selectedSeason) === false
     ? firstSeason
     : selectedSeason;

@@ -84,6 +84,19 @@ describe('Explore title metadata subscriptions', () => {
     expect(mockTouchTitle).not.toHaveBeenCalledWith(expect.objectContaining({ season: 2 }));
   });
 
+  it('defaults to the lowest regular season when provider seasons are unsorted', async () => {
+    mockState.titleView.title.seasons = [
+      { season: 5, name: 'Season 5', episodeCount: 1 },
+      { season: 0, name: 'Specials', episodeCount: 1 },
+      { season: 2, name: 'Season 2', episodeCount: 1 },
+    ];
+    const view = await screen();
+    expect(view.getByLabelText('Choose season, current Season 2')).toBeTruthy();
+    expect(view.getByText('A New Journey')).toBeTruthy();
+    expect(mockTouchTitle).toHaveBeenCalledWith(expect.objectContaining({ season: 2 }));
+    expect(mockTouchTitle).not.toHaveBeenCalledWith(expect.objectContaining({ season: 5 }));
+  });
+
   it('loads season zero when only specials are available', async () => {
     mockState.titleView.title.seasons = [{ season: 0, name: 'Specials', episodeCount: 1 }];
     mockState.mockSeasonView = {
