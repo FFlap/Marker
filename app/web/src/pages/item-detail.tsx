@@ -655,7 +655,7 @@ export function ItemDetailPage() {
                               seasonName: episodeView.seasonName,
                               name: episode.name,
                               ...(episodeView.overview !== undefined && {
-                                overview: episodeView.overview,
+                                overview: episodeView.overview.slice(0, 400),
                               }),
                               ...(episodeView.runtime !== undefined && {
                                 runtime: episodeView.runtime,

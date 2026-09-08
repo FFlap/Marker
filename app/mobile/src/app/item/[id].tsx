@@ -306,7 +306,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         availableSeasons.find((entry) => entry.season === ep.season)?.name ??
         (ep.season === 0 ? 'Specials' : `Season ${ep.season}`),
       name: ep.name,
-      ...(ep.overview !== undefined && { overview: ep.overview }),
+      ...(ep.overview !== undefined && { overview: ep.overview.slice(0, 400) }),
       ...(ep.runtime !== undefined && { runtime: ep.runtime }),
       ...(ep.imageUrl !== undefined && { imageUrl: ep.imageUrl }),
       ...(ep.airDate !== undefined && { airDate: ep.airDate }),
