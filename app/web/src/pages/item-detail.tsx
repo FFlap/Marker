@@ -190,7 +190,7 @@ export function ItemDetailPage() {
     listQuery?.find((entry) => String(entry._id) === itemId)) as LibraryItem | undefined;
   const title = itemView?.title as TitleDetail | null | undefined;
   const seasons = useMemo(
-    () => title?.seasons?.filter((entry) => entry.season >= 0) ?? [],
+    () => title?.seasons?.filter((entry) => entry.season >= 0).toSorted((left, right) => left.season - right.season) ?? [],
     [title?.seasons],
   );
   const [selectedSeason, setSeason] = useState(1);

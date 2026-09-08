@@ -102,7 +102,7 @@ export function TitleDetailPage() {
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const detail = titleView?.title as Detail | null | undefined;
   const meta = detail ?? preview;
-  const seasons = detail?.seasons?.filter((entry) => entry.season >= 0) ?? [];
+  const seasons = detail?.seasons?.filter((entry) => entry.season >= 0).toSorted((left, right) => left.season - right.season) ?? [];
   const [selectedSeason, setSeason] = useState(1);
   const season = seasons.some((entry) => entry.season === selectedSeason)
     ? selectedSeason
