@@ -19,9 +19,9 @@ import {
   seasonDisplayName,
   seasonTranslationLimit,
   selectSeasonOrder,
+  selectSeriesMatch,
   seriesId,
   text,
-  titleMatches,
   validateOrder,
   validOrders,
   verifiedTmdbRemoteSeries,
@@ -43,7 +43,7 @@ export {
 } from './tvdbParsing';
 export type { AnimeDetails, AnimeEpisode, SeasonRecord } from './tvdbParsing';
 
-const TVDB_ANIME_GUIDE_VERSION = 'v7';
+const TVDB_ANIME_GUIDE_VERSION = 'v8';
 
 const tvdbAnimeGuideKey = (tmdbId: number, tvdbId: number, order: string) =>
   `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:${tmdbId}:${tvdbId}:${order}`;
@@ -173,8 +173,7 @@ async function findSeries(ctx: { runMutation: Function }, tmdbId: number, titles
       `/search?query=${encodeURIComponent(title)}&type=series&limit=20`,
       true,
     );
-    const matches = records(search.data).filter((entry) => text(entry.type) === 'series');
-    const exact = matches.find((entry) => titleMatches(entry, titles));
+    const exact = selectSeriesMatch(records(search.data), tmdbId, titles);
     const id = seriesId(exact ?? {});
     if (id) return id;
   }

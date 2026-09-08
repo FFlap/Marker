@@ -139,7 +139,7 @@ describe('metadata pipeline', () => {
     const { t } = await setup();
     await t.run((ctx) =>
       ctx.db.insert('providerSnapshots', {
-        key: 'tvdb:anime:v7:88:111:official',
+        key: 'tvdb:anime:v8:88:111:official',
         entry: {
           kind: 'tvdbGuide',
           value: {
@@ -197,7 +197,7 @@ describe('metadata pipeline', () => {
       fetchMock.mock.calls.some(([input]) => String(input).includes('/series/222/extended')),
     ).toBe(true);
     expect(
-      await t.query(internal.providerSnapshots.get, { key: 'tvdb:anime:v7:88:222:dvd' }),
+      await t.query(internal.providerSnapshots.get, { key: 'tvdb:anime:v8:88:222:dvd' }),
     ).toMatchObject({ value: { tvdbId: 222, order: 'dvd' } });
   });
 

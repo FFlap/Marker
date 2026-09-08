@@ -154,6 +154,37 @@ export const titleMatches = (entry: Json, titles: string[]) => {
     .some((value) => targets.has(normalize(value)));
 };
 const tmdbRemoteSources = new Set(['tmdb', 'the movie database', 'themoviedb', 'themoviedb com']);
+
+// Search relevance can put a spinoff first whose aliases include the parent title.
+// Provider identity outranks names; primary/translatable names outrank aliases.
+export function selectSeriesMatch(entries: Json[], tmdbId: number, titles: string[]) {
+  const targets = new Set(normalizedNames(titles));
+  const ranked = entries
+    .flatMap((entry) => {
+      if (text(entry.type) !== 'series' || !seriesId(entry)) return [];
+      const tmdbIds = records(entry.remote_ids).filter((remote) =>
+        tmdbRemoteSources.has(normalize(text(remote.sourceName))),
+      );
+      const verified = tmdbIds.some((remote) => String(remote.id) === String(tmdbId));
+      if (tmdbIds.length && !verified) return [];
+      const primaryMatch = [
+        entry.name,
+        entry.name_translated,
+        entry.title,
+        ...Object.values(record(entry.translations)),
+      ].some((name) => typeof name === 'string' && targets.has(normalize(name)));
+      const score = verified ? 3 : primaryMatch ? 2 : titleMatches(entry, titles) ? 1 : 0;
+      return score ? [{ entry, score }] : [];
+    })
+    .sort((left, right) => right.score - left.score);
+  if (
+    !ranked.length ||
+    (ranked[1]?.score === ranked[0].score &&
+      seriesId(ranked[1].entry) !== seriesId(ranked[0].entry))
+  )
+    return undefined;
+  return ranked[0].entry;
+}
 const remoteIdSource = (entry: Json) => {
   const remote = record(entry.remote_id ?? entry.remoteId);
   return normalize(
