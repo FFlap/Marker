@@ -10,24 +10,11 @@ import {
 import { requestKey, seasonRequestKey, visibleRequestState } from './requests';
 import { mediaType, metadataProvider, requireUser } from './shared';
 import { readAssembledSeason } from '../seasonStorage';
+import { activeResolvedTitle } from '../resolvedTitleModel';
 
 export const readTitle = internalQuery({
   args: { mediaType, tmdbId: v.number() },
-  handler: async (ctx, args) => {
-    const [title, mapping] = await Promise.all([
-      ctx.db
-        .query('resolvedTitles')
-        .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
-        .unique(),
-      ctx.db
-        .query('titleMappings')
-        .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
-        .unique(),
-    ]);
-    return title && (mapping?.orderEpoch === undefined || title.orderEpoch === mapping.orderEpoch)
-      ? title
-      : null;
-  },
+  handler: activeResolvedTitle,
 });
 
 export const readTitleMapping = internalQuery({
@@ -44,19 +31,7 @@ export const getTitle = query({
   returns: v.union(v.null(), publicResolvedTitleValidator),
   handler: async (ctx, args) => {
     await requireUser(ctx);
-    const [title, mapping] = await Promise.all([
-      ctx.db
-        .query('resolvedTitles')
-        .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
-        .unique(),
-      ctx.db
-        .query('titleMappings')
-        .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
-        .unique(),
-    ]);
-    return title && (mapping?.orderEpoch === undefined || title.orderEpoch === mapping.orderEpoch)
-      ? title
-      : null;
+    return activeResolvedTitle(ctx, args);
   },
 });
 
@@ -65,22 +40,7 @@ export const getTitleView = query({
   returns: v.object({ title: v.union(v.null(), publicResolvedTitleValidator) }),
   handler: async (ctx, args) => {
     await requireUser(ctx);
-    const [title, mapping] = await Promise.all([
-      ctx.db
-        .query('resolvedTitles')
-        .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
-        .unique(),
-      ctx.db
-        .query('titleMappings')
-        .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
-        .unique(),
-    ]);
-    return {
-      title:
-        title && (mapping?.orderEpoch === undefined || title.orderEpoch === mapping.orderEpoch)
-          ? title
-          : null,
-    };
+    return { title: await activeResolvedTitle(ctx, args) };
   },
 });
 
@@ -185,19 +145,7 @@ export const getItemView = query({
     const userId = await requireUser(ctx);
     const item = await ctx.db.get(itemId);
     if (!item || item.userId !== userId || item.deletingAt !== undefined) return null;
-    const title = await ctx.db
-      .query('resolvedTitles')
-      .withIndex('by_tmdb', (q) => q.eq('mediaType', item.mediaType).eq('tmdbId', item.tmdbId))
-      .unique();
-    const mapping = await ctx.db
-      .query('titleMappings')
-      .withIndex('by_tmdb', (q) => q.eq('mediaType', item.mediaType).eq('tmdbId', item.tmdbId))
-      .unique();
-    const activeTitle =
-      title && (mapping?.orderEpoch === undefined || title.orderEpoch === mapping.orderEpoch)
-        ? title
-        : null;
-    return { item, title: activeTitle };
+    return { item, title: await activeResolvedTitle(ctx, item) };
   },
 });
 

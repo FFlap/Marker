@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
@@ -55,63 +55,31 @@ export default function UserTagScreen() {
   const username = Array.isArray(params.username) ? params.username[0] : (params.username ?? '');
   const tag = Array.isArray(params.tag) ? params.tag[0] : (params.tag ?? '');
   const routeKey = `${username.toLocaleLowerCase()}:${tag.toLocaleLowerCase()}`;
+  return <UserTagRoute key={routeKey} username={username} tag={tag} />;
+}
+
+function UserTagRoute({ username, tag }: { username: string; tag: string }) {
   const [pageCursor, setPageCursor] = useState<string>();
-  const [collectionPages, setCollectionPages] = useState<
-    { cursor?: string; value: PublicCollection | null }[]
-  >([]);
-  const [cachedRouteKey, setCachedRouteKey] = useState(routeKey);
+  const [previousPages, setPreviousPages] = useState<PublicCollection[]>([]);
   const collectionPage = useQuery(
     api.tags.publicByUser,
     username && tag ? { username, tag, cursor: pageCursor } : 'skip',
   ) as PublicCollection | null | undefined;
-  useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setPageCursor(undefined);
-      setCollectionPages([]);
-      setCachedRouteKey(routeKey);
-    });
-    return () => {
-      active = false;
-    };
-  }, [routeKey]);
-  useEffect(() => {
-    if (collectionPage === undefined) return;
-    if (
-      collectionPage !== null &&
-      (collectionPage.username.toLocaleLowerCase() !== username.toLocaleLowerCase() ||
-        collectionPage.tag.toLocaleLowerCase() !== tag.toLocaleLowerCase())
-    )
-      return;
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      setCollectionPages((current) => {
-        const index = current.findIndex((page) => page.cursor === pageCursor);
-        const next = { cursor: pageCursor, value: collectionPage };
-        if (index < 0) return [...current, next];
-        if (JSON.stringify(current[index]?.value) === JSON.stringify(collectionPage))
-          return current;
-        return [...current.slice(0, index), next];
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, [collectionPage, pageCursor, tag, username]);
   const collection = useMemo(() => {
-    if (cachedRouteKey !== routeKey) return undefined;
-    const loaded = collectionPages.map((page) => page.value);
-    if (!loaded.length) return undefined;
-    const available = loaded.filter((page): page is PublicCollection => page !== null);
-    if (!available.length) return null;
+    if (collectionPage === null) return null;
+    const available = collectionPage ? [...previousPages, collectionPage] : previousPages;
+    if (!available.length) return undefined;
     const titles = new Map<string, PublicTitle>();
     for (const page of available)
       for (const title of page.titles) titles.set(`${title.mediaType}:${title.tmdbId}`, title);
     return { ...available[0], titles: [...titles.values()] };
-  }, [cachedRouteKey, collectionPages, routeKey]);
-  const nextCursor = collectionPages.at(-1)?.value?.nextCursor;
+  }, [collectionPage, previousPages]);
+  const nextCursor = collectionPage?.nextCursor;
+  const loadMore = () => {
+    if (!collectionPage || !nextCursor) return;
+    setPreviousPages((current) => [...current, collectionPage]);
+    setPageCursor(nextCursor);
+  };
   const library = useQuery(api.library.items.listItems);
   const settings = useQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);
@@ -280,13 +248,7 @@ export default function UserTagScreen() {
                 </View>
               );
             })}
-            {nextCursor && (
-              <Button
-                title="Load more titles"
-                variant="outline"
-                onPress={() => setPageCursor(nextCursor)}
-              />
-            )}
+            {nextCursor && <Button title="Load more titles" variant="outline" onPress={loadMore} />}
           </PinchDensity>
         )}
       </ScrollView>

@@ -10,7 +10,7 @@ export function Page({
 }: {
   children: ReactNode;
   className?: string;
-  width?: "compact" | "wide" | "full";
+  width?: "compact" | "wide";
 }) {
   return (
     <div
@@ -18,7 +18,6 @@ export function Page({
         "mx-auto min-h-[100dvh] w-full px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-8 sm:px-8 lg:px-12 lg:pb-28 lg:pt-12",
         width === "compact" && "max-w-3xl",
         width === "wide" && "max-w-6xl",
-        width === "full" && "max-w-[1440px]",
         className,
       )}
     >
@@ -29,17 +28,15 @@ export function Page({
 
 function BackButton({
   fallback = "/explore",
-  label = "Go back",
 }: {
   fallback?: keyof RegisteredRouter["routesByPath"] & string;
-  label?: string;
 }) {
   const navigate = useNavigate();
   const router = useRouter();
   return (
     <button
       type="button"
-      aria-label={label}
+      aria-label="Go back"
       className="grid size-11 shrink-0 place-items-center rounded-full bg-transparent text-foreground transition hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-10"
       onClick={() => {
         if (router.history.canGoBack()) {

@@ -1,5 +1,4 @@
 import { ConvexError, v } from 'convex/values';
-import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import {
@@ -7,63 +6,9 @@ import {
   GLOBAL_TOUCHES_PER_MINUTE,
   mediaType,
   NEW_TOUCH_KEYS_PER_HOUR,
-  refreshOutcomeValidator,
-  resolvedEpisodeValidator,
-  resolvedTitleValidator,
   TOUCHES_PER_MINUTE,
   type MediaType,
 } from './shared';
-import { writeChunkedSeason } from '../seasonStorage';
-
-export const putTitle = internalMutation({
-  args: { value: resolvedTitleValidator },
-  handler: async (ctx, { value }) => {
-    const next = value;
-    const existing = await ctx.db
-      .query('resolvedTitles')
-      .withIndex('by_tmdb', (q) => q.eq('mediaType', next.mediaType).eq('tmdbId', next.tmdbId))
-      .unique();
-    if (existing) await ctx.db.replace(existing._id, next);
-    else await ctx.db.insert('resolvedTitles', next);
-    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.publication.refreshItemProjections, {
-      mediaType: next.mediaType,
-      tmdbId: next.tmdbId,
-    });
-  },
-});
-
-export const putSeason = internalMutation({
-  args: {
-    tmdbId: v.number(),
-    season: v.number(),
-    metadataProvider: v.union(v.literal('tmdb'), v.literal('tvdb')),
-    episodes: v.array(resolvedEpisodeValidator),
-    refreshedAt: v.number(),
-    refreshAfter: v.number(),
-    orderEpoch: v.number(),
-  },
-  handler: async (ctx, args) => {
-    await writeChunkedSeason(ctx, args);
-    const mapping = await ctx.db
-      .query('titleMappings')
-      .withIndex('by_tmdb', (query) => query.eq('mediaType', 'tv').eq('tmdbId', args.tmdbId))
-      .unique();
-    if (!mapping)
-      await ctx.db.insert('titleMappings', {
-        tmdbId: args.tmdbId,
-        mediaType: 'tv',
-        source: 'auto',
-        orderEpoch: args.orderEpoch,
-        updatedAt: args.refreshedAt,
-      });
-    else if (mapping.orderEpoch === args.orderEpoch)
-      await ctx.db.patch(mapping._id, { updatedAt: args.refreshedAt });
-    await ctx.scheduler.runAfter(0, internal.episodeSummaries.reconcileSeasonSummaries, {
-      tmdbId: args.tmdbId,
-      season: args.season,
-    });
-  },
-});
 
 export const claimRefresh = internalMutation({
   args: {
@@ -251,61 +196,6 @@ export const admitSynchronousRefresh = internalMutation({
       ),
     );
     await consumeRefreshAdmission(ctx, userId, rows.filter((row) => !row).length);
-    return true;
-  },
-});
-
-export const completeRefreshRequest = internalMutation({
-  args: {
-    key: v.string(),
-    attemptToken: v.string(),
-    state: v.union(v.literal('succeeded'), v.literal('failed'), v.literal('notFound')),
-    errorCode: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const row = await ctx.db
-      .query('metadataRefreshRequests')
-      .withIndex('by_key', (q) => q.eq('key', args.key))
-      .unique();
-    if (!row || row.attemptToken !== args.attemptToken) return false;
-    const completedAt = Date.now();
-    await ctx.db.patch(row._id, {
-      state: args.state,
-      completedAt,
-      expiresAt: completedAt,
-      retryAt: args.state === 'failed' ? completedAt + FAILED_TOUCH_BACKOFF_MS : undefined,
-      ...(args.errorCode ? { errorCode: args.errorCode } : { errorCode: undefined }),
-    });
-    return true;
-  },
-});
-
-export const completeRefreshRequests = internalMutation({
-  args: {
-    attemptToken: v.string(),
-    outcomes: v.array(refreshOutcomeValidator),
-  },
-  handler: async (ctx, { attemptToken, outcomes }) => {
-    const now = Date.now();
-    const rows = await Promise.all(
-      outcomes.map((outcome) =>
-        ctx.db
-          .query('metadataRefreshRequests')
-          .withIndex('by_key', (query) => query.eq('key', outcome.key))
-          .unique(),
-      ),
-    );
-    if (rows.some((row) => !row || row.attemptToken !== attemptToken)) return false;
-    for (const [index, row] of rows.entries()) {
-      const outcome = outcomes[index]!;
-      await ctx.db.patch(row!._id, {
-        state: outcome.state,
-        completedAt: now,
-        expiresAt: now,
-        retryAt: outcome.state === 'failed' ? now + FAILED_TOUCH_BACKOFF_MS : undefined,
-        ...(outcome.errorCode ? { errorCode: outcome.errorCode } : { errorCode: undefined }),
-      });
-    }
     return true;
   },
 });

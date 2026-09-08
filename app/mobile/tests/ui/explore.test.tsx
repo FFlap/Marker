@@ -120,6 +120,30 @@ describe('Explore', () => {
     });
   });
 
+  it('ignores an in-flight search failure after leaving Explore', async () => {
+    let rejectSearch!: (error: Error) => void;
+    mockSearchMedia.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSearch = reject;
+        }),
+    );
+    const q = await view();
+    await fireEvent.changeText(
+      q.getByLabelText('Search movies, TV shows, people, and tags'),
+      'Avengers',
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(350);
+    });
+    expect(mockSearchMedia).toHaveBeenCalledTimes(1);
+    await q.rerender(<ToastProvider>{null}</ToastProvider>);
+    await act(async () => {
+      rejectSearch(new Error('offline'));
+    });
+    expect(q.queryByText('Search is unavailable right now')).toBeNull();
+  });
+
   it('shows private people as follow requests', async () => {
     mockPeople = [
       {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
   createMemoryHistory,
   createRouter,
@@ -7,6 +7,14 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ authenticated: false }));
+vi.mock("@clerk/react", () => ({ useAuth: () => ({ userId: "viewer" }) }));
+vi.mock("@/components/app-shell", async () => {
+  const { Outlet } = await import("@tanstack/react-router");
+  return { AppShell: Outlet };
+});
+vi.mock("@/pages/item-detail", () => ({
+  ItemDetailPage: () => <input aria-label="Item draft" defaultValue="" />,
+}));
 vi.mock("@/hooks/use-marker-account", () => ({
   useMarkerAccount: () => ({
     isAuthenticated: mocks.authenticated,
@@ -58,3 +66,17 @@ it.each([
     );
   },
 );
+
+it("resets item drafts when navigating directly between items", async () => {
+  mocks.authenticated = true;
+  const testRouter = createRouter({
+    routeTree: router.routeTree,
+    history: createMemoryHistory({ initialEntries: ["/item/first"] }),
+    scrollRestoration: false,
+  });
+  render(<RouterProvider router={testRouter} />);
+  const input = await screen.findByRole("textbox", { name: "Item draft" });
+  fireEvent.change(input, { target: { value: "first item edit" } });
+  await testRouter.navigate({ to: "/item/$itemId", params: { itemId: "second" } });
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Item draft" })).toHaveValue(""));
+});

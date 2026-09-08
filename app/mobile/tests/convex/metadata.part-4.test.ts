@@ -1,3 +1,4 @@
+import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -533,7 +534,7 @@ describe('metadata pipeline', () => {
     const { t, asUser } = await setup();
     await addItem(asUser);
     const old = Date.now() - 3 * 60 * 1000;
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',

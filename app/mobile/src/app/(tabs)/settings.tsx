@@ -44,24 +44,20 @@ export default function Settings() {
     setOptimistic((existing) => ({ ...existing, [key]: value }));
     try {
       await setSettings({ [key]: value });
-      setOptimistic((existing) => {
-        const next = { ...existing };
-        delete next[key];
-        return next;
-      });
     } catch {
+      toast.show('Couldn’t update settings');
+    } finally {
       setOptimistic((existing) => {
         const next = { ...existing };
         delete next[key];
         return next;
       });
-      toast.show('Couldn’t update settings');
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
     }
-    setPending((current) => {
-      const next = new Set(current);
-      next.delete(key);
-      return next;
-    });
   };
   const handleSignOut = async () => {
     setPending((current) => new Set(current).add('signout'));

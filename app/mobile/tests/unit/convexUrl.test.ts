@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getConvexSiteUrl } from '../../src/lib/convexUrl';
 
 describe('getConvexSiteUrl', () => {
+  afterEach(() => vi.unstubAllGlobals());
   it('prefers an explicit site URL override', () => {
     expect(
       getConvexSiteUrl({
@@ -34,4 +35,26 @@ describe('getConvexSiteUrl', () => {
       expect(getConvexSiteUrl({ siteUrl: '', convexUrl })).toBeUndefined();
     },
   );
+
+  it.each([false, true])('rejects cleartext remote hosts with development=%s', (development) => {
+    vi.stubGlobal('__DEV__', development);
+    for (const siteUrl of [
+      'http://uploads.example.com',
+      'http://localhost.example.com',
+      'http://192.168.1.2',
+    ]) {
+      expect(getConvexSiteUrl({ siteUrl })).toBeUndefined();
+    }
+    expect(
+      getConvexSiteUrl({ siteUrl: '', convexUrl: 'http://marker.convex.cloud' }),
+    ).toBeUndefined();
+  });
+
+  it.each(['localhost', '127.0.0.1', '[::1]'])('allows HTTP %s only in development', (host) => {
+    const siteUrl = `http://${host}:3211`;
+    vi.stubGlobal('__DEV__', false);
+    expect(getConvexSiteUrl({ siteUrl })).toBeUndefined();
+    vi.stubGlobal('__DEV__', true);
+    expect(getConvexSiteUrl({ siteUrl })).toBe(siteUrl);
+  });
 });

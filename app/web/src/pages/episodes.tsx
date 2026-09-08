@@ -108,7 +108,7 @@ export function EpisodesPage() {
       <h1 className="sr-only">Episodes</h1>
       <div className="flex gap-2">
         <SearchField
-          wrapperClassName="flex-1"
+          className="flex-1"
           aria-label={`Search ${tab} episodes`}
           value={search}
           onChange={(event) => setSearch(event.target.value)}

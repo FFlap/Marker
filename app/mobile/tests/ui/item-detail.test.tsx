@@ -481,6 +481,13 @@ describe('item detail metadata subscriptions', () => {
   });
 
   it('changes an unwatched episode checkbox into an options button after watching', async () => {
+    mockSeasonView[1] = {
+      ...mockSeasonView[1],
+      season: {
+        ...seasonOne,
+        episodes: [{ ...seasonOne.episodes[0], overview: 'x'.repeat(401) }],
+      },
+    };
     const view = await renderScreen();
     const user = userEvent.setup();
     const watchButton = view.getByLabelText('Mark episode 1 watched');
@@ -489,7 +496,13 @@ describe('item detail metadata subscriptions', () => {
     );
     await user.press(watchButton);
     expect(mockSetEpisodeState).toHaveBeenCalledWith(
-      expect.objectContaining({ itemId: 'item', season: 1, episode: 1, watched: true }),
+      expect.objectContaining({
+        itemId: 'item',
+        season: 1,
+        episode: 1,
+        watched: true,
+        overview: 'x'.repeat(400),
+      }),
     );
     expect(view.getByText('Edit episode 1')).toBeTruthy();
     expect(view.getByLabelText('Current rating')).toBeTruthy();

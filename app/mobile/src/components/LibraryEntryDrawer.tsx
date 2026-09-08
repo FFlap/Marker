@@ -34,14 +34,6 @@ type EntryContentProps = {
 };
 
 export function LibraryEntryDrawer({
-  open,
-  onOpenChange,
-  ...contentProps
-}: EntryContentProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
-  return <LibraryEntryContent {...contentProps} open={open} onOpenChange={onOpenChange} />;
-}
-
-function LibraryEntryContent({
   mode,
   initial,
   suggestions,

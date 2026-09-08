@@ -156,16 +156,14 @@ describe("normalizeBookmarkStore", () => {
     ).toEqual({ version: 1, bookmarks: {} });
   });
 
-  it("migrates legacy Crunchyroll bookmarks without a platform", () => {
+  it("rejects bookmarks without an explicit platform", () => {
     const { platform: _platform, ...legacy } = slimeEpisode1;
     expect(
       normalizeBookmarkStore({
         version: 1,
         bookmarks: { "crunchyroll:GYZJ43JMR": legacy },
       }).bookmarks,
-    ).toEqual({
-      "crunchyroll:GYZJ43JMR": slimeEpisode1,
-    });
+    ).toEqual({});
   });
 
   it("rejects unknown store and bookmark fields", () => {

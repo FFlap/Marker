@@ -62,7 +62,7 @@
     "ios": "expo run:ios",
     "check": "npm run architecture:check && npm run lint && npm run typecheck && npm run format:check && npm test && npm run test:ui",
     "architecture:check": "node scripts/check-file-size.mjs",
-    "audit:prod": "node scripts/audit-production.mjs",
+    "audit:prod": "node ../../scripts/audit-production.mjs",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
     "test": "vitest run",

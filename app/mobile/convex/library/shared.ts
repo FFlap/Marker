@@ -148,8 +148,8 @@ export const episodeMetadataStamp = async (
     resolved.chunksComplete === true &&
     resolved.chunkCount !== undefined &&
     resolved.seasonVersion !== undefined &&
-    (resolved.metadataProvider === 'tmdb' ||
-      (mapping !== null && resolved.orderEpoch === mapping.orderEpoch))
+    mapping !== null &&
+    resolved.orderEpoch === mapping.orderEpoch
       ? resolved
       : undefined;
   let canonicalEpisode: Doc<'resolvedSeasonChunks'>['episodes'][number] | undefined;

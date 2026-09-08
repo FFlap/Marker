@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Camera, Globe2, LockKeyhole, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
@@ -7,26 +7,20 @@ import { Page, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAvatarUpload } from "@/hooks/use-avatar-upload";
-import { USERNAME_PATTERN } from "@/lib/profile";
+import { USERNAME_PATTERN } from "@/lib/utils";
 
 export function ProfileEditPage() {
   const profile = useQuery(api.profiles.me, {});
   const save = useMutation(api.profiles.save);
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [isPublic, setIsPublic] = useState(false);
+  const [usernameDraft, setUsername] = useState<string>();
+  const [isPublicDraft, setIsPublic] = useState<boolean>();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const { pending: photoPending, upload, clear: clearAvatar } =
     useAvatarUpload(setError);
-  const profileUsername = profile?.username;
-  const profileIsPublic = profile?.isPublic;
-
-  useEffect(() => {
-    if (profileIsPublic === undefined) return;
-    setUsername(profileUsername ?? "");
-    setIsPublic(profileIsPublic);
-  }, [profileIsPublic, profileUsername]);
+  const username = usernameDraft ?? profile?.username ?? "";
+  const isPublic = isPublicDraft ?? profile?.isPublic ?? false;
 
   const submit = async () => {
     const value = username.trim();
@@ -140,7 +134,7 @@ export function ProfileEditPage() {
                 <LockKeyhole className="size-5" />
                 <span>
                   <strong className="block text-sm">Private</strong>
-                  <span className="text-xs text-muted-foreground">Only you can see your profile activity.</span>
+                  <span className="text-xs text-muted-foreground">You and approved followers can see your activity. Public tags remain visible to everyone.</span>
                 </span>
               </button>
             </div>

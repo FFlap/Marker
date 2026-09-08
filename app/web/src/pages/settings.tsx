@@ -105,6 +105,8 @@ export function SettingsPage() {
   const [overrides, setOverrides] = useState<Partial<Preferences>>({});
   const [saving, setSaving] = useState<keyof Preferences>();
   const [error, setError] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
   const [failedPreference, setFailedPreference] =
     useState<FailedPreference>();
   const current: Preferences = { ...defaults, ...stored, ...overrides };
@@ -291,10 +293,18 @@ export function SettingsPage() {
           <div>
             <Button
               variant="destructive"
-              onClick={() => void signOut()}
+              disabled={signingOut}
+              onClick={() => {
+                setSigningOut(true);
+                setSignOutError("");
+                void signOut()
+                  .catch(() => setSignOutError("Couldn’t sign out. Please try again."))
+                  .finally(() => setSigningOut(false));
+              }}
             >
-              Sign out
+              {signingOut ? "Signing out…" : "Sign out"}
             </Button>
+            {signOutError && <p role="alert" className="mt-3 text-sm text-destructive">{signOutError}</p>}
           </div>
         </section>
       </div>

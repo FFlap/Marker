@@ -34,6 +34,36 @@ describe('provider HTTP reliability', () => {
     expect(beforeRequest).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['status', 'body'] as const)(
+    'does not repeat POST after a response %s failure',
+    async (failure) => {
+      const response =
+        failure === 'status'
+          ? new Response('{}', { status: 503 })
+          : new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.error(new Error('Body interrupted'));
+                },
+              }),
+            );
+      const fetchMock = vi.fn().mockResolvedValue(response);
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        providerFetch(
+          'https://example.test/login',
+          { method: 'POST', body: '{}' },
+          {
+            provider: 'tvdb',
+            operation: '/login',
+            retries: 1,
+          },
+        ),
+      ).rejects.toMatchObject({ data: { code: 'upstream', provider: 'tvdb' } });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('aborts a stalled provider request at the configured deadline', async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -65,4 +95,44 @@ describe('provider HTTP reliability', () => {
 
     await assertion;
   });
+});
+
+it('keeps the timeout active while a successful response body is stalled', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async (_url: string, init?: RequestInit) =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              init?.signal?.addEventListener('abort', () =>
+                controller.error(new DOMException('The operation was aborted', 'AbortError')),
+              );
+            },
+          }),
+          { status: 200 },
+        ),
+    ),
+  );
+  try {
+    const request = providerFetch(
+      'https://example.test/title',
+      {},
+      {
+        provider: 'tmdb',
+        operation: '/title',
+        retries: 0,
+        timeoutMs: 50,
+      },
+    );
+    const assertion = expect(request).rejects.toMatchObject({
+      data: { code: 'timeout', provider: 'tmdb', retryable: true },
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    await assertion;
+  } finally {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
 });

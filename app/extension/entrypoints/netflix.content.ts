@@ -10,7 +10,6 @@ export default defineContentScript({
   matches: ["https://www.netflix.com/*"],
   runAt: "document_idle",
   main() {
-    delete document.documentElement.dataset.netflixBookmark;
     document.documentElement.dataset.markerNetflix = "loaded";
     let lastUrl = location.href;
     let lastSavedVideoId: string | null = null;

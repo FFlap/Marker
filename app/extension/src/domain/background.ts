@@ -1,14 +1,13 @@
 import {
+  BOOKMARKS_STORAGE_KEY,
   createBookmarkOperations,
   validateBookmark,
 } from "./bookmarks";
 import type { EpisodeBookmark } from "./types";
-import { BOOKMARKS_STORAGE_KEY } from "../messages";
 import {
   createOutboxManager,
   buildWatchPayload,
   SYNC_ACCOUNT_KEY,
-  parseWatchPayload,
   SYNC_LAST_RESULT_KEY,
   SYNC_OUTBOX_KEY,
   SYNC_RETRY_KEY,
@@ -22,19 +21,14 @@ export type BackgroundMessage =
   | { type: "sync/connect" }
   | { type: "sync/signOut" }
   | { type: "sync/status" }
-  | { type: "sync/enqueue"; payload: WatchPayload }
-  | { type: "sync/unsupported"; seriesTitle: string }
   | { type: "sync/flushNow" }
   | { type: "bookmark/save"; bookmark: EpisodeBookmark }
   | { type: "bookmark/remove"; key: string }
   | { type: "bookmark/clear" };
 
 type ErrorLike = {
-  data?: { code?: unknown };
   status?: unknown;
-  code?: unknown;
   name?: unknown;
-  message?: unknown;
 };
 export type DeliveryClassification = "retryable" | "auth" | "terminal";
 
@@ -47,32 +41,12 @@ export interface AuthClient {
 
 export function classifyDeliveryError(error: unknown): DeliveryClassification {
   const value = error as ErrorLike | null;
-  if (value?.data?.code === "upstream") return "retryable";
   const status = Number(value?.status);
-  const code = String(value?.data?.code ?? value?.code ?? "").toLowerCase();
-  const message = String(value?.message ?? "").toLowerCase();
-  const authCodes = new Set([
-    "auth",
-    "authentication_required",
-    "invalid_token",
-    "session_expired",
-    "unauthorized",
-  ]);
-  if (
-    status === 401 ||
-    status === 403 ||
-    authCodes.has(code) ||
-    /token refresh|authentication required|unauthoriz/.test(message)
-  )
-    return "auth";
-  if (status >= 500) return "retryable";
-  if (value?.name === "AbortError" || /timeout|timed out/.test(message))
+  if (status === 401 || status === 403 || status === 409) return "auth";
+  if (status === 408 || status === 429 || status >= 500) return "retryable";
+  if (value?.name === "AbortError" || value?.name === "TimeoutError")
     return "retryable";
-  if (
-    error instanceof TypeError &&
-    /fetch|network|load failed|offline/.test(message)
-  )
-    return "retryable";
+  if (error instanceof TypeError) return "retryable";
   return "terminal";
 }
 
@@ -86,14 +60,6 @@ function isBackgroundMessage(value: unknown): value is BackgroundMessage {
     case "sync/flushNow":
     case "bookmark/clear":
       return true;
-    case "sync/enqueue":
-      return typeof message.payload === "object" && message.payload !== null;
-    case "sync/unsupported":
-      return (
-        typeof message.seriesTitle === "string" &&
-        Boolean(message.seriesTitle.trim()) &&
-        message.seriesTitle.length <= 300
-      );
     case "bookmark/save":
       return typeof message.bookmark === "object" && message.bookmark !== null;
     case "bookmark/remove":
@@ -221,19 +187,6 @@ export function createMessageHandler(
           ? { signedIn: true, accountLabel: current.accountLabel }
           : { signedIn: false };
       }
-      case "sync/enqueue": {
-        const payload = parseWatchPayload(message.payload);
-        if (!payload)
-          return { ok: false, reason: "rejected", retryable: false };
-        await outbox.enqueue(payload);
-        await outbox.flush();
-        return { ok: true };
-      }
-      case "sync/unsupported":
-        return recordResult(
-          { ok: false, reason: "unsupported-episode", retryable: false },
-          message.seriesTitle.trim(),
-        );
       case "sync/flushNow":
         await outbox.flush();
         return { ok: true };

@@ -1,12 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import {
+  BOOKMARKS_STORAGE_KEY,
   normalizeBookmarkStore,
   sortBookmarks,
   validatedProviderUrl,
 } from "../../src/domain/bookmarks";
 import type { EpisodeBookmark } from "../../src/domain/types";
-import { BOOKMARKS_STORAGE_KEY } from "../../src/messages";
 import { SYNC_LAST_RESULT_KEY } from "../../src/domain/sync";
 import { App } from "./App";
 import "./style.css";

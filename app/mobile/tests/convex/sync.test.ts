@@ -1,3 +1,4 @@
+import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -56,7 +57,7 @@ describe('watch sync', () => {
   it('counts the canonical runtime written by an offline watch sync', async () => {
     const { t, userId, asUser } = await setup();
     const itemId = await addItem(asUser);
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -105,7 +106,7 @@ describe('watch sync', () => {
         mediaType: 'tv',
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -154,7 +155,7 @@ describe('watch sync', () => {
         mediaType: 'tv',
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -163,7 +164,7 @@ describe('watch sync', () => {
       refreshAfter: Date.now() + 60_000,
       orderEpoch: 0,
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -244,7 +245,7 @@ describe('watch sync', () => {
         mediaType: 'tv',
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -262,7 +263,7 @@ describe('watch sync', () => {
       matchedProvider: 'tmdb',
       matchedSeasonRefreshedAt: 100,
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -309,7 +310,7 @@ describe('watch sync', () => {
     vi.useFakeTimers();
     const { t, userId, asUser } = await setup();
     const itemId = await addItem(asUser);
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -327,7 +328,7 @@ describe('watch sync', () => {
       matchedProvider: 'tmdb',
       matchedSeasonRefreshedAt: 100,
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',

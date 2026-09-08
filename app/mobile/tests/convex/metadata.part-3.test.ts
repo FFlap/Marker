@@ -1,3 +1,4 @@
+import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -137,7 +138,7 @@ describe('metadata pipeline', () => {
   it('keeps current rows on page one after a 120-episode numbering shift', async () => {
     const { t, userId, asUser } = await setup();
     const itemId = await addItem(asUser);
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -253,7 +254,7 @@ describe('metadata pipeline', () => {
         updatedAt: Date.now(),
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -352,7 +353,7 @@ describe('metadata pipeline', () => {
   it('reads an episode page from the current indexed identity despite bounded stale history', async () => {
     const { t, userId, asUser } = await setup();
     const itemId = await addItem(asUser);
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -400,7 +401,7 @@ describe('metadata pipeline', () => {
       name: `Episode ${episode}`,
       providerEpisodeId: 100 + episode,
     }));
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -418,7 +419,7 @@ describe('metadata pipeline', () => {
       });
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -446,7 +447,7 @@ describe('metadata pipeline', () => {
       name: `Episode ${episode}`,
       providerEpisodeId: 200 + episode,
     }));
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -470,7 +471,7 @@ describe('metadata pipeline', () => {
         .unique();
       await ctx.db.patch(mapping!._id, { orderEpoch: 1, updatedAt: 200 });
     });
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -493,7 +494,7 @@ describe('metadata pipeline', () => {
       episode: index + 1,
       name: `Episode ${index + 1}`,
     }));
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -520,7 +521,7 @@ describe('metadata pipeline', () => {
       expectedMetadataProvider: plan.metadataProvider,
     });
     expect(first.processed).toBe(120);
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
@@ -601,75 +602,5 @@ describe('metadata pipeline', () => {
     await expect(
       t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 77 }),
     ).resolves.toBeNull();
-  });
-
-  it('seeds title and season snapshots at the active mapping epoch', async () => {
-    const { t, asUser } = await setup();
-    await addItem(asUser);
-    await asUser.mutation(api.library.items.addItem, {
-      tmdbId: 77,
-      mediaType: 'movie',
-      title: 'Seeded movie fallback',
-      status: 'watchlist',
-    });
-    await t.run(async (ctx) => {
-      await ctx.db.insert('titleMappings', {
-        tmdbId: 88,
-        mediaType: 'tv',
-        tvdbId: 808,
-        seasonOrder: 'dvd',
-        source: 'manual',
-        orderEpoch: 4,
-        updatedAt: Date.now(),
-      });
-      await ctx.db.insert('providerSnapshots', {
-        key: 'tmdb:tv:full:88',
-        entry: {
-          kind: 'tmdbTv',
-          value: {
-            id: 88,
-            title: 'Seeded show',
-            mediaType: 'tv',
-            genres: [],
-            cast: [],
-            seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
-            episodeRunTime: [24],
-          },
-        },
-        refreshedAt: Date.now(),
-      });
-      await ctx.db.insert('providerSnapshots', {
-        key: 'tmdb:season:88:1',
-        entry: {
-          kind: 'episodes',
-          value: [{ season: 1, episode: 1, name: 'Seeded episode' }],
-        },
-        refreshedAt: Date.now(),
-      });
-      await ctx.db.insert('providerSnapshots', {
-        key: 'tmdb:movie:77',
-        entry: {
-          kind: 'tmdbMovie',
-          value: { id: 77, title: 'Seeded movie', mediaType: 'movie', genres: [], cast: [] },
-        },
-        refreshedAt: Date.now(),
-      });
-    });
-
-    await expect(
-      t.action(internal.resolvedMetadata.seed.seedFromProviderSnapshots, {}),
-    ).resolves.toMatchObject({ found: 2, seeded: 2 });
-    await expect(
-      t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 88 }),
-    ).resolves.toMatchObject({ title: 'Seeded show', orderEpoch: 4 });
-    await expect(
-      t.query(internal.resolvedMetadata.reads.readSeason, { tmdbId: 88, season: 1 }),
-    ).resolves.toMatchObject({ orderEpoch: 4, episodes: [{ name: 'Seeded episode' }] });
-    await expect(
-      t.query(internal.resolvedMetadata.reads.readTitleMapping, { mediaType: 'movie', tmdbId: 77 }),
-    ).resolves.toMatchObject({ source: 'auto', orderEpoch: 0 });
-    await expect(
-      t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'movie', tmdbId: 77 }),
-    ).resolves.toMatchObject({ title: 'Seeded movie', orderEpoch: 0 });
   });
 });

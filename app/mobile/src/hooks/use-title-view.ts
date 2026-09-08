@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
@@ -39,10 +39,7 @@ function useMetadataExpiryTimer(
   requestState: MetadataRequestState | null | undefined,
   retouch: () => unknown,
 ) {
-  const retouchRef = useRef(retouch);
-  useEffect(() => {
-    retouchRef.current = retouch;
-  }, [retouch]);
+  const onRetouch = useEffectEvent(retouch);
   const state = requestState?.state;
   const delayMs = requestState?.delayMs;
   const [serverArm, setServerArm] = useState<{
@@ -69,7 +66,7 @@ function useMetadataExpiryTimer(
     );
     const timer = setTimeout(
       () =>
-        void Promise.resolve(retouchRef.current())
+        void Promise.resolve(onRetouch())
           .then((value) => {
             const decision = decisionForKey(key, value as TouchDecision | undefined);
             if (decision?.mutationRejected) {
@@ -179,14 +176,10 @@ export function useTitleView(
       : itemId
         ? `item:${itemId}`
         : undefined;
-  const activeRouteKey = useRef(key);
   const activeRequest = useRef<
     { routeKey: string; requestKey: string; generation: number } | undefined
   >(undefined);
   const requestGeneration = useRef(0);
-  useEffect(() => {
-    activeRouteKey.current = key;
-  }, [key]);
   const [touchErrorState, setTouchErrorState] = useState<{
     routeKey: string;
     requestKey: string;
@@ -217,26 +210,27 @@ export function useTitleView(
           : `season:${routeKey}:${effectiveSeason}`;
       const generation = ++requestGeneration.current;
       activeRequest.current = { routeKey, requestKey, generation };
-      setTouchErrorState(undefined);
-      try {
-        return await touch({
-          mediaType,
-          tmdbId,
-          ...(title !== undefined && { title }),
-          ...(effectiveSeason !== undefined && { season: effectiveSeason }),
-          ...(options?.force !== undefined && { force: options.force }),
+      return touch({
+        mediaType,
+        tmdbId,
+        ...(title !== undefined && { title }),
+        ...(effectiveSeason !== undefined && { season: effectiveSeason }),
+        ...(options?.force !== undefined && { force: options.force }),
+      })
+        .then((result) => {
+          if (activeRequest.current?.generation === generation) setTouchErrorState(undefined);
+          return result;
+        })
+        .catch((error: unknown) => {
+          const active = activeRequest.current;
+          if (
+            active?.routeKey === routeKey &&
+            active.requestKey === requestKey &&
+            active.generation === generation
+          )
+            setTouchErrorState({ routeKey, requestKey, generation, error });
+          return { mutationRejected: true as const };
         });
-      } catch (error) {
-        const active = activeRequest.current;
-        if (
-          activeRouteKey.current === routeKey &&
-          active?.routeKey === routeKey &&
-          active.requestKey === requestKey &&
-          active.generation === generation
-        )
-          setTouchErrorState({ routeKey, requestKey, generation, error });
-        return { mutationRejected: true as const };
-      }
     },
     [mediaType, selectedSeason, title, tmdbId, touch],
   );
@@ -256,7 +250,6 @@ export function useTitleView(
       } catch (error) {
         const active = activeRequest.current;
         if (
-          activeRouteKey.current === routeKey &&
           active?.routeKey === routeKey &&
           active.requestKey === requestKey &&
           active.generation === generation
@@ -268,40 +261,16 @@ export function useTitleView(
     [itemId, touchItem],
   );
   useEffect(() => {
-    if (!mediaType || tmdbId === undefined) return;
     // Displaying a title synchronizes it with the external metadata cache.
-    const routeKey = `${mediaType}:${tmdbId}`;
-    const requestKey =
-      selectedSeason === undefined ? `title:${routeKey}` : `season:${routeKey}:${selectedSeason}`;
-    const generation = ++requestGeneration.current;
-    activeRequest.current = { routeKey, requestKey, generation };
-    void touch({
-      mediaType,
-      tmdbId,
-      ...(title !== undefined && { title }),
-      ...(selectedSeason !== undefined && { season: selectedSeason }),
-    })
-      .then(() => {
-        const active = activeRequest.current;
-        if (
-          activeRouteKey.current === routeKey &&
-          active?.routeKey === routeKey &&
-          active.requestKey === requestKey &&
-          active.generation === generation
-        )
-          setTouchErrorState(undefined);
-      })
-      .catch((error) => {
-        const active = activeRequest.current;
-        if (
-          activeRouteKey.current === routeKey &&
-          active?.routeKey === routeKey &&
-          active.requestKey === requestKey &&
-          active.generation === generation
-        )
-          setTouchErrorState({ routeKey, requestKey, generation, error });
-      });
-  }, [mediaType, selectedSeason, title, tmdbId, touch]);
+    void touchTitle();
+  }, [touchTitle]);
+  const retryTitle = useCallback(
+    (options?: TouchOptions) => {
+      setTouchErrorState(undefined);
+      return touchTitle(options);
+    },
+    [touchTitle],
+  );
   const requestState = args ? subscribedRequestState : itemRequestState;
   const retouch = args ? touchTitle : touchItemView;
   useMetadataExpiryTimer(autoRecovery ? displayedRequestKey : undefined, requestState, retouch);
@@ -309,7 +278,7 @@ export function useTitleView(
   return {
     view: view === undefined ? undefined : { ...view, requestState },
     touchError,
-    touchTitle,
+    touchTitle: retryTitle,
     touchItemView,
   };
 }

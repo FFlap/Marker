@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -155,6 +154,10 @@ function VisibilityDialog({
 
 export function TagDetailPage() {
   const { tag } = useParams({ from: "/app/tags/$tag" });
+  return <TagDetail key={tag} tag={tag} />;
+}
+
+function TagDetail({ tag }: { tag: string }) {
   const libraryQuery = useQuery(api.library.items.listItems, {});
   const rankQuery = useQuery(api.library.items.listTagRanks, { tag });
   const settings = useQuery(api.settings.getSettings, {});
@@ -202,10 +205,6 @@ export function TagDetailPage() {
       );
   }, [library, rankQuery, tag]);
 
-  useEffect(() => {
-    setOrders({});
-  }, [tag]);
-
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return ranked.filter(
@@ -231,7 +230,7 @@ export function TagDetailPage() {
       const index = order.indexOf(id);
       return index < 0 ? Number.MAX_SAFE_INTEGER : index;
     };
-    return [...items].toSorted(
+    return items.toSorted(
       (left, right) =>
         position(String(left._id)) - position(String(right._id)) || left.rank - right.rank,
     );

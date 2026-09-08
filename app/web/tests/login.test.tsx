@@ -85,6 +85,17 @@ describe("login page", () => {
       mock.mockResolvedValue({ error: null });
     }
   });
+  it("derives the username prompt from current OAuth requirements", () => {
+    mocks.signUp.status = "missing_requirements";
+    mocks.signUp.missingFields = ["username"];
+    const { rerender } = render(<LoginPage />);
+    expect(screen.getByRole("heading", { name: "Choose a username." })).toBeInTheDocument();
+    mocks.signUp.status = null;
+    mocks.signUp.missingFields = [];
+    rerender(<LoginPage />);
+    expect(screen.queryByRole("heading", { name: "Choose a username." })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log in" })).toBeInTheDocument();
+  });
   it("opens with clear login and sign-up choices", () => {
     render(<LoginPage />);
 

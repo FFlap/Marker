@@ -52,14 +52,14 @@ export function ProfileFavorites({
   favorites: Favorite[];
   interactive?: boolean;
 }) {
+  const [pickerType, setPickerType] = useState<FavoriteSection>();
   const eligible = useQuery(
     api.profileFavorites.eligible,
-    !interactive ? "skip" : {},
+    !interactive || !pickerType ? "skip" : {},
   );
   const addFavorite = useMutation(api.profileFavorites.add);
   const removeFavorite = useMutation(api.profileFavorites.remove);
   const reorderFavorite = useMutation(api.profileFavorites.reorder);
-  const [pickerType, setPickerType] = useState<FavoriteSection>();
   const [pending, setPending] = useState<string>();
   const reorderPending = useRef(false);
   const [orders, setOrders] = useState<
@@ -67,7 +67,7 @@ export function ProfileFavorites({
   >({});
   const [error, setError] = useState("");
   const persisted = useMemo(
-    () => [...favorites].toSorted((left, right) => left.rank - right.rank),
+    () => favorites.toSorted((left, right) => left.rank - right.rank),
     [favorites],
   );
 
@@ -191,7 +191,10 @@ export function ProfileFavorites({
                   variant="ghost"
                   size="sm"
                   aria-label={`Add favorite ${singular}`}
-                  onClick={() => setPickerType(section)}
+                  onClick={() => {
+                    setError("");
+                    setPickerType(section);
+                  }}
                   className="h-11 px-2.5 text-xs sm:h-8"
                 >
                   <Plus className="size-3.5" /> Add
@@ -290,7 +293,7 @@ export function ProfileFavorites({
         );
       })}
 
-      {error && (
+      {error && !pickerType && (
         <p role="alert" className="text-xs text-destructive">
           {error}
         </p>
@@ -298,12 +301,13 @@ export function ProfileFavorites({
 
       <Dialog
         open={pickerType !== undefined}
-        onOpenChange={(open) => !open && setPickerType(undefined)}
+        onOpenChange={(open) => !open && !pending && setPickerType(undefined)}
       >
         <DialogContent>
           <DialogTitle>
             Add {pickerType ? sectionLabel(pickerType) : "favorite"}
           </DialogTitle>
+          {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
           {eligible === undefined ? (
             <div className="h-40 animate-pulse rounded-lg bg-card" />
           ) : pickerItems?.length ? (

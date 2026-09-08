@@ -23,7 +23,7 @@ export function TagAddPage() {
   const tagKey = tag.trim().toLocaleLowerCase();
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    return [...(items ?? [])]
+    return (items ?? [])
       .filter(
         (item) => !query || item.title.toLocaleLowerCase().includes(query),
       )

@@ -2,9 +2,9 @@ import { spawnSync } from "node:child_process";
 import { isAuditCommandFailure } from "./audit-report.mjs";
 
 const allowedAdvisories = new Set([
-  // Clerk image-size build dependency; owner: extension maintainers; review by 2026-10-01.
+  // Metro/Clerk image-size build dependency; owner: Marker maintainers; review by 2026-10-01.
   "GHSA-5p2g-fcmc-qvqq",
-  // Clerk image-size build dependency; owner: extension maintainers; review by 2026-10-01.
+  // Metro/Clerk image-size build dependency; owner: Marker maintainers; review by 2026-10-01.
   "GHSA-w3rx-r6r6-pgpr",
 ]);
 
@@ -74,7 +74,7 @@ if (blocking.length > 0) {
   (report.metadata?.vulnerabilities?.critical ?? 0) > 0
 ) {
   console.warn(
-    "Only the allowlisted image-size advisories inherited through Clerk build dependencies remain.",
+    "Only the allowlisted image-size advisories inherited through Metro/Clerk build dependencies remain.",
   );
 } else {
   console.log("No high or critical production dependency advisories found.");

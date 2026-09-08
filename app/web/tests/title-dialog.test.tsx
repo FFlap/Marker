@@ -85,4 +85,17 @@ describe("add title dialog", () => {
     );
     expect(mocks.addItem).not.toHaveBeenCalled();
   });
+  it("preserves commas inside a tag", async () => {
+    render(
+      <AddTitleDialog initialSelection={{ id: 1, mediaType: "movie", title: "Arrival" }}>
+        <button type="button">Open</button>
+      </AddTitleDialog>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    fireEvent.change(screen.getByPlaceholderText("Add a tag"), { target: { value: "science, fiction" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to library" }));
+    await waitFor(() => expect(mocks.addItem).toHaveBeenCalledWith(expect.objectContaining({ tags: ["science, fiction"] })));
+  });
+
 });

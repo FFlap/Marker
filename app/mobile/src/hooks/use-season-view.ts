@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useMemo } from 'react';
 import { usePaginatedQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 
@@ -10,45 +10,15 @@ export function selectAvailableSeason(
   seasons: { season: number }[] | undefined,
   selectedSeason: number,
 ) {
-  const firstSeason = seasons?.find((entry) => entry.season > 0)?.season ?? 1;
+  const firstSeason =
+    seasons
+      ?.filter((entry) => entry.season > 0)
+      .sort((left, right) => left.season - right.season)[0]?.season ??
+    seasons?.[0]?.season ??
+    1;
   return seasons?.some((entry) => entry.season === selectedSeason) === false
     ? firstSeason
     : selectedSeason;
-}
-
-type SeasonEpisode = {
-  season: number;
-  episode: number;
-  name: string;
-  overview?: string;
-  runtime?: number;
-  imageUrl?: string;
-  airDate?: string;
-};
-
-type SeasonPage = {
-  season: number;
-  metadataProvider: 'tmdb' | 'tvdb';
-  orderEpoch: number;
-  totalCount: number;
-  chunkIndex: number;
-  episodes: SeasonEpisode[];
-};
-
-/** Makes a route identity change observe season 1 during that same render. */
-export function useRouteSeason(routeKey: string): [number, Dispatch<SetStateAction<number>>] {
-  const [selection, setSelection] = useState(() => ({ routeKey, season: 1 }));
-  const season = selection.routeKey === routeKey ? selection.season : 1;
-  const setSeason = useCallback<Dispatch<SetStateAction<number>>>(
-    (value) =>
-      setSelection((current) => {
-        const currentSeason = current.routeKey === routeKey ? current.season : 1;
-        const nextSeason = typeof value === 'function' ? value(currentSeason) : value;
-        return { routeKey, season: nextSeason };
-      }),
-    [routeKey],
-  );
-  return [season, setSeason];
 }
 
 /** Subscribes to one bounded season chunk at a time and accumulates loaded pages. */
@@ -58,7 +28,7 @@ export function useSeasonView(args: { tmdbId: number; season: number } | undefin
     initialNumItems: 1,
   });
   const { firstPage, episodes, pageCount } = useMemo(() => {
-    const pages = (paginated.results as SeasonPage[]).filter(
+    const pages = paginated.results.filter(
       (page) => season !== undefined && page.season === season,
     );
     return {

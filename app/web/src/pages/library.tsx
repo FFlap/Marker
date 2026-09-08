@@ -262,7 +262,7 @@ export function LibraryPage() {
       <h1 className="sr-only">Library</h1>
       <div className="sticky top-[calc(4rem+env(safe-area-inset-top))] z-20 -mx-2 flex gap-2 bg-background/90 px-2 py-3 backdrop-blur-xl lg:top-0">
         <SearchField
-          wrapperClassName="flex-1"
+          className="flex-1"
           aria-label="Search your library"
           value={search}
           onChange={(event) => setSearch(event.target.value)}

@@ -1,3 +1,4 @@
+import { useAuth } from "@clerk/react";
 import type { ReactNode } from "react";
 import { Navigate, useRouterState, useSearch } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
@@ -6,7 +7,12 @@ import { safeInternalPath } from "@/lib/utils";
 import { useMarkerAccount } from "@/hooks/use-marker-account";
 import { AccountLinkError, AccountLoading } from "@/components/account-states";
 
-export function AuthGate({
+export function AuthGate(props: { children: ReactNode; setup?: boolean }) {
+  const { userId } = useAuth();
+  return <AccountGate key={userId} {...props} />;
+}
+
+function AccountGate({
   children,
   setup = false,
 }: {

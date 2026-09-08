@@ -38,7 +38,8 @@ const backoffMs = (attempt: number, response?: Response) => {
 
 export async function providerFetch(url: string, init: RequestInit, options: ProviderFetchOptions) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const retries = options.retries ?? DEFAULT_RETRIES;
+  const method = (init.method ?? 'GET').toUpperCase();
+  const retries = method === 'GET' || method === 'HEAD' ? (options.retries ?? DEFAULT_RETRIES) : 0;
   const startedAt = Date.now();
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -52,8 +53,9 @@ export async function providerFetch(url: string, init: RequestInit, options: Pro
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(url, { ...init, signal: controller.signal });
-      clearTimeout(timeout);
       if (retryableStatus(response.status)) {
+        await response.body?.cancel();
+        clearTimeout(timeout);
         if (attempt < retries) {
           await pause(backoffMs(attempt, response));
           continue;
@@ -76,6 +78,8 @@ export async function providerFetch(url: string, init: RequestInit, options: Pro
           retryable: true,
         });
       }
+      const body = response.body ? await response.arrayBuffer() : null;
+      clearTimeout(timeout);
       console.info(
         '[metadata-provider]',
         JSON.stringify({
@@ -87,7 +91,11 @@ export async function providerFetch(url: string, init: RequestInit, options: Pro
           durationMs: Date.now() - startedAt,
         }),
       );
-      return response;
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
     } catch (error) {
       clearTimeout(timeout);
       if (error instanceof ConvexError) throw error;

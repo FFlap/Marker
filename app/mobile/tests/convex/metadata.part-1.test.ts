@@ -1,3 +1,4 @@
+import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
@@ -280,10 +281,16 @@ describe('metadata pipeline', () => {
       title: { scheduled: false, reason: 'inFlight' },
       season: { scheduled: true },
     });
-    await t.mutation(internal.resolvedMetadata.requests.completeRefreshRequest, {
-      key: 'title:tv:88',
-      attemptToken: 'title-attempt',
-      state: 'succeeded',
+    await t.run(async (ctx) => {
+      const request = await ctx.db
+        .query('metadataRefreshRequests')
+        .withIndex('by_key', (q) => q.eq('key', 'title:tv:88'))
+        .unique();
+      await ctx.db.patch(request!._id, {
+        state: 'succeeded',
+        completedAt: Date.now(),
+        expiresAt: Date.now(),
+      });
     });
     await vi.waitFor(async () =>
       expect(
@@ -373,7 +380,7 @@ describe('metadata pipeline', () => {
         mediaType: 'tv',
       }),
     );
-    await t.mutation(internal.resolvedMetadata.requests.putSeason, {
+    await putSeason(t, {
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',

@@ -28,15 +28,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { WebLibraryItem } from "@/types";
+import type { WebLibraryItem as LibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-
-type LibraryItem = WebLibraryItem & {
-  tmdbId?: number;
-  timesWatched?: number;
-  genres?: string[];
-  runtime?: number;
-};
 
 type TitleDetail = {
   title?: string;
@@ -96,17 +89,6 @@ function EntryDialog({
   const [busy, setBusy] = useState<"save" | "remove">();
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (open) return;
-    setDraft({
-      status: item.status,
-      rating: item.rating,
-      timesWatched: item.timesWatched ?? (item.status === "watched" ? 1 : 0),
-      tags: item.tags,
-    });
-    setError("");
-  }, [item, open]);
-
   const save = async () => {
     setBusy("save");
     setError("");
@@ -151,6 +133,15 @@ function EntryDialog({
       open={open}
       onOpenChange={(next) => {
         if (busy && !next) return;
+        if (next) {
+          setDraft({
+            status: item.status,
+            rating: item.rating,
+            timesWatched: item.timesWatched ?? (item.status === "watched" ? 1 : 0),
+            tags: item.tags,
+          });
+          setError("");
+        }
         setOpen(next);
       }}
     >
@@ -199,10 +190,15 @@ export function ItemDetailPage() {
     listQuery?.find((entry) => String(entry._id) === itemId)) as LibraryItem | undefined;
   const title = itemView?.title as TitleDetail | null | undefined;
   const seasons = useMemo(
-    () => title?.seasons?.filter((entry) => entry.season >= 0) ?? [],
+    () => title?.seasons?.filter((entry) => entry.season >= 0).toSorted((left, right) => left.season - right.season) ?? [],
     [title?.seasons],
   );
-  const [season, setSeason] = useState(1);
+  const [selectedSeason, setSeason] = useState(1);
+  const season = seasons.some((entry) => entry.season === selectedSeason)
+    ? selectedSeason
+    : (seasons.find((entry) => entry.season > 0)?.season ??
+      seasons[0]?.season ??
+      1);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const [episodePending, setEpisodePending] = useState<string>();
   const setEpisodeState = useMutation(api.library.episodes.setEpisodeState);
@@ -278,16 +274,6 @@ export function ItemDetailPage() {
     }).catch(() => undefined);
   }, [season, touchItemId, touchItemView, touchMediaType]);
 
-  useEffect(() => {
-    const first =
-      seasons.find((entry) => entry.season > 0)?.season ?? seasons[0]?.season;
-    if (
-      first !== undefined &&
-      !seasons.some((entry) => entry.season === season)
-    )
-      setSeason(first);
-  }, [season, seasons]);
-
   if (itemView === undefined || (!item && listQuery === undefined)) {
     return (
       <Page width="compact">
@@ -330,8 +316,6 @@ export function ItemDetailPage() {
     !seasonRow &&
     (seasonRequestState?.state === "failed" ||
       seasonRequestState?.state === "notFound");
-  const visibleSeasons = seasons;
-  const visibleEpisodes = episodes;
 
   return (
     <Page width="wide" className="max-w-5xl">
@@ -493,14 +477,14 @@ export function ItemDetailPage() {
       {item.mediaType === "tv" && (
         <section className="mt-12">
           <SectionHeader title="Episodes" />
-          {visibleSeasons.length > 0 && (
+          {seasons.length > 0 && (
             <select
               aria-label="Season"
               value={season}
               onChange={(event) => setSeason(Number(event.target.value))}
               className="mt-5 h-14 w-full rounded-[14px] border border-border bg-card px-5 text-base font-semibold"
             >
-              {visibleSeasons.map((entry) => (
+              {seasons.map((entry) => (
                 <option key={entry.season} value={entry.season}>
                   {entry.name || `Season ${entry.season}`}
                 </option>
@@ -577,9 +561,9 @@ export function ItemDetailPage() {
                 />
               ))}
             </div>
-          ) : visibleEpisodes.length ? (
+          ) : episodes.length ? (
             <div className="mt-5 divide-y divide-border">
-              {visibleEpisodes.map((episode) => {
+              {episodes.map((episode) => {
                 const saved = savedByEpisode.get(episode.episode);
                 const key = `${episode.season}:${episode.episode}`;
                 const expanded = expandedEpisode === key;
@@ -671,7 +655,7 @@ export function ItemDetailPage() {
                               seasonName: episodeView.seasonName,
                               name: episode.name,
                               ...(episodeView.overview !== undefined && {
-                                overview: episodeView.overview,
+                                overview: episodeView.overview.slice(0, 400),
                               }),
                               ...(episodeView.runtime !== undefined && {
                                 runtime: episodeView.runtime,
