@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { EllipsisVertical } from 'lucide-react-native';
+import { Check, EllipsisVertical } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 import { RatingControl, TagEditor } from '@/components/ui/library-controls';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
@@ -96,7 +96,7 @@ export function EpisodeCard({
             {saved?.watched ? (
               <EllipsisVertical size={14} color={colors.muted} strokeWidth={1.8} />
             ) : (
-              <Text style={{ color: colors.muted }}>✓</Text>
+              <Check size={17} color={colors.text} strokeWidth={2} />
             )}
           </Pressable>
         </View>
