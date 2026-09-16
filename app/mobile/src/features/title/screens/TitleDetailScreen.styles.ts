@@ -35,7 +35,7 @@ export const titleDetailScreenStyles = createAppStyles(
     heroCopy: { flex: 1, minWidth: 0 },
     title: { color: colors.text, fontSize: 27, fontWeight: '800', lineHeight: 31 },
     meta: { color: colors.muted, fontSize: 12, marginTop: 8 },
-    genres: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+    genres: { marginTop: 12 },
     overview: { color: colors.muted, fontSize: 14, lineHeight: 22, marginTop: 22 },
     facts: { flexDirection: 'row', gap: 12, marginTop: 22 },
     fact: {
@@ -56,7 +56,7 @@ export const titleDetailScreenStyles = createAppStyles(
       borderColor: colors.border,
       borderWidth: 1,
     },
-    chipPlaceholder: { width: 78, height: 32, borderRadius: 16 },
+    chipPlaceholder: { width: 72, height: 24, borderRadius: 6 },
     statPlaceholder: { width: 96, height: 48, borderRadius: 10 },
     castPlaceholder: { width: 72, height: 96, borderRadius: 10, marginRight: 12 },
     episodesPlaceholder: { width: '100%', height: 92, borderRadius: 14 },

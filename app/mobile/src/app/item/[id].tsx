@@ -13,7 +13,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
-import { Button, Chip, EmptyState } from '@/components/ui/primitives';
+import { Button, EmptyState } from '@/components/ui/primitives';
+import { TagList } from '@/components/ui/TagList';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
@@ -370,11 +371,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
               <View style={{ flex: 1 }}>
                 <Text style={s.title}>{meta.title}</Text>
                 <Text style={s.meta}>{(meta.releaseDate ?? meta.firstAirDate)?.slice(0, 4)}</Text>
-                <View style={s.genres}>
-                  {meta.genres?.map((g) => (
-                    <Chip key={g} label={g} />
-                  ))}
-                </View>
+                {meta.genres?.length ? (
+                  <View style={s.genres}>
+                    <TagList tags={meta.genres} />
+                  </View>
+                ) : null}
               </View>
             </View>
             {overview ? <Text style={s.overview}>{overview}</Text> : null}
@@ -413,8 +414,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                   </View>
                 </View>
                 <View style={s.entryTags}>
+                  <Text style={s.entryLabel}>Tags</Text>
                   {draft.tags.length ? (
-                    draft.tags.map((tag) => <Chip key={tag} label={tag} />)
+                    <TagList tags={draft.tags} />
                   ) : (
                     <Text style={s.noTags}>No tags</Text>
                   )}

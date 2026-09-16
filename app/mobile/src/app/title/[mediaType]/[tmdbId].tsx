@@ -10,7 +10,8 @@ import { SecondaryHeader } from '@/components/BackButton';
 import { SeasonPicker } from '@/components/SeasonPicker';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { EpisodeSkeletonRows } from '@/components/EpisodeSkeletonRows';
-import { Button, Chip, EmptyState } from '@/components/ui/primitives';
+import { Button, EmptyState } from '@/components/ui/primitives';
+import { TagList } from '@/components/ui/TagList';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
@@ -379,7 +380,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                 </Text>
                 <View style={s.genres}>
                   {detail ? (
-                    meta.genres.map((genre) => <Chip key={genre} label={genre} />)
+                    <TagList tags={meta.genres} />
                   ) : (
                     <MetadataPlaceholder label="Loading genres" kind="chip" />
                   )}
