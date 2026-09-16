@@ -91,7 +91,7 @@
       "<rootDir>/tests/ui/setup.ts"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!((jest-)?react-native|@react-native|@rn-primitives/.*|expo|expo-.*|@expo/.*|expo-router|standard-navigation|@react-navigation/.*|react-native-svg|react-native-reanimated|react-native-worklets|react-native-css-interop|nativewind|lucide-react-native.*)/)"
+      "node_modules/(?!((jest-)?react-native|@react-native|@rn-primitives/.*|expo|expo-.*|@expo/.*|expo-router|standard-navigation|@react-navigation/.*|react-native-svg|react-native-safe-area-context|react-native-reanimated|react-native-worklets|react-native-css-interop|nativewind|lucide-react-native.*)/)"
     ]
   },
   "private": true

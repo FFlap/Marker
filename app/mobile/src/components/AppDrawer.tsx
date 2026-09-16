@@ -12,6 +12,7 @@ import {
 import { router, type Href } from 'expo-router';
 import { Bell, CalendarDays, Compass, Settings } from 'lucide-react-native';
 import { useQuery } from 'convex/react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../../convex/_generated/api';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
@@ -41,6 +42,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const [progress] = useState(() => new Animated.Value(0));
   const pendingClose = useRef<(() => void) | undefined>(undefined);
   const profile = useQuery(api.profiles.me);
+  // The modal draws edge to edge, outside the root SafeAreaView, so it has to
+  // clear the status bar, camera cutout, and gesture bar itself.
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled().then(setMotionReduced);
@@ -126,6 +130,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
         transparent
         animationType="none"
         statusBarTranslucent
+        navigationBarTranslucent
         onRequestClose={() => closeDrawer()}
       >
         <View style={s.overlay}>
@@ -143,10 +148,14 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
             ]}
           />
           <Animated.View
+            testID="account-menu-panel"
             accessibilityViewIsModal
             style={[
               s.drawer,
               {
+                paddingTop: insets.top + DRAWER_TOP_GAP,
+                paddingBottom: insets.bottom + DRAWER_BOTTOM_GAP,
+                paddingLeft: insets.left + DRAWER_SIDE_GAP,
                 transform: [
                   {
                     translateX: progress.interpolate({
@@ -214,6 +223,12 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   );
 });
 
+// Matches the tab header's top padding so the profile row starts where the
+// header avatar sits.
+const DRAWER_TOP_GAP = 16;
+const DRAWER_BOTTOM_GAP = 20;
+const DRAWER_SIDE_GAP = 20;
+
 const s = createAppStyles(
   {
     trigger: {
@@ -236,9 +251,7 @@ const s = createAppStyles(
       backgroundColor: colors.bg,
       borderRightWidth: 1,
       borderRightColor: colors.border,
-      paddingHorizontal: 20,
-      paddingTop: 56,
-      paddingBottom: 28,
+      paddingRight: DRAWER_SIDE_GAP,
     },
     drawerHead: {
       flexDirection: 'row',

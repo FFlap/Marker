@@ -1,5 +1,10 @@
 import { cleanup } from '@testing-library/react-native';
 
+jest.mock(
+  'react-native-safe-area-context',
+  () => require('react-native-safe-area-context/jest/mock').default,
+);
+
 jest.mock('react-native-reanimated', () => {
   const { View } = jest.requireActual('react-native');
   const chain: Record<string, unknown> = {};
