@@ -258,16 +258,12 @@ describe('item detail metadata subscriptions', () => {
     expect(mockTouchItemView).toHaveBeenCalledWith({ itemId: 'item', season: 1 });
   });
 
-  it('skips empty seasons when choosing and listing library seasons', async () => {
+  it('keeps unknown-count library seasons while respecting server exclusions', async () => {
     itemView = {
       ...itemView,
       title: {
         ...title,
-        seasons: [
-          { season: 1, name: 'Season 1', episodeCount: 0 },
-          { season: 2, name: 'Season 2', episodeCount: 1 },
-          { season: 3, name: 'Season 3', episodeCount: 0 },
-        ],
+        seasons: [{ season: 2, name: 'Season 2', episodeCount: 0 }],
       },
     };
     mockSeasonView = { 2: { season: seasonTwo, requestState: { state: 'succeeded' } } };

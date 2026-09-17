@@ -48,6 +48,7 @@ import type * as resolvedMetadata_shared from "../resolvedMetadata/shared.js";
 import type * as resolvedMetadata_titleResolution from "../resolvedMetadata/titleResolution.js";
 import type * as resolvedMetadata_touch from "../resolvedMetadata/touch.js";
 import type * as resolvedTitleModel from "../resolvedTitleModel.js";
+import type * as resolvedTitleView from "../resolvedTitleView.js";
 import type * as seasonNames from "../seasonNames.js";
 import type * as seasonStorage from "../seasonStorage.js";
 import type * as settings from "../settings.js";
@@ -106,6 +107,7 @@ declare const fullApi: ApiFromModules<{
   "resolvedMetadata/titleResolution": typeof resolvedMetadata_titleResolution;
   "resolvedMetadata/touch": typeof resolvedMetadata_touch;
   resolvedTitleModel: typeof resolvedTitleModel;
+  resolvedTitleView: typeof resolvedTitleView;
   seasonNames: typeof seasonNames;
   seasonStorage: typeof seasonStorage;
   settings: typeof settings;

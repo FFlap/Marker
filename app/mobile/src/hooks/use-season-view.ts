@@ -10,7 +10,8 @@ export function selectAvailableSeason(
   seasons: { season: number; episodeCount: number }[] | undefined,
   selectedSeason: number,
 ) {
-  const available = seasons?.filter((entry) => entry.season >= 0 && entry.episodeCount > 0);
+  // The server excludes confirmed empty seasons; provider counts can be unknown (zero).
+  const available = seasons?.filter((entry) => entry.season >= 0);
   const firstSeason =
     available
       ?.filter((entry) => entry.season > 0)

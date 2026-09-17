@@ -252,7 +252,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   };
   const overview = meta.overview?.trim();
   const availableSeasons = (meta.seasons ?? [])
-    .filter((entry) => entry.season >= 0 && entry.episodeCount > 0)
+    .filter((entry) => entry.season >= 0)
     .sort((a, b) => a.season - b.season);
   const setSeasonState = async (
     seasonNumber: number,

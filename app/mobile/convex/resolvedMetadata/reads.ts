@@ -11,6 +11,7 @@ import { requestKey, seasonRequestKey, visibleRequestState } from './requests';
 import { mediaType, metadataProvider, requireUser } from './shared';
 import { readAssembledSeason } from '../seasonStorage';
 import { activeResolvedTitle } from '../resolvedTitleModel';
+import { visibleResolvedTitle } from '../resolvedTitleView';
 
 export const readTitle = internalQuery({
   args: { mediaType, tmdbId: v.number() },
@@ -31,7 +32,7 @@ export const getTitle = query({
   returns: v.union(v.null(), publicResolvedTitleValidator),
   handler: async (ctx, args) => {
     await requireUser(ctx);
-    return activeResolvedTitle(ctx, args);
+    return visibleResolvedTitle(ctx, args);
   },
 });
 
@@ -40,7 +41,7 @@ export const getTitleView = query({
   returns: v.object({ title: v.union(v.null(), publicResolvedTitleValidator) }),
   handler: async (ctx, args) => {
     await requireUser(ctx);
-    return { title: await activeResolvedTitle(ctx, args) };
+    return { title: await visibleResolvedTitle(ctx, args) };
   },
 });
 
@@ -145,7 +146,7 @@ export const getItemView = query({
     const userId = await requireUser(ctx);
     const item = await ctx.db.get(itemId);
     if (!item || item.userId !== userId || item.deletingAt !== undefined) return null;
-    return { item, title: await activeResolvedTitle(ctx, item) };
+    return { item, title: await visibleResolvedTitle(ctx, item) };
   },
 });
 
