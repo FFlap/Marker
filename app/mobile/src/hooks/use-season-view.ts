@@ -7,16 +7,17 @@ import { api } from '../../convex/_generated/api';
 export const SEASON_EPISODE_RENDER_BATCH = 120;
 
 export function selectAvailableSeason(
-  seasons: { season: number }[] | undefined,
+  seasons: { season: number; episodeCount: number }[] | undefined,
   selectedSeason: number,
 ) {
+  const available = seasons?.filter((entry) => entry.season >= 0 && entry.episodeCount > 0);
   const firstSeason =
-    seasons
+    available
       ?.filter((entry) => entry.season > 0)
       .sort((left, right) => left.season - right.season)[0]?.season ??
-    seasons?.[0]?.season ??
+    available?.[0]?.season ??
     1;
-  return seasons?.some((entry) => entry.season === selectedSeason) === false
+  return available?.some((entry) => entry.season === selectedSeason) === false
     ? firstSeason
     : selectedSeason;
 }

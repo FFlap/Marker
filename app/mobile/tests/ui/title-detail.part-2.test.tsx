@@ -11,6 +11,22 @@ import {
 } from './title-detail-fixture';
 
 describe('Explore title metadata subscriptions', () => {
+  it('hides unreleased Frieren seasons with zero episodes from cached metadata', async () => {
+    mockState.titleView.title.seasons.push({ season: 3, name: 'Season 3', episodeCount: 0 });
+    const view = await screen();
+    await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
+    expect(view.getByLabelText('Select Season 1')).toBeTruthy();
+    expect(view.getByLabelText('Select Season 2')).toBeTruthy();
+    expect(view.queryByLabelText('Select Season 3')).toBeNull();
+    expect(mockTouchTitle).not.toHaveBeenCalledWith(expect.objectContaining({ season: 3 }));
+  });
+
+  it('does not show a season picker when every season is empty', async () => {
+    mockState.titleView.title.seasons = [{ season: 1, name: 'Season 1', episodeCount: 0 }];
+    const view = await screen();
+    expect(view.queryByLabelText(/Choose season, current/)).toBeNull();
+  });
+
   it('shows the invalid-route state when route parameters are missing', async () => {
     mockState.mockParams = {};
     const view = await screen();
@@ -62,7 +78,10 @@ describe('Explore title metadata subscriptions', () => {
       ...mockState.titleView,
       title: {
         ...mockState.titleView.title,
-        seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+        seasons: [
+          { season: 1, name: 'Season 1', episodeCount: 1 },
+          { season: 2, name: 'Season 2', episodeCount: 0 },
+        ],
       },
     };
     await act(async () =>

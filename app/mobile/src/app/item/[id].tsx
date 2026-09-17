@@ -251,7 +251,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     ...detail,
   };
   const overview = meta.overview?.trim();
-  const availableSeasons = [...(meta.seasons ?? [])].sort((a, b) => a.season - b.season);
+  const availableSeasons = (meta.seasons ?? [])
+    .filter((entry) => entry.season >= 0 && entry.episodeCount > 0)
+    .sort((a, b) => a.season - b.season);
   const setSeasonState = async (
     seasonNumber: number,
     watched: boolean,
@@ -475,7 +477,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                       <Text style={s.metadataLoadingText}>Episode guide unavailable</Text>
                     </View>
                   )
-                ) : (
+                ) : availableSeasons.length ? (
                   <>
                     <SeasonPicker
                       open={seasonMenuOpen}
@@ -544,6 +546,8 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                       <Text style={s.metadataHint}>couldn’t update — pull to retry</Text>
                     )}
                   </>
+                ) : (
+                  <Text style={s.metadataLoadingText}>No episodes available</Text>
                 )}
               </>
             )}

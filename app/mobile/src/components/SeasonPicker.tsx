@@ -39,14 +39,9 @@ const seasonDisplayLabel = (choice: SeasonChoice) => {
 export function SeasonPicker({ open, value, options, onOpenChange, onChange }: SeasonPickerProps) {
   const menuRef = useRef<ScrollView>(null);
   const positionedForOpen = useRef(false);
-  const visibleOptions = options.filter((choice) => choice.season >= 0);
-  const selected =
-    visibleOptions.find((choice) => choice.season === value) ??
-    ({
-      season: value,
-      name: value === 0 ? 'Specials' : `Season ${value}`,
-      episodeCount: 0,
-    } as const);
+  const visibleOptions = options.filter((choice) => choice.season >= 0 && choice.episodeCount > 0);
+  const selected = visibleOptions.find((choice) => choice.season === value) ?? visibleOptions[0];
+  if (!selected) return null;
   const selectedIndex = Math.max(
     0,
     visibleOptions.findIndex((choice) => choice.season === value),

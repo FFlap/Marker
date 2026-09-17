@@ -183,7 +183,9 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     seasons: detail?.seasons ?? [],
   };
   const overview = meta.overview?.trim();
-  const availableSeasons = [...meta.seasons].sort((left, right) => left.season - right.season);
+  const availableSeasons = meta.seasons
+    .filter((entry) => entry.season >= 0 && entry.episodeCount > 0)
+    .sort((left, right) => left.season - right.season);
   const visibleEpisodes = loadedSeason === season ? episodes : [];
   const averageRuntime =
     detail?.runtime ??
