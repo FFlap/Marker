@@ -46,11 +46,13 @@ export function Chip({
   selected = false,
   onPress,
   accessibilityLabel = label,
+  icon,
 }: {
   label: string;
   selected?: boolean;
   onPress?: () => void;
   accessibilityLabel?: string;
+  icon?: ReactNode;
 }) {
   return (
     <Pressable
@@ -60,6 +62,7 @@ export function Chip({
       onPress={onPress}
       style={[styles.chip, selected && styles.chipOn]}
     >
+      {icon}
       <Text style={[styles.chipText, selected && styles.chipTextOn]}>{label}</Text>
     </Pressable>
   );
@@ -162,6 +165,8 @@ const styles = createAppStyles(
     buttonText: { color: colors.text, fontSize: 15, fontWeight: '600' },
     primaryButtonText: { color: colors.bg },
     chip: {
+      flexDirection: 'row',
+      gap: 5,
       minHeight: 44,
       borderWidth: 1,
       borderColor: colors.border,

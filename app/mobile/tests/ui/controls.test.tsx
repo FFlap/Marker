@@ -66,20 +66,20 @@ describe('shared controls', () => {
     });
   });
 
-  it('maps a five-star rating onto the stored ten-point scale and clears it', async () => {
+  it('stores five-star ratings directly and clears them', async () => {
     const user = userEvent.setup();
     const onChange = jest.fn();
     const view = await render(<RatingControl value={undefined} onChange={onChange} />);
     expect(view.getByLabelText('Current rating').props.accessibilityValue.text).toBe('Not rated');
     await user.press(view.getByLabelText('Rate 3.5 stars'));
-    expect(onChange).toHaveBeenLastCalledWith(7);
-    await view.rerender(<RatingControl value={7} onChange={onChange} />);
+    expect(onChange).toHaveBeenLastCalledWith(3.5);
+    await view.rerender(<RatingControl value={3.5} onChange={onChange} />);
     expect(view.getByLabelText('Current rating').props.accessibilityValue.text).toBe(
       '3.5 out of 5 stars',
     );
     await user.press(view.getByLabelText('Rate 4 stars'));
-    expect(onChange).toHaveBeenLastCalledWith(8);
-    await view.rerender(<RatingControl value={8} onChange={onChange} />);
+    expect(onChange).toHaveBeenLastCalledWith(4);
+    await view.rerender(<RatingControl value={4} onChange={onChange} />);
     await user.press(view.getByLabelText('Clear rating'));
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });

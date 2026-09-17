@@ -68,7 +68,7 @@ describe('notification activity feed', () => {
     const itemId = await actor.mutation(api.library.items.addItem, addShow('Signal', 42));
 
     vi.setSystemTime(10);
-    await actor.mutation(api.library.items.updateItem, { itemId, rating: 9.2 });
+    await actor.mutation(api.library.items.updateItem, { itemId, rating: 4.6 });
     vi.setSystemTime(20);
     await actor.mutation(api.library.items.updateItem, { itemId, tags: ['quiet'] });
     vi.setSystemTime(30);
@@ -82,7 +82,7 @@ describe('notification activity feed', () => {
     });
     vi.setSystemTime(50);
     await actor.mutation(api.library.items.updateItem, { itemId, status: 'watched' });
-    await actor.mutation(api.library.items.updateItem, { itemId, status: 'watched', rating: 9.2 });
+    await actor.mutation(api.library.items.updateItem, { itemId, status: 'watched', rating: 4.6 });
 
     const stored = await t.run((ctx) =>
       ctx.db
@@ -117,7 +117,7 @@ describe('notification activity feed', () => {
     await actor.mutation(api.library.items.updateItem, { itemId: first, status: 'watching' });
     vi.setSystemTime(200);
     const second = await secondActor.mutation(api.library.items.addItem, addShow('Orbit', 43));
-    await secondActor.mutation(api.library.items.updateItem, { itemId: second, rating: 8 });
+    await secondActor.mutation(api.library.items.updateItem, { itemId: second, rating: 4 });
 
     const feed = await viewer.query(api.notifications.feed, {});
     expect(feed.map((entry) => entry.actorUsername)).toEqual(['noah', 'mika']);

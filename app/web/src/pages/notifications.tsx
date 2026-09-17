@@ -22,7 +22,7 @@ function activityText(activity: Activity) {
       <>
         {activity.rating === undefined
           ? `removed their rating for ${activity.title}`
-          : `rated ${activity.title} ${activity.rating.toFixed(1)}/10`}
+          : `rated ${activity.title} ${activity.rating.toFixed(1)}/5`}
       </>
     );
   if (activity.kind === "status")

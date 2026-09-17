@@ -59,7 +59,7 @@ export function RatingControl({
   value: number | undefined;
   onChange: (value: number | undefined) => void;
 }) {
-  const starValue = (value ?? 0) / 2;
+  const starValue = value ?? 0;
   const accessibleValue =
     value === undefined
       ? 'Not rated'
@@ -106,14 +106,14 @@ export function RatingControl({
                 accessibilityRole="radio"
                 accessibilityLabel={`Rate ${halfRating} stars`}
                 accessibilityState={{ selected: starValue === halfRating }}
-                onPress={() => onChange(halfRating * 2)}
+                onPress={() => onChange(halfRating)}
                 style={styles.ratingHalfLeft}
               />
               <Pressable
                 accessibilityRole="radio"
                 accessibilityLabel={`Rate ${wholeRating} ${wholeRating === 1 ? 'star' : 'stars'}`}
                 accessibilityState={{ selected: starValue === wholeRating }}
-                onPress={() => onChange(wholeRating * 2)}
+                onPress={() => onChange(wholeRating)}
                 style={styles.ratingHalfRight}
               />
             </View>

@@ -333,10 +333,10 @@ describe('metadata pipeline', () => {
       itemId,
       season: 1,
       episode: 1,
-      rating: 8,
+      rating: 4,
     });
     const [saved] = await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
-    expect(saved).toMatchObject({ metadataProvider: 'tvdb', seasonOrder: 'dvd', rating: 8 });
+    expect(saved).toMatchObject({ metadataProvider: 'tvdb', seasonOrder: 'dvd', rating: 4 });
     expect(saved.providerEpisodeId).toBeUndefined();
   });
 

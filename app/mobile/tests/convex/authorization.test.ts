@@ -151,7 +151,7 @@ describe('public API authorization', () => {
         status: 'watchlist',
       });
       const calls = {
-        updateItem: () => other.mutation(api.library.items.updateItem, { itemId, rating: 8 }),
+        updateItem: () => other.mutation(api.library.items.updateItem, { itemId, rating: 4 }),
         addTagToItems: () =>
           other.mutation(api.library.items.addTagToItems, { itemIds: [itemId], tag: 'Favorites' }),
         removeItem: () => other.mutation(api.library.items.removeItem, { itemId }),

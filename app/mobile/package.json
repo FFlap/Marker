@@ -4,11 +4,13 @@
   "version": "1.0.0",
   "dependencies": {
     "@clerk/expo": "^4.2.1",
+    "@convex-dev/migrations": "^0.3.6",
     "@expo-google-fonts/albert-sans": "^0.4.2",
     "@rn-primitives/dialog": "^1.5.2",
     "@rn-primitives/portal": "^1.5.2",
     "clsx": "^2.1.1",
     "convex": "^1.42.1",
+    "convex-helpers": "0.1.118",
     "expo": "~57.0.12",
     "expo-auth-session": "~57.0.6",
     "expo-constants": "~57.0.9",

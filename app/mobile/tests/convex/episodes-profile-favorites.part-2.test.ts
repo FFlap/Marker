@@ -122,7 +122,7 @@ describe('episode hub and profile favorites', () => {
           runtime: 5,
           imageUrl: 'https://images.example/old.jpg',
           watched: true,
-          rating: 8,
+          rating: 4,
           tags: [],
           metadataProvider: 'tmdb',
         });
@@ -258,7 +258,7 @@ describe('episode hub and profile favorites', () => {
       episode: 1,
       name: "I'm Luffy!",
       watched: true,
-      rating: 9,
+      rating: 4.5,
       tags: ['Adventure'],
     });
     const advanced = await asUser.query(api.episodeHub.overview, { today: '2026-08-11' });
@@ -266,7 +266,7 @@ describe('episode hub and profile favorites', () => {
     expect(advanced.favorites[0]).toMatchObject({
       itemId,
       episode: 1,
-      rating: 9,
+      rating: 4.5,
       name: "I'm Luffy!",
       seasonName: 'East Blue Arc',
       overview: 'Luffy begins his voyage.',

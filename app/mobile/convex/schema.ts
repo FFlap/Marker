@@ -221,6 +221,7 @@ export default defineSchema({
       v.literal('dropped'),
     ),
     rating: v.optional(v.number()),
+    ratingScale: v.optional(v.literal(5)),
     timesWatched: v.number(),
     tags: v.array(v.string()),
     rank: v.number(),
@@ -322,6 +323,7 @@ export default defineSchema({
     unverified: v.optional(v.boolean()),
     watched: v.boolean(),
     rating: v.optional(v.number()),
+    ratingScale: v.optional(v.literal(5)),
     tags: v.array(v.string()),
     watchedAt: v.optional(v.number()),
     metadataProvider: v.union(v.literal('tmdb'), v.literal('tvdb')),
@@ -403,6 +405,7 @@ export default defineSchema({
     season: v.optional(v.number()),
     episode: v.optional(v.number()),
     rating: v.optional(v.number()),
+    ratingScale: v.optional(v.literal(5)),
     status: v.optional(
       v.union(
         v.literal('watched'),

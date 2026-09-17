@@ -21,7 +21,7 @@ export function RatingControl({
   onChange: (value?: number) => void;
 }) {
   const groupName = useId();
-  const starValue = (value ?? 0) / 2;
+  const starValue = value ?? 0;
   return (
     <div>
       <div className="mb-2.5 flex items-center justify-between">
@@ -66,7 +66,7 @@ export function RatingControl({
                 name={groupName}
                 aria-label={`Rate ${halfRating} stars`}
                 checked={starValue === halfRating}
-                onChange={() => onChange(halfRating * 2)}
+                onChange={() => onChange(halfRating)}
                 className="absolute inset-y-0 left-0 z-10 h-full w-1/2 cursor-pointer opacity-0"
               />
               <input
@@ -74,7 +74,7 @@ export function RatingControl({
                 name={groupName}
                 aria-label={`Rate ${wholeRating} ${wholeRating === 1 ? "star" : "stars"}`}
                 checked={starValue === wholeRating}
-                onChange={() => onChange(wholeRating * 2)}
+                onChange={() => onChange(wholeRating)}
                 className="absolute inset-y-0 right-0 z-10 h-full w-1/2 cursor-pointer opacity-0"
               />
             </span>

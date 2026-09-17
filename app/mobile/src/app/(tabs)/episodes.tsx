@@ -226,10 +226,19 @@ function Episodes() {
                     <View style={s.filterGroup}>
                       <Text style={s.filterLabel}>MINIMUM RATING</Text>
                       <View style={s.chips}>
-                        {[0, 8, 9, 10].map((rating) => (
+                        {[0, 5, 4, 3, 2, 1].map((rating) => (
                           <Chip
                             key={rating}
-                            label={rating ? `${rating}+` : 'Any'}
+                            label={rating ? String(rating) : 'Any'}
+                            accessibilityLabel={rating ? `${rating} stars and up` : 'Any rating'}
+                            icon={
+                              rating ? (
+                                <Star
+                                  size={14}
+                                  color={minimumRating === rating ? colors.bg : colors.muted}
+                                />
+                              ) : undefined
+                            }
                             selected={minimumRating === rating}
                             onPress={() => setMinimumRating(rating)}
                           />
@@ -322,7 +331,7 @@ function Episodes() {
                         </Text>
                         {tab === 'favorites' && episode.rating !== undefined && (
                           <View
-                            accessibilityLabel={`Rated ${episode.rating} out of 10`}
+                            accessibilityLabel={`Rated ${episode.rating} out of 5 stars`}
                             style={s.inlineRating}
                           >
                             <Star size={11} color={colors.muted} fill={colors.muted} />

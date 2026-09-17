@@ -1,9 +1,11 @@
 import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 
 export type ChipOption<T extends string | number> = {
   value: T;
   label: string;
   ariaLabel?: string;
+  icon?: ReactNode;
 };
 
 export function ChipGroup<T extends string | number>({
@@ -37,9 +39,10 @@ export function ChipGroup<T extends string | number>({
               key={String(option.value)}
               aria-label={option.ariaLabel}
               aria-pressed={selected}
-              className={`min-h-11 rounded-full border px-3 py-1.5 text-sm font-semibold transition sm:min-h-9 ${selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}
+              className={`inline-flex items-center gap-1 min-h-11 rounded-full border px-3 py-1.5 text-sm font-semibold transition sm:min-h-9 ${selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"}`}
               onClick={() => onChange(option.value)}
             >
+              {option.icon}
               {option.label}
             </button>
           );

@@ -150,9 +150,11 @@ export function EpisodesPage() {
               <>
                 <ChipGroup
                   label="Minimum rating"
-                  options={[0, 8, 9, 10].map((value) => ({
+                  options={[0, 5, 4, 3, 2, 1].map((value) => ({
                     value,
-                    label: value ? `${value}+` : "Any",
+                    label: value ? String(value) : "Any",
+                    ariaLabel: value ? `${value} stars and up` : "Any rating",
+                    icon: value ? <Star aria-hidden="true" className="size-3.5" /> : undefined,
                   }))}
                   value={minimumRating}
                   onChange={setMinimumRating}
@@ -241,7 +243,7 @@ export function EpisodesPage() {
                     </span>
                     {tab === "favorites" && episode.rating !== undefined ? (
                       <span
-                        aria-label={`Rated ${episode.rating} out of 10`}
+                        aria-label={`Rated ${episode.rating} out of 5 stars`}
                         className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-muted-foreground"
                       >
                         <Star className="size-3 fill-current" />

@@ -40,7 +40,7 @@ it("locks episode controls during autosave and restores them after failure", asy
         season: 1,
         episode: 1,
         name: "Pilot",
-        rating: 4,
+        rating: 2,
         watched: true,
       }}
     >

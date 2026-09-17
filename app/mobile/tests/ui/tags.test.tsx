@@ -36,7 +36,7 @@ const mockItems = [
     mediaType: 'movie' as const,
     title: 'First Movie',
     status: 'watched' as const,
-    rating: 9,
+    rating: 4.5,
     timesWatched: 1,
     tags: ['Favorites', 'Weekend'],
     rank: 1,

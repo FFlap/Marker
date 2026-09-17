@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SlidersHorizontal } from 'lucide-react-native';
+import { SlidersHorizontal, Star } from 'lucide-react-native';
 import { colors } from '@/constants/colors';
 import { LIBRARY_STATUSES, type MediaTypeFilter, type StatusFilter } from '@/lib/libraryFilters';
 import { Chip } from '@/components/ui/primitives';
@@ -88,11 +88,16 @@ export function LibraryFiltersDrawer({
           ))}
         </FilterGroup>
         <FilterGroup label="Minimum Rating">
-          {[0, 9, 8, 7, 6].map((rating) => (
+          {[0, 5, 4, 3, 2, 1].map((rating) => (
             <Chip
               key={rating}
-              label={rating ? `${rating}+` : 'Any'}
-              accessibilityLabel={rating ? `${rating}+ rating` : 'Any rating'}
+              label={rating ? String(rating) : 'Any'}
+              accessibilityLabel={rating ? `${rating} stars and up` : 'Any rating'}
+              icon={
+                rating ? (
+                  <Star size={14} color={minimumRating === rating ? colors.bg : colors.muted} />
+                ) : undefined
+              }
               selected={minimumRating === rating}
               onPress={() => onMinimumRatingChange(rating)}
             />

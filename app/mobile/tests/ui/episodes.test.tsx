@@ -29,7 +29,7 @@ const overview = {
       runtime: 24,
       airDate: '2020-04-25',
       overview: 'The student council spends an evening beneath the moon.',
-      rating: 10,
+      rating: 5,
       tags: ['Comedy'],
     },
   ],
@@ -120,7 +120,7 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
   expect(view.queryByText('The episodes you love most.')).toBeNull();
   expect(view.getByText('Miyuki Shirogane Wants to Gaze at the Moon')).toBeTruthy();
-  expect(view.getByLabelText('Rated 10 out of 10')).toBeTruthy();
+  expect(view.getByLabelText('Rated 5 out of 5 stars')).toBeTruthy();
   expect(view.getByText('The student council spends an evening beneath the moon.')).toBeTruthy();
   await fireEvent.press(view.getByLabelText('View Kaguya-sama: Love Is War, episode 3'));
   expect(view.getByText('The student council spends an evening beneath the moon.')).toBeTruthy();

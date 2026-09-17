@@ -20,7 +20,7 @@ const mockCollection = {
       title: 'First Choice',
       rank: 1,
       status: 'watched' as const,
-      rating: 9,
+      rating: 4.5,
     },
   ],
 };

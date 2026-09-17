@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { SlidersHorizontal } from 'lucide-react-native';
+import { Star, SlidersHorizontal } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 import type { AppDrawerHandle } from '@/components/AppDrawer';
 import { TabHeader } from '@/components/TabHeader';
@@ -109,11 +109,19 @@ export function LibraryToolbar({
                 ))}
               </FilterGroup>
               <FilterGroup label="Minimum Rating">
-                {[0, 9, 8, 7, 6].map((rating) => (
+                {[0, 5, 4, 3, 2, 1].map((rating) => (
                   <Chip
                     key={rating}
-                    label={rating ? `${rating}+` : 'Any'}
-                    accessibilityLabel={rating ? `${rating}+ rating` : 'Any rating'}
+                    label={rating ? String(rating) : 'Any'}
+                    accessibilityLabel={rating ? `${rating} stars and up` : 'Any rating'}
+                    icon={
+                      rating ? (
+                        <Star
+                          size={14}
+                          color={filters.minimumRating === rating ? colors.bg : colors.muted}
+                        />
+                      ) : undefined
+                    }
                     selected={filters.minimumRating === rating}
                     onPress={() => setFilters.setMinimumRating(rating)}
                   />

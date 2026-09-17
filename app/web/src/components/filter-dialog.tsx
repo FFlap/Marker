@@ -1,4 +1,4 @@
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, Star } from "lucide-react";
 import { ChipGroup } from "@/components/chip-group";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,9 +89,11 @@ export function FilterDialog({
         />
         <ChipGroup
           label="Minimum rating"
-          options={[0, 9, 8, 7, 6].map((minimum) => ({
+          options={[0, 5, 4, 3, 2, 1].map((minimum) => ({
             value: minimum,
-            label: minimum ? `${minimum}+` : "Any",
+            label: minimum ? String(minimum) : "Any",
+            ariaLabel: minimum ? `${minimum} stars and up` : "Any rating",
+            icon: minimum ? <Star aria-hidden="true" className="size-3.5" /> : undefined,
           }))}
           value={value.minimum}
           onChange={(minimum) => onChange({ ...value, minimum })}

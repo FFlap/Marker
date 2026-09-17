@@ -158,13 +158,13 @@ describe('rating clearing and stats', () => {
     const { asUser } = await setup();
     const itemId = await asUser.mutation(
       api.library.items.addItem,
-      add('Daredevil', 61889, { rating: 9, tags: ['hero'] }),
+      add('Daredevil', 61889, { rating: 4.5, tags: ['hero'] }),
     );
     await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
       episode: 1,
-      rating: 8.5,
+      rating: 4.25,
       tags: ['pilot'],
     });
     await asUser.mutation(api.library.items.updateItem, { itemId, clearRating: true });
@@ -189,7 +189,7 @@ describe('rating clearing and stats', () => {
     const { t, userId, asUser } = await setup();
     const show = await asUser.mutation(
       api.library.items.addItem,
-      add('Show', 10, { runtime: 45, rating: 8, tags: ['zeta', 'alpha'] }),
+      add('Show', 10, { runtime: 45, rating: 4, tags: ['zeta', 'alpha'] }),
     );
     const fallback = await asUser.mutation(api.library.items.addItem, add('Fallback', 11));
     await asUser.mutation(api.library.items.addItem, add('Unrated', 12, { tags: ['beta'] }));
@@ -221,7 +221,7 @@ describe('rating clearing and stats', () => {
     const stats = await asUser.query(api.stats.profile, {});
     expect(stats.totalWatchMinutes).toBe(75);
     expect(stats.episodesWatched).toBe(2);
-    expect(stats.avgRating).toBe(8);
+    expect(stats.avgRating).toBe(4);
     expect(stats.topTags.map((entry) => entry.tag)).toEqual(['alpha', 'beta', 'zeta']);
   });
 

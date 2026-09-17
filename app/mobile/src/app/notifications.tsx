@@ -27,7 +27,7 @@ function detail(entry: Activity) {
   if (entry.kind === 'rating')
     return entry.rating === undefined
       ? `removed their rating for ${entry.title}`
-      : `rated ${entry.title} ${entry.rating.toFixed(1)}/10`;
+      : `rated ${entry.title} ${entry.rating.toFixed(1)}/5`;
   if (entry.kind === 'status')
     return entry.status === 'watching'
       ? `started watching ${entry.title}`

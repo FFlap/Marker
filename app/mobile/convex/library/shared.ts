@@ -41,8 +41,8 @@ export type AddItemArgs = {
   tags?: string[];
 };
 export const requireRating = (value: number | undefined) => {
-  if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 10))
-    throw new Error('Rating must be between 0 and 10');
+  if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 5))
+    throw new Error('Rating must be between 0 and 5');
 };
 export const boundedOptional = (name: string, value: string | undefined, max: number) => {
   if (value !== undefined && value.length > max)

@@ -42,15 +42,21 @@ describe("library filter dialog", () => {
     });
   });
 
-  it("applies tag and 6+ rating filters", () => {
+  it("applies tag and 3-star minimum filters", () => {
     const onChange = vi.fn<(next: LibraryFilters) => void>();
     const value: LibraryFilters = { media: "all", minimum: 0, status: "all", tags: [] };
     const view = render(<FilterDialog value={value} onChange={onChange} availableTags={["Anime"]} />);
     fireEvent.click(screen.getByRole("button", { name: /filters/i }));
-    fireEvent.click(screen.getByRole("button", { name: "6+" }));
-    expect(onChange).toHaveBeenCalledWith({ ...value, minimum: 6 });
-    view.rerender(<FilterDialog value={{ ...value, minimum: 6 }} onChange={onChange} availableTags={["Anime"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "3 stars and up" }));
+    for (const rating of [5, 4, 3, 2, 1]) {
+      const option = screen.getByRole("button", { name: `${rating} stars and up` });
+      expect(option.firstElementChild?.tagName.toLowerCase()).toBe("svg");
+      expect(option).toHaveTextContent(String(rating));
+    }
+    expect(screen.queryByRole("button", { name: "9+" })).not.toBeInTheDocument();
+    expect(onChange).toHaveBeenCalledWith({ ...value, minimum: 3 });
+    view.rerender(<FilterDialog value={{ ...value, minimum: 3 }} onChange={onChange} availableTags={["Anime"]} />);
     fireEvent.click(screen.getByRole("button", { name: "Tag: Anime" }));
-    expect(onChange).toHaveBeenCalledWith({ ...value, minimum: 6, tags: ["Anime"] });
+    expect(onChange).toHaveBeenCalledWith({ ...value, minimum: 3, tags: ["Anime"] });
   });
 });

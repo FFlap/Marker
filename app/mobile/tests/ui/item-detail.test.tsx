@@ -603,7 +603,7 @@ describe('item detail metadata subscriptions', () => {
 
     mockParams = { id: 'item-b' };
     itemView = {
-      item: { ...item, _id: 'item-b', tmdbId: 999, title: 'Item B', rating: 3 },
+      item: { ...item, _id: 'item-b', tmdbId: 999, title: 'Item B', rating: 1.5 },
       title: { ...title, tmdbId: 999, title: 'Item B' },
       requestState: { title: { state: 'succeeded' } },
     };
@@ -617,7 +617,7 @@ describe('item detail metadata subscriptions', () => {
       ),
     );
 
-    expect(view.getByText('3.0')).toBeTruthy();
+    expect(view.getByText('1.5')).toBeTruthy();
     await user.press(view.getByLabelText('Episode 1 options'));
     expect(
       view.getByRole('button', { name: 'Mark episode unwatched' }).props.accessibilityState

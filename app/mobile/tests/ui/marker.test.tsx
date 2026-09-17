@@ -26,7 +26,7 @@ const items = [
     title: 'Avengers: Endgame',
     releaseDate: '2019-04-24',
     status: 'watched',
-    rating: 9,
+    rating: 5,
     timesWatched: 1,
     tags: ['hero'],
     rank: 1,
@@ -73,7 +73,7 @@ const items = [
     isAnime: false,
     title: 'The Middle',
     status: 'watched',
-    rating: 8,
+    rating: 4,
     timesWatched: 1,
     tags: ['comedy'],
     rank: 2,
@@ -89,7 +89,7 @@ const items = [
     isAnime: true,
     title: 'Oshi no Ko',
     status: 'watched',
-    rating: 8.5,
+    rating: 4.25,
     timesWatched: 1,
     tags: ['anime'],
     rank: 3,
@@ -343,7 +343,7 @@ describe('Marker library', () => {
 
   it('filters rating and tags', async () => {
     const q = await view();
-    await fireEvent.press(q.getByLabelText('9+ rating'));
+    await fireEvent.press(q.getByLabelText('5 stars and up'));
     expect(q.getByText('Avengers: Endgame')).toBeTruthy();
     expect(q.queryByText('Oshi no Ko')).toBeNull();
     await fireEvent.press(q.getByLabelText('Any rating'));
@@ -559,7 +559,7 @@ describe('Marker library', () => {
 
   it('blocks reorder while filters are active', async () => {
     const q = await view();
-    await fireEvent.press(q.getByLabelText('9+ rating'));
+    await fireEvent.press(q.getByLabelText('5 stars and up'));
     expect(q.getByText(/Clear filters to reorder/)).toBeTruthy();
     await act(async () => {
       mockDragEnds.get('a')?.({ data: [items[0]], from: 0, to: 0 });

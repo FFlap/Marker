@@ -27,7 +27,7 @@ export async function writeActivityEvents(ctx: MutationCtx, events: ActivityEven
   const now = Date.now();
   for (const [index, event] of events.entries()) {
     const { createdAt = now + index / 1_000, ...value } = event;
-    await ctx.db.insert('activityEvents', { ...value, createdAt });
+    await ctx.db.insert('activityEvents', { ...value, ratingScale: 5, createdAt });
   }
   const retained = await ctx.db
     .query('activityEvents')

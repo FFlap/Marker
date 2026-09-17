@@ -100,11 +100,11 @@ describe('Marker backend', () => {
     for (const rating of [-1, 10.5])
       await expect(
         asUser.mutation(api.library.items.updateItem, { itemId: ids[0], rating }),
-      ).rejects.toThrow('between 0 and 10');
+      ).rejects.toThrow('between 0 and 5');
     await asUser.mutation(api.library.items.updateItem, {
       itemId: ids[0],
       status: 'watching',
-      rating: 9.5,
+      rating: 4.75,
       tags: ['marvel'],
     });
     await asUser.mutation(api.library.items.updateItem, {
@@ -125,7 +125,7 @@ describe('Marker backend', () => {
     const items = await asUser.query(api.library.items.listItems, {});
     expect(items.find((i) => i._id === ids[0])).toMatchObject({
       status: 'watched',
-      rating: 9.5,
+      rating: 4.75,
       tags: ['marvel'],
       timesWatched: 2,
     });
@@ -508,13 +508,13 @@ describe('Marker backend', () => {
         status: 'watched',
         runtime: 181,
         timesWatched: 2,
-        rating: 9,
+        rating: 4.5,
         tags: ['hero'],
       }),
     );
     const show = await asUser.mutation(
       api.library.items.addItem,
-      add('Daredevil', 61889, 'tv', { status: 'watched', runtime: 50, rating: 8, tags: ['Hero'] }),
+      add('Daredevil', 61889, 'tv', { status: 'watched', runtime: 50, rating: 4, tags: ['Hero'] }),
     );
     await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId: show,
@@ -522,7 +522,7 @@ describe('Marker backend', () => {
       episode: 1,
       watched: true,
       runtime: 52,
-      rating: 9.5,
+      rating: 4.75,
       tags: ['pilot'],
       name: 'Into the Ring',
     });
@@ -531,7 +531,7 @@ describe('Marker backend', () => {
       season: 1,
       episode: 1,
       watched: true,
-      rating: 8.5,
+      rating: 4.25,
       tags: ['pilot', 'great'],
     });
     await asUser.mutation(api.library.episodes.setEpisodeState, {
@@ -545,7 +545,7 @@ describe('Marker backend', () => {
       season: 1,
     });
     expect(episodes).toHaveLength(2);
-    expect(episodes[0]).toMatchObject({ rating: 8.5, tags: ['pilot', 'great'] });
+    expect(episodes[0]).toMatchObject({ rating: 4.25, tags: ['pilot', 'great'] });
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     const stats = await asUser.query(api.stats.profile, {});
     expect(stats).toMatchObject({
@@ -554,7 +554,7 @@ describe('Marker backend', () => {
       moviesWatched: 1,
       showsWatched: 1,
       totalItems: 2,
-      avgRating: 8.5,
+      avgRating: 4.25,
     });
     expect(stats.topTags[0]).toEqual({ tag: 'hero', count: 2 });
     await asUser.mutation(api.library.items.removeItem, { itemId: show });
