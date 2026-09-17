@@ -5,7 +5,6 @@ import * as React from 'react';
 import {
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -21,6 +20,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { FullWindowOverlay as RNFullWindowOverlay } from 'react-native-screens';
 
 const DrawerTrigger = DialogPrimitive.Trigger;
@@ -250,6 +251,7 @@ function DrawerContent({
 }) {
   const motion = useDrawerMotion();
   const { height: windowHeight } = useWindowDimensions();
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const contentChildren = React.Children.toArray(children);
   const header =
     contentChildren[0] &&
@@ -281,14 +283,17 @@ function DrawerContent({
                 </>
               }
             >
-              <ScrollView
+              {/* The iOS overlay fills the window; Android stays inside the root safe area. */}
+              <KeyboardScrollView
+                testID="drawer-scroll-view"
+                mode="layout"
+                extraKeyboardSpace={Platform.OS === 'ios' ? 0 : -bottomInset}
                 bounces={false}
-                keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.content}
               >
                 <View className="gap-6">{body}</View>
-              </ScrollView>
+              </KeyboardScrollView>
             </DrawerSheet>
           </DialogPrimitive.Content>
         </DrawerOverlay>

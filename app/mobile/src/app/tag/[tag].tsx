@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
@@ -122,7 +123,7 @@ function GlobalTagRoute({ tag }: { tag: string }) {
         fallback="/explore"
         maxWidth={880}
       />
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <KeyboardScrollView contentContainerStyle={s.content}>
         <Input
           accessibilityLabel={`Search public ${tag} titles`}
           value={search}
@@ -160,7 +161,7 @@ function GlobalTagRoute({ tag }: { tag: string }) {
             {nextCursor && <Button title="Load more titles" variant="outline" onPress={loadMore} />}
           </PinchDensity>
         )}
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import { Check } from 'lucide-react-native';
@@ -100,7 +101,7 @@ export default function AddTitlesToTagScreen() {
       {items === undefined ? (
         <LibraryPickerSkeleton />
       ) : (
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+        <KeyboardScrollView contentContainerStyle={s.content}>
           <View style={s.intro}>
             <Text style={s.eyebrow}>YOUR LIBRARY</Text>
             <Text style={s.summary}>
@@ -163,7 +164,7 @@ export default function AddTitlesToTagScreen() {
               })}
             </View>
           )}
-        </ScrollView>
+        </KeyboardScrollView>
       )}
 
       <View style={s.footer}>

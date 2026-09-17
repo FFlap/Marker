@@ -1,4 +1,5 @@
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ClerkProvider, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import { ConvexReactClient } from 'convex/react';
@@ -69,21 +70,23 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
-          <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
-            <ConvexClerkBridge>
-              <ToastProvider>
-                <StatusBar style="light" />
-                <ScreenErrorBoundary>
-                  <AppRoutes />
-                </ScreenErrorBoundary>
-                <PortalHost />
-              </ToastProvider>
-            </ConvexClerkBridge>
-          </ClerkProvider>
-        </SafeAreaView>
-      </SafeAreaProvider>
+      <KeyboardProvider>
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+            <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
+              <ConvexClerkBridge>
+                <ToastProvider>
+                  <StatusBar style="light" />
+                  <ScreenErrorBoundary>
+                    <AppRoutes />
+                  </ScreenErrorBoundary>
+                  <PortalHost />
+                </ToastProvider>
+              </ConvexClerkBridge>
+            </ClerkProvider>
+          </SafeAreaView>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

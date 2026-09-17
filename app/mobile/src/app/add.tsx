@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
@@ -183,7 +184,7 @@ export default function Add() {
   return (
     <View style={s.root}>
       <SecondaryHeader title="Add Title" maxWidth={680} />
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <KeyboardScrollView contentContainerStyle={s.content}>
         <Input
           testID="tmdb-search"
           autoFocus
@@ -281,7 +282,7 @@ export default function Add() {
             />
           </View>
         )}
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

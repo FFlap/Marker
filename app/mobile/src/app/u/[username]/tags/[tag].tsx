@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
@@ -192,7 +193,7 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
           onClear={clearFilters}
         />
       </View>
-      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <KeyboardScrollView contentContainerStyle={s.content}>
         {collection === undefined ? (
           <PosterGridSkeleton accessibilityLabel="Loading tag" />
         ) : collection === null ? (
@@ -251,7 +252,7 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
             {nextCursor && <Button title="Load more titles" variant="outline" onPress={loadMore} />}
           </PinchDensity>
         )}
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { ChevronRight, Plus, Search, Tags as TagsIcon } from 'lucide-react-native';
@@ -153,7 +154,7 @@ export default function Explore() {
   return (
     <View style={s.root}>
       <SecondaryHeader title="Explore" maxWidth={760} />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+      <KeyboardScrollView contentContainerStyle={s.content}>
         <View style={s.searchField}>
           <Search size={18} color={colors.muted} strokeWidth={1.7} />
           <TextInput
@@ -246,7 +247,7 @@ export default function Explore() {
             ))
           )}
         </View>
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

@@ -1,4 +1,5 @@
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router } from 'expo-router';
 import { ProfileForm } from '@/components/ProfileForm';
 import { colors } from '@/constants/colors';
@@ -7,14 +8,14 @@ import { createAppStyles } from '@/lib/typography';
 export default function ProfileSetup() {
   return (
     <View style={s.root}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+      <KeyboardScrollView contentContainerStyle={s.content}>
         <View>
           <Text style={s.kicker}>MARKER</Text>
           <Text style={s.title}>Create your profile</Text>
           <Text style={s.lede}>Choose how you’ll appear and who can see your watch activity.</Text>
         </View>
         <ProfileForm setup onSaved={() => router.replace('/(tabs)/profile')} />
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

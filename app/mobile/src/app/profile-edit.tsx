@@ -1,4 +1,5 @@
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router } from 'expo-router';
 import { ProfileForm } from '@/components/ProfileForm';
 import { SecondaryHeader } from '@/components/BackButton';
@@ -13,9 +14,9 @@ export default function ProfileEdit() {
   return (
     <View style={s.root}>
       <SecondaryHeader title="Edit profile" maxWidth={620} />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
+      <KeyboardScrollView contentContainerStyle={s.content}>
         <ProfileForm onSaved={finish} />
-      </ScrollView>
+      </KeyboardScrollView>
     </View>
   );
 }

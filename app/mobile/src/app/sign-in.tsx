@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { useClerk, useSignIn, useSignUp } from '@clerk/expo';
 import { useSSO } from '@clerk/expo/experimental';
 import { useRouter } from 'expo-router';
@@ -352,209 +353,207 @@ export default function SignIn() {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.root}>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content}>
-        <View>
-          <Text style={s.logo}>{heading}</Text>
-          <Text style={s.lede}>{lede}</Text>
-        </View>
-        <View style={s.form}>
-          {flow === 'choose' && !verification && !recovery ? (
-            <View style={s.choiceActions}>
-              <Text style={s.choiceDetail}>
-                Log in to pick up where you left off, or sign up to start your watchlist.
-              </Text>
+    <KeyboardScrollView style={s.root} contentContainerStyle={s.content}>
+      <View>
+        <Text style={s.logo}>{heading}</Text>
+        <Text style={s.lede}>{lede}</Text>
+      </View>
+      <View style={s.form}>
+        {flow === 'choose' && !verification && !recovery ? (
+          <View style={s.choiceActions}>
+            <Text style={s.choiceDetail}>
+              Log in to pick up where you left off, or sign up to start your watchlist.
+            </Text>
+            <Button
+              title="Log in"
+              icon={<LogIn color={colors.bg} size={18} strokeWidth={2.2} />}
+              onPress={() => chooseFlow('signIn')}
+            />
+            <Button
+              title="Sign up"
+              icon={<UserPlus color={colors.text} size={18} strokeWidth={2.2} />}
+              variant="outline"
+              onPress={() => chooseFlow('signUp')}
+            />
+          </View>
+        ) : (
+          <>
+            {!verification && !recovery && (
               <Button
-                title="Log in"
-                icon={<LogIn color={colors.bg} size={18} strokeWidth={2.2} />}
-                onPress={() => chooseFlow('signIn')}
-              />
-              <Button
-                title="Sign up"
-                icon={<UserPlus color={colors.text} size={18} strokeWidth={2.2} />}
-                variant="outline"
-                onPress={() => chooseFlow('signUp')}
-              />
-            </View>
-          ) : (
-            <>
-              {!verification && !recovery && (
-                <Button
-                  title="Account options"
-                  icon={<ArrowLeft color={colors.muted} size={17} strokeWidth={2.2} />}
-                  variant="ghost"
-                  disabled={busy}
-                  onPress={returnToChoices}
-                />
-              )}
-              {enteringCode ? (
-                <Input
-                  autoComplete="one-time-code"
-                  keyboardType="number-pad"
-                  placeholder="Verification code"
-                  value={code}
-                  onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
-                />
-              ) : !recovery && flow === 'signUp' ? (
-                <View style={s.fieldGroup}>
-                  <Text style={s.label}>Username</Text>
-                  <View style={s.usernameField}>
-                    <Text style={s.at}>@</Text>
-                    <Input
-                      accessibilityLabel="Username"
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      maxLength={24}
-                      placeholder="username"
-                      value={username}
-                      onChangeText={(value) => setUsername(value.replace(/\s/g, ''))}
-                      style={s.usernameInput}
-                    />
-                  </View>
-                </View>
-              ) : null}
-              {!verification && recovery !== 'code' && (
-                <>
-                  {recovery !== 'password' && (
-                    <Input
-                      autoCapitalize="none"
-                      keyboardType={flow === 'signUp' || !!recovery ? 'email-address' : 'default'}
-                      autoComplete="username"
-                      placeholder={
-                        recovery === 'identifier'
-                          ? 'Email or username'
-                          : flow === 'signIn'
-                            ? 'Username or email'
-                            : 'Email'
-                      }
-                      value={identifier}
-                      onChangeText={setIdentifier}
-                    />
-                  )}
-                  {recovery !== 'identifier' && (
-                    <Input
-                      secureTextEntry
-                      autoComplete={
-                        recovery === 'password' || flow === 'signUp'
-                          ? 'new-password'
-                          : 'current-password'
-                      }
-                      placeholder={recovery === 'password' ? 'New password' : 'Password'}
-                      value={password}
-                      onChangeText={setPassword}
-                    />
-                  )}
-                  {recovery === 'password' && (
-                    <Input
-                      secureTextEntry
-                      autoComplete="new-password"
-                      placeholder="Confirm new password"
-                      value={confirmPassword}
-                      onChangeText={setConfirmPassword}
-                    />
-                  )}
-                  {!recovery && flow === 'signUp' && <View nativeID="clerk-captcha" />}
-                </>
-              )}
-              {!!error && <Text style={s.error}>{error}</Text>}
-              <Button
-                title={
-                  busy
-                    ? 'Please wait…'
-                    : recovery === 'identifier'
-                      ? 'Send reset code'
-                      : recovery === 'code'
-                        ? 'Verify code'
-                        : recovery === 'password'
-                          ? 'Update password'
-                          : verification
-                            ? 'Verify email'
-                            : flow === 'signIn'
-                              ? 'Sign in'
-                              : 'Create account'
-                }
-                icon={
-                  busy || verification || recovery ? undefined : flow === 'signIn' ? (
-                    <LogIn color={colors.bg} size={18} strokeWidth={2.2} />
-                  ) : (
-                    <UserPlus color={colors.bg} size={18} strokeWidth={2.2} />
-                  )
-                }
-                onPress={submit}
-                disabled={
-                  busy ||
-                  (enteringCode
-                    ? code.length !== 6
-                    : recovery === 'identifier'
-                      ? !identifier.trim()
-                      : recovery === 'password'
-                        ? password.length < 8 || confirmPassword.length < 8
-                        : flow === 'signUp'
-                          ? !identifier || password.length < 8 || !username
-                          : !identifier || !password)
-                }
-              />
-              {!verification && !recovery && (
-                <>
-                  {flow === 'signIn' && (
-                    <Button
-                      title="Forgot password?"
-                      variant="ghost"
-                      disabled={busy}
-                      onPress={() => {
-                        void signIn.reset();
-                        setPassword('');
-                        setError('');
-                        setRecovery('identifier');
-                      }}
-                    />
-                  )}
-                  <View style={s.divider}>
-                    <View style={s.dividerLine} />
-                    <Text style={s.dividerText}>OR</Text>
-                    <View style={s.dividerLine} />
-                  </View>
-                  <Button
-                    title="Continue with Google"
-                    icon={<GoogleIcon />}
-                    variant="outline"
-                    disabled={busy}
-                    onPress={signInWithGoogle}
-                  />
-                </>
-              )}
-              <Button
-                title={
-                  recovery
-                    ? 'Back to sign in'
-                    : verification
-                      ? 'Use a different account'
-                      : flow === 'signIn'
-                        ? 'New here? Create an account'
-                        : 'Already have an account? Sign in'
-                }
+                title="Account options"
+                icon={<ArrowLeft color={colors.muted} size={17} strokeWidth={2.2} />}
                 variant="ghost"
-                onPress={() => {
-                  if (recovery) {
-                    resetToSignIn();
-                    return;
-                  }
-                  if (verification) {
-                    void (verification === 'signUp' ? signUp.reset() : signIn.reset());
-                    setVerification(null);
-                    setCode('');
-                    setError('');
-                    return;
-                  }
-                  setFlow(flow === 'signIn' ? 'signUp' : 'signIn');
-                  setError('');
-                }}
+                disabled={busy}
+                onPress={returnToChoices}
               />
-            </>
-          )}
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+            )}
+            {enteringCode ? (
+              <Input
+                autoComplete="one-time-code"
+                keyboardType="number-pad"
+                placeholder="Verification code"
+                value={code}
+                onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
+              />
+            ) : !recovery && flow === 'signUp' ? (
+              <View style={s.fieldGroup}>
+                <Text style={s.label}>Username</Text>
+                <View style={s.usernameField}>
+                  <Text style={s.at}>@</Text>
+                  <Input
+                    accessibilityLabel="Username"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={24}
+                    placeholder="username"
+                    value={username}
+                    onChangeText={(value) => setUsername(value.replace(/\s/g, ''))}
+                    style={s.usernameInput}
+                  />
+                </View>
+              </View>
+            ) : null}
+            {!verification && recovery !== 'code' && (
+              <>
+                {recovery !== 'password' && (
+                  <Input
+                    autoCapitalize="none"
+                    keyboardType={flow === 'signUp' || !!recovery ? 'email-address' : 'default'}
+                    autoComplete="username"
+                    placeholder={
+                      recovery === 'identifier'
+                        ? 'Email or username'
+                        : flow === 'signIn'
+                          ? 'Username or email'
+                          : 'Email'
+                    }
+                    value={identifier}
+                    onChangeText={setIdentifier}
+                  />
+                )}
+                {recovery !== 'identifier' && (
+                  <Input
+                    secureTextEntry
+                    autoComplete={
+                      recovery === 'password' || flow === 'signUp'
+                        ? 'new-password'
+                        : 'current-password'
+                    }
+                    placeholder={recovery === 'password' ? 'New password' : 'Password'}
+                    value={password}
+                    onChangeText={setPassword}
+                  />
+                )}
+                {recovery === 'password' && (
+                  <Input
+                    secureTextEntry
+                    autoComplete="new-password"
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                  />
+                )}
+                {!recovery && flow === 'signUp' && <View nativeID="clerk-captcha" />}
+              </>
+            )}
+            {!!error && <Text style={s.error}>{error}</Text>}
+            <Button
+              title={
+                busy
+                  ? 'Please wait…'
+                  : recovery === 'identifier'
+                    ? 'Send reset code'
+                    : recovery === 'code'
+                      ? 'Verify code'
+                      : recovery === 'password'
+                        ? 'Update password'
+                        : verification
+                          ? 'Verify email'
+                          : flow === 'signIn'
+                            ? 'Sign in'
+                            : 'Create account'
+              }
+              icon={
+                busy || verification || recovery ? undefined : flow === 'signIn' ? (
+                  <LogIn color={colors.bg} size={18} strokeWidth={2.2} />
+                ) : (
+                  <UserPlus color={colors.bg} size={18} strokeWidth={2.2} />
+                )
+              }
+              onPress={submit}
+              disabled={
+                busy ||
+                (enteringCode
+                  ? code.length !== 6
+                  : recovery === 'identifier'
+                    ? !identifier.trim()
+                    : recovery === 'password'
+                      ? password.length < 8 || confirmPassword.length < 8
+                      : flow === 'signUp'
+                        ? !identifier || password.length < 8 || !username
+                        : !identifier || !password)
+              }
+            />
+            {!verification && !recovery && (
+              <>
+                {flow === 'signIn' && (
+                  <Button
+                    title="Forgot password?"
+                    variant="ghost"
+                    disabled={busy}
+                    onPress={() => {
+                      void signIn.reset();
+                      setPassword('');
+                      setError('');
+                      setRecovery('identifier');
+                    }}
+                  />
+                )}
+                <View style={s.divider}>
+                  <View style={s.dividerLine} />
+                  <Text style={s.dividerText}>OR</Text>
+                  <View style={s.dividerLine} />
+                </View>
+                <Button
+                  title="Continue with Google"
+                  icon={<GoogleIcon />}
+                  variant="outline"
+                  disabled={busy}
+                  onPress={signInWithGoogle}
+                />
+              </>
+            )}
+            <Button
+              title={
+                recovery
+                  ? 'Back to sign in'
+                  : verification
+                    ? 'Use a different account'
+                    : flow === 'signIn'
+                      ? 'New here? Create an account'
+                      : 'Already have an account? Sign in'
+              }
+              variant="ghost"
+              onPress={() => {
+                if (recovery) {
+                  resetToSignIn();
+                  return;
+                }
+                if (verification) {
+                  void (verification === 'signUp' ? signUp.reset() : signIn.reset());
+                  setVerification(null);
+                  setCode('');
+                  setError('');
+                  return;
+                }
+                setFlow(flow === 'signIn' ? 'signUp' : 'signIn');
+                setError('');
+              }}
+            />
+          </>
+        )}
+      </View>
+    </KeyboardScrollView>
   );
 }
 
