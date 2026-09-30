@@ -68,8 +68,8 @@ it('keeps unknown seasons and hides only complete empty seasons in the current o
     }),
   );
   expect(
-    (await user.query(api.resolvedMetadata.reads.getTitle, identity))?.seasons.map(
-      (season) => season.season,
+    (await user.query(api.resolvedMetadata.reads.getTitle, identity))?.seasons.find(
+      (season) => season.season === 2,
     ),
-  ).toContain(2);
+  ).toMatchObject({ season: 2, episodeCount: 10 });
 });

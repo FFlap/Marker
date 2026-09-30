@@ -2,7 +2,14 @@ import { Image } from 'expo-image';
 import { Check, EllipsisVertical } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 import { RatingControl, TagEditor } from '@/components/ui/library-controls';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import { Button } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 import type { Episode, EpisodeDraft } from '../libraryItemTypes';
 import { libraryItemScreenStyles as s } from '../screens/LibraryItemScreen.styles';
@@ -109,23 +116,28 @@ export function EpisodeCard({
       )}
       <Drawer open={editing} onOpenChange={onEditingChange}>
         {editing && (
-          <DrawerContent className="max-w-lg gap-6 rounded-2xl border-border bg-background p-6">
+          <DrawerContent className="max-w-lg">
             <DrawerHeader>
               <DrawerTitle>Edit episode {episode.episode}</DrawerTitle>
             </DrawerHeader>
             <View style={s.episodeEditorContent}>
               <RatingControl value={draft.rating} onChange={(value) => onPatch('rating', value)} />
               <TagEditor tags={draft.tags} onChange={(value) => onPatch('tags', value)} />
-              <Pressable
-                accessibilityRole="button"
-                disabled={pending}
-                onPress={onToggle}
-                style={s.drawerTextAction}
-              >
-                <Text style={[s.drawerTextActionLabel, pending && s.drawerTextActionDisabled]}>
-                  {saved?.watched ? 'Mark episode unwatched' : 'Mark episode watched'}
-                </Text>
-              </Pressable>
+              <View style={s.episodeEditorFooter}>
+                <DrawerClose asChild>
+                  <Button title="Done" onPress={() => undefined} />
+                </DrawerClose>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={pending}
+                  onPress={onToggle}
+                  style={s.drawerTextAction}
+                >
+                  <Text style={[s.drawerTextActionLabel, pending && s.drawerTextActionDisabled]}>
+                    {saved?.watched ? 'Mark episode unwatched' : 'Mark episode watched'}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
           </DrawerContent>
         )}

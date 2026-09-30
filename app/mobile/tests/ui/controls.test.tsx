@@ -84,6 +84,33 @@ describe('shared controls', () => {
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
 
+  it('keeps unknown-count seasons selectable alongside specials', async () => {
+    const onChange = jest.fn();
+    const user = userEvent.setup();
+    const view = await render(
+      <>
+        <SeasonPicker
+          open
+          value={1}
+          options={[
+            { season: 0, name: 'Specials', episodeCount: 2 },
+            { season: 1, episodeCount: 12 },
+            { season: 2, episodeCount: 0 },
+          ]}
+          onOpenChange={jest.fn()}
+          onChange={onChange}
+        />
+        <PortalHost />
+      </>,
+    );
+    expect(view.getByLabelText('Select Season 2').props.accessibilityHint).toBe(
+      'Episode count unavailable',
+    );
+    expect(view.getByLabelText('Select Specials')).toBeTruthy();
+    await user.press(view.getByLabelText('Select Season 2'));
+    expect(onChange).toHaveBeenCalledWith(2);
+  });
+
   it('mounts every option in a constrained long season menu', async () => {
     const view = await render(
       <>
@@ -106,5 +133,7 @@ describe('shared controls', () => {
     expect(StyleSheet.flatten(list.props.style)).toMatchObject({ flex: 1 });
     expect(view.getByLabelText('Select Season 1')).toBeTruthy();
     expect(view.getByLabelText('Select Season 20')).toBeTruthy();
+    expect(view.getAllByText('12 episodes')).toHaveLength(20);
+    expect(view.getByLabelText('Select Season 20').props.accessibilityHint).toBe('12 episodes');
   });
 });

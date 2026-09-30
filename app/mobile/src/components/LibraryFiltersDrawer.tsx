@@ -1,19 +1,42 @@
-import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SlidersHorizontal, Star } from 'lucide-react-native';
-import { colors } from '@/constants/colors';
+import { StyleSheet, View } from 'react-native';
+import { FilterSheetFooter, FilterTrigger } from '@/components/FilterSheetParts';
 import { LIBRARY_STATUSES, type MediaTypeFilter, type StatusFilter } from '@/lib/libraryFilters';
-import { Chip } from '@/components/ui/primitives';
+import { Segmented } from '@/components/ui/primitives';
+import {
+  ControlSection,
+  MinimumRatingControl,
+  SelectableTag,
+} from '@/components/ui/library-controls';
 import {
   Drawer,
   DrawerContent,
-  DrawerFooter,
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
 } from '@/components/ui/drawer';
 
+const typeOptions = [
+  { value: 'all', label: 'All', accessibilityLabel: 'All types' },
+  { value: 'movie', label: 'Movies', accessibilityLabel: 'Movies type' },
+  { value: 'tv', label: 'TV Shows', accessibilityLabel: 'TV Shows type' },
+  { value: 'anime', label: 'Anime', accessibilityLabel: 'Anime type' },
+] as const satisfies readonly {
+  value: MediaTypeFilter;
+  label: string;
+  accessibilityLabel: string;
+}[];
+
+const statusOptions = [
+  { value: 'all', label: 'All', accessibilityLabel: 'All statuses' },
+  ...LIBRARY_STATUSES.map(([value, label]) => ({
+    value,
+    label,
+    accessibilityLabel: `${label} status`,
+  })),
+] satisfies { value: StatusFilter; label: string; accessibilityLabel: string }[];
+
 type LibraryFiltersDrawerProps = {
+  accessibilityLabel?: string;
   active: boolean;
   mediaType: MediaTypeFilter;
   status: StatusFilter;
@@ -22,9 +45,16 @@ type LibraryFiltersDrawerProps = {
   onStatusChange: (value: StatusFilter) => void;
   onMinimumRatingChange: (value: number) => void;
   onClear: () => void;
+  /** Tag filtering is offered only where titles can carry several tags. */
+  tags?: {
+    all: string[];
+    selected: string[];
+    onChange: (tags: string[]) => void;
+  };
 };
 
 export function LibraryFiltersDrawer({
+  accessibilityLabel = 'Filter tag titles',
   active,
   mediaType,
   status,
@@ -33,112 +63,55 @@ export function LibraryFiltersDrawer({
   onStatusChange,
   onMinimumRatingChange,
   onClear,
+  tags,
 }: LibraryFiltersDrawerProps) {
+  const selectedTags = new Set(tags?.selected);
+
   return (
     <Drawer>
       <DrawerTrigger asChild>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Filter tag titles"
-          accessibilityState={{ selected: active }}
-          hitSlop={4}
-          style={[styles.trigger, active && styles.triggerActive]}
-        >
-          <SlidersHorizontal size={18} color={colors.text} strokeWidth={1.7} />
-          {active && <View style={styles.activeDot} />}
-        </Pressable>
+        <FilterTrigger accessibilityLabel={accessibilityLabel} active={active} />
       </DrawerTrigger>
-      <DrawerContent className="max-w-md gap-6 rounded-2xl border-border bg-background p-6">
+      <DrawerContent className="max-w-md">
         <DrawerHeader>
           <DrawerTitle>Filters</DrawerTitle>
         </DrawerHeader>
-        <FilterGroup label="Type">
-          {(
-            [
-              ['all', 'All'],
-              ['movie', 'Movies'],
-              ['tv', 'TV Shows'],
-              ['anime', 'Anime'],
-            ] as const
-          ).map(([value, label]) => (
-            <Chip
-              key={value}
-              label={label}
-              accessibilityLabel={`${label} type`}
-              selected={mediaType === value}
-              onPress={() => onMediaTypeChange(value)}
-            />
-          ))}
-        </FilterGroup>
-        <FilterGroup label="Status">
-          <Chip
-            label="All"
-            accessibilityLabel="All statuses"
-            selected={status === 'all'}
-            onPress={() => onStatusChange('all')}
-          />
-          {LIBRARY_STATUSES.map(([value, label]) => (
-            <Chip
-              key={value}
-              label={label}
-              accessibilityLabel={`${label} status`}
-              selected={status === value}
-              onPress={() => onStatusChange(value)}
-            />
-          ))}
-        </FilterGroup>
-        <FilterGroup label="Minimum Rating">
-          {[0, 5, 4, 3, 2, 1].map((rating) => (
-            <Chip
-              key={rating}
-              label={rating ? String(rating) : 'Any'}
-              accessibilityLabel={rating ? `${rating} stars and up` : 'Any rating'}
-              icon={
-                rating ? (
-                  <Star size={14} color={minimumRating === rating ? colors.bg : colors.muted} />
-                ) : undefined
-              }
-              selected={minimumRating === rating}
-              onPress={() => onMinimumRatingChange(rating)}
-            />
-          ))}
-        </FilterGroup>
-        <DrawerFooter>{active && <Chip label="Clear filters" onPress={onClear} />}</DrawerFooter>
+        <View style={styles.sections}>
+          <ControlSection label="Type">
+            <Segmented options={typeOptions} value={mediaType} onChange={onMediaTypeChange} />
+          </ControlSection>
+          <ControlSection label="Status">
+            <Segmented options={statusOptions} value={status} onChange={onStatusChange} />
+          </ControlSection>
+          <MinimumRatingControl value={minimumRating} onChange={onMinimumRatingChange} />
+          {tags && tags.all.length > 0 && (
+            <ControlSection label="Tags">
+              <View style={styles.tags}>
+                {tags.all.map((tag) => (
+                  <SelectableTag
+                    key={tag}
+                    label={tag}
+                    selected={selectedTags.has(tag)}
+                    onPress={() =>
+                      tags.onChange(
+                        selectedTags.has(tag)
+                          ? tags.selected.filter((value) => value !== tag)
+                          : [...tags.selected, tag],
+                      )
+                    }
+                  />
+                ))}
+              </View>
+            </ControlSection>
+          )}
+          <FilterSheetFooter active={active} onClear={onClear} />
+        </View>
       </DrawerContent>
     </Drawer>
   );
 }
 
-function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <View style={styles.group}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.options}>{children}</View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  trigger: {
-    width: 36,
-    height: 36,
-    flexShrink: 0,
-    borderRadius: 18,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  triggerActive: {},
-  activeDot: {
-    position: 'absolute',
-    right: 5,
-    top: 5,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.text,
-  },
-  group: { gap: 10 },
-  label: { color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
-  options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  sections: { gap: 28 },
+  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

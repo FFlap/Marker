@@ -16,7 +16,7 @@ describe('NativeDraggableGrid', () => {
       <NativeDraggableGrid
         data={items}
         disabled={false}
-        itemWidth="31%"
+        columns={3}
         keyExtractor={(item) => item.id}
         onDragBegin={jest.fn()}
         onDragEnd={jest.fn()}

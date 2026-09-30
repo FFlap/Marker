@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   type DimensionValue,
   type LayoutRectangle,
@@ -7,6 +16,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Easing,
@@ -99,7 +109,7 @@ export function NativeDraggableGrid<T>({
   contentContainerStyle,
   data,
   disabled,
-  itemWidth,
+  columns,
   keyExtractor,
   onDragBegin,
   onDragCancel,
@@ -114,7 +124,7 @@ export function NativeDraggableGrid<T>({
   contentContainerStyle?: StyleProp<ViewStyle>;
   data: T[];
   disabled: boolean;
-  itemWidth: DimensionValue;
+  columns: number;
   keyExtractor: (item: T) => string;
   onDragBegin: (event: { index: number; item: T }) => void;
   onDragCancel?: () => void;
@@ -303,33 +313,48 @@ export function NativeDraggableGrid<T>({
   }, [clearDrag, onDragCancel]);
 
   const displayed = dragOrder ?? data;
+  const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
+  // Cells animate position changes so reordering glides, but Reanimated's layout
+  // transitions can stall mid-flight when a cell is inserted or removed, leaving
+  // posters stacked on each other. Remount the cells whenever membership changes;
+  // pure reorders keep the same key and still animate.
+  const membership = data.map(keyExtractor).sort().join('|');
   return (
-    <View ref={gridRef} onLayout={measureGridOrigin} style={[styles.grid, contentContainerStyle]}>
-      {displayed.map((item, index) => {
-        const itemKey = keyExtractor(item);
-        return (
-          <NativeGridCell
-            key={itemKey}
-            active={itemKey === activeKey}
-            cellRefs={cellRefs}
-            disabled={disabled}
-            index={index}
-            item={item}
-            itemKey={itemKey}
-            itemWidth={itemWidth}
-            horizontalTranslate={horizontalTranslate}
-            touchTranslate={touchTranslate}
-            onBegin={beginDrag}
-            onCancel={cancelDrag}
-            onFinish={finishDrag}
-            onMove={moveDragWithAutoScroll}
-            onTouchStateChange={onTouchStateChange}
-            renderItem={renderItem}
-            slotLayouts={slotLayouts}
-            slotOwners={slotOwners}
-          />
-        );
-      })}
+    <View
+      ref={gridRef}
+      onLayout={(event) => {
+        onGridLayout(event);
+        measureGridOrigin();
+      }}
+      style={[styles.grid, { columnGap: gap }, contentContainerStyle]}
+    >
+      <Fragment key={membership}>
+        {displayed.map((item, index) => {
+          const itemKey = keyExtractor(item);
+          return (
+            <NativeGridCell
+              key={itemKey}
+              active={itemKey === activeKey}
+              cellRefs={cellRefs}
+              disabled={disabled}
+              index={index}
+              item={item}
+              itemKey={itemKey}
+              itemWidth={itemWidth}
+              horizontalTranslate={horizontalTranslate}
+              touchTranslate={touchTranslate}
+              onBegin={beginDrag}
+              onCancel={cancelDrag}
+              onFinish={finishDrag}
+              onMove={moveDragWithAutoScroll}
+              onTouchStateChange={onTouchStateChange}
+              renderItem={renderItem}
+              slotLayouts={slotLayouts}
+              slotOwners={slotOwners}
+            />
+          );
+        })}
+      </Fragment>
     </View>
   );
 }
@@ -459,7 +484,6 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    columnGap: '3.5%',
     rowGap: 12,
   },
   cell: { minWidth: 0, flexGrow: 0, flexShrink: 0 },

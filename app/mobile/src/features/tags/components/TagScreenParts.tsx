@@ -11,7 +11,7 @@ import { NativePressable } from '@/components/ui/NativePressable';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import type { NativePosterDragMotion } from '@/components/NativePosterDragPreview';
-import { listTypography, type ListTextSize } from '@/lib/displayPreferences';
+import { listItemWidth, listTypography, type ListTextSize } from '@/lib/displayPreferences';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import type { LibraryItem, Status } from '@/types';
 import { tagDetailStyles as s } from '../screens/TagDetailScreen.styles';
@@ -85,20 +85,23 @@ export function NativeTagItem({
 }) {
   const index = getIndex() ?? 0;
   return (
-    <ScaleDecorator activeScale={reduceMotion ? 1 : 1.015}>
-      <ShadowDecorator color="#000" opacity={0.4} radius={14} elevation={8}>
-        <TagRow
-          item={item}
-          index={index}
-          ranked={ranked}
-          drag={drag}
-          disabled={disabled}
-          textSize={listTextSize}
-          contained={listColumns === 2}
-          onCategoryMove={onCategoryMove}
-        />
-      </ShadowDecorator>
-    </ScaleDecorator>
+    // Multi-column lists render items straight into the row, so each needs a width.
+    <View style={{ width: listItemWidth(listColumns) }}>
+      <ScaleDecorator activeScale={reduceMotion ? 1 : 1.015}>
+        <ShadowDecorator color="#000" opacity={0.4} radius={14} elevation={8}>
+          <TagRow
+            item={item}
+            index={index}
+            ranked={ranked}
+            drag={drag}
+            disabled={disabled}
+            textSize={listTextSize}
+            contained={listColumns === 2}
+            onCategoryMove={onCategoryMove}
+          />
+        </ShadowDecorator>
+      </ScaleDecorator>
+    </View>
   );
 }
 

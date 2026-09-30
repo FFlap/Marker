@@ -88,31 +88,50 @@ export function Segmented<T extends string>({
   onChange,
   disabled = false,
 }: {
-  options: readonly { label: string; value: T }[];
+  options: readonly {
+    label: string;
+    value: T;
+    accessibilityLabel?: string;
+    /** Optional glyph stacked above the label; receives the state-aware colour. */
+    icon?: (color: string) => ReactNode;
+  }[];
   value: T;
   onChange: (value: T) => void;
   disabled?: boolean;
 }) {
+  const stacked = options.some((option) => option.icon);
   return (
     <View style={styles.segmented}>
-      {options.map((option) => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ selected: value === option.value, disabled }}
-          disabled={disabled}
-          key={option.value}
-          onPress={() => onChange(option.value)}
-          style={[
-            styles.segment,
-            value === option.value && styles.segmentOn,
-            disabled && styles.disabled,
-          ]}
-        >
-          <Text style={[styles.segmentText, value === option.value && styles.segmentTextOn]}>
-            {option.label}
-          </Text>
-        </Pressable>
-      ))}
+      {options.map((option) => {
+        const selected = value === option.value;
+        const tint = selected ? colors.text : colors.muted;
+        return (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={option.accessibilityLabel ?? option.label}
+            accessibilityState={{ selected, disabled }}
+            disabled={disabled}
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            style={[
+              styles.segment,
+              stacked && styles.stackedSegment,
+              selected && styles.segmentOn,
+              disabled && styles.disabled,
+            ]}
+          >
+            {option.icon?.(tint)}
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
+              style={[styles.segmentText, selected && styles.segmentTextOn]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -201,10 +220,12 @@ const styles = createAppStyles(
       flex: 1,
       minHeight: 44,
       paddingVertical: 10,
+      paddingHorizontal: 4,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: 9,
     },
+    stackedSegment: { minHeight: 60, paddingVertical: 9, gap: 6 },
     segmentOn: { backgroundColor: colors.border },
     segmentText: { color: colors.muted, fontSize: 13, fontWeight: '600' },
     segmentTextOn: { color: colors.text },

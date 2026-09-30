@@ -1,10 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
-import { RatingControl, Stepper, TagEditor } from '@/components/ui/library-controls';
+import { Pressable, Text, View } from 'react-native';
+import {
+  ControlSection,
+  RatingControl,
+  Stepper,
+  TagEditor,
+} from '@/components/ui/library-controls';
 import { Button, Segmented } from '@/components/ui/primitives';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
+import { ENTRY_STATUS_OPTIONS } from '@/components/ui/entryStatusOptions';
 import type { Status } from '@/types';
 
 export type LibraryEntryDraft = {
@@ -13,13 +25,6 @@ export type LibraryEntryDraft = {
   timesWatched: number;
   tags: string[];
 };
-
-const statusOptions = [
-  { label: 'Watched', value: 'watched' },
-  { label: 'Watching', value: 'watching' },
-  { label: 'Watchlist', value: 'watchlist' },
-  { label: 'Dropped', value: 'dropped' },
-] as const;
 
 type EntryContentProps = {
   mode: 'add' | 'update';
@@ -71,8 +76,6 @@ export function LibraryEntryDrawer({
     );
   }
   const { draft } = editor;
-  const { width: windowWidth } = useWindowDimensions();
-  const hintWidth = Math.max(0, Math.min(360, windowWidth - 64));
 
   const title = mode === 'add' ? 'Add to library' : 'Edit entry';
   const updateDraft = (update: (current: LibraryEntryDraft) => LibraryEntryDraft) => {
@@ -114,20 +117,15 @@ export function LibraryEntryDrawer({
         }
       }}
     >
-      <DrawerContent className="max-w-lg gap-6 rounded-2xl border-border bg-background p-6">
+      <DrawerContent className="max-w-lg">
         <DrawerHeader>
           <DrawerTitle>{title}</DrawerTitle>
         </DrawerHeader>
         <View style={s.controls}>
-          <View style={s.group}>
-            <Text style={s.label}>Status</Text>
-            <Segmented options={statusOptions} value={draft.status} onChange={setStatus} />
-            {draft.status === 'watched' && watchedHint && (
-              <Text numberOfLines={2} style={[s.hint, { width: hintWidth }]}>
-                {watchedHint}
-              </Text>
-            )}
-          </View>
+          <ControlSection label="Status">
+            <Segmented options={ENTRY_STATUS_OPTIONS} value={draft.status} onChange={setStatus} />
+            {draft.status === 'watched' && watchedHint && <Text style={s.hint}>{watchedHint}</Text>}
+          </ControlSection>
           <RatingControl
             value={draft.rating}
             onChange={(rating) =>
@@ -139,7 +137,7 @@ export function LibraryEntryDrawer({
           />
           {draft.status === 'watched' && (
             <Stepper
-              label="Times Watched"
+              label="Times watched"
               value={draft.timesWatched}
               min={1}
               onChange={setTimesWatched}
@@ -151,30 +149,38 @@ export function LibraryEntryDrawer({
             onInputChange={onTagPrefixChange}
             onChange={(tags) => updateDraft((current) => ({ ...current, tags }))}
           />
-          {mode === 'add' && (
-            <Button
-              title={saving ? 'Adding…' : 'Add to library'}
-              disabled={saving}
-              onPress={() => {
-                if (submitted.current) return;
-                submitted.current = true;
-                onOpenChange(false);
-                void onSubmit(draft);
-              }}
-            />
-          )}
-          {mode === 'update' && onRemove && (
-            <Pressable
-              accessibilityRole="button"
-              disabled={saving || removePending}
-              onPress={onRemove}
-              style={s.destructiveAction}
-            >
-              <Text style={[s.destructiveText, (saving || removePending) && s.disabledText]}>
-                {removePending ? 'Removing…' : 'Remove from library'}
-              </Text>
-            </Pressable>
-          )}
+          <View style={s.footer}>
+            {mode === 'add' ? (
+              <Button
+                title={saving ? 'Adding…' : 'Add to library'}
+                disabled={saving}
+                onPress={() => {
+                  if (submitted.current) return;
+                  submitted.current = true;
+                  onOpenChange(false);
+                  void onSubmit(draft);
+                }}
+              />
+            ) : (
+              // Closing the sheet saves pending edits, so Done simply dismisses it.
+              <DrawerClose asChild>
+                <Button title="Done" onPress={() => undefined} />
+              </DrawerClose>
+            )}
+            {mode === 'update' && onRemove && (
+              <Pressable
+                accessibilityRole="button"
+                disabled={saving || removePending}
+                hitSlop={4}
+                onPress={onRemove}
+                style={s.destructiveAction}
+              >
+                <Text style={[s.destructiveText, (saving || removePending) && s.disabledText]}>
+                  {removePending ? 'Removing…' : 'Remove from library'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
         </View>
       </DrawerContent>
     </Drawer>
@@ -183,28 +189,12 @@ export function LibraryEntryDrawer({
 
 const s = createAppStyles(
   {
-    controls: { gap: 24 },
-    group: { gap: 10 },
-    label: { color: colors.muted, fontSize: 11, fontWeight: '600', letterSpacing: 0.2 },
-    hint: {
-      width: '100%',
-      minWidth: 0,
-      color: colors.muted,
-      fontSize: 11,
-      lineHeight: 15,
-      textAlign: 'center',
-    },
-    destructiveAction: {
-      minHeight: 44,
-      alignSelf: 'flex-start',
-      justifyContent: 'center',
-    },
-    destructiveText: {
-      color: colors.text,
-      fontSize: 14,
-      fontWeight: '600',
-    },
+    controls: { gap: 28 },
+    hint: { color: colors.muted, fontSize: 12, lineHeight: 17 },
+    footer: { gap: 8, marginTop: 4 },
+    destructiveAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+    destructiveText: { color: colors.danger, fontSize: 14, fontWeight: '600' },
     disabledText: { opacity: 0.4 },
   },
-  ['label', 'hint', 'destructiveText'] as const,
+  ['hint', 'destructiveText'] as const,
 );

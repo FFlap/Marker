@@ -30,6 +30,13 @@ const seasonWatchIdentity = {
   metadataProvider: v.optional(v.union(v.literal('tmdb'), v.literal('tvdb'))),
 };
 
+// Seasons can appear once more while a new title finishes resolving; bound the follow-up.
+const MAX_WATCHED_SEASON_PASSES = 3;
+const watchedSeasonKey = (
+  title: Pick<Doc<'resolvedTitles'>, 'orderEpoch' | 'metadataProvider'>,
+  season: number,
+) => `${title.orderEpoch}:${title.metadataProvider}:${season}`;
+
 const staleSeasonEpoch = () =>
   new ConvexError({
     code: 'stale_epoch',
@@ -344,33 +351,55 @@ async function moveItemToWatchedForUser(
       },
     );
     if (!initialTitle?.seasons.length) throw new Error('Season information is unavailable');
-    for (const seasonInfo of initialTitle.seasons.filter(
-      (entry: { season: number }) => entry.season >= 0,
-    )) {
-      const episodes = await ctx.runAction(
-        internal.resolvedMetadata.seasonResolution.resolveSeasonForUser,
-        {
-          userId,
+    // A title seen for the first time is often still being resolved: its first
+    // season list can come from TMDB while the anime mapping to TVDB is in
+    // flight, so seasons may gain or lose episodes, or appear, as loading
+    // continues. Judge each season by the title's latest counts, and pick up
+    // seasons that only appear after the switch.
+    const done = new Set<string>();
+    let pending: number[] = initialTitle.seasons
+      .map((entry: { season: number }) => entry.season)
+      .filter((season: number) => season >= 0);
+    for (let pass = 0; pending.length > 0 && pass < MAX_WATCHED_SEASON_PASSES; pass += 1) {
+      for (const season of pending) {
+        const episodes = await ctx.runAction(
+          internal.resolvedMetadata.seasonResolution.resolveSeasonForUser,
+          { userId, tmdbId: item.tmdbId, season },
+        );
+        const currentTitle = await ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
+          mediaType: 'tv',
           tmdbId: item.tmdbId,
-          season: seasonInfo.season,
-        },
-      );
-      if (seasonInfo.episodeCount > 0 && episodes.length === 0)
-        throw new Error('Episode information is unavailable');
-      const currentTitle = await ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
+        });
+        if (!currentTitle) throw new Error('Season identity is unavailable');
+        const expected =
+          currentTitle.seasons.find((entry: { season: number }) => entry.season === season)
+            ?.episodeCount ?? 0;
+        if (episodes.length === 0) {
+          // Only a season that still claims episodes is missing data.
+          if (expected > 0) throw new Error('Episode information is unavailable');
+          done.add(watchedSeasonKey(currentTitle, season));
+          continue;
+        }
+        await applySeasonWatched(ctx, {
+          userId,
+          itemId: item._id,
+          season,
+          watched: true,
+          orderEpoch: currentTitle.orderEpoch,
+          metadataProvider: currentTitle.metadataProvider,
+        });
+        done.add(watchedSeasonKey(currentTitle, season));
+      }
+      const latest = await ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
         mediaType: 'tv',
         tmdbId: item.tmdbId,
       });
-      if (!currentTitle) throw new Error('Season identity is unavailable');
-      await applySeasonWatched(ctx, {
-        userId,
-        itemId: item._id,
-        season: seasonInfo.season,
-        watched: true,
-        orderEpoch: currentTitle.orderEpoch,
-        metadataProvider: currentTitle.metadataProvider,
-      });
+      if (!latest) throw new Error('Season identity is unavailable');
+      pending = latest.seasons
+        .map((entry: { season: number }) => entry.season)
+        .filter((season: number) => season >= 0 && !done.has(watchedSeasonKey(latest, season)));
     }
+    if (pending.length > 0) throw staleSeasonEpoch();
   }
   return ctx.runMutation(internal.library.ordering.moveItemToSlotInternal, {
     userId,

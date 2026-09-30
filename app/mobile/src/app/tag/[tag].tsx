@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
+import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
@@ -12,11 +13,7 @@ import { Button, EmptyState, Input } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
-import {
-  DEFAULT_DISPLAY_PREFERENCES,
-  gridItemWidth,
-  type GridColumns,
-} from '@/lib/displayPreferences';
+import { DEFAULT_DISPLAY_PREFERENCES, type GridColumns } from '@/lib/displayPreferences';
 
 type PublicTitle = {
   tmdbId: number;
@@ -177,6 +174,7 @@ function TitleSection({
   onPress: (title: PublicTitle) => void;
   columns: GridColumns;
 }) {
+  const grid = useGridMetrics(columns);
   if (!titles.length) return null;
   return (
     <View style={s.section}>
@@ -184,14 +182,14 @@ function TitleSection({
         <Text style={s.sectionTitle}>{title}</Text>
         <Text style={s.count}>{titles.length.toString().padStart(2, '0')}</Text>
       </View>
-      <View style={s.grid}>
+      <View onLayout={grid.onLayout} style={[s.grid, { columnGap: grid.gap }]}>
         {titles.map((item) => (
           <NativePressable
             key={`${item.mediaType}-${item.tmdbId}`}
             accessibilityRole="button"
             accessibilityLabel={`View ${item.title}`}
             onPress={() => onPress(item)}
-            style={[s.card, { width: gridItemWidth(columns) }]}
+            style={[s.card, { width: grid.itemWidth }]}
             pressedStyle={s.pressed}
           >
             <PosterImage path={item.posterPath} title={item.title} style={s.poster} />
@@ -236,7 +234,6 @@ const s = createAppStyles(
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      columnGap: '3.5%',
       rowGap: 18,
       paddingTop: 16,
     },

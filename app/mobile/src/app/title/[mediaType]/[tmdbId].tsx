@@ -4,10 +4,13 @@ import { FlatList, Linking, Pressable, RefreshControl, ScrollView, Text, View } 
 import { Image } from 'expo-image';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
+import { Plus } from 'lucide-react-native';
 import { api } from '@convex/_generated/api';
 import { LibraryEntryDrawer, type LibraryEntryDraft } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SeasonPicker } from '@/components/SeasonPicker';
+import { InlineAction, SectionHeader } from '@/features/title/components/SectionHeader';
+import { SeasonHeaderRow } from '@/features/title/components/SeasonProgress';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { EpisodeSkeletonRows } from '@/components/EpisodeSkeletonRows';
 import { Button, EmptyState } from '@/components/ui/primitives';
@@ -429,20 +432,20 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
             {(titleView?.requestState?.state === 'failed' || touchError !== undefined) &&
               detail && <Text style={s.metadataLoadingText}>couldn’t update — pull to retry</Text>}
 
-            <Text style={s.section}>Your Entry</Text>
-            <View style={s.entry}>
-              <Text style={s.noEntry}>This title isn’t in your library yet.</Text>
-              <Button
-                title="Add Entry"
-                variant="outline"
-                disabled={existing === undefined || loading || !meta.title.trim()}
-                onPress={() => setEntryOpen(true)}
-              />
-            </View>
+            <SectionHeader
+              title="Your Entry"
+              action={{
+                label: 'Add Entry',
+                icon: Plus,
+                disabled: existing === undefined || loading || !meta.title.trim(),
+                onPress: () => setEntryOpen(true),
+              }}
+            />
+            <Text style={s.noEntry}>This title isn’t in your library yet.</Text>
 
             {!detail ? (
               <>
-                <Text style={s.section}>Cast</Text>
+                <SectionHeader title="Cast" />
                 <View style={s.castPlaceholders}>
                   <MetadataPlaceholder label="Loading cast" kind="cast" />
                   <MetadataPlaceholder label="Loading more cast" kind="cast" />
@@ -450,7 +453,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               </>
             ) : meta.cast.length > 0 ? (
               <>
-                <Text style={s.section}>Cast</Text>
+                <SectionHeader title="Cast" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {meta.cast.map((member) => (
                     <View key={`${member.name}-${member.character}`} style={s.cast}>
@@ -473,7 +476,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
 
             {mediaType === 'tv' && (
               <>
-                <Text style={s.section}>Episodes</Text>
+                <SectionHeader title="Episodes" />
                 {!detail ? (
                   <View style={s.episodePlaceholders}>
                     <MetadataPlaceholder label="Loading seasons" kind="stat" />
@@ -481,25 +484,24 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                   </View>
                 ) : availableSeasons.length ? (
                   <>
-                    <SeasonPicker
-                      open={seasonMenuOpen}
-                      value={season}
-                      options={availableSeasons}
-                      onOpenChange={setSeasonMenuOpen}
-                      onChange={setSeason}
-                    />
                     <View style={s.seasonAction}>
-                      <View style={{ flex: 1 }}>
-                        {loadedSeason !== season && (
-                          <View style={s.seasonProgressSkeleton}>
-                            <SkeletonShimmer />
-                          </View>
-                        )}
-                      </View>
-                      <Button
-                        title="Add to track"
-                        variant="outline"
-                        onPress={() => setEntryOpen(true)}
+                      <SeasonHeaderRow
+                        picker={
+                          <SeasonPicker
+                            open={seasonMenuOpen}
+                            value={season}
+                            options={availableSeasons}
+                            onOpenChange={setSeasonMenuOpen}
+                            onChange={setSeason}
+                          />
+                        }
+                        action={
+                          <InlineAction
+                            label="Add to track"
+                            icon={Plus}
+                            onPress={() => setEntryOpen(true)}
+                          />
+                        }
                       />
                     </View>
                     {(seasonLoading || loadedSeason !== season) && !seasonError && (

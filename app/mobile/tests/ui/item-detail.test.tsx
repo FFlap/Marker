@@ -280,7 +280,7 @@ describe('item detail metadata subscriptions', () => {
   it('uses the server-side whole-show action when the entry status becomes Watched', async () => {
     const view = await renderScreen();
     const user = userEvent.setup();
-    await user.press(view.getByText('Update Entry'));
+    await user.press(view.getByText('Edit'));
     const watchedLabels = view.getAllByText('Watched', { exact: true });
     expect(watchedLabels.length).toBeGreaterThan(1);
     await user.press(watchedLabels[watchedLabels.length - 1]);
@@ -396,7 +396,7 @@ describe('item detail metadata subscriptions', () => {
       },
     ];
     const view = await renderScreen();
-    expect(view.getByText('0 of 1 watched')).toBeTruthy();
+    expect(view.getByText('0 / 1 watched')).toBeTruthy();
     const user = userEvent.setup();
     await user.press(view.getByText('Mark watched'));
     await waitFor(() =>

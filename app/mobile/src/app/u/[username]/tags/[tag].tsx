@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
+import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
@@ -13,11 +14,7 @@ import { Button, EmptyState, Input } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
-import {
-  DEFAULT_DISPLAY_PREFERENCES,
-  gridItemWidth,
-  type GridColumns,
-} from '@/lib/displayPreferences';
+import { DEFAULT_DISPLAY_PREFERENCES, type GridColumns } from '@/lib/displayPreferences';
 import type { Status } from '@/types';
 import {
   LIBRARY_STATUSES,
@@ -93,6 +90,7 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
     gridOverride && settings?.gridColumns === gridOverride.base
       ? gridOverride.value
       : (settings?.gridColumns ?? DEFAULT_DISPLAY_PREFERENCES.gridColumns);
+  const grid = useGridMetrics(gridColumns);
   const [type, setType] = useState<MediaTypeFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [minimumRating, setMinimumRating] = useState(0);
@@ -219,14 +217,14 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
                       }
                     />
                   ) : (
-                    <View style={s.grid}>
+                    <View onLayout={grid.onLayout} style={[s.grid, { columnGap: grid.gap }]}>
                       {sectionTitles.map((title: PublicTitle) => (
                         <NativePressable
                           key={`${title.mediaType}-${title.tmdbId}`}
                           accessibilityRole="button"
                           accessibilityLabel={`${status === 'watched' ? `${watchedRankByTitle.get(`${title.mediaType}:${title.tmdbId}`)}. ` : ''}${title.title}`}
                           onPress={() => openTitle(title)}
-                          style={[s.card, { width: gridItemWidth(gridColumns) }]}
+                          style={[s.card, { width: grid.itemWidth }]}
                           pressedStyle={s.pressed}
                         >
                           <PosterImage
@@ -306,7 +304,6 @@ const s = createAppStyles(
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      columnGap: '3.5%',
       rowGap: 12,
       paddingTop: 16,
       paddingBottom: 4,

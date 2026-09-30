@@ -32,7 +32,7 @@ import { NativePosterDragPreview } from '@/components/NativePosterDragPreview';
 import { NativeDraggableGrid } from '@/components/NativeDraggableGrid';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Plus } from 'lucide-react-native';
-import { DEFAULT_DISPLAY_PREFERENCES, gridItemWidth } from '@/lib/displayPreferences';
+import { DEFAULT_DISPLAY_PREFERENCES, listItemWidth } from '@/lib/displayPreferences';
 import {
   LIBRARY_STATUSES,
   matchesMediaType,
@@ -330,7 +330,7 @@ function Library() {
                       contentContainerStyle={s.grid}
                       data={data}
                       disabled={active || statusMovePending}
-                      itemWidth={gridItemWidth(gridColumns)}
+                      columns={gridColumns}
                       keyExtractor={(item) => item._id}
                       onMotionInit={(motion) =>
                         setNativePosterMotion((current) => ({ ...current, [status]: motion }))
@@ -403,28 +403,39 @@ function Library() {
                           finishNativeDrag(status, next, from, to)
                         }
                         renderItem={(p: RenderItemParams<LibraryItem>) => (
-                          <ScaleDecorator activeScale={motionReduced ? 1 : 1.012}>
-                            <ShadowDecorator color="#000" opacity={0.34} radius={12} elevation={7}>
-                              <LibraryRow
-                                {...p}
-                                rank={(p.getIndex() ?? 0) + 1}
-                                ranked={status === 'watched'}
-                                disabled={active || statusMovePending}
-                                textSize={listTextSize}
-                                contained={listColumns === 2}
-                                onCategoryMove={(target) => requestCategoryMove(p.item._id, target)}
-                                onMove={(direction) => {
-                                  const index = p.getIndex() ?? 0;
-                                  const to = index + direction;
-                                  if (to < 0 || to >= data.length) return;
-                                  const next = [...data];
-                                  const [moved] = next.splice(index, 1);
-                                  next.splice(to, 0, moved);
-                                  void drop(next, index, to);
-                                }}
-                              />
-                            </ShadowDecorator>
-                          </ScaleDecorator>
+                          // Multi-column lists render items straight into the row, so
+                          // each needs its own width.
+                          <View style={{ width: listItemWidth(listColumns) }}>
+                            <ScaleDecorator activeScale={motionReduced ? 1 : 1.012}>
+                              <ShadowDecorator
+                                color="#000"
+                                opacity={0.34}
+                                radius={12}
+                                elevation={7}
+                              >
+                                <LibraryRow
+                                  {...p}
+                                  rank={(p.getIndex() ?? 0) + 1}
+                                  ranked={status === 'watched'}
+                                  disabled={active || statusMovePending}
+                                  textSize={listTextSize}
+                                  contained={listColumns === 2}
+                                  onCategoryMove={(target) =>
+                                    requestCategoryMove(p.item._id, target)
+                                  }
+                                  onMove={(direction) => {
+                                    const index = p.getIndex() ?? 0;
+                                    const to = index + direction;
+                                    if (to < 0 || to >= data.length) return;
+                                    const next = [...data];
+                                    const [moved] = next.splice(index, 1);
+                                    next.splice(to, 0, moved);
+                                    void drop(next, index, to);
+                                  }}
+                                />
+                              </ShadowDecorator>
+                            </ScaleDecorator>
+                          </View>
                         )}
                       />
                       {nativeDragValues[status] && (

@@ -15,11 +15,16 @@ export async function visibleResolvedTitle(
         .query('resolvedSeasons')
         .withIndex('by_tmdb_season', (q) => q.eq('tmdbId', title.tmdbId).eq('season', entry.season))
         .unique();
-      return resolved?.chunksComplete === true &&
+      if (
+        resolved?.chunksComplete === true &&
         resolved.orderEpoch === title.orderEpoch &&
-        resolved.episodeCount === 0
-        ? []
-        : [entry];
+        resolved.episodeCount !== undefined
+      ) {
+        return resolved.episodeCount === 0
+          ? []
+          : [{ ...entry, episodeCount: resolved.episodeCount }];
+      }
+      return [entry];
     }),
   );
   return { ...title, seasons: seasons.flat() };

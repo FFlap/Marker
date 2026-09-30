@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Check, ChevronDown } from 'lucide-react-native';
 import {
   Drawer,
@@ -30,6 +30,12 @@ type SeasonPickerProps = {
 const seasonLabel = (choice: SeasonChoice) =>
   choice.name || (choice.season === 0 ? 'Specials' : `Season ${choice.season}`);
 
+const SEASON_ROW_HEIGHT = 64;
+// Drawer content is inset by 24pt; the season rows cancel it so they span the sheet.
+const SHEET_INSET = 24;
+
+const episodeCountLabel = (count: number) => `${count} ${count === 1 ? 'episode' : 'episodes'}`;
+
 const seasonDisplayLabel = (choice: SeasonChoice) => {
   const label = seasonLabel(choice);
   if (choice.season === 0 || label.toLocaleLowerCase() === `season ${choice.season}`) return label;
@@ -39,6 +45,7 @@ const seasonDisplayLabel = (choice: SeasonChoice) => {
 export function SeasonPicker({ open, value, options, onOpenChange, onChange }: SeasonPickerProps) {
   const menuRef = useRef<ScrollView>(null);
   const positionedForOpen = useRef(false);
+  const { height: windowHeight } = useWindowDimensions();
   const visibleOptions = options.filter((choice) => choice.season >= 0);
   const selected = visibleOptions.find((choice) => choice.season === value) ?? visibleOptions[0];
   if (!selected) return null;
@@ -46,7 +53,7 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
     0,
     visibleOptions.findIndex((choice) => choice.season === value),
   );
-  const menuHeight = Math.min(420, visibleOptions.length * 52);
+  const menuHeight = Math.min(windowHeight * 0.6, visibleOptions.length * SEASON_ROW_HEIGHT);
 
   return (
     <Drawer
@@ -62,16 +69,16 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
             accessibilityRole="button"
             accessibilityLabel={`Choose season, current ${seasonLabel(selected)}`}
             accessibilityState={{ expanded: open }}
-            style={[s.trigger, open && s.triggerOpen]}
+            style={s.trigger}
             pressedStyle={s.pressed}
           >
             <Text numberOfLines={1} style={s.value}>
               {seasonDisplayLabel(selected)}
             </Text>
             <ChevronDown
-              size={19}
-              color={colors.text}
-              strokeWidth={1.8}
+              size={15}
+              color={colors.muted}
+              strokeWidth={2}
               style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
             />
           </NativePressable>
@@ -92,12 +99,12 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
                 if (positionedForOpen.current) return;
                 positionedForOpen.current = true;
                 menuRef.current?.scrollTo({
-                  y: Math.max(0, selectedIndex - 2) * 52,
+                  y: Math.max(0, selectedIndex - 2) * SEASON_ROW_HEIGHT,
                   animated: false,
                 });
               }}
             >
-              {visibleOptions.map((item) => {
+              {visibleOptions.map((item, index) => {
                 const label = seasonLabel(item);
                 const isSelected = item.season === value;
                 return (
@@ -105,15 +112,31 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
                     <NativePressable
                       accessibilityRole="menuitem"
                       accessibilityLabel={`Select ${label}`}
+                      accessibilityHint={
+                        item.episodeCount > 0
+                          ? episodeCountLabel(item.episodeCount)
+                          : 'Episode count unavailable'
+                      }
                       accessibilityState={{ selected: isSelected }}
                       onPress={() => onChange(item.season)}
-                      style={[s.option, isSelected && s.optionSelected]}
-                      pressedStyle={s.pressed}
+                      style={[
+                        s.option,
+                        index > 0 && s.optionDivider,
+                        isSelected && s.optionSelected,
+                      ]}
+                      pressedStyle={s.optionPressed}
                     >
-                      <Text numberOfLines={1} style={s.optionTitle}>
-                        {seasonDisplayLabel(item)}
-                      </Text>
-                      {isSelected && <Check size={17} color={colors.text} strokeWidth={2} />}
+                      <View style={s.optionCopy}>
+                        <Text numberOfLines={1} style={s.optionTitle}>
+                          {seasonDisplayLabel(item)}
+                        </Text>
+                        <Text style={s.optionMeta}>
+                          {item.episodeCount > 0
+                            ? episodeCountLabel(item.episodeCount)
+                            : 'Count unavailable'}
+                        </Text>
+                      </View>
+                      {isSelected && <Check size={18} color={colors.text} strokeWidth={2} />}
                     </NativePressable>
                   </DrawerClose>
                 );
@@ -129,44 +152,32 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
 const s = createAppStyles(
   {
     root: { position: 'relative' },
+    // A heading you can tap, rather than a boxed field, so it sits with the section titles.
     trigger: {
-      minHeight: 56,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
+      minHeight: 44,
+      maxWidth: '100%',
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    pressed: { opacity: 0.6 },
+    value: { flexShrink: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
+    listFrame: { marginHorizontal: -SHEET_INSET, overflow: 'hidden' },
+    list: { flex: 1 },
+    option: {
+      height: SEASON_ROW_HEIGHT,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 16,
-      backgroundColor: colors.surface,
+      paddingHorizontal: SHEET_INSET,
     },
-    triggerOpen: {
-      borderColor: colors.muted,
-      borderBottomLeftRadius: 8,
-      borderBottomRightRadius: 8,
-    },
-    pressed: { opacity: 0.72 },
-    value: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, fontWeight: '600' },
-    listFrame: {
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      backgroundColor: colors.bg,
-    },
-    list: { flex: 1 },
-    option: {
-      height: 52,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 14,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-    },
-    optionSelected: { backgroundColor: colors.elevated },
-    optionTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 13, fontWeight: '600' },
+    optionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+    optionSelected: { backgroundColor: colors.surface },
+    optionPressed: { backgroundColor: colors.elevated },
+    optionCopy: { flex: 1, minWidth: 0, gap: 3 },
+    optionTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    optionMeta: { color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
   },
-  ['value', 'optionTitle'] as const,
+  ['value', 'optionTitle', 'optionMeta'] as const,
 );

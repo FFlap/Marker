@@ -43,7 +43,7 @@ export {
 } from './tvdbParsing';
 export type { AnimeDetails, AnimeEpisode, SeasonRecord } from './tvdbParsing';
 
-const TVDB_ANIME_GUIDE_VERSION = 'v8';
+const TVDB_ANIME_GUIDE_VERSION = 'v9';
 
 const tvdbAnimeGuideKey = (tmdbId: number, tvdbId: number, order: string) =>
   `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:${tmdbId}:${tvdbId}:${order}`;
@@ -56,6 +56,8 @@ const GUIDE_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
 const SEASON_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
 const MAX_EPISODE_PAGES = 5;
 const EPISODE_FETCH_DEADLINE_MS = 20_000;
+const MAX_SEASON_COUNT_REQUESTS = 64;
+const SEASON_COUNT_DEADLINE_MS = 20_000;
 
 let credentials: { token: string; expiresAt: number } | undefined;
 
@@ -261,13 +263,20 @@ async function resolveAnime(
   const selectedSeasons = seasonRecords
     .filter((season) => season.type === order)
     .sort((left, right) => left.number - right.number);
-  const names = await translateSeasonNames(ctx, selectedSeasons, titles);
   const selectedSeason = selectedSeasons.find((season) => season.number > 0)?.number;
-  const selectedEpisodes =
+  const loadSelectedEpisodes =
     selectedSeason !== undefined &&
-    (requestedSeason === undefined || requestedSeason === selectedSeason)
-      ? (await fetchEpisodes(ctx, tvdbId, order, selectedSeason)).map(boundedAnimeEpisode)
-      : undefined;
+    (requestedSeason === undefined || requestedSeason === selectedSeason);
+  const [names, counts, selectedEpisodes] = await Promise.all([
+    translateSeasonNames(ctx, selectedSeasons, titles),
+    resolveSeasonCounts(
+      ctx,
+      selectedSeasons.filter((season) => !loadSelectedEpisodes || season.number !== selectedSeason),
+    ),
+    loadSelectedEpisodes
+      ? fetchEpisodes(ctx, tvdbId, order, selectedSeason)
+      : Promise.resolve(undefined),
+  ]);
   const details: AnimeDetails = {
     tvdbId,
     title: text(data.name) || titles[0] || `TVDB ${tvdbId}`,
@@ -283,7 +292,7 @@ async function resolveAnime(
       episodeCount:
         season.number === selectedSeason && selectedEpisodes !== undefined
           ? selectedEpisodes.length
-          : (season.episodeCount ?? 0),
+          : (counts.get(season.number) ?? season.episodeCount ?? 0),
     })),
     ...(selectedSeason !== undefined && {
       selectedSeason,
@@ -291,6 +300,37 @@ async function resolveAnime(
     }),
   };
   return { details, episodes: selectedEpisodes };
+}
+
+/** Fill missing counts within a bounded budget; remaining seasons can load on selection. */
+async function resolveSeasonCounts(ctx: { runMutation: Function }, seasons: SeasonRecord[]) {
+  const counts = new Map<number, number>();
+  const missing = seasons
+    .filter((season) => !season.episodeCount)
+    .slice(0, MAX_SEASON_COUNT_REQUESTS);
+  const deadline = Date.now() + SEASON_COUNT_DEADLINE_MS;
+  for (let start = 0; start < missing.length; start += 4) {
+    if (Date.now() >= deadline) break;
+    await Promise.all(
+      missing.slice(start, start + 4).map(async (season) => {
+        try {
+          const payload = await request(ctx, `/seasons/${season.id}/extended`);
+          const data = record(payload.data);
+          if (integer(data.id) !== season.id || !Array.isArray(data.episodes)) return;
+          // The season ID identifies the chosen order; episode coordinates can
+          // refer to the default order, so do not filter by seasonNumber here.
+          const ids = records(data.episodes).flatMap((episode) => {
+            const id = integer(episode.id);
+            return id === undefined ? [] : [id];
+          });
+          counts.set(season.number, new Set(ids).size);
+        } catch {
+          // A missing count must not prevent the rest of the title from loading.
+        }
+      }),
+    );
+  }
+  return counts;
 }
 
 type SnapshotActionCtx = {

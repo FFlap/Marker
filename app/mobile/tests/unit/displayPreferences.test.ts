@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  gridItemWidth,
+  gridMetrics,
   listItemWidth,
   listTypography,
   stepGridColumns,
@@ -16,12 +16,27 @@ describe('display preferences', () => {
     expect(stepGridColumns(3, 'in')).toBe(3);
   });
 
-  it('provides non-overflowing widths for every layout', () => {
-    expect(gridItemWidth(3)).toBe('31%');
-    expect(gridItemWidth(4)).toBe('22.375%');
-    expect(gridItemWidth(5)).toBe('17.2%');
+  it('fits every grid row on any screen width and density', () => {
+    for (const pixelRatio of [2, 2.625, 2.75, 3, 3.5]) {
+      for (let width = 280; width <= 880; width += 0.5) {
+        for (const columns of [3, 4, 5]) {
+          const { gap, itemWidth } = gridMetrics(width, columns, pixelRatio);
+          // Compare in device pixels, which is what actually renders.
+          const px = (value: number) => Math.round(value * pixelRatio * 1e6) / 1e6;
+          expect(Number.isInteger(px(itemWidth))).toBe(true);
+          expect(Number.isInteger(px(gap))).toBe(true);
+          const rowPixels = px(itemWidth) * columns + px(gap) * (columns - 1);
+          expect(rowPixels).toBeLessThanOrEqual(Math.floor(px(width)));
+          // …while wasting no more than about a pixel per cell.
+          expect(px(width) - rowPixels).toBeLessThan(columns + 1);
+        }
+      }
+    }
+  });
+
+  it('leaves slack between two-column list cells', () => {
     expect(listItemWidth(1)).toBe('100%');
-    expect(listItemWidth(2)).toBe('48.25%');
+    expect(listItemWidth(2)).toBe('48%');
   });
 
   it('keeps list text options ordered and touch rows accessible', () => {

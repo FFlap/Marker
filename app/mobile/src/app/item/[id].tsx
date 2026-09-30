@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
+import { Pencil } from 'lucide-react-native';
 import { api } from '@convex/_generated/api';
 import type { Id } from '@convex/_generated/dataModel';
 import { Button, EmptyState } from '@/components/ui/primitives';
@@ -19,12 +20,13 @@ import { PosterImage } from '@/components/ui/PosterImage';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
-import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { EpisodeSkeletonRows } from '@/components/EpisodeSkeletonRows';
 import { LibraryEntryDrawer } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
 import { DetailPageSkeleton } from '@/components/PageSkeletons';
 import { SeasonPicker } from '@/components/SeasonPicker';
+import { SeasonProgress } from '@/features/title/components/SeasonProgress';
+import { SectionHeader } from '@/features/title/components/SectionHeader';
 import { useMetadataRecoveryTimers, useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
 import {
@@ -394,7 +396,19 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
             {titleUpdateFailed && title && (
               <Text style={s.metadataHint}>couldn’t update — pull to retry</Text>
             )}
-            <Text style={s.section}>Your Entry</Text>
+            <SectionHeader
+              title="Your Entry"
+              action={
+                draft
+                  ? {
+                      label: 'Edit',
+                      accessibilityLabel: 'Edit entry',
+                      icon: Pencil,
+                      onPress: () => setEntryOpen(true),
+                    }
+                  : undefined
+              }
+            />
             {draft && (
               <View style={s.entry}>
                 <View style={s.entrySummary}>
@@ -423,7 +437,6 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                     <Text style={s.noTags}>No tags</Text>
                   )}
                 </View>
-                <Button title="Update Entry" variant="outline" onPress={() => setEntryOpen(true)} />
               </View>
             )}
             {draft && (
@@ -446,7 +459,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
             )}
             {(meta.cast?.length ?? 0) > 0 && (
               <>
-                <Text style={s.section}>Cast</Text>
+                <SectionHeader title="Cast" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   {meta.cast?.map((c) => (
                     <View key={`${c.name}-${c.character}`} style={s.cast}>
@@ -468,7 +481,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
             )}
             {item.mediaType === 'tv' && (
               <>
-                <Text style={s.section}>Episodes</Text>
+                <SectionHeader title="Episodes" />
                 {!detail ? (
                   detailsLoading ? (
                     <EpisodeSkeletonRows count={2} />
@@ -479,56 +492,45 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                   )
                 ) : availableSeasons.length ? (
                   <>
-                    <SeasonPicker
-                      open={seasonMenuOpen}
-                      value={season}
-                      options={availableSeasons}
-                      onOpenChange={setSeasonMenuOpen}
-                      onChange={setSeason}
+                    <SeasonProgress
+                      picker={
+                        <SeasonPicker
+                          open={seasonMenuOpen}
+                          value={season}
+                          options={availableSeasons}
+                          onOpenChange={setSeasonMenuOpen}
+                          onChange={setSeason}
+                        />
+                      }
+                      loading={loadedSeason !== season}
+                      watched={watchedSeasonCount}
+                      total={seasonRow?.totalCount ?? 0}
+                      complete={seasonFullyWatched}
+                      disabled={
+                        seasonPending ||
+                        seasonLoading ||
+                        seasonError ||
+                        loadedSeason !== season ||
+                        visibleEpisodes.length === 0
+                      }
+                      onToggle={() => {
+                        const watched = !seasonFullyWatched;
+                        setSeasonPending(true);
+                        void setSeasonState(season, watched, seasonRow!)
+                          .then(() =>
+                            toast.show(
+                              watched ? 'Season marked watched' : 'Season marked unwatched',
+                            ),
+                          )
+                          .catch((error: unknown) => {
+                            if (isStaleSeasonError(error)) {
+                              toast.show('Season data changed — refreshing');
+                              touchItemView({ season, force: true });
+                            } else toast.show('Couldn’t update this season');
+                          })
+                          .finally(() => setSeasonPending(false));
+                      }}
                     />
-                    <View style={s.seasonAction}>
-                      <View style={{ flex: 1 }}>
-                        {loadedSeason !== season ? (
-                          <View style={s.seasonProgressSkeleton}>
-                            <SkeletonShimmer />
-                          </View>
-                        ) : (
-                          <Text style={s.seasonProgress}>
-                            {(seasonRow?.totalCount ?? 0) > 0
-                              ? `${watchedSeasonCount} of ${seasonRow?.totalCount ?? 0} watched`
-                              : 'No episodes'}
-                          </Text>
-                        )}
-                      </View>
-                      <Button
-                        title={seasonFullyWatched ? 'Mark unwatched' : 'Mark watched'}
-                        variant="outline"
-                        disabled={
-                          seasonPending ||
-                          seasonLoading ||
-                          seasonError ||
-                          loadedSeason !== season ||
-                          visibleEpisodes.length === 0
-                        }
-                        onPress={() => {
-                          const watched = !seasonFullyWatched;
-                          setSeasonPending(true);
-                          void setSeasonState(season, watched, seasonRow!)
-                            .then(() =>
-                              toast.show(
-                                watched ? 'Season marked watched' : 'Season marked unwatched',
-                              ),
-                            )
-                            .catch((error: unknown) => {
-                              if (isStaleSeasonError(error)) {
-                                toast.show('Season data changed — refreshing');
-                                touchItemView({ season, force: true });
-                              } else toast.show('Couldn’t update this season');
-                            })
-                            .finally(() => setSeasonPending(false));
-                        }}
-                      />
-                    </View>
                     {(seasonLoading || loadedSeason !== season) && !seasonError && (
                       <EpisodeSkeletonRows />
                     )}

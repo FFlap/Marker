@@ -28,7 +28,7 @@ import {
   type NativePosterDragLayout,
 } from '@/components/NativePosterDragPreview';
 import { useToast } from '@/components/ui/Toast';
-import { DEFAULT_DISPLAY_PREFERENCES, gridItemWidth } from '@/lib/displayPreferences';
+import { DEFAULT_DISPLAY_PREFERENCES } from '@/lib/displayPreferences';
 import type { Status } from '@/types';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import { tagDetailStyles as s } from '@/features/tags/screens/TagDetailScreen.styles';
@@ -442,7 +442,7 @@ export default function TagDetailScreen() {
                       contentContainerStyle={s.grid}
                       data={items}
                       disabled={filtersActive || statusMovePending}
-                      itemWidth={gridItemWidth(gridColumns)}
+                      columns={gridColumns}
                       keyExtractor={(item) => String(item._id)}
                       onMotionInit={(motion) =>
                         setNativePosterMotion((current) => ({ ...current, [status]: motion }))

@@ -2,22 +2,26 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useMutation, useQuery } from 'convex/react';
-import { Check, EllipsisVertical, SlidersHorizontal, Star } from 'lucide-react-native';
+import { Check, EllipsisVertical, Star } from 'lucide-react-native';
 import { api } from '../../../convex/_generated/api';
 import { EpisodePageSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
 import type { Id } from '../../../convex/_generated/dataModel';
 import type { AppDrawerHandle } from '@/components/AppDrawer';
-import { Chip, EmptyState } from '@/components/ui/primitives';
+import { Button, EmptyState } from '@/components/ui/primitives';
 import { RatingControl, TagEditor } from '@/components/ui/library-controls';
 import { useToast } from '@/components/ui/Toast';
 import {
   Drawer,
+  DrawerClose,
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
-  DrawerTrigger,
 } from '@/components/ui/drawer';
+import {
+  EpisodeFiltersDrawer,
+  type ShowFilter,
+} from '@/features/episodes/components/EpisodeFiltersDrawer';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
@@ -42,7 +46,6 @@ type EpisodeHubItem = {
 };
 
 type EpisodeTab = 'watching' | 'favorites';
-type ShowFilter = 'all' | 'anime' | 'other';
 const EMPTY_EPISODES: EpisodeHubItem[] = [];
 
 const localDateKey = (date = new Date()) =>
@@ -186,87 +189,17 @@ function Episodes() {
           placeholder={tab === 'watching' ? 'Search next episodes' : 'Search favorites'}
           returnKeyType="search"
           trailing={
-            <Drawer>
-              <DrawerTrigger asChild>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Filter ${tab} episodes`}
-                  style={[s.filterButton, filterActive && s.filterActive]}
-                >
-                  <SlidersHorizontal size={18} color={colors.text} strokeWidth={1.8} />
-                  {filterActive && <View style={s.activeDot} />}
-                </Pressable>
-              </DrawerTrigger>
-              <DrawerContent className="max-w-md gap-6 rounded-2xl border-border bg-background p-6">
-                <DrawerHeader>
-                  <DrawerTitle>Episode filters</DrawerTitle>
-                </DrawerHeader>
-                <View style={s.filterGroup}>
-                  <Text style={s.filterLabel}>SHOW TYPE</Text>
-                  <View style={s.chips}>
-                    <Chip
-                      label="All"
-                      selected={showFilter === 'all'}
-                      onPress={() => setShowFilter('all')}
-                    />
-                    <Chip
-                      label="Anime"
-                      selected={showFilter === 'anime'}
-                      onPress={() => setShowFilter('anime')}
-                    />
-                    <Chip
-                      label="Other TV"
-                      selected={showFilter === 'other'}
-                      onPress={() => setShowFilter('other')}
-                    />
-                  </View>
-                </View>
-                {tab === 'favorites' && (
-                  <>
-                    <View style={s.filterGroup}>
-                      <Text style={s.filterLabel}>MINIMUM RATING</Text>
-                      <View style={s.chips}>
-                        {[0, 5, 4, 3, 2, 1].map((rating) => (
-                          <Chip
-                            key={rating}
-                            label={rating ? String(rating) : 'Any'}
-                            accessibilityLabel={rating ? `${rating} stars and up` : 'Any rating'}
-                            icon={
-                              rating ? (
-                                <Star
-                                  size={14}
-                                  color={minimumRating === rating ? colors.bg : colors.muted}
-                                />
-                              ) : undefined
-                            }
-                            selected={minimumRating === rating}
-                            onPress={() => setMinimumRating(rating)}
-                          />
-                        ))}
-                      </View>
-                    </View>
-                    <View style={s.filterGroup}>
-                      <Text style={s.filterLabel}>TAGS</Text>
-                      <View style={s.chips}>
-                        <Chip
-                          label="All tags"
-                          selected={tagFilter === 'all'}
-                          onPress={() => setTagFilter('all')}
-                        />
-                        {favoriteTags.map((tag) => (
-                          <Chip
-                            key={tag}
-                            label={tag}
-                            selected={tagFilter === tag.toLocaleLowerCase()}
-                            onPress={() => setTagFilter(tag.toLocaleLowerCase())}
-                          />
-                        ))}
-                      </View>
-                    </View>
-                  </>
-                )}
-              </DrawerContent>
-            </Drawer>
+            <EpisodeFiltersDrawer
+              tab={tab}
+              active={filterActive}
+              showFilter={showFilter}
+              minimumRating={minimumRating}
+              tagFilter={tagFilter}
+              tags={favoriteTags}
+              onShowFilterChange={setShowFilter}
+              onMinimumRatingChange={setMinimumRating}
+              onTagFilterChange={setTagFilter}
+            />
           }
         />
       </View>
@@ -415,7 +348,7 @@ function Episodes() {
 
       <Drawer open={editing !== undefined} onOpenChange={(open) => !open && setEditing(undefined)}>
         {editing && (
-          <DrawerContent className="max-w-lg gap-6 rounded-2xl border-border bg-background p-6">
+          <DrawerContent className="max-w-lg">
             <DrawerHeader className="sr-only">
               <DrawerTitle>Episode options</DrawerTitle>
             </DrawerHeader>
@@ -443,15 +376,20 @@ function Episodes() {
                 });
               }}
             />
-            {tab === 'favorites' && (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => void updateEpisode(editing, { watched: false })}
-                style={s.textAction}
-              >
-                <Text style={s.textActionLabel}>Mark episode unwatched</Text>
-              </Pressable>
-            )}
+            <View style={s.editorFooter}>
+              <DrawerClose asChild>
+                <Button title="Done" onPress={() => undefined} />
+              </DrawerClose>
+              {tab === 'favorites' && (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => void updateEpisode(editing, { watched: false })}
+                  style={s.textAction}
+                >
+                  <Text style={s.textActionLabel}>Mark episode unwatched</Text>
+                </Pressable>
+              )}
+            </View>
           </DrawerContent>
         )}
       </Drawer>
@@ -470,23 +408,6 @@ const s = createAppStyles(
       right: 0,
       top: 0,
       backgroundColor: colors.bg,
-    },
-    filterButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    filterActive: {},
-    activeDot: {
-      position: 'absolute',
-      right: 5,
-      top: 5,
-      width: 4,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: colors.text,
     },
     content: {
       width: '100%',
@@ -568,10 +489,8 @@ const s = createAppStyles(
     fullOverview: { color: colors.text, fontSize: 13, lineHeight: 20 },
     episodeFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
     episodeFact: { color: colors.muted, fontSize: 11 },
-    filterGroup: { gap: 10 },
-    filterLabel: { color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    textAction: { minHeight: 44, justifyContent: 'center' },
+    editorFooter: { gap: 8, marginTop: 4 },
+    textAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     textActionLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
   },
   [
@@ -583,7 +502,6 @@ const s = createAppStyles(
     'metaText',
     'fullOverview',
     'episodeFact',
-    'filterLabel',
     'textActionLabel',
   ] as const,
 );

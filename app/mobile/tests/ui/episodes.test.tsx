@@ -56,6 +56,7 @@ jest.mock('../../src/components/ui/drawer', () => {
   const container = ({ children }: { children: React.ReactNode }) => <View>{children}</View>;
   return {
     Drawer: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
+    DrawerClose: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     DrawerContent: container,
     DrawerHeader: container,
     DrawerTitle: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
@@ -132,7 +133,7 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
   expect(view.getByText('Mark episode unwatched')).toBeTruthy();
   expect(view.queryByText('Edit episode 3')).toBeNull();
   await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'Romance');
-  await fireEvent.press(view.getByRole('button', { name: 'Add' }));
+  await fireEvent.press(view.getByLabelText('Create tag Romance'));
   await waitFor(() =>
     expect(mockSetEpisode).toHaveBeenCalledWith({
       itemId: 'kaguya',
@@ -147,5 +148,5 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
   );
   expect(view.getByLabelText('Search favorites episodes')).toBeTruthy();
   expect(view.getByLabelText('Filter favorites episodes')).toBeTruthy();
-  expect(view.getByRole('button', { name: 'Comedy' })).toBeTruthy();
+  expect(view.getByRole('radio', { name: 'Comedy' })).toBeTruthy();
 });

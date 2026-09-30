@@ -174,7 +174,9 @@ const s = createAppStyles(
       gap: 8,
       overflow: 'hidden',
     },
-    rowContained: { flex: 1, width: '100%' },
+    // Two-column rows can wrap to two lines: give them breathing room and align
+    // the rank and rating with the first line.
+    rowContained: { flex: 1, width: '100%', paddingVertical: 8, alignItems: 'flex-start' },
     rowRank: {
       color: colors.muted,
       fontSize: 16,

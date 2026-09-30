@@ -38,29 +38,38 @@ export function RatingControl({
           </button>
         ) : null}
       </div>
-      <div className="flex gap-1" role="radiogroup" aria-label="Current rating">
+      <div
+        className="flex justify-center gap-1"
+        role="radiogroup"
+        aria-label="Current rating"
+      >
         {Array.from({ length: 5 }, (_, index) => {
           const fill = Math.max(0, Math.min(1, starValue - index));
           const halfRating = index + 0.5;
           const wholeRating = index + 1;
           return (
-            <span key={wholeRating} className="relative size-11 sm:size-8">
-              <Star
-                className="absolute inset-0 size-7 text-muted-foreground"
-                strokeWidth={1.6}
-              />
-              {fill > 0 ? (
-                <span
-                  className="absolute inset-0 overflow-hidden"
-                  style={{ width: `${fill * 100}%` }}
-                  aria-hidden="true"
-                >
-                  <Star
-                    className="size-7 fill-foreground text-foreground"
-                    strokeWidth={1.6}
-                  />
-                </span>
-              ) : null}
+            <span
+              key={wholeRating}
+              className="relative flex size-11 items-center justify-center sm:size-8"
+            >
+              {/* The fill is measured against the star itself, not its larger tap area. */}
+              <span className="relative size-7" aria-hidden="true">
+                <Star
+                  className="absolute inset-0 size-7 text-muted-foreground"
+                  strokeWidth={1.6}
+                />
+                {fill > 0 ? (
+                  <span
+                    className="absolute inset-y-0 left-0 overflow-hidden"
+                    style={{ width: `${fill * 100}%` }}
+                  >
+                    <Star
+                      className="size-7 fill-foreground text-foreground"
+                      strokeWidth={1.6}
+                    />
+                  </span>
+                ) : null}
+              </span>
               <input
                 type="radio"
                 name={groupName}

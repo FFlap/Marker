@@ -7,18 +7,13 @@ import { api } from '../../convex/_generated/api';
 import { Button, EmptyState, Input, Segmented } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { RatingControl, Stepper, TagEditor } from '@/components/ui/library-controls';
+import { ENTRY_STATUS_OPTIONS } from '@/components/ui/entryStatusOptions';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SearchResultsSkeleton } from '@/components/PageSkeletons';
 import type { LibraryItem, SearchResult, Status } from '@/types';
-const statusOptions = [
-  { label: 'Watched', value: 'watched' },
-  { label: 'Watching', value: 'watching' },
-  { label: 'Watchlist', value: 'watchlist' },
-  { label: 'Dropped', value: 'dropped' },
-] as const;
 type MediaFilter = 'all' | SearchResult['mediaType'];
 const mediaFilters: { value: MediaFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -262,10 +257,10 @@ export default function Add() {
                 </Text>
               </View>
             </View>
-            <Segmented options={statusOptions} value={status} onChange={changeStatus} />
+            <Segmented options={ENTRY_STATUS_OPTIONS} value={status} onChange={changeStatus} />
             <RatingControl value={rating} onChange={setRating} />
             {status === 'watched' && (
-              <Stepper label="Times Watched" value={times} onChange={setTimes} min={1} />
+              <Stepper label="Times watched" value={times} onChange={setTimes} min={1} />
             )}
             <TagEditor tags={tags} onChange={setTags} suggestions={suggestions} />
             <Button
