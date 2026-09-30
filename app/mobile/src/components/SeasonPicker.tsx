@@ -46,7 +46,7 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
   const menuRef = useRef<ScrollView>(null);
   const positionedForOpen = useRef(false);
   const { height: windowHeight } = useWindowDimensions();
-  const visibleOptions = options.filter((choice) => choice.season >= 0);
+  const visibleOptions = options.filter((choice) => choice.season >= 0 && choice.episodeCount > 0);
   const selected = visibleOptions.find((choice) => choice.season === value) ?? visibleOptions[0];
   if (!selected) return null;
   const selectedIndex = Math.max(

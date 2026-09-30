@@ -258,12 +258,17 @@ describe('item detail metadata subscriptions', () => {
     expect(mockTouchItemView).toHaveBeenCalledWith({ itemId: 'item', season: 1 });
   });
 
-  it('keeps unknown-count library seasons while respecting server exclusions', async () => {
+  it('hides empty library seasons and selects the first season with episodes', async () => {
     itemView = {
       ...itemView,
       title: {
         ...title,
-        seasons: [{ season: 2, name: 'Season 2', episodeCount: 0 }],
+        seasons: [
+          { season: 0, name: 'Specials', episodeCount: 0 },
+          { season: 1, name: 'Season 1', episodeCount: 0 },
+          { season: 2, name: 'Season 2', episodeCount: 1 },
+          { season: 3, name: 'Season 3', episodeCount: 0 },
+        ],
       },
     };
     mockSeasonView = { 2: { season: seasonTwo, requestState: { state: 'succeeded' } } };
@@ -275,6 +280,7 @@ describe('item detail metadata subscriptions', () => {
     expect(view.getByLabelText('Select Season 2')).toBeTruthy();
     expect(view.queryByLabelText('Select Season 1')).toBeNull();
     expect(view.queryByLabelText('Select Season 3')).toBeNull();
+    expect(view.queryByLabelText('Select Specials')).toBeNull();
   });
 
   it('uses the server-side whole-show action when the entry status becomes Watched', async () => {

@@ -3,6 +3,7 @@ import { internal } from './_generated/api';
 import { internalAction } from './_generated/server';
 import { providerFetch } from './providerHttp';
 import { isAnime } from './mergePolicy';
+import { releasedEpisodes } from './episodeAvailability';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
 import { MAX_SEASON_EPISODES } from './seasonStorage';
 import {
@@ -43,7 +44,7 @@ export {
 } from './tvdbParsing';
 export type { AnimeDetails, AnimeEpisode, SeasonRecord } from './tvdbParsing';
 
-const TVDB_ANIME_GUIDE_VERSION = 'v9';
+const TVDB_ANIME_GUIDE_VERSION = 'v10';
 
 const tvdbAnimeGuideKey = (tmdbId: number, tvdbId: number, order: string) =>
   `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:${tmdbId}:${tvdbId}:${order}`;
@@ -291,8 +292,8 @@ async function resolveAnime(
         names.get(season.number) ?? (season.number === 0 ? 'Specials' : `Season ${season.number}`),
       episodeCount:
         season.number === selectedSeason && selectedEpisodes !== undefined
-          ? selectedEpisodes.length
-          : (counts.get(season.number) ?? season.episodeCount ?? 0),
+          ? releasedEpisodes(selectedEpisodes).length
+          : (counts.get(season.number) ?? 0),
     })),
     ...(selectedSeason !== undefined && {
       selectedSeason,
@@ -302,28 +303,29 @@ async function resolveAnime(
   return { details, episodes: selectedEpisodes };
 }
 
-/** Fill missing counts within a bounded budget; remaining seasons can load on selection. */
+/** Count available episodes, not announced totals, before exposing seasons in the picker. */
 async function resolveSeasonCounts(ctx: { runMutation: Function }, seasons: SeasonRecord[]) {
   const counts = new Map<number, number>();
-  const missing = seasons
-    .filter((season) => !season.episodeCount)
-    .slice(0, MAX_SEASON_COUNT_REQUESTS);
+  const candidates = seasons.slice(0, MAX_SEASON_COUNT_REQUESTS);
   const deadline = Date.now() + SEASON_COUNT_DEADLINE_MS;
-  for (let start = 0; start < missing.length; start += 4) {
+  for (let start = 0; start < candidates.length; start += 4) {
     if (Date.now() >= deadline) break;
     await Promise.all(
-      missing.slice(start, start + 4).map(async (season) => {
+      candidates.slice(start, start + 4).map(async (season) => {
         try {
           const payload = await request(ctx, `/seasons/${season.id}/extended`);
           const data = record(payload.data);
           if (integer(data.id) !== season.id || !Array.isArray(data.episodes)) return;
           // The season ID identifies the chosen order; episode coordinates can
           // refer to the default order, so do not filter by seasonNumber here.
-          const ids = records(data.episodes).flatMap((episode) => {
-            const id = integer(episode.id);
-            return id === undefined ? [] : [id];
+          const episodes = records(data.episodes).flatMap((entry) => {
+            const episode = mapEpisode(entry);
+            return episode ? [episode] : [];
           });
-          counts.set(season.number, new Set(ids).size);
+          counts.set(
+            season.number,
+            new Set(releasedEpisodes(episodes).map((episode) => episode.id)).size,
+          );
         } catch {
           // A missing count must not prevent the rest of the title from loading.
         }

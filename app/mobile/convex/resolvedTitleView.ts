@@ -2,7 +2,7 @@ import type { Doc } from './_generated/dataModel';
 import type { QueryCtx } from './_generated/server';
 import { activeResolvedTitle } from './resolvedTitleModel';
 
-/** Provider counts can be unknown (zero); only complete canonical data proves emptiness. */
+/** Only expose seasons with available episodes; canonical counts override provider counts. */
 export async function visibleResolvedTitle(
   ctx: QueryCtx,
   identity: Pick<Doc<'items'>, 'mediaType' | 'tmdbId'>,
@@ -24,7 +24,7 @@ export async function visibleResolvedTitle(
           ? []
           : [{ ...entry, episodeCount: resolved.episodeCount }];
       }
-      return [entry];
+      return entry.episodeCount > 0 ? [entry] : [];
     }),
   );
   return { ...title, seasons: seasons.flat() };

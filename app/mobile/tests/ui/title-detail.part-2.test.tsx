@@ -11,18 +11,22 @@ import {
 } from './title-detail-fixture';
 
 describe('Explore title metadata subscriptions', () => {
-  it('keeps seasons with unknown provider counts selectable', async () => {
+  it('hides empty specials and upcoming seasons before selection', async () => {
     mockState.titleView.title.seasons[1].episodeCount = 0;
+    mockState.titleView.title.seasons.push({ season: 0, name: 'Specials', episodeCount: 0 });
     const view = await screen();
     await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
-    await fireEvent.press(view.getByLabelText('Select Season 2'));
-    await waitFor(() =>
-      expect(mockTouchTitle).toHaveBeenCalledWith(expect.objectContaining({ season: 2 })),
-    );
+    expect(view.getByLabelText('Select Season 1')).toBeTruthy();
+    expect(view.queryByLabelText('Select Season 2')).toBeNull();
+    expect(view.queryByLabelText('Select Specials')).toBeNull();
+    expect(mockTouchTitle).not.toHaveBeenCalledWith(expect.objectContaining({ season: 2 }));
   });
 
-  it('does not show a season picker when the server excludes all empty seasons', async () => {
-    mockState.titleView.title.seasons = [];
+  it('does not show a season picker when no season has episodes', async () => {
+    mockState.titleView.title.seasons = [
+      { season: 0, name: 'Specials', episodeCount: 0 },
+      { season: 1, name: 'Season 1', episodeCount: 0 },
+    ];
     const view = await screen();
     expect(view.queryByLabelText(/Choose season, current/)).toBeNull();
   });

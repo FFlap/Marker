@@ -83,6 +83,7 @@ const mapCast = (credits: unknown) =>
 export function mapTvDetails(r: Json) {
   const genreNames = genres(r.genres);
   const originalTitle = string(r.original_name)?.trim();
+  const today = new Date().toISOString().slice(0, 10);
   return {
     id: requiredNumber(r.id),
     title: requiredString(r.name),
@@ -103,7 +104,7 @@ export function mapTvDetails(r: Json) {
         {
           season,
           name: string(s.name) ?? '',
-          episodeCount: number(s.episode_count) ?? 0,
+          episodeCount: (string(s.air_date) ?? '') > today ? 0 : (number(s.episode_count) ?? 0),
         },
       ];
     }),
@@ -284,8 +285,8 @@ export const refreshTvDetails = internalAction({
     const load = async () =>
       mapTvDetails(await request(ctx, `/tv/${tmdbId}?append_to_response=credits`));
     return force
-      ? refreshSnapshot(ctx, `tmdb:tv:full:${tmdbId}`, load)
-      : snapshot(ctx, `tmdb:tv:full:${tmdbId}`, load);
+      ? refreshSnapshot(ctx, `tmdb:tv:full:v2:${tmdbId}`, load)
+      : snapshot(ctx, `tmdb:tv:full:v2:${tmdbId}`, load);
   },
 });
 export const refreshSeasonDetails = internalAction({

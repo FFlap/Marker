@@ -84,7 +84,7 @@ describe('shared controls', () => {
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
 
-  it('keeps unknown-count seasons selectable alongside specials', async () => {
+  it('hides empty seasons before selection and keeps specials with episodes', async () => {
     const onChange = jest.fn();
     const user = userEvent.setup();
     const view = await render(
@@ -103,12 +103,9 @@ describe('shared controls', () => {
         <PortalHost />
       </>,
     );
-    expect(view.getByLabelText('Select Season 2').props.accessibilityHint).toBe(
-      'Episode count unavailable',
-    );
-    expect(view.getByLabelText('Select Specials')).toBeTruthy();
-    await user.press(view.getByLabelText('Select Season 2'));
-    expect(onChange).toHaveBeenCalledWith(2);
+    expect(view.queryByLabelText('Select Season 2')).toBeNull();
+    await user.press(view.getByLabelText('Select Specials'));
+    expect(onChange).toHaveBeenCalledWith(0);
   });
 
   it('mounts every option in a constrained long season menu', async () => {

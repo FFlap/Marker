@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { mapSearchResponse, mapSeasonDetails, mapTvDetails } from '../../convex/tmdb';
 
 describe('TMDB mapper contracts', () => {
+  it('does not expose announced episode totals for seasons that have not premiered', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const tv = mapTvDetails({
+      id: 1,
+      name: 'Show',
+      seasons: [
+        { season_number: 0, name: 'Specials', episode_count: 0, air_date: null },
+        { season_number: 1, name: 'Season 1', episode_count: 12, air_date: '2020-01-01' },
+        { season_number: 2, name: 'Season 2', episode_count: 12, air_date: '2999-01-01' },
+        { season_number: 3, name: 'Season 3', episode_count: 1, air_date: today },
+      ],
+    });
+    expect(tv.seasons.map((season) => season.episodeCount)).toEqual([0, 12, 0, 1]);
+  });
+
   it('maps supported search fields and excludes unsupported media types', () => {
     expect(
       mapSearchResponse({

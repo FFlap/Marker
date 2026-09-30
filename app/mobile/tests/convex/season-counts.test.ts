@@ -32,14 +32,22 @@ it('loads counts for unselected seasons in the chosen order and caches the compl
       });
     if (url.includes('/series/222/episodes/dvd/eng'))
       return json({ episodes: [{ id: 101, seasonNumber: 1, number: 1, name: 'Pilot' }] });
-    if (url.endsWith('/seasons/10/extended')) return json({ id: 10, episodes: [{ id: 100 }] });
+    if (url.endsWith('/seasons/10/extended')) return json({ id: 10, episodes: [] });
     if (url.endsWith('/seasons/12/extended'))
       return json({
         id: 12,
         episodes: [
-          { id: 201, seasonNumber: 1 },
-          { id: 202, seasonNumber: 1 },
-          { id: 202, seasonNumber: 1 },
+          { id: 201, seasonNumber: 1, number: 1, name: 'First', aired: '2020-01-01' },
+          { id: 202, seasonNumber: 1, number: 2, name: 'Second', aired: '2020-01-02' },
+          { id: 202, seasonNumber: 1, number: 2, name: 'Second', aired: '2020-01-02' },
+        ],
+      });
+    if (url.endsWith('/seasons/13/extended'))
+      return json({
+        id: 13,
+        episodes: [
+          { id: 301, seasonNumber: 3, number: 1, name: 'Upcoming', aired: '2999-01-01' },
+          { id: 302, seasonNumber: 3, number: 2, name: 'Episode 2' },
         ],
       });
     return new Response('{}', { status: 404 });
@@ -48,13 +56,13 @@ it('loads counts for unselected seasons in the chosen order and caches the compl
   const args = { tmdbId: 88, tvdbId: 222, title: 'Test anime', order: 'dvd' };
   const guide = await t.action(internal.tvdb.refreshAnimeWithMapping, args);
   expect(guide?.seasons).toMatchObject([
-    { season: 0, episodeCount: 1 },
+    { season: 0, episodeCount: 0 },
     { season: 1, episodeCount: 1 },
     { season: 2, episodeCount: 2 },
-    { season: 3, episodeCount: 24 },
+    { season: 3, episodeCount: 0 },
     { season: 4, episodeCount: 0 },
   ]);
-  for (const id of [11, 13, 99]) {
+  for (const id of [11, 99]) {
     expect(
       fetchMock.mock.calls.some(([url]) => String(url).endsWith(`/seasons/${id}/extended`)),
     ).toBe(false);

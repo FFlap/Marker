@@ -5,7 +5,7 @@ import schema from '../../convex/schema';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
-it('keeps unknown seasons and hides only complete empty seasons in the current order', async () => {
+it('hides unverified and empty seasons before selection and restores them when episodes resolve', async () => {
   const t = convexTest({ schema, modules });
   await t.run(async (ctx) => {
     await ctx.db.insert('users', { clerkId: 'season-view' });
@@ -16,10 +16,10 @@ it('keeps unknown seasons and hides only complete empty seasons in the current o
       episodeRunTime: [],
       genres: [],
       cast: [],
-      seasons: [1, 2, 3, 4, 5].map((season) => ({
+      seasons: [0, 1, 2, 3, 4, 5].map((season) => ({
         season,
         name: `Season ${season}`,
-        episodeCount: season === 1 ? 28 : 0,
+        episodeCount: season === 1 ? 28 : season === 3 ? 12 : 0,
       })),
       metadataProvider: 'tvdb',
       orderEpoch: 2,
@@ -52,7 +52,7 @@ it('keeps unknown seasons and hides only complete empty seasons in the current o
     (await user.query(api.resolvedMetadata.reads.getItemView, { itemId })).title,
   ];
   for (const title of views) {
-    expect(title?.seasons.map((season) => season.season)).toEqual([1, 2, 4, 5]);
+    expect(title?.seasons.map((season) => season.season)).toEqual([1]);
   }
   // Loading season 2 proves that the provider's zero was an unknown count.
   await t.run((ctx) =>
