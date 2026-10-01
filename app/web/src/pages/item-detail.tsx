@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   Check,
@@ -157,6 +157,7 @@ export function ItemDetailPage() {
   const item = itemView?.item;
   const title = itemView?.title;
   const [touchError, setTouchError] = useState(false);
+  const refreshGeneration = useRef(0);
   const guide = useSeasonGuide({ mediaType: item?.mediaType, tmdbId: item?.tmdbId, title, refreshError: touchError });
   const { seasons, season, setSeason, episodes, summary: seasonRow } = guide;
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
@@ -204,17 +205,19 @@ export function ItemDetailPage() {
   const touchMediaType = item?.mediaType;
 
   useEffect(() => {
-    if (!touchItemId || !touchMediaType) return undefined;
-    let active = true;
+    const generation = ++refreshGeneration.current;
     setTouchError(false);
+    setMetadataActionError("");
+    if (!touchItemId || !touchMediaType) return undefined;
     void touchItemView({
       itemId: touchItemId,
       ...(touchMediaType === "tv" && { season }),
     }).catch(() => {
-      if (active) setTouchError(true);
+      if (generation === refreshGeneration.current) setTouchError(true);
     });
-    return () => { active = false; };
-  }, [season, touchItemId, touchItemView, touchMediaType]);
+    // Invalidate automatic and manual refreshes when this item/season leaves.
+    return () => { refreshGeneration.current += 1; };
+  }, [itemId, season, touchItemId, touchItemView, touchMediaType]);
 
   if (itemView === undefined) {
     return (
@@ -312,6 +315,7 @@ export function ItemDetailPage() {
             variant="ghost"
             size="sm"
             onClick={() => {
+              const generation = ++refreshGeneration.current;
               setMetadataActionError("");
               setTouchError(false);
               void touchItemView({
@@ -319,6 +323,7 @@ export function ItemDetailPage() {
                 ...(item.mediaType === "tv" && { season }),
                 force: true,
               }).catch(() => {
+                if (generation !== refreshGeneration.current) return;
                 setTouchError(true);
                 setMetadataActionError("Couldn’t retry loading title details.");
               });
@@ -480,6 +485,7 @@ export function ItemDetailPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
+                  const generation = ++refreshGeneration.current;
                   setMetadataActionError("");
                   setTouchError(false);
                   void touchItemView({
@@ -487,6 +493,7 @@ export function ItemDetailPage() {
                     season,
                     force: true,
                   }).catch(() => {
+                    if (generation !== refreshGeneration.current) return;
                     setTouchError(true);
                     setMetadataActionError("Couldn’t retry loading episodes.");
                   });

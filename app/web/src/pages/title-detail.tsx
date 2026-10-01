@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import {
@@ -77,24 +77,25 @@ export function TitleDetailPage() {
   const detail = titleView?.title;
   const meta = detail ?? preview;
   const [touchError, setTouchError] = useState(false);
+  const refreshGeneration = useRef(0);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const guide = useSeasonGuide({ mediaType, tmdbId: valid ? tmdbId : undefined, title: detail, refreshError: touchError });
   const { seasons, season, setSeason, episodes } = guide;
 
   useEffect(() => {
-    if (!mediaType || !valid) return undefined;
-    let active = true;
+    const generation = ++refreshGeneration.current;
     setTouchError(false);
+    if (!mediaType || !valid) return undefined;
     void touchTitle({
       mediaType,
       tmdbId,
       ...(preview?.title && { title: preview.title }),
       ...(mediaType === "tv" && { season }),
     }).catch(() => {
-      if (active) setTouchError(true);
+      if (generation === refreshGeneration.current) setTouchError(true);
     });
     return () => {
-      active = false;
+      refreshGeneration.current += 1;
     };
   }, [mediaType, preview?.title, season, tmdbId, touchTitle, valid]);
 
@@ -153,6 +154,7 @@ export function TitleDetailPage() {
             className="mt-5"
             onClick={() => {
               if (!mediaType) return;
+              const generation = ++refreshGeneration.current;
               setTouchError(false);
               void touchTitle({
                 mediaType,
@@ -160,7 +162,9 @@ export function TitleDetailPage() {
                 ...(preview?.title && { title: preview.title }),
                 ...(mediaType === "tv" && { season }),
                 force: true,
-              }).catch(() => setTouchError(true));
+              }).catch(() => {
+                if (generation === refreshGeneration.current) setTouchError(true);
+              });
             }}
           >
             <RefreshCw className="size-4" /> Retry
@@ -312,6 +316,7 @@ export function TitleDetailPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
+                      const generation = ++refreshGeneration.current;
                       setTouchError(false);
                       void touchTitle({
                         mediaType: "tv",
@@ -319,7 +324,9 @@ export function TitleDetailPage() {
                         title: meta.title,
                         season,
                         force: true,
-                      }).catch(() => setTouchError(true));
+                      }).catch(() => {
+                        if (generation === refreshGeneration.current) setTouchError(true);
+                      });
                     }}
                   >
                     <RefreshCw className="size-4" /> Retry

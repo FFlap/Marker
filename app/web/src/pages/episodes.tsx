@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, EllipsisVertical, SlidersHorizontal, Star } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
-import { makeFunctionReference } from "convex/server";
 import { api } from "../../../mobile/convex/_generated/api";
 import { ChipGroup } from "@/components/chip-group";
 import { EpisodeDialog } from "@/components/episode-dialog";
@@ -15,12 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { SearchField } from "@/components/ui/search-field";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-// The companion backend refactor supplies this endpoint; keep this branch
-// type-checkable against both backend revisions until they are merged.
-const refreshWatchingMutation = makeFunctionReference<"mutation", Record<string, never>, null>(
-  "episodeHub:refreshWatching",
-);
 
 const localDateKey = (date = new Date()) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -62,7 +55,7 @@ export function EpisodesPage() {
   const today = useLocalToday();
   const data = useQuery(api.episodeHub.overview, { today });
   const setEpisode = useMutation(api.library.episodes.setEpisodeState);
-  const refreshWatching = useMutation(refreshWatchingMutation);
+  const refreshWatching = useMutation(api.episodeHub.refreshWatching);
   const [tab, setTab] = useState<"watching" | "favorites">("watching");
   const [search, setSearch] = useState("");
   const [showType, setShowType] = useState<"all" | "anime" | "other">("all");
