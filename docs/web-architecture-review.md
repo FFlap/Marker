@@ -6,7 +6,7 @@ Reviewed against `main` at `7fcc8b3`. This PR changes only the web client. The c
 
 | Severity | Finding and effect | Change |
 | --- | --- | --- |
-| Important | Explore accepted longer searches than the backend allowed. Dialog and Explore duplicated request/error handling and could display stale results. | Share a bounded search hook with request cancellation guards and explicit retry. Keep submitted searches separate from input drafts. |
+| Important | Explore accepted longer searches than the backend allowed. Dialog and Explore duplicated request/error handling and could display stale results. | Share a bounded search hook with stale-response guards and explicit retry. Keep submitted searches separate from input drafts. |
 | Important | Item detail subscribed to the entire library even though rendering already depended on the dedicated item view. | Use the authoritative item view and the existing tag-suggestion endpoint. |
 | Important | An exhausted empty cache was presented as an empty season while a provider refresh was still queued or running. Rejected item refreshes were swallowed. | Share a season-guide hook that distinguishes loading, empty, and failure; surface a retry action. |
 | Important | Episode pages were concatenated without guarding against provider/order changes or restarted cursors. | Deduplicate chunk indexes, reject mismatched versions, and expose only a contiguous prefix. |
