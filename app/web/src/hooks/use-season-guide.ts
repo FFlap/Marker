@@ -3,8 +3,6 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import type { SeasonPage, TitleDetail } from "@/lib/catalog";
 
-type VersionedSeasonPage = SeasonPage & { seasonVersion?: string };
-
 type SeasonOption = TitleDetail["seasons"][number] & {
   episodeCountVerified?: boolean;
 };
@@ -35,10 +33,10 @@ export function useSeasonGuide({ mediaType, tmdbId, title, refreshError = false 
   );
   const request = useQuery(api.resolvedMetadata.reads.getSeasonRequestState, args);
   const pages = useMemo(() => {
-    const results: VersionedSeasonPage[] = pagination.results;
+    const results: SeasonPage[] = pagination.results;
     const first = results.find((page) => page.season === season && page.chunkIndex === 0);
     if (!first) return [];
-    const chunks = new Map<number, VersionedSeasonPage>();
+    const chunks = new Map<number, SeasonPage>();
     for (const page of results) {
       if (page.season === season &&
           page.metadataProvider === first.metadataProvider &&
@@ -50,7 +48,7 @@ export function useSeasonGuide({ mediaType, tmdbId, title, refreshError = false 
     }
     // A refresh can restart an already-loaded cursor at chunk zero. Keep the
     // current generation's contiguous prefix until subsequent pages catch up.
-    const contiguous: VersionedSeasonPage[] = [];
+    const contiguous: SeasonPage[] = [];
     for (let index = 0; chunks.has(index); index += 1)
       contiguous.push(chunks.get(index)!);
     return contiguous;

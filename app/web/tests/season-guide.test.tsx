@@ -4,7 +4,7 @@ import type { SeasonPage } from "@/lib/catalog";
 
 const mocks = vi.hoisted(() => ({
   request: null as { state: "inFlight" | "succeeded" | "failed" | "notFound" } | null,
-  pages: [] as (SeasonPage & { seasonVersion?: string })[],
+  pages: [] as SeasonPage[],
   query: vi.fn<(args: unknown) => void>(),
   loadMore: vi.fn<(count: number) => void>(),
 }));
