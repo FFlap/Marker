@@ -14,8 +14,6 @@ Marker tracks movies, series, and watched episodes across a web app, an Expo mob
 
 The web app imports the shared backend's generated API types from `app/mobile/convex/_generated`. There is one backend for both clients. TMDB supplies search and base title metadata; TVDB supplies matched anime season ordering and episode identities. Provider calls stay in the backend.
 
-The [architecture review](docs/architecture-review.md) explains the data model, refactor decisions, and remaining scaling boundaries.
-
 ## Development
 
 Use Node.js 24, matching CI. Each app has its own package manifest and lockfile; run commands from the relevant app directory.
