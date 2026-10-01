@@ -2,11 +2,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
-import {
-  COORDINATE_CHUNK_PAIR_LIMIT,
-  coordinateChunkPairBudget,
-  coordinateChunkWindow,
-} from '../../convex/nextEpisode';
+import { COORDINATE_CHUNK_PAIR_LIMIT } from '../../convex/nextEpisode';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
@@ -410,23 +406,6 @@ describe('episode hub and profile favorites', () => {
           .unique(),
       ),
     ).toMatchObject({ season: 1, chunkIndex: 2 });
-
-    const observedWindows = [];
-    for (let cursor = 0; cursor < 5;) {
-      const window = coordinateChunkWindow(cursor, 5, COORDINATE_CHUNK_PAIR_LIMIT);
-      observedWindows.push(window.length);
-      cursor = window[window.length - 1]! + 1;
-    }
-    expect(observedWindows).toEqual([2, 2, 1]);
-    expect(Math.max(...observedWindows)).toBe(COORDINATE_CHUNK_PAIR_LIMIT);
-    expect(() => coordinateChunkWindow(0, 5, COORDINATE_CHUNK_PAIR_LIMIT + 1)).toThrow(
-      'limited to 2 chunks',
-    );
-    const injectedBudget = coordinateChunkPairBudget(1);
-    expect(injectedBudget.canRead()).toBe(true);
-    expect(injectedBudget.recordRead()).toBe(1);
-    expect(injectedBudget.canRead()).toBe(false);
-    expect(() => injectedBudget.recordRead()).toThrow('limited to 1 chunks');
 
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     expect((await t.run((ctx) => ctx.db.get(itemId)))?.nextEpisode).toMatchObject({

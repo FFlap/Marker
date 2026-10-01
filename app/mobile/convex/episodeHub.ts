@@ -1,6 +1,9 @@
 import { v } from 'convex/values';
 import { requireUser } from './clerkAuth';
-import { query } from './_generated/server';
+import { internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
+import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
+import { consumeWindowBudget } from './providerRateLimits';
 
 const episodeCard = {
   itemId: v.id('items'),
@@ -149,4 +152,39 @@ export const overview = query({
 
     return { watching: nextEpisodes, favorites: ratedEpisodes };
   },
+});
+
+async function refreshWatchingPage(ctx: MutationCtx, userId: Id<'users'>, cursor: string | null) {
+  const page = await ctx.db
+    .query('items')
+    .withIndex('by_user_status', (query) => query.eq('userId', userId).eq('status', 'watching'))
+    .paginate({ cursor, numItems: 10 });
+  for (const item of page.page) {
+    if (item.mediaType !== 'tv' || item.deletingAt !== undefined) continue;
+    await ctx.scheduler.runAfter(0, internal.nextEpisode.startNextEpisodeRefresh, {
+      itemId: item._id,
+    });
+  }
+  if (!page.isDone)
+    await ctx.scheduler.runAfter(0, internal.episodeHub.continueWatchingRefresh, {
+      userId,
+      cursor: page.continueCursor,
+    });
+}
+
+/** Repairs existing watching entries without requiring a visit to each title. */
+export const refreshWatching = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const userId = await requireUser(ctx);
+    if (!(await consumeWindowBudget(ctx, `episode-hub:${userId}`, 1, 30_000))) return;
+    await refreshWatchingPage(ctx, userId, null);
+  },
+});
+
+export const continueWatchingRefresh = internalMutation({
+  args: { userId: v.id('users'), cursor: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { userId, cursor }) => refreshWatchingPage(ctx, userId, cursor),
 });

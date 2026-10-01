@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
+const mockRefreshWatching = jest.fn().mockResolvedValue(null);
 const mockSetEpisode = jest.fn().mockResolvedValue(undefined);
 const mockOverview = {
   watching: [
@@ -37,11 +38,15 @@ const mockOverview = {
 
 jest.mock('convex/react', () => ({
   useQuery: () => mockOverview,
-  useMutation: () => mockSetEpisode,
+  useMutation: (ref: string) =>
+    ref === 'episodeHub.refreshWatching' ? mockRefreshWatching : mockSetEpisode,
 }));
 jest.mock('../../convex/_generated/api', () => ({
   api: {
-    episodeHub: { overview: 'episodeHub.overview' },
+    episodeHub: {
+      overview: 'episodeHub.overview',
+      refreshWatching: 'episodeHub.refreshWatching',
+    },
     library: { episodes: { setEpisodeState: 'library/episodes:setEpisodeState' } },
   },
 }));
@@ -132,4 +137,32 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
   expect(view.getByLabelText('Search favorites episodes')).toBeTruthy();
   expect(view.getByLabelText('Filter favorites episodes')).toBeTruthy();
   expect(view.getByRole('radio', { name: 'Comedy' })).toBeTruthy();
+});
+
+it('refreshes missing watching metadata once when opening the tab', async () => {
+  mockRefreshWatching.mockClear();
+  const view = await render(
+    <ToastProvider>
+      <EpisodesScreen />
+    </ToastProvider>,
+  );
+  await waitFor(() => expect(mockRefreshWatching).toHaveBeenCalledWith({}));
+  await view.rerender(
+    <ToastProvider>
+      <EpisodesScreen />
+    </ToastProvider>,
+  );
+  expect(mockRefreshWatching).toHaveBeenCalledTimes(1);
+});
+
+it('reports a refresh failure without repeatedly scheduling repair', async () => {
+  mockRefreshWatching.mockClear().mockRejectedValueOnce(new Error('offline'));
+  const view = await render(
+    <ToastProvider>
+      <EpisodesScreen />
+    </ToastProvider>,
+  );
+  await waitFor(() => expect(view.getByText('Couldn’t refresh your episodes')).toBeTruthy());
+  expect(mockRefreshWatching).toHaveBeenCalledTimes(1);
+  expect(view.getByText('One Piece')).toBeTruthy();
 });
