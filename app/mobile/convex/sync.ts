@@ -384,7 +384,7 @@ async function recordWatchForUser(
       matchedExistingItem = true;
       return libraryItem;
     }
-    const allowed = await ctx.runMutation(internal.tmdb.consumeThrottle, {
+    const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
       key: `tmdb:${userId}`,
     });
     if (!allowed) throw new ConvexError({ code: 'upstream' });

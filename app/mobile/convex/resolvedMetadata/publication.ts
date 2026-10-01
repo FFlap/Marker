@@ -43,12 +43,10 @@ export async function publishCanonicalMetadata(
       args.writeSeason && args.season
         ? {
             ...args.title,
-            seasons: args.title.seasons.flatMap((entry) =>
-              entry.season !== args.season!.season
-                ? [entry]
-                : args.season!.episodeCount > 0
-                  ? [{ ...entry, episodeCount: args.season!.episodeCount }]
-                  : [],
+            seasons: args.title.seasons.map((entry) =>
+              entry.season === args.season!.season
+                ? { ...entry, episodeCount: args.season!.episodeCount, episodeCountVerified: true }
+                : entry,
             ),
           }
         : args.title;
@@ -67,7 +65,7 @@ export async function publishCanonicalMetadata(
     await ctx.db.patch(existingTitle._id, {
       seasons: existingTitle.seasons.map((entry) =>
         entry.season === args.season!.season
-          ? { ...entry, episodeCount: args.season!.episodeCount }
+          ? { ...entry, episodeCount: args.season!.episodeCount, episodeCountVerified: true }
           : entry,
       ),
     });

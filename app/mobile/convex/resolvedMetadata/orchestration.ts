@@ -85,7 +85,7 @@ export const orchestrateRefresh = internalAction({
         }
         throw new ConvexError({ code: 'refresh_in_progress', retryable: true });
       }
-      const allowed = await ctx.runMutation(internal.tmdb.consumeThrottle, {
+      const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
         key: `resolved:${args.userId}`,
       });
       if (!allowed) throw new ConvexError({ code: 'throttled' });
@@ -207,7 +207,7 @@ export const orchestrateSeasonRefresh = internalAction({
         }
         throw new ConvexError({ code: 'refresh_in_progress', retryable: true });
       }
-      const allowed = await ctx.runMutation(internal.tmdb.consumeThrottle, {
+      const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
         key: `resolved:${args.userId}`,
       });
       if (!allowed) throw new ConvexError({ code: 'throttled' });

@@ -8,6 +8,7 @@ const modules = import.meta.glob('../../convex/**/*.ts');
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 it('loads counts for unselected seasons in the chosen order and caches the complete guide', async () => {
@@ -59,8 +60,8 @@ it('loads counts for unselected seasons in the chosen order and caches the compl
     { season: 0, episodeCount: 0 },
     { season: 1, episodeCount: 1 },
     { season: 2, episodeCount: 2 },
-    { season: 3, episodeCount: 0 },
-    { season: 4, episodeCount: 0 },
+    { season: 3, episodeCount: 0, episodeCountVerified: true },
+    { season: 4, episodeCount: 0, episodeCountVerified: false },
   ]);
   for (const id of [11, 99]) {
     expect(
@@ -105,5 +106,51 @@ it('bounds eager count requests while preserving the full season list', async ()
   expect(
     fetchMock.mock.calls.filter(([url]) => /\/seasons\/\d+\/extended$/.test(String(url))),
   ).toHaveLength(64);
-  expect(guide?.seasons[79]).toMatchObject({ season: 79, episodeCount: 0 });
+  expect(guide?.seasons[79]).toMatchObject({
+    season: 79,
+    episodeCount: 0,
+    episodeCountVerified: false,
+  });
+});
+
+it('retries an incomplete cached guide after five minutes and verifies the recovered count', async () => {
+  const t = convexTest({ schema, modules });
+  vi.stubEnv('TVDB_API_KEY', 'test-key');
+  let countsAvailable = false;
+  const json = (data: unknown) => Response.json({ data });
+  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith('/login')) return json({ token: 'test-token' });
+    if (url.includes('/series/444/extended'))
+      return json({
+        name: 'Retry anime',
+        genres: [{ name: 'Anime' }],
+        seasons: [{ id: 42, number: 2, type: { type: 'official' } }],
+      });
+    if (url.endsWith('/seasons/42/extended') && countsAvailable)
+      return json({
+        id: 42,
+        episodes: [{ id: 421, seasonNumber: 2, number: 1, name: 'Released' }],
+      });
+    return new Response('{}', { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const args = {
+    tmdbId: 90,
+    tvdbId: 444,
+    title: 'Retry anime',
+    order: 'official',
+    requestedSeason: 3,
+  };
+  const incomplete = await t.action(internal.tvdb.refreshAnimeWithMapping, args);
+  expect(incomplete?.seasons[0]).toMatchObject({ episodeCount: 0, episodeCountVerified: false });
+  const cachedRequests = fetchMock.mock.calls.length;
+  await t.action(internal.tvdb.refreshAnimeWithMapping, args);
+  expect(fetchMock).toHaveBeenCalledTimes(cachedRequests);
+
+  countsAvailable = true;
+  const now = Date.now();
+  vi.spyOn(Date, 'now').mockReturnValue(now + 5 * 60_000 + 1);
+  const recovered = await t.action(internal.tvdb.refreshAnimeWithMapping, args);
+  expect(recovered?.seasons[0]).toMatchObject({ episodeCount: 1, episodeCountVerified: true });
 });

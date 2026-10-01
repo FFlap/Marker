@@ -2,6 +2,7 @@ export type SeasonSummary = {
   season: number;
   name: string;
   episodeCount: number;
+  episodeCountVerified?: boolean;
 };
 
 const genericSeasonLabel = (name: string) => {
@@ -33,16 +34,4 @@ export const mergeSeasonDisplayNames = (
       ? { ...season, name: fallback.name }
       : season;
   });
-};
-
-export const hideResolvedEmptySeasons = (
-  seasons: SeasonSummary[],
-  resolvedEpisodeCounts: { season: number; episodeCount: number }[],
-) => {
-  const empty = new Set(
-    resolvedEpisodeCounts
-      .filter((season) => season.episodeCount === 0)
-      .map((season) => season.season),
-  );
-  return seasons.filter((season) => !empty.has(season.season));
 };

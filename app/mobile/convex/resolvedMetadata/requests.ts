@@ -1,6 +1,7 @@
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
+import { consumeWindowBudget } from '../providerRateLimits';
 import {
   FAILED_TOUCH_BACKOFF_MS,
   GLOBAL_TOUCHES_PER_MINUTE,
@@ -132,33 +133,6 @@ export function visibleRequestState(row: Doc<'metadataRefreshRequests'> | null) 
     retryAt: row.expiresAt + FAILED_TOUCH_BACKOFF_MS,
     delayMs: Math.max(0, row.expiresAt + FAILED_TOUCH_BACKOFF_MS - now),
   };
-}
-
-export async function consumeWindowBudget(
-  ctx: MutationCtx,
-  key: string,
-  maximum: number,
-  windowMs: number,
-  amount = 1,
-) {
-  const now = Date.now();
-  const row = await ctx.db
-    .query('requestThrottle')
-    .withIndex('by_key', (query) => query.eq('key', key))
-    .unique();
-  if (!row) {
-    if (amount > maximum) return false;
-    await ctx.db.insert('requestThrottle', { key, windowStart: now, count: amount });
-    return true;
-  }
-  if (now - row.windowStart >= windowMs) {
-    if (amount > maximum) return false;
-    await ctx.db.patch(row._id, { windowStart: now, count: amount });
-    return true;
-  }
-  if (row.count + amount > maximum) return false;
-  await ctx.db.patch(row._id, { count: row.count + amount });
-  return true;
 }
 
 export async function consumeRefreshAdmission(

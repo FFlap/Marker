@@ -1,7 +1,7 @@
-import { v } from 'convex/values';
+import { type Infer, v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
-import { resolvedEpisodeValidator } from './publicValidators';
+import { providerSnapshotEntryValidator } from './providerValidators';
 
 export const SNAPSHOT_TTL_MS = 15 * 60 * 1000;
 export const MAX_SNAPSHOT_BYTES = 700 * 1024;
@@ -10,98 +10,6 @@ export type TruncatedSnapshot = {
   __truncatedProviderSnapshot: true;
   originalBytes: number;
 };
-
-const castMember = v.object({
-  name: v.string(),
-  character: v.string(),
-  profilePath: v.optional(v.string()),
-});
-const season = v.object({ season: v.number(), name: v.string(), episodeCount: v.number() });
-const episode = resolvedEpisodeValidator;
-const animeEpisode = v.object({ id: v.number(), ...episode.fields });
-const searchResults = v.array(
-  v.object({
-    id: v.number(),
-    title: v.string(),
-    originalTitle: v.optional(v.string()),
-    mediaType: v.union(v.literal('movie'), v.literal('tv')),
-    posterPath: v.optional(v.string()),
-    overview: v.optional(v.string()),
-    releaseDate: v.optional(v.string()),
-    voteAverage: v.optional(v.number()),
-  }),
-);
-const movie = v.object({
-  id: v.number(),
-  title: v.string(),
-  mediaType: v.literal('movie'),
-  posterPath: v.optional(v.string()),
-  overview: v.optional(v.string()),
-  releaseDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-  runtime: v.optional(v.number()),
-  genres: v.array(v.string()),
-  cast: v.array(castMember),
-});
-const tv = v.object({
-  id: v.number(),
-  title: v.string(),
-  originalTitle: v.optional(v.string()),
-  mediaType: v.literal('tv'),
-  posterPath: v.optional(v.string()),
-  overview: v.optional(v.string()),
-  firstAirDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-  episodeRunTime: v.array(v.number()),
-  genres: v.array(v.string()),
-  seasons: v.array(season),
-  cast: v.array(castMember),
-});
-const animeGuide = v.object({
-  tvdbId: v.number(),
-  title: v.string(),
-  firstAirDate: v.optional(v.string()),
-  episodeRunTime: v.array(v.number()),
-  genres: v.array(v.string()),
-  order: v.string(),
-  seasons: v.array(season),
-  selectedSeason: v.optional(v.number()),
-  selectedEpisodes: v.optional(v.array(animeEpisode)),
-});
-const lookup = v.object({
-  tvdbId: v.number(),
-  order: v.string(),
-  authoritativeNames: v.array(v.string()),
-});
-const calendarMovie = v.array(v.object({ date: v.string(), priority: v.number() }));
-const calendarTv = v.object({ airDate: v.string(), season: v.number() });
-const calendarSeason = v.array(
-  v.object({
-    date: v.string(),
-    season: v.number(),
-    episode: v.number(),
-    name: v.optional(v.string()),
-  }),
-);
-const truncated = v.object({
-  __truncatedProviderSnapshot: v.literal(true),
-  originalBytes: v.number(),
-});
-const snapshotEntry = v.union(
-  v.object({ kind: v.literal('tmdbSearch'), value: searchResults }),
-  v.object({ kind: v.literal('tmdbMovie'), value: movie }),
-  v.object({ kind: v.literal('tmdbTv'), value: tv }),
-  v.object({
-    kind: v.literal('episodes'),
-    value: v.union(v.array(episode), v.array(animeEpisode)),
-  }),
-  v.object({ kind: v.literal('tvdbGuide'), value: v.union(v.null(), animeGuide) }),
-  v.object({ kind: v.literal('tvdbLookup'), value: lookup }),
-  v.object({ kind: v.literal('calendarMovie'), value: calendarMovie }),
-  v.object({ kind: v.literal('calendarTv'), value: v.union(v.null(), calendarTv) }),
-  v.object({ kind: v.literal('calendarSeason'), value: calendarSeason }),
-  v.object({ kind: v.literal('truncated'), value: truncated }),
-);
 
 const serializedBytes = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value) ?? 'null').byteLength;
@@ -121,17 +29,7 @@ const boundedSnapshotValue = (value: unknown) => {
     : value;
 };
 
-type SnapshotKind =
-  | 'tmdbSearch'
-  | 'tmdbMovie'
-  | 'tmdbTv'
-  | 'episodes'
-  | 'tvdbGuide'
-  | 'tvdbLookup'
-  | 'calendarMovie'
-  | 'calendarTv'
-  | 'calendarSeason'
-  | 'truncated';
+type SnapshotKind = Infer<typeof providerSnapshotEntryValidator>['kind'];
 
 const kindForKey = (key: string): Exclude<SnapshotKind, 'truncated'> => {
   if (key.startsWith('tmdb:movie:')) return 'tmdbMovie';
@@ -170,6 +68,19 @@ export async function putNonFatal(
 
 export const get = internalQuery({
   args: { key: v.string() },
+  returns: v.union(
+    v.null(),
+    ...providerSnapshotEntryValidator.members.map((entry) =>
+      v.object({
+        ...entry.fields,
+        _id: v.id('providerSnapshots'),
+        _creationTime: v.number(),
+        key: v.string(),
+        entry: providerSnapshotEntryValidator,
+        refreshedAt: v.number(),
+      }),
+    ),
+  ),
   handler: async (ctx, { key }) => {
     const stored = await ctx.db
       .query('providerSnapshots')
@@ -180,7 +91,8 @@ export const get = internalQuery({
 });
 
 export const put = internalMutation({
-  args: { key: v.string(), entry: snapshotEntry },
+  args: { key: v.string(), entry: providerSnapshotEntryValidator },
+  returns: v.null(),
   handler: async (ctx, { key, entry }) => {
     if (!key || key.length > 500) throw new Error('Invalid provider snapshot key');
     const existing = await ctx.db
@@ -190,12 +102,14 @@ export const put = internalMutation({
     const next = { entry, refreshedAt: Date.now() };
     if (existing) await ctx.db.patch(existing._id, next);
     else await ctx.db.insert('providerSnapshots', { key, ...next });
+    return null;
   },
 });
 
 /** Isolated, bounded continuation so snapshot cleanup cannot fail other pruning. */
 export const prune = internalMutation({
   args: { cursor: v.optional(v.string()) },
+  returns: v.object({ deleted: v.number(), isDone: v.boolean() }),
   handler: async (ctx, { cursor }) => {
     const page = await ctx.db
       .query('providerSnapshots')

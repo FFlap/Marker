@@ -12,7 +12,7 @@ export function parseTitleRoute(params: TitleRouteParams) {
     params.mediaType === 'movie' || params.mediaType === 'tv' ? params.mediaType : undefined;
   const rawTmdbId = params.tmdbId ?? '';
   const tmdbId = Number(rawTmdbId);
-  const validId = rawTmdbId.trim() !== '' && Number.isInteger(tmdbId) && tmdbId >= 1;
+  const validId = rawTmdbId.trim() !== '' && Number.isSafeInteger(tmdbId) && tmdbId >= 1;
   return {
     mediaType,
     tmdbId,
@@ -27,6 +27,8 @@ export function parseTitlePreview(value?: string): SearchResult | undefined {
     const parsed = JSON.parse(value) as Partial<SearchResult>;
     if (
       typeof parsed.id !== 'number' ||
+      !Number.isSafeInteger(parsed.id) ||
+      parsed.id < 1 ||
       typeof parsed.title !== 'string' ||
       !parsed.title.trim() ||
       (parsed.mediaType !== 'movie' && parsed.mediaType !== 'tv') ||

@@ -25,6 +25,7 @@ import { LibraryEntryDrawer } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
 import { DetailPageSkeleton } from '@/components/PageSkeletons';
 import { SeasonPicker } from '@/components/SeasonPicker';
+import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
 import { SeasonProgress } from '@/features/title/components/SeasonProgress';
 import { SectionHeader } from '@/features/title/components/SectionHeader';
 import { useMetadataRecoveryTimers, useTitleView } from '@/hooks/use-title-view';
@@ -57,9 +58,8 @@ export default function ItemDetailScreen() {
 function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [selectedSeason, setSeason] = useState(1);
   const episodeApi = api.library.episodes;
-  const list = useQuery(api.library.items.listItems);
   const itemView = useQuery(api.resolvedMetadata.reads.getItemView, { itemId });
-  const item = itemView?.item ?? list?.find((entry) => entry._id === itemId);
+  const item = itemView?.item;
   const title = itemView?.title;
   const season = selectAvailableSeason(title?.seasons, selectedSeason);
   const setSeasonWatched = useAction(api.library.seasonWatched.setSeasonWatched);
@@ -93,6 +93,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [pendingEpisodes, setPendingEpisodes] = useState<Set<string>>(() => new Set());
   const [removePending, setRemovePending] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [tagPrefix, setTagPrefix] = useState('');
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
   const [entrySaving, setEntrySaving] = useState(false);
   const [seasonPending, setSeasonPending] = useState(false);
@@ -165,7 +166,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     retouchTitle: () => touchItemView(),
     retouchSeason: () => touchItemView({ season }),
   });
-  const tags = useMemo(() => (list ? [...new Set(list.flatMap((i) => i.tags))] : []), [list]);
+  const tags =
+    useQuery(
+      api.library.items.listTagSuggestions,
+      entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
+    ) ?? [];
   const savedByEpisode = useMemo(
     () =>
       new Map(
@@ -173,7 +178,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       ),
     [savedEpisodes],
   );
-  if (!item && (itemView === undefined || list === undefined))
+  if (itemView === undefined)
     return (
       <View style={s.root}>
         <SecondaryHeader title="Details" maxWidth={760} />
@@ -253,9 +258,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     ...detail,
   };
   const overview = meta.overview?.trim();
-  const availableSeasons = (meta.seasons ?? [])
-    .filter((entry) => entry.season >= 0 && entry.episodeCount > 0)
-    .sort((a, b) => a.season - b.season);
+  const availableSeasons = getAvailableSeasons(meta.seasons);
   const setSeasonState = async (
     seasonNumber: number,
     watched: boolean,
@@ -446,6 +449,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 mode="update"
                 initial={draft}
                 suggestions={tags}
+                onTagPrefixChange={setTagPrefix}
                 saving={entrySaving}
                 onSubmit={saveEntry}
                 watchedHint={

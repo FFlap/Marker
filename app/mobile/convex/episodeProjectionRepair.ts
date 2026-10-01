@@ -57,7 +57,7 @@ async function repairContext(ctx: MutationCtx, item: Doc<'items'>) {
     title,
     mapping,
     seasons: [...title.seasons]
-      .filter((season) => season.episodeCount > 0)
+      .filter((season) => season.episodeCountVerified === false || season.episodeCount > 0)
       .sort((left, right) => seasonOrderValue(left.season) - seasonOrderValue(right.season)),
   };
 }

@@ -116,6 +116,8 @@ async function loadRefreshContext(ctx: MutationCtx, item: Doc<'items'>) {
 type RefreshContext = NonNullable<Awaited<ReturnType<typeof loadRefreshContext>>>;
 
 function seasonNeedsCoordinate(context: RefreshContext, season: RefreshContext['seasons'][number]) {
+  // Unknown provider totals cannot rule out already-published canonical episodes.
+  if (season.episodeCountVerified === false) return true;
   if (season.episodeCount <= 0) return false;
   const summary = context.summaryBySeason.get(season.season);
   if (!summary) return true;

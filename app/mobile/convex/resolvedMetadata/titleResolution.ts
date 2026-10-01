@@ -21,11 +21,10 @@ import {
   type ProviderTitle,
   type ResolvedTitle,
 } from './shared';
-import { hideResolvedEmptySeasons } from '../seasonNames';
 import { type AssembledSeason, type ResolvedEpisode } from '../seasonStorage';
 
 export async function authorizeRefresh(ctx: { runMutation: Function }, userId: string) {
-  const allowed = await ctx.runMutation(internal.tmdb.consumeThrottle, {
+  const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
     key: `resolved:${userId}`,
   });
   if (!allowed) throw new Error('Too many metadata refreshes — try again shortly');
@@ -130,7 +129,11 @@ export async function resolveFreshTitle(
     partial = true;
     partialError = new Error('TVDB mapping disappeared during refresh');
   }
-  const seasons = anime?.seasons.length ? anime.seasons : (tmdb.seasons ?? []);
+  if (anime?.seasons.some((season) => season.episodeCountVerified === false)) {
+    partial = true;
+    partialError ??= new Error('TVDB season counts are incomplete');
+  }
+  const seasons = anime ? anime.seasons : (tmdb.seasons ?? []);
   const selectedSeason = anime?.selectedSeason ?? seasons.find((entry) => entry.season > 0)?.season;
   const tmdbSeasonResult: ProviderOutcome<ResolvedEpisode[]> =
     loadSelectedSeason && args.mediaType === 'tv' && selectedSeason !== undefined
@@ -156,13 +159,6 @@ export async function resolveFreshTitle(
     refreshedAt,
     refreshedAt + (partial ? PARTIAL_RETRY_MS : TITLE_FRESH_MS),
   );
-  if (args.mediaType === 'tv') {
-    const resolvedSeasonCounts = (await ctx.runQuery(
-      internal.resolvedMetadata.reads.readResolvedSeasonCounts,
-      { tmdbId: args.tmdbId },
-    )) as { season: number; episodeCount: number }[];
-    value.seasons = hideResolvedEmptySeasons(value.seasons, resolvedSeasonCounts);
-  }
   return {
     value,
     partial,

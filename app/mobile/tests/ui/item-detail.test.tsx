@@ -144,6 +144,7 @@ jest.mock('../../convex/_generated/api', () => ({
     library: {
       items: {
         listItems: 'listItems',
+        listTagSuggestions: 'listTagSuggestions',
         updateItem: 'updateItem',
         removeItem: 'removeItem',
       },
@@ -250,6 +251,14 @@ describe('item detail metadata subscriptions', () => {
         <ItemDetail />
       </ToastProvider>,
     );
+
+  it('trusts a missing item view instead of falling back to the library subscription', async () => {
+    itemView = null;
+    const view = await renderScreen();
+    expect(view.getByText('Title not found')).toBeTruthy();
+    expect(mockUseQuery).not.toHaveBeenCalledWith('listItems');
+    expect(mockUseQuery).toHaveBeenCalledWith('listTagSuggestions', 'skip');
+  });
 
   it('hides empty library seasons and selects the first season with episodes', async () => {
     itemView = {

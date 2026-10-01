@@ -9,6 +9,7 @@ import { api } from '@convex/_generated/api';
 import { LibraryEntryDrawer, type LibraryEntryDraft } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SeasonPicker } from '@/components/SeasonPicker';
+import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
 import { InlineAction, SectionHeader } from '@/features/title/components/SectionHeader';
 import { SeasonHeaderRow } from '@/features/title/components/SeasonProgress';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
@@ -151,10 +152,13 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     !seasonRow &&
     canonicalSeason.status === 'LoadingFirstPage' &&
     seasonRequestState?.state !== 'failed' &&
-    seasonRequestState?.state !== 'notFound';
+    seasonRequestState?.state !== 'notFound' &&
+    touchError === undefined;
   const seasonError =
     !seasonRow &&
-    (seasonRequestState?.state === 'failed' || seasonRequestState?.state === 'notFound');
+    (seasonRequestState?.state === 'failed' ||
+      seasonRequestState?.state === 'notFound' ||
+      touchError !== undefined);
   const canLoadMore =
     canonicalSeason.status === 'CanLoadMore' &&
     seasonRow !== undefined &&
@@ -186,9 +190,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     seasons: detail?.seasons ?? [],
   };
   const overview = meta.overview?.trim();
-  const availableSeasons = meta.seasons
-    .filter((entry) => entry.season >= 0 && entry.episodeCount > 0)
-    .sort((left, right) => left.season - right.season);
+  const availableSeasons = getAvailableSeasons(meta.seasons);
   const visibleEpisodes = loadedSeason === season ? episodes : [];
   const averageRuntime =
     detail?.runtime ??

@@ -1,4 +1,4 @@
-import { action, internalAction, internalMutation } from './_generated/server';
+import { action, internalAction } from './_generated/server';
 import { internal } from './_generated/api';
 import { v } from 'convex/values';
 import { getClerkUserId } from './clerkAuth';
@@ -6,6 +6,7 @@ import { providerFetch } from './providerHttp';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
 import { boundedEpisode, MAX_SEASON_EPISODES } from './seasonStorage';
 import { validateInteger, validateTmdbId } from './providerValidation';
+import { providerSearchResultsValidator } from './providerValidators';
 
 type Json = Record<string, unknown>;
 type SnapshotCtx = { runQuery: Function; runMutation: Function };
@@ -173,7 +174,9 @@ async function request(ctx: ProviderRequestCtx, path: string, emptyOnNotFound = 
       provider: 'tmdb',
       operation: path.split('?')[0],
       beforeRequest: () =>
-        ctx.runMutation(internal.tmdb.consumeGlobalProviderLimiter, { provider: 'tmdb' }),
+        ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+          provider: 'tmdb',
+        }),
     },
   );
   if (response.status === 404 && emptyOnNotFound) return {};
@@ -190,71 +193,18 @@ async function authenticated(ctx: Parameters<typeof getClerkUserId>[0]) {
   if (!userId) throw new Error('Authentication required');
   return userId;
 }
-export const consumeThrottle = internalMutation({
-  args: { key: v.string() },
-  handler: async (ctx, { key }) => {
-    const now = Date.now();
-    const row = await ctx.db
-      .query('requestThrottle')
-      .withIndex('by_key', (q) => q.eq('key', key))
-      .unique();
-    if (!row) {
-      await ctx.db.insert('requestThrottle', { key, windowStart: now, count: 1 });
-      return true;
-    }
-    if (now - row.windowStart >= 60_000) {
-      await ctx.db.patch(row._id, { windowStart: now, count: 1 });
-      return true;
-    }
-    if (row.count >= 60) return false;
-    await ctx.db.patch(row._id, { count: row.count + 1 });
-    return true;
-  },
-});
-/** Shared provider budget consumed immediately before every outbound attempt. */
-export const consumeGlobalProviderLimiter = internalMutation({
-  args: { provider: v.union(v.literal('tmdb'), v.literal('tvdb')) },
-  handler: async (ctx, { provider }) => {
-    const key = `${provider}-global`;
-    const now = Date.now();
-    const row = await ctx.db
-      .query('requestThrottle')
-      .withIndex('by_key', (q) => q.eq('key', key))
-      .unique();
-    if (!row) {
-      await ctx.db.insert('requestThrottle', { key, windowStart: now, count: 1 });
-      return true;
-    }
-    if (now - row.windowStart >= 60_000) {
-      await ctx.db.patch(row._id, { windowStart: now, count: 1 });
-      return true;
-    }
-    if (row.count >= 300) return false;
-    await ctx.db.patch(row._id, { count: row.count + 1 });
-    return true;
-  },
-});
 async function authorizeAction(
   ctx: Parameters<typeof getClerkUserId>[0] & { runMutation: Function },
 ) {
   const userId = await authenticated(ctx);
-  const allowed = await ctx.runMutation(internal.tmdb.consumeThrottle, { key: `tmdb:${userId}` });
+  const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
+    key: `tmdb:${userId}`,
+  });
   if (!allowed) throw new Error('Too many requests — try again shortly');
 }
 export const searchMulti = action({
   args: { query: v.string() },
-  returns: v.array(
-    v.object({
-      id: v.number(),
-      title: v.string(),
-      originalTitle: v.optional(v.string()),
-      mediaType: v.union(v.literal('movie'), v.literal('tv')),
-      posterPath: v.optional(v.string()),
-      overview: v.optional(v.string()),
-      releaseDate: v.optional(v.string()),
-      voteAverage: v.optional(v.number()),
-    }),
-  ),
+  returns: providerSearchResultsValidator,
   handler: async (ctx, { query }) => {
     await authorizeAction(ctx);
     const normalized = query.trim();
@@ -265,6 +215,7 @@ export const searchMulti = action({
 });
 export const internalSearchTv = internalAction({
   args: { query: v.string() },
+  returns: providerSearchResultsValidator,
   handler: async (ctx, { query }) => search(ctx, query, 'tv'),
 });
 export const refreshMovieDetails = internalAction({

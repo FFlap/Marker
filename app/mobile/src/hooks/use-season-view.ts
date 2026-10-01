@@ -1,27 +1,12 @@
 import { useMemo } from 'react';
 import { usePaginatedQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
+import { currentSeasonPages } from '@/features/title/seasonPages';
+export { selectAvailableSeason } from '@/features/title/seasons';
 
 // One resolved season page contains at most 120 episodes. Render the complete
 // season so users can jump to any episode without waiting for another batch.
 export const SEASON_EPISODE_RENDER_BATCH = 120;
-
-export function selectAvailableSeason(
-  seasons: { season: number; episodeCount: number }[] | undefined,
-  selectedSeason: number,
-) {
-  // Match the picker: seasons without available episodes are not selectable.
-  const available = seasons?.filter((entry) => entry.season >= 0 && entry.episodeCount > 0);
-  const firstSeason =
-    available
-      ?.filter((entry) => entry.season > 0)
-      .sort((left, right) => left.season - right.season)[0]?.season ??
-    available?.[0]?.season ??
-    1;
-  return available?.some((entry) => entry.season === selectedSeason) === false
-    ? firstSeason
-    : selectedSeason;
-}
 
 /** Subscribes to one bounded season chunk at a time and accumulates loaded pages. */
 export function useSeasonView(args: { tmdbId: number; season: number } | undefined) {
@@ -30,15 +15,11 @@ export function useSeasonView(args: { tmdbId: number; season: number } | undefin
     initialNumItems: 1,
   });
   const { firstPage, episodes, pageCount } = useMemo(() => {
-    const pages = paginated.results.filter(
-      (page) => season !== undefined && page.season === season,
-    );
+    const pages = currentSeasonPages(paginated.results, season);
     return {
       firstPage: pages[0],
       pageCount: pages.length,
-      episodes: [...pages]
-        .sort((left, right) => left.chunkIndex - right.chunkIndex)
-        .flatMap((page) => page.episodes),
+      episodes: pages.flatMap((page) => page.episodes),
     };
   }, [paginated.results, season]);
   return {
