@@ -226,6 +226,8 @@ export const updateItem = mutation({
         status: args.status,
       });
     await writeActivityEvents(ctx, events);
+    if (item.mediaType === 'tv' && args.status === 'watching' && item.status !== 'watching')
+      await refreshNextEpisode(ctx, item._id);
   },
 });
 

@@ -51,7 +51,6 @@ import {
   type RankedItem,
   TagPoster,
   TagSkeleton,
-  TagStatusDropZone,
 } from '@/features/tags/components/TagScreenParts';
 
 export default function TagDetailScreen() {
@@ -405,7 +404,7 @@ export default function TagDetailScreen() {
             {visibleStatuses.map(([status, label]) => {
               const items = sectionItems(status);
               return (
-                <TagStatusDropZone
+                <View
                   key={status}
                   onLayout={(event) => {
                     const { height, y } = event.nativeEvent.layout;
@@ -528,7 +527,7 @@ export default function TagDetailScreen() {
                       )}
                     </View>
                   )}
-                </TagStatusDropZone>
+                </View>
               );
             })}
           </PinchDensity>

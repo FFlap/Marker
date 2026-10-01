@@ -2,6 +2,8 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
+import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { updateItemTagPreviews } from '../tagCollectionsModel';
 import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
   FAILED_TOUCH_BACKOFF_MS,
@@ -43,12 +45,10 @@ export async function publishCanonicalMetadata(
       args.writeSeason && args.season
         ? {
             ...args.title,
-            seasons: args.title.seasons.flatMap((entry) =>
-              entry.season !== args.season!.season
-                ? [entry]
-                : args.season!.episodeCount > 0
-                  ? [{ ...entry, episodeCount: args.season!.episodeCount }]
-                  : [],
+            seasons: args.title.seasons.map((entry) =>
+              entry.season === args.season!.season
+                ? { ...entry, episodeCount: args.season!.episodeCount, episodeCountVerified: true }
+                : entry,
             ),
           }
         : args.title;
@@ -67,7 +67,7 @@ export async function publishCanonicalMetadata(
     await ctx.db.patch(existingTitle._id, {
       seasons: existingTitle.seasons.map((entry) =>
         entry.season === args.season!.season
-          ? { ...entry, episodeCount: args.season!.episodeCount }
+          ? { ...entry, episodeCount: args.season!.episodeCount, episodeCountVerified: true }
           : entry,
       ),
     });
@@ -132,6 +132,12 @@ export const refreshItemProjections = internalMutation({
         genres: title.genres,
         isAnime: title.genres.some((genre) => genre.toLowerCase() === 'anime'),
       });
+      if (item.title !== title.title || item.posterPath !== title.posterPath)
+        await updateItemTagPreviews(ctx, item._id, {
+          title: title.title,
+          posterPath: title.posterPath,
+        });
+      if (item.runtime !== runtime) await requestProfileStatsRefresh(ctx, item.userId);
       if (type === 'tv') {
         await ctx.scheduler.runAfter(0, internal.nextEpisode.startNextEpisodeRefresh, {
           itemId: item._id,

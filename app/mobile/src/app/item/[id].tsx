@@ -25,15 +25,12 @@ import { LibraryEntryDrawer } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
 import { DetailPageSkeleton } from '@/components/PageSkeletons';
 import { SeasonPicker } from '@/components/SeasonPicker';
+import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
 import { SeasonProgress } from '@/features/title/components/SeasonProgress';
 import { SectionHeader } from '@/features/title/components/SectionHeader';
-import { useMetadataRecoveryTimers, useTitleView } from '@/hooks/use-title-view';
+import { useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
-import {
-  SEASON_EPISODE_RENDER_BATCH,
-  selectAvailableSeason,
-  useSeasonView,
-} from '@/hooks/use-season-view';
+import { SEASON_EPISODE_RENDER_BATCH, useSeasonView } from '@/hooks/use-season-view';
 import { libraryItemScreenStyles as s } from '@/features/title/screens/LibraryItemScreen.styles';
 import { EpisodeCard } from '@/features/title/components/EpisodeCard';
 import {
@@ -57,11 +54,16 @@ export default function ItemDetailScreen() {
 function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [selectedSeason, setSeason] = useState(1);
   const episodeApi = api.library.episodes;
-  const list = useQuery(api.library.items.listItems);
-  const itemView = useQuery(api.resolvedMetadata.reads.getItemView, { itemId });
-  const item = itemView?.item ?? list?.find((entry) => entry._id === itemId);
-  const title = itemView?.title;
-  const season = selectAvailableSeason(title?.seasons, selectedSeason);
+  const {
+    item,
+    title,
+    loading: itemViewLoading,
+    season,
+    titleRequestState,
+    seasonRequestState,
+    touchError,
+    refresh,
+  } = useTitleView({ itemId, season: selectedSeason });
   const setSeasonWatched = useAction(api.library.seasonWatched.setSeasonWatched);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const update = useMutation(api.library.items.updateItem),
@@ -76,23 +78,13 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     item ? { itemId, season, pageCount: Math.max(1, seasonView.pageCount) } : 'skip',
   );
   const episodeProgress = useQuery(episodeApi.listEpisodeProgress, item ? { itemId } : 'skip');
-  const seasonRequestState = useQuery(
-    api.resolvedMetadata.reads.getSeasonRequestState,
-    item?.mediaType === 'tv' ? { tmdbId: item.tmdbId, season } : 'skip',
-  );
-  const titleRequestState = useQuery(
-    api.resolvedMetadata.reads.getTitleRequestState,
-    item ? { mediaType: item.mediaType, tmdbId: item.tmdbId } : 'skip',
-  );
   const [expanded, setExpanded] = useState<string>();
   const [editingEpisode, setEditingEpisode] = useState<string>();
-  const { touchError, touchItemView } = useTitleView(undefined, itemId, titleRequestState, false);
-  const metadataRefresh = useRefreshControl(() =>
-    touchItemView(item?.mediaType === 'tv' ? { season, force: true } : { force: true }),
-  );
+  const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
   const [pendingEpisodes, setPendingEpisodes] = useState<Set<string>>(() => new Set());
   const [removePending, setRemovePending] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [tagPrefix, setTagPrefix] = useState('');
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
   const [entrySaving, setEntrySaving] = useState(false);
   const [seasonPending, setSeasonPending] = useState(false);
@@ -129,11 +121,6 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       return next;
     });
   }, [savedEpisodes]);
-  const itemMediaType = item?.mediaType;
-  useEffect(() => {
-    if (!itemMediaType) return;
-    touchItemView(itemMediaType === 'tv' ? { season } : undefined);
-  }, [itemMediaType, itemId, season, touchItemView]);
   const detail = title;
   const returnedSeasonRow = seasonView.season;
   const seasonRow = returnedSeasonRow?.season === season ? returnedSeasonRow : undefined;
@@ -157,15 +144,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     seasonView.status === 'CanLoadMore' &&
     seasonRow !== undefined &&
     episodes.length < seasonRow.totalCount;
-  useMetadataRecoveryTimers({
-    titleKey: item ? `item:${itemId}` : undefined,
-    titleState: titleRequestState,
-    seasonKey: item?.mediaType === 'tv' ? `season:${item.tmdbId}:${season}` : undefined,
-    seasonState: seasonRequestState,
-    retouchTitle: () => touchItemView(),
-    retouchSeason: () => touchItemView({ season }),
-  });
-  const tags = useMemo(() => (list ? [...new Set(list.flatMap((i) => i.tags))] : []), [list]);
+  const tags =
+    useQuery(
+      api.library.items.listTagSuggestions,
+      entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
+    ) ?? [];
   const savedByEpisode = useMemo(
     () =>
       new Map(
@@ -173,7 +156,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       ),
     [savedEpisodes],
   );
-  if (!item && (itemView === undefined || list === undefined))
+  if (itemViewLoading)
     return (
       <View style={s.root}>
         <SecondaryHeader title="Details" maxWidth={760} />
@@ -253,9 +236,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     ...detail,
   };
   const overview = meta.overview?.trim();
-  const availableSeasons = (meta.seasons ?? [])
-    .filter((entry) => entry.season >= 0 && entry.episodeCount > 0)
-    .sort((a, b) => a.season - b.season);
+  const availableSeasons = getAvailableSeasons(meta.seasons);
   const setSeasonState = async (
     seasonNumber: number,
     watched: boolean,
@@ -386,11 +367,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
             {detailsError && !title && (
               <View style={s.inlineError}>
                 <Text style={s.errorText}>Title details couldn’t be loaded.</Text>
-                <Button
-                  title="Retry"
-                  variant="ghost"
-                  onPress={() => touchItemView({ season, force: true })}
-                />
+                <Button title="Retry" variant="ghost" onPress={() => refresh({ force: true })} />
               </View>
             )}
             {titleUpdateFailed && title && (
@@ -446,6 +423,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 mode="update"
                 initial={draft}
                 suggestions={tags}
+                onTagPrefixChange={setTagPrefix}
                 saving={entrySaving}
                 onSubmit={saveEntry}
                 watchedHint={
@@ -525,7 +503,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                           .catch((error: unknown) => {
                             if (isStaleSeasonError(error)) {
                               toast.show('Season data changed — refreshing');
-                              touchItemView({ season, force: true });
+                              refresh({ force: true });
                             } else toast.show('Couldn’t update this season');
                           })
                           .finally(() => setSeasonPending(false));
@@ -540,7 +518,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                         <Button
                           title="Retry"
                           variant="ghost"
-                          onPress={() => touchItemView({ season, force: true })}
+                          onPress={() => refresh({ force: true })}
                         />
                       </View>
                     )}

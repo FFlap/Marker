@@ -30,7 +30,12 @@ export type AnimeDetails = {
   episodeRunTime: number[];
   genres: string[];
   order: SeasonOrder;
-  seasons: { season: number; name: string; episodeCount: number }[];
+  seasons: {
+    season: number;
+    name: string;
+    episodeCount: number;
+    episodeCountVerified?: boolean;
+  }[];
   selectedSeason?: number;
   selectedEpisodes?: AnimeEpisode[];
 };

@@ -78,7 +78,9 @@ async function request(ctx: { runMutation: Function }, path: string) {
       provider: 'tmdb',
       operation: path.split('?')[0],
       beforeRequest: () =>
-        ctx.runMutation(internal.tmdb.consumeGlobalProviderLimiter, { provider: 'tmdb' }),
+        ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+          provider: 'tmdb',
+        }),
     },
   );
   if (!response.ok) throw new Error(`TMDB calendar request failed (${response.status})`);

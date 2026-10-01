@@ -278,7 +278,7 @@ export async function updateSummaryForEpisodeUpsert(
   });
   const afterRuntime = runtimeContribution({
     watched,
-    runtime: next?.runtime ?? existing?.runtime,
+    runtime: next && 'runtime' in next ? next.runtime : existing?.runtime,
     unverified: next?.unverified ?? existing?.unverified,
   });
   await applyEpisodeSummaryDelta(ctx, {

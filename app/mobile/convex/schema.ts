@@ -1,6 +1,15 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { resolvedEpisodeValidator } from './publicValidators';
+import {
+  episodeValidator,
+  itemValidator,
+  mediaTypeValidator,
+  metadataProviderValidator,
+  resolvedEpisodeValidator,
+  resolvedTitleValidator,
+  statusValidator,
+} from './publicValidators';
+import { providerSnapshotEntryValidator } from './providerValidators';
 
 const users = defineTable({
   clerkId: v.string(),
@@ -23,57 +32,11 @@ const users = defineTable({
 
 const resolvedEpisode = resolvedEpisodeValidator;
 
-const resolvedSeason = v.object({
-  season: v.number(),
-  name: v.string(),
-  episodeCount: v.number(),
-});
-
-const nextEpisode = v.object({
-  season: v.number(),
-  episode: v.number(),
-  chunkIndex: v.optional(v.number()),
-  seasonName: v.optional(v.string()),
-  name: v.optional(v.string()),
-  overview: v.optional(v.string()),
-  airDate: v.optional(v.string()),
-  undatedReleased: v.optional(v.boolean()),
-  runtime: v.optional(v.number()),
-  imageUrl: v.optional(v.string()),
-  providerEpisodeId: v.optional(v.number()),
-});
-
-const castMember = v.object({
-  name: v.string(),
-  character: v.string(),
-  profilePath: v.optional(v.string()),
-});
-
-const resolvedTitle = v.object({
-  tmdbId: v.number(),
-  mediaType: v.union(v.literal('movie'), v.literal('tv')),
-  title: v.string(),
-  posterPath: v.optional(v.string()),
-  overview: v.optional(v.string()),
-  releaseDate: v.optional(v.string()),
-  firstAirDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-  runtime: v.optional(v.number()),
-  episodeRunTime: v.array(v.number()),
-  genres: v.array(v.string()),
-  cast: v.array(castMember),
-  seasons: v.array(resolvedSeason),
-  metadataProvider: v.union(v.literal('tmdb'), v.literal('tvdb')),
-  tvdbId: v.optional(v.number()),
-  seasonOrder: v.optional(v.string()),
-  refreshedAt: v.number(),
-  refreshAfter: v.number(),
-  orderEpoch: v.number(),
-});
+const resolvedTitle = resolvedTitleValidator.omit('_id', '_creationTime');
 
 const mappingWrite = v.object({
   tmdbId: v.number(),
-  mediaType: v.union(v.literal('movie'), v.literal('tv')),
+  mediaType: mediaTypeValidator,
   tvdbId: v.optional(v.number()),
   seasonOrder: v.optional(v.string()),
   source: v.union(v.literal('auto'), v.literal('manual')),
@@ -90,108 +53,6 @@ const mappingIdentity = v.object({
 
 const watchedTagCount = v.object({ tag: v.string(), count: v.number() });
 
-const providerCastMember = castMember;
-const providerSearchResult = v.object({
-  id: v.number(),
-  title: v.string(),
-  originalTitle: v.optional(v.string()),
-  mediaType: v.union(v.literal('movie'), v.literal('tv')),
-  posterPath: v.optional(v.string()),
-  overview: v.optional(v.string()),
-  releaseDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-});
-const providerMovie = v.object({
-  id: v.number(),
-  title: v.string(),
-  mediaType: v.literal('movie'),
-  posterPath: v.optional(v.string()),
-  overview: v.optional(v.string()),
-  releaseDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-  runtime: v.optional(v.number()),
-  genres: v.array(v.string()),
-  cast: v.array(providerCastMember),
-});
-const providerTv = v.object({
-  id: v.number(),
-  title: v.string(),
-  originalTitle: v.optional(v.string()),
-  mediaType: v.literal('tv'),
-  posterPath: v.optional(v.string()),
-  overview: v.optional(v.string()),
-  firstAirDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-  episodeRunTime: v.array(v.number()),
-  genres: v.array(v.string()),
-  seasons: v.array(resolvedSeason),
-  cast: v.array(providerCastMember),
-});
-const providerAnimeEpisode = v.object({
-  id: v.number(),
-  providerEpisodeId: v.optional(v.number()),
-  season: v.number(),
-  episode: v.number(),
-  name: v.string(),
-  overview: v.optional(v.string()),
-  runtime: v.optional(v.number()),
-  imageUrl: v.optional(v.string()),
-  airDate: v.optional(v.string()),
-});
-const providerAnimeGuide = v.object({
-  tvdbId: v.number(),
-  title: v.string(),
-  firstAirDate: v.optional(v.string()),
-  episodeRunTime: v.array(v.number()),
-  genres: v.array(v.string()),
-  order: v.string(),
-  seasons: v.array(resolvedSeason),
-  selectedSeason: v.optional(v.number()),
-  selectedEpisodes: v.optional(v.array(providerAnimeEpisode)),
-});
-const calendarMovieRelease = v.object({ date: v.string(), priority: v.number() });
-const calendarTvNext = v.object({ airDate: v.string(), season: v.number() });
-const calendarSeasonEpisode = v.object({
-  date: v.string(),
-  season: v.number(),
-  episode: v.number(),
-  name: v.optional(v.string()),
-});
-const providerSnapshotEntry = v.union(
-  v.object({ kind: v.literal('tmdbSearch'), value: v.array(providerSearchResult) }),
-  v.object({ kind: v.literal('tmdbMovie'), value: providerMovie }),
-  v.object({ kind: v.literal('tmdbTv'), value: providerTv }),
-  v.object({
-    kind: v.literal('episodes'),
-    value: v.union(v.array(resolvedEpisode), v.array(providerAnimeEpisode)),
-  }),
-  v.object({
-    kind: v.literal('tvdbGuide'),
-    value: v.union(v.null(), providerAnimeGuide),
-  }),
-  v.object({
-    kind: v.literal('tvdbLookup'),
-    value: v.object({
-      tvdbId: v.number(),
-      order: v.string(),
-      authoritativeNames: v.array(v.string()),
-    }),
-  }),
-  v.object({ kind: v.literal('calendarMovie'), value: v.array(calendarMovieRelease) }),
-  v.object({ kind: v.literal('calendarTv'), value: v.union(v.null(), calendarTvNext) }),
-  v.object({
-    kind: v.literal('calendarSeason'),
-    value: v.array(calendarSeasonEpisode),
-  }),
-  v.object({
-    kind: v.literal('truncated'),
-    value: v.object({
-      __truncatedProviderSnapshot: v.literal(true),
-      originalBytes: v.number(),
-    }),
-  }),
-);
-
 export default defineSchema({
   users,
   avatarUploads: defineTable({
@@ -202,36 +63,8 @@ export default defineSchema({
   })
     .index('by_storage', ['storageId'])
     .index('by_status_created', ['status', 'createdAt']),
-  items: defineTable({
-    userId: v.id('users'),
-    tmdbId: v.number(),
-    mediaType: v.union(v.literal('movie'), v.literal('tv')),
-    title: v.string(),
-    normalizedTitle: v.string(),
-    posterPath: v.optional(v.string()),
-    overview: v.optional(v.string()),
-    releaseDate: v.optional(v.string()),
-    runtime: v.optional(v.number()),
-    genres: v.optional(v.array(v.string())),
-    isAnime: v.boolean(),
-    status: v.union(
-      v.literal('watched'),
-      v.literal('watching'),
-      v.literal('watchlist'),
-      v.literal('dropped'),
-    ),
-    rating: v.optional(v.number()),
-    ratingScale: v.optional(v.literal(5)),
-    timesWatched: v.number(),
-    tags: v.array(v.string()),
-    rank: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    deletingAt: v.optional(v.number()),
-    nextEpisode: v.optional(nextEpisode),
-  })
+  items: defineTable(itemValidator.omit('_id', '_creationTime'))
     .index('by_user', ['userId'])
-    .index('by_user_updated_at', ['userId', 'updatedAt'])
     .index('by_user_status', ['userId', 'status', 'rank'])
     .index('by_user_status_title', ['userId', 'status', 'normalizedTitle'])
     .index('by_user_normalized', ['userId', 'normalizedTitle'])
@@ -306,34 +139,12 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_collection_rank', ['collectionId', 'rank'])
-    .index('by_user_tag_rank', ['userId', 'tagKey', 'rank'])
     .index('by_user_tag_item', ['userId', 'tagKey', 'itemId'])
     .index('by_item', ['itemId']),
-  episodes: defineTable({
-    userId: v.id('users'),
-    itemId: v.id('items'),
-    season: v.number(),
-    episode: v.number(),
-    seasonName: v.optional(v.string()),
-    name: v.optional(v.string()),
-    overview: v.optional(v.string()),
-    runtime: v.optional(v.number()),
-    imageUrl: v.optional(v.string()),
-    airDate: v.optional(v.string()),
-    unverified: v.optional(v.boolean()),
-    watched: v.boolean(),
-    rating: v.optional(v.number()),
-    ratingScale: v.optional(v.literal(5)),
-    tags: v.array(v.string()),
-    watchedAt: v.optional(v.number()),
-    metadataProvider: v.union(v.literal('tmdb'), v.literal('tvdb')),
-    seasonOrder: v.optional(v.string()),
-    providerEpisodeId: v.optional(v.number()),
-  })
+  episodes: defineTable(episodeValidator.omit('_id', '_creationTime'))
     .index('by_item', ['itemId', 'season', 'episode'])
     .index('by_item_identity', ['itemId', 'season', 'metadataProvider', 'seasonOrder', 'episode'])
     .index('by_user', ['userId'])
-    .index('by_user_watched_at', ['userId', 'watchedAt'])
     .index('by_user_watched_rating', ['userId', 'watched', 'rating']),
   episodeSummaries: defineTable({
     userId: v.id('users'),
@@ -406,14 +217,7 @@ export default defineSchema({
     episode: v.optional(v.number()),
     rating: v.optional(v.number()),
     ratingScale: v.optional(v.literal(5)),
-    status: v.optional(
-      v.union(
-        v.literal('watched'),
-        v.literal('watching'),
-        v.literal('watchlist'),
-        v.literal('dropped'),
-      ),
-    ),
+    status: v.optional(statusValidator),
     createdAt: v.number(),
   }).index('by_actor_time', ['userId', 'createdAt']),
   requestThrottle: defineTable({
@@ -423,7 +227,7 @@ export default defineSchema({
   }).index('by_key', ['key']),
   providerSnapshots: defineTable({
     key: v.string(),
-    entry: providerSnapshotEntry,
+    entry: providerSnapshotEntryValidator,
     refreshedAt: v.number(),
   })
     .index('by_key', ['key'])
@@ -434,7 +238,7 @@ export default defineSchema({
   resolvedSeasons: defineTable({
     tmdbId: v.number(),
     season: v.number(),
-    metadataProvider: v.union(v.literal('tmdb'), v.literal('tvdb')),
+    metadataProvider: metadataProviderValidator,
     episodeCount: v.optional(v.number()),
     chunkCount: v.optional(v.number()),
     chunksComplete: v.optional(v.boolean()),
@@ -444,7 +248,7 @@ export default defineSchema({
     writeAttemptToken: v.optional(v.string()),
     nextChunkIndex: v.optional(v.number()),
     stagingVersion: v.optional(v.string()),
-    stagingMetadataProvider: v.optional(v.union(v.literal('tmdb'), v.literal('tvdb'))),
+    stagingMetadataProvider: v.optional(metadataProviderValidator),
     stagingEpisodeCount: v.optional(v.number()),
     stagingChunkCount: v.optional(v.number()),
     stagingRefreshedAt: v.optional(v.number()),
@@ -483,15 +287,7 @@ export default defineSchema({
   })
     .index('by_key', ['key'])
     .index('by_expires', ['expiresAt']),
-  titleMappings: defineTable({
-    tmdbId: v.number(),
-    mediaType: v.union(v.literal('movie'), v.literal('tv')),
-    tvdbId: v.optional(v.number()),
-    seasonOrder: v.optional(v.string()),
-    source: v.union(v.literal('auto'), v.literal('manual')),
-    orderEpoch: v.number(),
-    updatedAt: v.number(),
-  })
+  titleMappings: defineTable(mappingWrite)
     .index('by_tmdb', ['mediaType', 'tmdbId'])
     .index('by_tvdb', ['tvdbId'])
     .index('by_updated_at', ['updatedAt']),

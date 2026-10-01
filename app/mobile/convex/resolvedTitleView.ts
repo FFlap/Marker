@@ -18,13 +18,16 @@ export async function visibleResolvedTitle(
       if (
         resolved?.chunksComplete === true &&
         resolved.orderEpoch === title.orderEpoch &&
-        resolved.episodeCount !== undefined
+        // A newer title refresh can discover releases in a previously empty season.
+        resolved.episodeCount !== undefined &&
+        (resolved.refreshedAt >= title.refreshedAt ||
+          (entry.episodeCountVerified === false && resolved.episodeCount > 0))
       ) {
         return resolved.episodeCount === 0
           ? []
-          : [{ ...entry, episodeCount: resolved.episodeCount }];
+          : [{ ...entry, episodeCount: resolved.episodeCount, episodeCountVerified: true }];
       }
-      return entry.episodeCount > 0 ? [entry] : [];
+      return entry.episodeCountVerified === false || entry.episodeCount > 0 ? [entry] : [];
     }),
   );
   return { ...title, seasons: seasons.flat() };

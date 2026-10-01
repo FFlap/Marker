@@ -11,6 +11,27 @@ import {
 } from './title-detail-fixture';
 
 describe('Explore title metadata subscriptions', () => {
+  it('keeps unknown season counts selectable while excluding verified empty seasons', async () => {
+    mockState.titleView.title.seasons = [
+      { season: 1, name: 'Season 1', episodeCount: 0, episodeCountVerified: true },
+      { season: 2, name: 'Season 2', episodeCount: 0, episodeCountVerified: false },
+    ];
+    const view = await screen();
+    expect(mockTouchTitle).toHaveBeenCalledWith(expect.objectContaining({ season: 2 }));
+    await fireEvent.press(view.getByLabelText('Choose season, current Season 2'));
+    expect(view.getByText('Episodes pending')).toBeTruthy();
+    expect(view.queryByLabelText('Select Season 1')).toBeNull();
+    expect(view.getByLabelText('Select Season 2')).toBeTruthy();
+  });
+
+  it('offers a retry when a season touch is rejected before a request state is written', async () => {
+    mockState.mockSeasonView = {};
+    mockTouchTitle.mockRejectedValue(new Error('offline'));
+    const view = await screen();
+    await waitFor(() => expect(view.getByText('Episodes couldn’t be loaded.')).toBeTruthy());
+    expect(view.getByText('Retry')).toBeTruthy();
+  });
+
   it('hides empty specials and upcoming seasons before selection', async () => {
     mockState.titleView.title.seasons[1].episodeCount = 0;
     mockState.titleView.title.seasons.push({ season: 0, name: 'Specials', episodeCount: 0 });

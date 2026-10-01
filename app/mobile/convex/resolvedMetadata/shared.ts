@@ -1,6 +1,16 @@
 import { v } from 'convex/values';
+import {
+  mediaTypeValidator,
+  metadataProviderValidator,
+  resolvedTitleValidator as publicResolvedTitleValidator,
+} from '../publicValidators';
+export {
+  castMemberValidator,
+  resolvedEpisodeValidator,
+  resolvedSeasonValidator,
+} from '../publicValidators';
 import type { Doc } from '../_generated/dataModel';
-import { getClerkUserId } from '../clerkAuth';
+export { requireUser } from '../clerkAuth';
 import { releasedEpisodes } from '../episodeAvailability';
 import { mergeGenres } from '../mergePolicy';
 import { mergeSeasonDisplayNames } from '../seasonNames';
@@ -18,55 +28,14 @@ export const FAILED_TOUCH_BACKOFF_MS = 30 * 1000;
 export const TOUCHES_PER_MINUTE = 60;
 export const GLOBAL_TOUCHES_PER_MINUTE = 600;
 export const NEW_TOUCH_KEYS_PER_HOUR = 240;
-export const mediaType = v.union(v.literal('movie'), v.literal('tv'));
-export const metadataProvider = v.union(v.literal('tmdb'), v.literal('tvdb'));
+export const mediaType = mediaTypeValidator;
+export const metadataProvider = metadataProviderValidator;
 export const refreshOutcomeValidator = v.object({
   key: v.string(),
   state: v.union(v.literal('succeeded'), v.literal('failed'), v.literal('notFound')),
   errorCode: v.optional(v.string()),
 });
-export const resolvedEpisodeValidator = v.object({
-  season: v.number(),
-  episode: v.number(),
-  name: v.string(),
-  overview: v.optional(v.string()),
-  runtime: v.optional(v.number()),
-  imageUrl: v.optional(v.string()),
-  stillPath: v.optional(v.string()),
-  airDate: v.optional(v.string()),
-  providerEpisodeId: v.optional(v.number()),
-});
-export const resolvedSeasonValidator = v.object({
-  season: v.number(),
-  name: v.string(),
-  episodeCount: v.number(),
-});
-export const castMemberValidator = v.object({
-  name: v.string(),
-  character: v.string(),
-  profilePath: v.optional(v.string()),
-});
-export const resolvedTitleValidator = v.object({
-  tmdbId: v.number(),
-  mediaType,
-  title: v.string(),
-  posterPath: v.optional(v.string()),
-  overview: v.optional(v.string()),
-  releaseDate: v.optional(v.string()),
-  firstAirDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-  runtime: v.optional(v.number()),
-  episodeRunTime: v.array(v.number()),
-  genres: v.array(v.string()),
-  cast: v.array(castMemberValidator),
-  seasons: v.array(resolvedSeasonValidator),
-  metadataProvider,
-  tvdbId: v.optional(v.number()),
-  seasonOrder: v.optional(v.string()),
-  orderEpoch: v.number(),
-  refreshedAt: v.number(),
-  refreshAfter: v.number(),
-});
+export const resolvedTitleValidator = publicResolvedTitleValidator.omit('_id', '_creationTime');
 export type MediaType = 'movie' | 'tv';
 export type MappingIdentity = {
   tvdbId?: number;
@@ -107,6 +76,14 @@ export const cleanEpisode = (episode: ResolvedEpisode): ResolvedEpisode => ({
   ...(episode.providerEpisodeId !== undefined && { providerEpisodeId: episode.providerEpisodeId }),
 });
 
+/** Matching coordinates alone cannot identify content across different provider orders. */
+const sameEpisodeContent = (primary: ResolvedEpisode, secondary: ResolvedEpisode) => {
+  if (primary.airDate && secondary.airDate) return primary.airDate === secondary.airDate;
+  const normalizeName = (name: string) => name.normalize('NFKC').trim().toLocaleLowerCase();
+  const name = normalizeName(primary.name);
+  return !!name && !/^episode\s+\d+$/iu.test(name) && name === normalizeName(secondary.name);
+};
+
 export const mergeEpisodes = (structure: ResolvedEpisode[], artwork: ResolvedEpisode[]) => {
   const byNumber = new Map(
     artwork.map((episode) => [`${episode.season}:${episode.episode}`, episode]),
@@ -120,7 +97,11 @@ export const mergeEpisodes = (structure: ResolvedEpisode[], artwork: ResolvedEpi
         : undefined);
     return cleanEpisode({
       ...cleanEpisode(episode),
-      ...(!episode.imageUrl && image?.imageUrl && { imageUrl: image.imageUrl }),
+      ...(!episode.imageUrl &&
+        image?.imageUrl &&
+        sameEpisodeContent(episode, image) && {
+          imageUrl: image.imageUrl,
+        }),
       ...(providerEpisodeId !== undefined && { providerEpisodeId }),
     });
   });
@@ -154,7 +135,7 @@ export const mergeTitle = (
       refreshAfter,
     };
 
-  const seasons = anime?.seasons.length
+  const seasons = anime
     ? mergeSeasonDisplayNames(anime.seasons, base.seasons ?? [])
     : (base.seasons ?? []);
   return {
@@ -178,10 +159,4 @@ export const mergeTitle = (
     refreshedAt,
     refreshAfter,
   };
-};
-
-export const requireUser = async (ctx: Parameters<typeof getClerkUserId>[0]) => {
-  const userId = await getClerkUserId(ctx);
-  if (!userId) throw new Error('Authentication required');
-  return userId;
 };

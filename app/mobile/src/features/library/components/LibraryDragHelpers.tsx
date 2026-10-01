@@ -1,5 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react';
-import { PanResponder, View } from 'react-native';
+import { PanResponder } from 'react-native';
 import { ReduceMotion, runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 import type { AppDrawerHandle } from '@/components/AppDrawer';
 import type { Status } from '@/types';
@@ -27,22 +26,6 @@ export const createDrawerEdgeSwipe = (drawer: AppDrawerHandle | null, isBlocked:
       if (gesture.dx >= 72) drawer?.open();
     },
   });
-
-export function StatusDropZone({
-  children,
-  onLayout,
-  style,
-}: {
-  children: ReactNode;
-  onLayout?: ComponentProps<typeof View>['onLayout'];
-  style: ComponentProps<typeof View>['style'];
-}) {
-  return (
-    <View onLayout={onLayout} style={style}>
-      {children}
-    </View>
-  );
-}
 
 export function NativeDragMonitor({
   listTop,

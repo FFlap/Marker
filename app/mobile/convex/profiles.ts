@@ -1,4 +1,4 @@
-import { getClerkUserId } from './clerkAuth';
+import { getClerkUserId, requireUser } from './clerkAuth';
 import { internal } from './_generated/api';
 import { internalMutation, mutation, query } from './_generated/server';
 import { v } from 'convex/values';
@@ -47,12 +47,6 @@ async function acceptPendingFollowBatch(ctx: MutationCtx, userId: Id<'users'>) {
   const isDone = pending.length < FOLLOW_ACCEPT_BATCH_SIZE;
   if (!isDone) await ctx.scheduler.runAfter(0, internal.profiles.acceptPendingFollows, { userId });
   return { accepted, isDone };
-}
-
-async function requireUser(ctx: Parameters<typeof getClerkUserId>[0]) {
-  const userId = await getClerkUserId(ctx);
-  if (!userId) throw new Error('Authentication required');
-  return userId;
 }
 
 async function identity(ctx: QueryCtx, userId: Id<'users'>) {

@@ -52,6 +52,7 @@ describe('metadata failure recovery', () => {
   });
 
   it('reinterprets expired in-flight rows as failed on every view surface', async () => {
+    vi.useFakeTimers();
     const { t, asUser } = await setup();
     const itemId = await addItem(asUser);
     const expiredAt = Date.now() - 1;

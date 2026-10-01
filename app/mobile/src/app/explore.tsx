@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router } from 'expo-router';
-import { useAction, useMutation, useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { ChevronRight, Plus, Search, Tags as TagsIcon } from 'lucide-react-native';
 import { api } from '../../convex/_generated/api';
 import { SecondaryHeader } from '@/components/BackButton';
@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import type { SearchResult } from '@/types';
+import { useTitleSearch } from '@/hooks/use-title-search';
 
 type Filter = 'all' | 'movie' | 'tv' | 'people' | 'tags';
 type Person = {
@@ -41,55 +42,32 @@ const filters: { value: Filter; label: string }[] = [
 ];
 const PREVIEW_RESULT_LIMIT = 3;
 export default function Explore() {
-  const searchMedia = useAction(api.tmdb.searchMulti);
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
   const toast = useToast();
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
-  const [debounced, setDebounced] = useState('');
-  const [mediaResponse, setMediaResponse] = useState<{
-    query: string;
-    results: SearchResult[];
-  }>({ query: '', results: [] });
+  const {
+    debouncedQuery,
+    ready,
+    settled,
+    results: mediaResults,
+    loading: mediaLoading,
+  } = useTitleSearch(query, { enabled: filter !== 'people' && filter !== 'tags' });
   const [pendingPeople, setPendingPeople] = useState<Set<string>>(() => new Set());
-  const generation = useRef(0);
   const library = useQuery(api.library.items.listItems);
   const people = useQuery(
     api.profiles.search,
-    debounced.length >= 2 && (filter === 'all' || filter === 'people')
-      ? { query: debounced }
+    ready && settled && (filter === 'all' || filter === 'people')
+      ? { query: debouncedQuery }
       : 'skip',
   ) as Person[] | undefined;
   const publicTags = useQuery(
     api.tags.searchPublic,
-    debounced.length >= 2 && (filter === 'all' || filter === 'tags')
-      ? { query: debounced }
+    ready && settled && (filter === 'all' || filter === 'tags')
+      ? { query: debouncedQuery }
       : 'skip',
   ) as PublicTag[] | undefined;
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(query.trim()), 300);
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  useEffect(() => {
-    const request = ++generation.current;
-    if (debounced.length < 2 || filter === 'people' || filter === 'tags') return;
-    void searchMedia({ query: debounced })
-      .then((results) => {
-        if (request === generation.current) setMediaResponse({ query: debounced, results });
-      })
-      .catch(() => {
-        if (request === generation.current) {
-          setMediaResponse({ query: debounced, results: [] });
-          toast.show('Search is unavailable right now');
-        }
-      });
-    return () => {
-      generation.current += 1;
-    };
-  }, [debounced, filter, searchMedia, toast]);
 
   const openTitle = (result: SearchResult) => {
     const existing = library?.find(
@@ -125,11 +103,6 @@ export default function Explore() {
     });
   };
 
-  const ready = debounced.length >= 2;
-  const mediaRequested = ready && filter !== 'people' && filter !== 'tags';
-  const mediaResults =
-    mediaRequested && mediaResponse.query === debounced ? mediaResponse.results : [];
-  const mediaLoading = mediaRequested && mediaResponse.query !== debounced;
   const movies = mediaResults.filter((result) => result.mediaType === 'movie');
   const shows = mediaResults.filter((result) => result.mediaType === 'tv');
   const allMovies = movies.slice(0, PREVIEW_RESULT_LIMIT);
@@ -141,13 +114,14 @@ export default function Explore() {
   const allTags = visibleTags.slice(0, PREVIEW_RESULT_LIMIT);
   const loading =
     ready &&
-    (filter === 'people'
-      ? people === undefined
-      : filter === 'tags'
-        ? publicTags === undefined
-        : filter === 'all'
-          ? mediaLoading || people === undefined || publicTags === undefined
-          : mediaLoading);
+    (!settled ||
+      (filter === 'people'
+        ? people === undefined
+        : filter === 'tags'
+          ? publicTags === undefined
+          : filter === 'all'
+            ? mediaLoading || people === undefined || publicTags === undefined
+            : mediaLoading));
   const hasResults = visibleMedia.length > 0 || visiblePeople.length > 0 || visibleTags.length > 0;
   const searchLabel = 'Search movies, TV shows, people, and tags';
 

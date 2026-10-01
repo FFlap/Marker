@@ -73,19 +73,6 @@ export const readSeason = internalQuery({
   },
 });
 
-export const readResolvedSeasonCounts = internalQuery({
-  args: { tmdbId: v.number() },
-  handler: async (ctx, args) =>
-    (
-      await ctx.db
-        .query('resolvedSeasons')
-        .withIndex('by_tmdb_season', (query) => query.eq('tmdbId', args.tmdbId))
-        .collect()
-    )
-      .filter((season) => season.chunksComplete === true)
-      .map((season) => ({ season: season.season, episodeCount: season.episodeCount })),
-});
-
 /** Reads one canonical episode chunk plus its season counts. */
 export const readSeasonChunk = internalQuery({
   args: { tmdbId: v.number(), season: v.number(), chunkIndex: v.optional(v.number()) },
@@ -158,6 +145,7 @@ export const getSeasonView = query({
         season: v.number(),
         metadataProvider,
         orderEpoch: v.number(),
+        seasonVersion: v.optional(v.string()),
         totalCount: v.number(),
         chunkIndex: v.number(),
         episodes: v.array(publicResolvedEpisodeValidator),
@@ -194,6 +182,7 @@ export const getSeasonView = query({
       season: parent.season,
       metadataProvider: parent.metadataProvider,
       orderEpoch: parent.orderEpoch,
+      seasonVersion: parent.seasonVersion,
       totalCount: parent.episodeCount,
     };
     if (parent.chunkCount === 0)

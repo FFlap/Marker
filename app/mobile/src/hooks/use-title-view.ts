@@ -2,9 +2,9 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
-import { selectAvailableSeason } from './use-season-view';
+import { selectAvailableSeason } from '@/features/title/seasons';
 
-export type MetadataRequestState = {
+type MetadataRequestState = {
   state?: 'inFlight' | 'succeeded' | 'failed' | 'notFound';
   errorCode?: string;
   expiresAt?: number;
@@ -12,8 +12,9 @@ export type MetadataRequestState = {
   delayMs?: number;
 };
 
-type Args = { mediaType: 'movie' | 'tv'; tmdbId: number; title?: string; season?: number };
-type TouchOptions = { season?: number; force?: boolean };
+type TitleTarget =
+  | { mediaType: 'movie' | 'tv'; tmdbId: number; title?: string; season?: number }
+  | { itemId: Id<'items'>; season?: number };
 
 const EXPIRY_GRACE_MS = 1_000;
 const FAILED_REPOLL_MIN_MS = 5_000;
@@ -114,13 +115,12 @@ function useMetadataExpiryTimer(
 }
 
 /** Coalesces the matching backoff produced by one combined title/season attempt. */
-export function useMetadataRecoveryTimers(args: {
+function useMetadataRecoveryTimers(args: {
   titleKey: string | undefined;
   titleState: MetadataRequestState | null | undefined;
   seasonKey: string | undefined;
   seasonState: MetadataRequestState | null | undefined;
-  retouchTitle: () => unknown;
-  retouchSeason: () => unknown;
+  retouch: () => unknown;
 }) {
   const sharedRetry =
     args.titleState?.state === 'failed' &&
@@ -132,153 +132,118 @@ export function useMetadataRecoveryTimers(args: {
       ? `combined:${args.titleKey}:${args.seasonKey}`
       : undefined,
     sharedRetry ? args.titleState : undefined,
-    args.retouchSeason,
+    args.retouch,
   );
   useMetadataExpiryTimer(
     sharedRetry ? undefined : args.titleKey,
     sharedRetry ? undefined : args.titleState,
-    args.retouchTitle,
+    args.retouch,
   );
   useMetadataExpiryTimer(
     sharedRetry ? undefined : args.seasonKey,
     sharedRetry ? undefined : args.seasonState,
-    args.retouchSeason,
+    args.retouch,
   );
 }
 
-/** Reactive title metadata plus the server-owned refresh request state. */
-export function useTitleView(
-  args: Args | undefined,
-  itemId?: Id<'items'>,
-  itemRequestState?: MetadataRequestState | null,
-  autoRecovery = true,
-) {
-  const view = useQuery(
+/**
+ * Owns title/item metadata, season selection, refresh admission and recovery.
+ * Callers provide an identity and render the resulting state.
+ */
+export function useTitleView(target: TitleTarget | undefined) {
+  const itemId = target && 'itemId' in target ? target.itemId : undefined;
+  const titleTarget = target && 'mediaType' in target ? target : undefined;
+  const titleView = useQuery(
     api.resolvedMetadata.reads.getTitleView,
-    args ? { mediaType: args.mediaType, tmdbId: args.tmdbId } : 'skip',
+    titleTarget ? { mediaType: titleTarget.mediaType, tmdbId: titleTarget.tmdbId } : 'skip',
   );
-  const subscribedRequestState = useQuery(
+  const itemView = useQuery(api.resolvedMetadata.reads.getItemView, itemId ? { itemId } : 'skip');
+  const item = itemId ? itemView?.item : undefined;
+  const mediaType = titleTarget?.mediaType ?? item?.mediaType;
+  const tmdbId = titleTarget?.tmdbId ?? item?.tmdbId;
+  const titleHint = titleTarget?.title;
+  const view = itemId ? itemView : titleView;
+  const returnedTitle = view?.title;
+  const title =
+    returnedTitle?.tmdbId === tmdbId && returnedTitle?.mediaType === mediaType
+      ? returnedTitle
+      : undefined;
+  const season = selectAvailableSeason(title?.seasons, target?.season ?? 1);
+  const selectedSeason = mediaType === 'tv' ? season : undefined;
+  const titleRequestState = useQuery(
     api.resolvedMetadata.reads.getTitleRequestState,
-    args ? { mediaType: args.mediaType, tmdbId: args.tmdbId } : 'skip',
+    mediaType && tmdbId !== undefined ? { mediaType, tmdbId } : 'skip',
   );
-  const touch = useMutation(api.resolvedMetadata.touch.touchTitle);
+  const seasonRequestState = useQuery(
+    api.resolvedMetadata.reads.getSeasonRequestState,
+    mediaType === 'tv' && tmdbId !== undefined ? { tmdbId, season } : 'skip',
+  );
+  const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const touchItem = useMutation(api.resolvedMetadata.touch.touchItemView);
-  const mediaType = args?.mediaType;
-  const tmdbId = args?.tmdbId;
-  const title = args?.title;
-  const selectedSeason =
-    args?.season === undefined
-      ? undefined
-      : selectAvailableSeason(view?.title?.seasons, args.season);
-  const key =
-    mediaType && tmdbId !== undefined
+  const routeKey = itemId
+    ? `item:${itemId}`
+    : mediaType && tmdbId !== undefined
       ? `${mediaType}:${tmdbId}`
-      : itemId
-        ? `item:${itemId}`
-        : undefined;
-  const activeRequest = useRef<
-    { routeKey: string; requestKey: string; generation: number } | undefined
-  >(undefined);
-  const requestGeneration = useRef(0);
-  const [touchErrorState, setTouchErrorState] = useState<{
+      : undefined;
+  const generation = useRef(0);
+  const [touchFailure, setTouchFailure] = useState<{
     routeKey: string;
-    requestKey: string;
-    generation: number;
+    season?: number;
     error: unknown;
   }>();
-  const displayedRequestKey =
-    mediaType && tmdbId !== undefined
-      ? selectedSeason === undefined
-        ? `title:${key}`
-        : `season:${key}:${selectedSeason}`
-      : undefined;
-  const touchError =
-    touchErrorState &&
-    touchErrorState.routeKey === key &&
-    (displayedRequestKey === undefined || touchErrorState.requestKey === displayedRequestKey)
-      ? touchErrorState.error
-      : undefined;
 
-  const touchTitle = useCallback(
-    async (options?: TouchOptions) => {
-      if (!mediaType || tmdbId === undefined) return;
-      const routeKey = `${mediaType}:${tmdbId}`;
-      const effectiveSeason = options?.season ?? selectedSeason;
-      const requestKey =
-        effectiveSeason === undefined
-          ? `title:${routeKey}`
-          : `season:${routeKey}:${effectiveSeason}`;
-      const generation = ++requestGeneration.current;
-      activeRequest.current = { routeKey, requestKey, generation };
-      return touch({
-        mediaType,
-        tmdbId,
-        ...(title !== undefined && { title }),
-        ...(effectiveSeason !== undefined && { season: effectiveSeason }),
+  const refresh = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (!routeKey || !mediaType || tmdbId === undefined) return;
+      const request = ++generation.current;
+      const touchOptions = {
+        ...(selectedSeason !== undefined && { season: selectedSeason }),
         ...(options?.force !== undefined && { force: options.force }),
-      })
+      };
+      const pending = itemId
+        ? touchItem({ itemId, ...touchOptions })
+        : touchTitle({
+            mediaType,
+            tmdbId,
+            ...(titleHint !== undefined && { title: titleHint }),
+            ...touchOptions,
+          });
+      return pending
         .then((result) => {
-          if (activeRequest.current?.generation === generation) setTouchErrorState(undefined);
+          if (generation.current === request) setTouchFailure(undefined);
           return result;
         })
         .catch((error: unknown) => {
-          const active = activeRequest.current;
-          if (
-            active?.routeKey === routeKey &&
-            active.requestKey === requestKey &&
-            active.generation === generation
-          )
-            setTouchErrorState({ routeKey, requestKey, generation, error });
+          if (generation.current === request)
+            setTouchFailure({ routeKey, season: selectedSeason, error });
           return { mutationRejected: true as const };
         });
     },
-    [mediaType, selectedSeason, title, tmdbId, touch],
-  );
-  const touchItemView = useCallback(
-    async (options?: TouchOptions) => {
-      if (!itemId) return;
-      const routeKey = `item:${itemId}`;
-      const requestKey =
-        options?.season === undefined
-          ? `title:${routeKey}`
-          : `season:${routeKey}:${options.season}`;
-      const generation = ++requestGeneration.current;
-      activeRequest.current = { routeKey, requestKey, generation };
-      setTouchErrorState(undefined);
-      try {
-        return await touchItem({ itemId, ...options });
-      } catch (error) {
-        const active = activeRequest.current;
-        if (
-          active?.routeKey === routeKey &&
-          active.requestKey === requestKey &&
-          active.generation === generation
-        )
-          setTouchErrorState({ routeKey, requestKey, generation, error });
-        return { mutationRejected: true as const };
-      }
-    },
-    [itemId, touchItem],
+    [itemId, mediaType, routeKey, selectedSeason, titleHint, tmdbId, touchItem, touchTitle],
   );
   useEffect(() => {
-    // Displaying a title synchronizes it with the external metadata cache.
-    void touchTitle();
-  }, [touchTitle]);
-  const retryTitle = useCallback(
-    (options?: TouchOptions) => {
-      setTouchErrorState(undefined);
-      return touchTitle(options);
-    },
-    [touchTitle],
-  );
-  const requestState = args ? subscribedRequestState : itemRequestState;
-  const retouch = args ? touchTitle : touchItemView;
-  useMetadataExpiryTimer(autoRecovery ? displayedRequestKey : undefined, requestState, retouch);
+    void refresh();
+  }, [refresh]);
+  useMetadataRecoveryTimers({
+    titleKey: routeKey,
+    titleState: titleRequestState,
+    seasonKey: selectedSeason !== undefined ? `season:${routeKey}:${selectedSeason}` : undefined,
+    seasonState: seasonRequestState,
+    retouch: refresh,
+  });
 
   return {
-    view: view === undefined ? undefined : { ...view, requestState },
-    touchError,
-    touchTitle: retryTitle,
-    touchItemView,
+    title,
+    item,
+    loading: view === undefined,
+    season,
+    titleRequestState,
+    seasonRequestState,
+    touchError:
+      touchFailure?.routeKey === routeKey &&
+      (touchFailure?.season === undefined || touchFailure.season === selectedSeason)
+        ? touchFailure?.error
+        : undefined,
+    refresh,
   };
 }

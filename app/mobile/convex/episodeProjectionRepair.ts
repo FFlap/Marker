@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, type MutationCtx } from './_generated/server';
+import { updateSummaryForEpisodeUpsert } from './episodeSummaries';
 
 const MAX_TITLE_SEASONS = 1_000;
 export const EPISODE_PROJECTION_REPAIR_ROW_LIMIT = 100;
@@ -57,7 +58,7 @@ async function repairContext(ctx: MutationCtx, item: Doc<'items'>) {
     title,
     mapping,
     seasons: [...title.seasons]
-      .filter((season) => season.episodeCount > 0)
+      .filter((season) => season.episodeCountVerified === false || season.episodeCount > 0)
       .sort((left, right) => seasonOrderValue(left.season) - seasonOrderValue(right.season)),
   };
 }
@@ -117,8 +118,11 @@ async function continueRepairPage(
       season.seasonVersion === undefined ||
       season.orderEpoch !== context.title.orderEpoch ||
       (context.mapping && season.orderEpoch !== context.mapping.orderEpoch)
-    )
-      return finishRepair(ctx, repair, result);
+    ) {
+      if (seasonInfo.episodeCountVerified !== false) return finishRepair(ctx, repair, result);
+      current = nextSeasonCursor(context, current.season);
+      continue;
+    }
     const seasonOrder =
       season.metadataProvider === 'tvdb' ? context.mapping?.seasonOrder : undefined;
     if (season.metadataProvider === 'tvdb' && seasonOrder === undefined)
@@ -189,6 +193,17 @@ async function continueRepairPage(
         row.imageUrl !== display.imageUrl ||
         row.airDate !== display.airDate
       ) {
+        if (row.runtime !== display.runtime)
+          await updateSummaryForEpisodeUpsert(
+            ctx,
+            row.userId,
+            row.itemId,
+            row.season,
+            row.watched,
+            row,
+            undefined,
+            { runtime: display.runtime },
+          );
         await ctx.db.patch(row._id, display);
         result.patched += 1;
       }

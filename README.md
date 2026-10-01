@@ -1,45 +1,50 @@
-<img width="128" height="128" alt="logo" src="https://github.com/user-attachments/assets/68f90aac-65c0-41ef-a7d0-54f9c8522c82" />
-
 # Marker
 
-A local-first Chrome extension built with WXT that remembers the latest episode you opened on Crunchyroll and Netflix.
+Marker tracks movies, series, and watched episodes across a web app, an Expo mobile app, and a browser extension for Crunchyroll and Netflix.
 
-## What it does
+## Repository
 
-- Detects Crunchyroll and Netflix watch pages automatically.
-- Tracks one latest episode per series.
-- Shows the series title, season number, episode number, and episode title.
-- Opens the exact last episode when you click a series in the popup.
-- Lets Crunchyroll handle playback-position resume through your signed-in account.
-- Stores all bookmark data locally in Chrome. It does not read cookies, credentials, or account data.
+| Directory | Responsibility |
+| --- | --- |
+| `app/web` | React/Vite web client |
+| `app/mobile/src` | Expo/React Native client |
+| `app/mobile/convex` | Shared Convex backend, schema, authentication, and provider integrations |
+| `app/extension` | WXT browser extension and local playback bookmarks |
+| `scripts` | Production dependency audit tools |
 
-## Install for development
+The web app imports the shared backend's generated API types from `app/mobile/convex/_generated`. There is one backend for both clients. TMDB supplies search and base title metadata; TVDB supplies matched anime season ordering and episode identities. Provider calls stay in the backend.
 
-```bash
-npm install
-npm run build
+## Development
+
+Use Node.js 24, matching CI. Each app has its own package manifest and lockfile; run commands from the relevant app directory.
+
+```sh
+npm ci --prefix app/mobile
+npm ci --prefix app/web
+npm ci --prefix app/extension
 ```
 
-Then open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select:
+Copy the relevant app's `.env.example` to a local environment file and configure its values. Web and mobile must point to the same intended Convex deployment. Configure backend provider credentials and Clerk authentication on that deployment.
 
-```text
-.output/chrome-mv3
+```sh
+# Run from app/mobile for the shared backend
+npx convex dev
+
+# Run clients in separate terminals
+npm run dev --prefix app/web
+npm run start --prefix app/mobile
 ```
 
-Pin **Marker** to the Chrome toolbar if you want one-click access.
+For the extension, run `npm run build --prefix app/extension`, open `chrome://extensions`, enable Developer mode, and load `app/extension/.output/chrome-mv3`. The extension stores bookmarks locally; connected tracking uses the shared backend.
 
-## Use
+## Verification
 
-1. Open or continue an episode on Crunchyroll or Netflix.
-2. The extension records it after the service finishes rendering the episode metadata.
-3. Move to another episode and that series updates automatically.
-4. Open the extension popup and click the series to return to that episode.
-
-## Commands
-
-```bash
-npm test
-npm run typecheck
-npm run build
-npm run zip
+```sh
+npm run check --prefix app/mobile
+npm run check --prefix app/web
+npm run check --prefix app/extension
 ```
+
+Web builds require the `VITE_CONVEX_URL` and `VITE_CLERK_PUBLISHABLE_KEY` settings from the web environment example. CI also exports the iOS and Android bundles and audits production dependencies; see [the workflow](.github/workflows/check.yml).
+
+Commit regenerated Convex API types alongside backend changes. A pull request does not deploy a backend schema change; deploy the reviewed backend before relying on newly added response fields in clients.
