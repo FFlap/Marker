@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus, Tags, UserRound } from "lucide-react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import type { SearchResult } from "@/components/title-dialog";
+import { TITLE_SEARCH_MAX_LENGTH, type SearchResult } from "@/lib/catalog";
+import { useTitleSearch } from "@/hooks/use-title-search";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
@@ -11,7 +12,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { posterUrl } from "@/lib/utils";
 
 type Filter = "all" | "movie" | "tv" | "people" | "tags";
-type MediaResult = SearchResult & { voteAverage?: number };
 type Person = {
   username: string;
   isPublic: boolean;
@@ -31,7 +31,7 @@ function MediaRow({
   item,
   itemId,
 }: {
-  item: MediaResult;
+  item: SearchResult;
   itemId?: string;
 }) {
   const content = (
@@ -185,11 +185,8 @@ export function ExplorePage() {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const [media, setMedia] = useState<MediaResult[]>([]);
-  const [mediaLoading, setMediaLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [followError, setError] = useState("");
   const [pendingPeople, setPendingPeople] = useState<Set<string>>(() => new Set());
-  const searchMedia = useAction(api.tmdb.searchMulti);
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
   const library = useQuery(api.library.items.listItems, {});
@@ -213,35 +210,8 @@ export function ExplorePage() {
 
   const needsMedia = debounced.length >= 2 && filter !== "people" && filter !== "tags";
 
-  useEffect(() => {
-    if (!needsMedia) {
-      setMedia([]);
-      setMediaLoading(false);
-      setError("");
-      return undefined;
-    }
-    let ignore = false;
-    setMediaLoading(true);
-    setError("");
-    void searchMedia({ query: debounced })
-      .then((results) => {
-        if (!ignore) setMedia(results);
-        return undefined;
-      })
-      .catch(() => {
-        if (!ignore) {
-          setMedia([]);
-          setError("Search is unavailable right now.");
-        }
-        return undefined;
-      })
-      .finally(() => {
-        if (!ignore) setMediaLoading(false);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [debounced, needsMedia, searchMedia]);
+  const { results: media, loading: mediaLoading, error: searchError } = useTitleSearch(debounced, needsMedia);
+  const error = followError || searchError;
 
   const existingByMedia = useMemo(
     () =>
@@ -288,7 +258,7 @@ export function ExplorePage() {
     }
   };
 
-  const mediaRow = (item: MediaResult) => (
+  const mediaRow = (item: SearchResult) => (
     <MediaRow
       key={`${item.mediaType}:${item.id}`}
       item={item}
@@ -314,7 +284,7 @@ export function ExplorePage() {
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Movies, TV shows, people, or tags"
-          maxLength={200}
+          maxLength={TITLE_SEARCH_MAX_LENGTH}
         />
         <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>
           <TabsList className="mt-[18px] grid h-[46px] w-full grid-cols-5 rounded-none border-x-0 border-t-0 bg-transparent p-0">

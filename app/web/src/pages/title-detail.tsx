@@ -3,41 +3,15 @@ import { Navigate, useNavigate, useParams, useSearch } from "@tanstack/react-rou
 import { ExternalLink, RefreshCw } from "lucide-react";
 import {
   useMutation,
-  usePaginatedQuery,
   useQuery as useConvexQuery,
 } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import { AddTitleDialog, type SearchResult } from "@/components/title-dialog";
+import { AddTitleDialog } from "@/components/title-dialog";
+import { titleRuntime, type SearchResult } from "@/lib/catalog";
+import { useSeasonGuide } from "@/hooks/use-season-guide";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { posterUrl } from "@/lib/utils";
-
-type Detail = SearchResult & {
-  tmdbId?: number;
-  voteAverage?: number;
-  runtime?: number;
-  episodeRunTime?: number[];
-  genres?: string[];
-  cast?: Array<{ name: string; character: string; profilePath?: string }>;
-  seasons?: Array<{ season: number; name: string; episodeCount: number }>;
-  firstAirDate?: string;
-  metadataProvider?: "tmdb" | "tvdb";
-};
-
-type SeasonPage = {
-  season: number;
-  totalCount: number;
-  chunkIndex: number;
-  episodes: Array<{
-    season: number;
-    episode: number;
-    name: string;
-    overview?: string;
-    runtime?: number;
-    imageUrl?: string;
-    airDate?: string;
-  }>;
-};
 
 function parsePreview(value: string | undefined): SearchResult | undefined {
   if (!value) return undefined;
@@ -100,35 +74,12 @@ export function TitleDetailPage() {
     mediaType && valid ? { mediaType, tmdbId } : "skip",
   );
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
-  const detail = titleView?.title as Detail | null | undefined;
+  const detail = titleView?.title;
   const meta = detail ?? preview;
-  const seasons = detail?.seasons?.filter((entry) => entry.season >= 0 && entry.episodeCount > 0).toSorted((left, right) => left.season - right.season) ?? [];
-  const [selectedSeason, setSeason] = useState(1);
-  const season = seasons.some((entry) => entry.season === selectedSeason)
-    ? selectedSeason
-    : (seasons.find((entry) => entry.season > 0)?.season ??
-      seasons[0]?.season ??
-      1);
   const [touchError, setTouchError] = useState(false);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
-  const seasonView = usePaginatedQuery(
-    api.resolvedMetadata.reads.getSeasonView,
-    mediaType === "tv" && valid ? { tmdbId, season } : "skip",
-    { initialNumItems: 1 },
-  );
-  const seasonPages = seasonView.results as SeasonPage[];
-  const seasonRequestState = useConvexQuery(
-    api.resolvedMetadata.reads.getSeasonRequestState,
-    mediaType === "tv" && valid ? { tmdbId, season } : "skip",
-  );
-  const episodes = useMemo(
-    () =>
-      seasonPages
-        .filter((page) => page.season === season)
-        .toSorted((left, right) => left.chunkIndex - right.chunkIndex)
-        .flatMap((page) => page.episodes),
-    [season, seasonPages],
-  );
+  const guide = useSeasonGuide({ mediaType, tmdbId: valid ? tmdbId : undefined, title: detail, refreshError: touchError });
+  const { seasons, season, setSeason, episodes, pagination: seasonView } = guide;
 
   useEffect(() => {
     if (!mediaType || !valid) return undefined;
@@ -170,18 +121,12 @@ export function TitleDetailPage() {
 
   const releaseDate =
     detail?.releaseDate ?? detail?.firstAirDate ?? preview?.releaseDate;
-  const runtime =
-    detail?.runtime ?? detail?.episodeRunTime?.find((value) => value > 0);
+  const runtime = titleRuntime(detail, preview?.runtime);
   const titleFailed =
     !detail &&
     (touchError ||
       titleRequestState?.state === "failed" ||
       titleRequestState?.state === "notFound");
-  const seasonFailed =
-    !seasonPages.length &&
-    (touchError ||
-      seasonRequestState?.state === "failed" ||
-      seasonRequestState?.state === "notFound");
   const selection: SearchResult | undefined = meta
     ? {
         id: tmdbId,
@@ -358,7 +303,7 @@ export function TitleDetailPage() {
                   Episode guide unavailable
                 </p>
               ) : null}
-              {seasonFailed ? (
+              {guide.failed ? (
                 <div className="mt-5 flex items-center justify-between gap-4 border-y border-border py-4">
                   <p className="text-xs text-muted-foreground">
                     Episodes couldn’t be loaded.
@@ -380,7 +325,7 @@ export function TitleDetailPage() {
                     <RefreshCw className="size-4" /> Retry
                   </Button>
                 </div>
-              ) : seasonView.status === "LoadingFirstPage" ? (
+              ) : guide.loading ? (
                 <div className="mt-4 grid gap-2">
                   {[0, 1, 2].map((key) => (
                     <div

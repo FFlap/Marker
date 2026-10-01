@@ -27,7 +27,7 @@ import {
 import { SearchField } from "@/components/ui/search-field";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-import { matchesMediaType } from "@/lib/library-filters";
+import { filterLibraryItems } from "@/lib/library-filters";
 import {
   gridWidth,
   listType,
@@ -205,22 +205,10 @@ function TagDetail({ tag }: { tag: string }) {
       );
   }, [library, rankQuery, tag]);
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    return ranked.filter(
-      (item) =>
-        (!query || item.title.toLocaleLowerCase().includes(query)) &&
-        matchesMediaType(item, filters.media) &&
-        (filters.status === "all" || item.status === filters.status) &&
-        (!filters.minimum || (item.rating ?? -1) >= filters.minimum) &&
-        filters.tags.every((filterTag) =>
-          item.tags.some(
-            (itemTag) =>
-              itemTag.toLocaleLowerCase() === filterTag.toLocaleLowerCase(),
-          ),
-        ),
-    );
-  }, [filters, ranked, search]);
+  const filtered = useMemo(
+    () => filterLibraryItems(ranked, filters, search),
+    [filters, ranked, search],
+  );
 
   const sectionItems = (status: (typeof statuses)[number]) => {
     const items = filtered.filter((item) => item.status === status);

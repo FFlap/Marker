@@ -12,7 +12,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { Page, SectionHeader } from "@/components/page";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-import { matchesMediaType } from "@/lib/library-filters";
+import { filterLibraryItems, uniqueTags } from "@/lib/library-filters";
 import { gridWidth, listType, listWidth } from "@/lib/display-preferences";
 import { usePointerSortable, type SortableLocation } from "@/hooks/use-pointer-sortable";
 import { useSessionLibraryView } from "@/hooks/use-session-library-view";
@@ -119,21 +119,11 @@ export function LibraryPage() {
   const [error, setError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const allTags = useMemo(
-    () => [...new Set((items ?? []).flatMap((item) => item.tags))].toSorted((a, b) => a.localeCompare(b)),
+    () => uniqueTags((items ?? []).flatMap((item) => item.tags)),
     [items],
   );
   const filtered = useMemo(
-    () =>
-      (items ?? []).filter(
-        (item) =>
-          item.title
-            .toLocaleLowerCase()
-            .includes(search.trim().toLocaleLowerCase()) &&
-          matchesMediaType(item, filters.media) &&
-          (filters.status === "all" || item.status === filters.status) &&
-          (!filters.minimum || (item.rating ?? -1) >= filters.minimum) &&
-          filters.tags.every((tag) => item.tags.includes(tag)),
-      ),
+    () => filterLibraryItems(items ?? [], filters, search),
     [items, search, filters],
   );
   const visibleStatuses = statuses.filter(
