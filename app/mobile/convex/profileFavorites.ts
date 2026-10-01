@@ -1,15 +1,9 @@
-import { getClerkUserId } from './clerkAuth';
+import { requireUser } from './clerkAuth';
 import { mutation, query, type QueryCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { v } from 'convex/values';
 import { activeResolvedTitles, mediaIdentityKey } from './resolvedTitleModel';
 import { eligibleFavoriteValidator } from './publicValidators';
-
-const requireUser = async (ctx: { auth: Parameters<typeof getClerkUserId>[0]['auth'] }) => {
-  const userId = await getClerkUserId(ctx);
-  if (!userId) throw new Error('Authentication required');
-  return userId;
-};
 
 export async function profileFavoritesForUser(ctx: QueryCtx, userId: Id<'users'>) {
   const favorites = await ctx.db

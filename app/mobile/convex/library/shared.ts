@@ -1,4 +1,4 @@
-import { getClerkUserId } from '../clerkAuth';
+export { requireUser } from '../clerkAuth';
 import { type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
@@ -92,11 +92,6 @@ export const normalizeTags = (tags: string[]) => {
 export const normalizedTagKey = (tag: string) => tag.trim().toLowerCase();
 export const hasTag = (item: Doc<'items'>, tagKey: string) =>
   item.tags.some((tag) => normalizedTagKey(tag) === tagKey);
-export const requireUser = async (ctx: { auth: Parameters<typeof getClerkUserId>[0]['auth'] }) => {
-  const userId = await getClerkUserId(ctx);
-  if (!userId) throw new Error('Authentication required');
-  return userId;
-};
 export const ownedItem = async (
   ctx: { db: { get: (id: Id<'items'>) => Promise<Doc<'items'> | null> } },
   id: Id<'items'>,

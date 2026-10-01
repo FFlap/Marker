@@ -10,7 +10,7 @@ export {
   resolvedSeasonValidator,
 } from '../publicValidators';
 import type { Doc } from '../_generated/dataModel';
-import { getClerkUserId } from '../clerkAuth';
+export { requireUser } from '../clerkAuth';
 import { releasedEpisodes } from '../episodeAvailability';
 import { mergeGenres } from '../mergePolicy';
 import { mergeSeasonDisplayNames } from '../seasonNames';
@@ -159,10 +159,4 @@ export const mergeTitle = (
     refreshedAt,
     refreshAfter,
   };
-};
-
-export const requireUser = async (ctx: Parameters<typeof getClerkUserId>[0]) => {
-  const userId = await getClerkUserId(ctx);
-  if (!userId) throw new Error('Authentication required');
-  return userId;
 };

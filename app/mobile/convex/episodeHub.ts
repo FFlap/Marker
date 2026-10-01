@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { getClerkUserId } from './clerkAuth';
+import { requireUser } from './clerkAuth';
 import { query } from './_generated/server';
 
 const episodeCard = {
@@ -18,12 +18,6 @@ const episodeCard = {
   providerEpisodeId: v.optional(v.number()),
   rating: v.optional(v.number()),
   tags: v.array(v.string()),
-};
-
-const requireUser = async (ctx: { auth: Parameters<typeof getClerkUserId>[0]['auth'] }) => {
-  const userId = await getClerkUserId(ctx);
-  if (!userId) throw new Error('Authentication required');
-  return userId;
 };
 
 const requireLocalDate = (today: string) => {
