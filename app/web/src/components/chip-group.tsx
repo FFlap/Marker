@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
-export type ChipOption<T extends string | number> = {
+type ChipOption<T extends string | number> = {
   value: T;
   label: string;
   ariaLabel?: string;

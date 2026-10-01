@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus, Tags, UserRound } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../mobile/convex/_generated/api";
 import { TITLE_SEARCH_MAX_LENGTH, type SearchResult } from "@/lib/catalog";
 import { useTitleSearch } from "@/hooks/use-title-search";
@@ -12,20 +13,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { posterUrl } from "@/lib/utils";
 
 type Filter = "all" | "movie" | "tv" | "people" | "tags";
-type Person = {
-  username: string;
-  isPublic: boolean;
-  avatarUrl?: string;
-  followerCount: number;
-  followingCount: number;
-  relationship: "self" | "none" | "pending" | "accepted";
-};
-type PublicTag = {
-  tag: string;
-  entryCount: number;
-  contributorCount: number;
-  posters: Array<{ title: string; posterPath?: string }>;
-};
+type Person = FunctionReturnType<typeof api.profiles.search>[number];
+type PublicTag = FunctionReturnType<typeof api.tags.searchPublic>[number];
 
 function MediaRow({
   item,
@@ -195,13 +184,13 @@ export function ExplorePage() {
     debounced.length >= 2 && (filter === "all" || filter === "people")
       ? { query: debounced }
       : "skip",
-  ) as Person[] | undefined;
+  );
   const publicTags = useQuery(
     api.tags.searchPublic,
     debounced.length >= 2 && (filter === "all" || filter === "tags")
       ? { query: debounced }
       : "skip",
-  ) as PublicTag[] | undefined;
+  );
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query.trim()), 300);

@@ -14,15 +14,6 @@ export function uniqueTags(tags: string[]) {
     .toSorted((left, right) => left.localeCompare(right));
 }
 
-export function matchesMediaType(
-  item: Pick<WebLibraryItem, "mediaType" | "isAnime">,
-  filter: LibraryFilters["media"],
-) {
-  if (filter === "all") return true;
-  if (filter === "anime") return item.isAnime === true;
-  return item.mediaType === filter && item.isAnime !== true;
-}
-
 type FilterableItem = Pick<WebLibraryItem, "title" | "mediaType" | "isAnime" | "status" | "rating"> & { tags?: string[] };
 
 export function filterLibraryItems<T extends FilterableItem>(items: T[], filters: LibraryFilters, search: string) {
@@ -30,7 +21,7 @@ export function filterLibraryItems<T extends FilterableItem>(items: T[], filters
   const tags = filters.tags.map(normalizeTag);
   return items.filter((item) =>
     item.title.toLowerCase().includes(query) &&
-    matchesMediaType(item, filters.media) &&
+    (filters.media === "all" || (item.isAnime ? "anime" : item.mediaType) === filters.media) &&
     (filters.status === "all" || item.status === filters.status) &&
     (!filters.minimum || (item.rating ?? -1) >= filters.minimum) &&
     tags.every((tag) => item.tags?.some((entry) => normalizeTag(entry) === tag)),

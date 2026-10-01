@@ -3,12 +3,12 @@ import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import { FilterDialog, type LibraryFilters } from "@/components/filter-dialog";
+import { FilterDialog } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { gridWidth } from "@/lib/display-preferences";
-import { filterLibraryItems } from "@/lib/library-filters";
+import { filterLibraryItems, type LibraryFilters } from "@/lib/library-filters";
 import { posterUrl } from "@/lib/utils";
 
 const labels = {

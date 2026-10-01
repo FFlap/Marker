@@ -2,16 +2,14 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent,
-  type ReactNode,
 } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { EllipsisVertical, Globe2, LockKeyhole, Plus } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import type { Id } from "../../../mobile/convex/_generated/dataModel";
-import { FilterDialog, type LibraryFilters } from "@/components/filter-dialog";
+import { FilterDialog } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import {
   SortableHandle,
@@ -27,7 +25,7 @@ import {
 import { SearchField } from "@/components/ui/search-field";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-import { filterLibraryItems } from "@/lib/library-filters";
+import { filterLibraryItems, normalizeTag, uniqueTags, type LibraryFilters } from "@/lib/library-filters";
 import {
   gridWidth,
   listType,
@@ -52,32 +50,6 @@ const statusOptions = statuses.map((value) => ({
 }));
 
 type RankedItem = WebLibraryItem & { tagRank?: number };
-
-function TagItemLink({
-  children,
-  itemId,
-  title,
-  view,
-  style,
-}: {
-  children: ReactNode;
-  itemId: string;
-  title: string;
-  view: "list" | "posters";
-  style: CSSProperties;
-}) {
-  return (
-    <Link
-      to="/item/$itemId"
-      params={{ itemId }}
-      aria-label={title}
-      className={`min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === "posters" ? "block rounded-xl" : "flex flex-1 items-center gap-2 overflow-hidden rounded-lg px-1 font-medium"}`}
-      style={style}
-    >
-      {children}
-    </Link>
-  );
-}
 
 function VisibilityDialog({
   tag,
@@ -158,13 +130,12 @@ export function TagDetailPage() {
 }
 
 function TagDetail({ tag }: { tag: string }) {
-  const libraryQuery = useQuery(api.library.items.listItems, {});
+  const library = useQuery(api.library.items.listItems, {});
   const rankQuery = useQuery(api.library.items.listTagRanks, { tag });
   const settings = useQuery(api.settings.getSettings, {});
   const reorderTagItem = useMutation(api.library.ordering.reorderTagItem);
   const reorderItem = useMutation(api.library.ordering.reorderItem);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
-  const library = libraryQuery as WebLibraryItem[] | undefined;
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>({
     media: "all",
@@ -303,15 +274,11 @@ function TagDetail({ tag }: { tag: string }) {
     filters.tags.length > 0;
   const availableTags = useMemo(
     () =>
-      [...new Set(ranked.flatMap((item) => item.tags))]
-        .filter(
-          (entry) =>
-            entry.trim().toLocaleLowerCase() !== tag.trim().toLocaleLowerCase(),
-        )
-        .toSorted((left, right) => left.localeCompare(right)),
+      uniqueTags(ranked.flatMap((item) => item.tags))
+        .filter((entry) => normalizeTag(entry) !== normalizeTag(tag)),
     [ranked, tag],
   );
-  const loading = libraryQuery === undefined || rankQuery === undefined;
+  const loading = library === undefined || rankQuery === undefined;
   const sortable = usePointerSortable({
     onMove: (source: SortableLocation, target: SortableLocation) => {
       if (source.group !== target.group) return;
@@ -465,10 +432,11 @@ function TagDetail({ tag }: { tag: string }) {
                               }
                             />
                           )}
-                          <TagItemLink
-                            itemId={String(item._id)}
-                            title={item.title}
-                            view={view}
+                          <Link
+                            to="/item/$itemId"
+                            params={{ itemId: item._id }}
+                            aria-label={item.title}
+                            className={`min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === "posters" ? "block rounded-xl" : "flex flex-1 items-center gap-2 overflow-hidden rounded-lg px-1 font-medium"}`}
                             style={{
                               minHeight:
                                 listType(listTextSize).minHeight,
@@ -526,7 +494,7 @@ function TagDetail({ tag }: { tag: string }) {
                                 {item.rating.toFixed(1)}
                               </span>
                             ) : null}
-                          </TagItemLink>
+                          </Link>
                           {view === "list" ? (
                             <SortableItemActions
                               title={item.title}

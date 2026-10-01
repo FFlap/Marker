@@ -3,21 +3,12 @@ import { Link, useParams } from "@tanstack/react-router";
 import { ChartNoAxesColumn, Library } from "lucide-react";
 import { LockKeyhole } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
-import { ProfileFavorites, type Favorite } from "@/components/profile-favorites";
+import { ProfileFavorites } from "@/components/profile-favorites";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { posterUrl } from "@/lib/utils";
-
-type PublicProfileResult = Exclude<
-  FunctionReturnType<typeof api.profiles.publicProfile>,
-  null
->;
-type Stats = Extract<PublicProfileResult, { stats: unknown }>["stats"] & {
-  favorites: Favorite[];
-};
 
 export function PublicProfilePage() {
   const { username } = useParams({ from: "/u/$username" });
@@ -45,7 +36,7 @@ export function PublicProfilePage() {
       </Page>
     );
   }
-  const stats: Stats | undefined = "stats" in result ? result.stats : undefined;
+  const stats = "stats" in result ? result.stats : undefined;
   const relationship = result.relationship;
   const followLabel =
     relationship === "accepted"

@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/dialog";
 
 import { normalizeTag, type LibraryFilters } from "@/lib/library-filters";
-export type { LibraryFilters } from "@/lib/library-filters";
 
 const statuses = [
   "all",

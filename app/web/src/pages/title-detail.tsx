@@ -79,7 +79,7 @@ export function TitleDetailPage() {
   const [touchError, setTouchError] = useState(false);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const guide = useSeasonGuide({ mediaType, tmdbId: valid ? tmdbId : undefined, title: detail, refreshError: touchError });
-  const { seasons, season, setSeason, episodes, pagination: seasonView } = guide;
+  const { seasons, season, setSeason, episodes } = guide;
 
   useEffect(() => {
     if (!mediaType || !valid) return undefined;
@@ -429,11 +429,11 @@ export function TitleDetailPage() {
                   })}
                 </div>
               )}
-              {seasonView.status === "CanLoadMore" && (
+              {guide.canLoadMore && (
                 <Button
                   variant="outline"
                   className="mt-5 w-full"
-                  onClick={() => seasonView.loadMore(1)}
+                  onClick={guide.loadMore}
                 >
                   Load more episodes
                 </Button>

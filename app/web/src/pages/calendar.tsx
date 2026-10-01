@@ -1,19 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Film, Tv2 } from "lucide-react";
 import { useAction } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader } from "@/components/page";
 
-type CalendarEvent = {
-  id: string;
-  date: string;
-  kind: "movie" | "episode";
-  title: string;
-  status: "watched" | "watching" | "watchlist";
-  season?: number;
-  episode?: number;
-  episodeName?: string;
-};
+type CalendarEvent = FunctionReturnType<typeof api.calendar.upcoming>["events"][number];
 
 function CalendarDay({
   day,
@@ -135,7 +127,7 @@ export function CalendarPage() {
         });
         if (!ignore) {
           setError("");
-          setEvents(result.events as CalendarEvent[]);
+          setEvents(result.events);
           setPartialFailure(
             result.failedTitles.count > 0
               ? `Some titles could not be loaded${result.failedTitles.names.length ? `: ${result.failedTitles.names.join(", ")}` : "."}`

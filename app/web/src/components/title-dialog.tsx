@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useReducer,
   useState,
   type FormEvent,
   type ReactNode,
@@ -21,35 +20,12 @@ import { posterUrl } from "@/lib/utils";
 import { TITLE_SEARCH_MAX_LENGTH, titleRuntime, type SearchResult } from "@/lib/catalog";
 import { useTitleSearch } from "@/hooks/use-title-search";
 
-type DialogState = EntryDraft & {
-  query: string;
-  selected?: SearchResult;
-  busy: boolean;
-  error: string;
-};
-
-const freshTitleFields: EntryDraft & { error: string } = {
+const initialDraft: EntryDraft = {
   status: "watchlist",
   rating: undefined,
   timesWatched: 0,
   tags: [],
-  error: "",
 };
-const initialState: DialogState = {
-  ...freshTitleFields,
-  query: "",
-  busy: false,
-};
-
-type DialogAction =
-  | { type: "patch"; value: Partial<DialogState> }
-  | { type: "reset"; selected?: SearchResult };
-
-function dialogReducer(state: DialogState, action: DialogAction): DialogState {
-  if (action.type === "reset")
-    return { ...initialState, selected: action.selected };
-  return { ...state, ...action.value };
-}
 
 export function AddTitleDialog({
   children,
@@ -64,21 +40,13 @@ export function AddTitleDialog({
   const addItem = useMutation(api.library.items.addItem);
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
-  const [state, dispatch] = useReducer(dialogReducer, {
-    ...initialState,
-    selected: initialSelection,
-  });
-  const {
-    query,
-    selected,
-    status,
-    rating,
-    timesWatched,
-    tags,
-    busy,
-    error: saveError,
-  } = state;
+  const [selected, setSelected] = useState(initialSelection);
+  const [draft, setDraft] = useState(initialDraft);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const { status, rating, timesWatched, tags } = draft;
   const { results, loading: searching, error: searchError, retry: retrySearch } = useTitleSearch(submittedQuery, open && !selected);
   const error = saveError || searchError;
   const resolvedTitle = useQuery(
@@ -114,20 +82,15 @@ export function AddTitleDialog({
         rating < 0 ||
         rating > 5)
     ) {
-      dispatch({
-        type: "patch",
-        value: { error: "Rating must be between 0 and 5." },
-      });
+      setSaveError("Rating must be between 0 and 5.");
       return;
     }
     if (!Number.isInteger(timesWatched) || timesWatched < 0) {
-      dispatch({
-        type: "patch",
-        value: { error: "Times watched must be a non-negative number." },
-      });
+      setSaveError("Times watched must be a non-negative number.");
       return;
     }
-    dispatch({ type: "patch", value: { busy: true, error: "" } });
+    setBusy(true);
+    setSaveError("");
     try {
       const addArgs = {
         tmdbId: selected.id,
@@ -150,20 +113,15 @@ export function AddTitleDialog({
           ? await addItemAndMarkWatched(addArgs)
           : await addItem(addArgs);
       setOpen(false);
-      dispatch({ type: "reset", selected: initialSelection });
       onAdded?.(String(itemId));
     } catch (cause) {
-      dispatch({
-        type: "patch",
-        value: {
-          error:
-            cause instanceof Error && /already exists/i.test(cause.message)
-              ? "That title is already in your library."
-              : "Couldn’t add this title. Check the rating and try again.",
-        },
-      });
+      setSaveError(
+        cause instanceof Error && /already exists/i.test(cause.message)
+          ? "That title is already in your library."
+          : "Couldn’t add this title. Check the rating and try again.",
+      );
     } finally {
-      dispatch({ type: "patch", value: { busy: false } });
+      setBusy(false);
     }
   };
 
@@ -173,11 +131,11 @@ export function AddTitleDialog({
       onOpenChange={(next) => {
         if (busy && !next) return;
         setOpen(next);
+        setQuery("");
         setSubmittedQuery("");
-        dispatch({
-          type: "reset",
-          selected: next ? initialSelection : undefined,
-        });
+        setSelected(next ? initialSelection : undefined);
+        setDraft(initialDraft);
+        setSaveError("");
       }}
     >
       <DialogTrigger asChild>{children}</DialogTrigger>
@@ -208,9 +166,9 @@ export function AddTitleDialog({
               </div>
             ) : null}
             <LibraryEntryControls
-              value={{ status, rating, timesWatched, tags }}
+              value={draft}
               suggestions={suggestions ?? []}
-              onChange={(next) => dispatch({ type: "patch", value: next })}
+              onChange={setDraft}
             />
             {error && (
               <p role="alert" className="text-xs text-destructive">
@@ -222,12 +180,11 @@ export function AddTitleDialog({
                 <Button
                   variant="ghost"
                   disabled={busy}
-                  onClick={() =>
-                    dispatch({
-                      type: "patch",
-                      value: { selected: undefined, ...freshTitleFields },
-                    })
-                  }
+                  onClick={() => {
+                    setSelected(undefined);
+                    setDraft(initialDraft);
+                    setSaveError("");
+                  }}
                 >
                   Back
                 </Button>
@@ -248,7 +205,7 @@ export function AddTitleDialog({
                   value={query}
                   onChange={(event) => {
                     setSubmittedQuery("");
-                    dispatch({ type: "patch", value: { query: event.target.value } });
+                    setQuery(event.target.value);
                   }}
                   maxLength={TITLE_SEARCH_MAX_LENGTH}
                   placeholder="Search TMDB"
@@ -268,12 +225,11 @@ export function AddTitleDialog({
                   <button
                     type="button"
                     key={`${result.mediaType}:${result.id}`}
-                    onClick={() =>
-                      dispatch({
-                        type: "patch",
-                        value: { selected: result, ...freshTitleFields },
-                      })
-                    }
+                    onClick={() => {
+                      setSelected(result);
+                      setDraft(initialDraft);
+                      setSaveError("");
+                    }}
                     className="flex min-h-11 items-center gap-3 rounded-xl p-2 text-left hover:bg-card"
                   >
                     <div className="h-14 w-10 shrink-0 overflow-hidden rounded bg-card">

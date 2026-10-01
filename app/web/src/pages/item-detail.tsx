@@ -158,7 +158,7 @@ export function ItemDetailPage() {
   const title = itemView?.title;
   const [touchError, setTouchError] = useState(false);
   const guide = useSeasonGuide({ mediaType: item?.mediaType, tmdbId: item?.tmdbId, title, refreshError: touchError });
-  const { seasons, season, setSeason, episodes, summary: seasonRow, pagination: seasonView } = guide;
+  const { seasons, season, setSeason, episodes, summary: seasonRow } = guide;
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   const [episodePending, setEpisodePending] = useState<ReadonlySet<string>>(() => new Set());
   const setEpisodeState = useMutation(api.library.episodes.setEpisodeState);
@@ -646,11 +646,11 @@ export function ItemDetailPage() {
             </div>
           )}
           {episodeActionError && <p role="alert" className="mt-3 text-xs text-destructive">{episodeActionError}</p>}
-          {seasonView.status === "CanLoadMore" && (
+          {guide.canLoadMore && (
             <Button
               variant="outline"
               className="mt-5 w-full"
-              onClick={() => seasonView.loadMore(1)}
+              onClick={guide.loadMore}
             >
               Load more episodes
             </Button>

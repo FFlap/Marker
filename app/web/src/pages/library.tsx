@@ -4,7 +4,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { Grid3X3, List, Plus } from "lucide-react";
 import { api } from "../../../mobile/convex/_generated/api";
 import type { Id } from "../../../mobile/convex/_generated/dataModel";
-import { FilterDialog, type LibraryFilters } from "@/components/filter-dialog";
+import { FilterDialog } from "@/components/filter-dialog";
 import { SortableHandle, SortableItemActions } from "@/components/sortable-item-controls";
 import { AddTitleDialog } from "@/components/title-dialog";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { Page, SectionHeader } from "@/components/page";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-import { filterLibraryItems, uniqueTags } from "@/lib/library-filters";
+import { filterLibraryItems, uniqueTags, type LibraryFilters } from "@/lib/library-filters";
 import { gridWidth, listType, listWidth } from "@/lib/display-preferences";
 import { usePointerSortable, type SortableLocation } from "@/hooks/use-pointer-sortable";
 import { useSessionLibraryView } from "@/hooks/use-session-library-view";
@@ -95,11 +95,10 @@ function PosterItem({ item, index, ranked }: { item: WebLibraryItem; index: numb
 }
 
 export function LibraryPage() {
-  const queried = useQuery(api.library.items.listItems, {});
+  const items = useQuery(api.library.items.listItems, {});
   const settings = useQuery(api.settings.getSettings, {});
   const reorderItem = useMutation(api.library.ordering.reorderItem);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
-  const items = queried as WebLibraryItem[] | undefined;
   const { view, setView } = useSessionLibraryView(
     settings?.defaultView ?? "list",
   );
@@ -279,7 +278,7 @@ export function LibraryPage() {
         </p>
       )}
 
-      {queried === undefined || settings === undefined ? (
+      {items === undefined || settings === undefined ? (
         <div className="mt-12 grid gap-3">
           {["one", "two", "three", "four", "five", "six"].map((key) => (
             <div key={key} className="h-16 animate-pulse rounded-xl bg-card" />

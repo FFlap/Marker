@@ -62,7 +62,9 @@ export function useSeasonGuide({ mediaType, tmdbId, title, refreshError = false 
   const loading = enabled && !summary && !failed &&
     (pagination.status === "LoadingFirstPage" || request == null || request.state === "inFlight");
   return {
-    seasons, season, episodes, summary, failed, loading, pagination,
+    seasons, season, episodes, summary, failed, loading,
+    canLoadMore: pagination.status === "CanLoadMore",
+    loadMore: () => pagination.loadMore(1),
     loadedPageCount: pages.length,
     setSeason: (next: number) => setSelection({ identity, season: next }),
   };

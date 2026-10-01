@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { normalizeTag } from "@/lib/library-filters";
 
 export type EntryStatus = "watched" | "watching" | "watchlist" | "dropped";
 
@@ -104,9 +105,10 @@ export function TagEditor({
   onChange: (tags: string[]) => void;
 }) {
   const [tagText, setTagText] = useState("");
+  const selectedTags = new Set(tags.map(normalizeTag));
   const addTag = (tagValue = tagText) => {
     const tag = tagValue.trim();
-    if (tag && !tags.includes(tag)) onChange([...tags, tag]);
+    if (tag && !selectedTags.has(normalizeTag(tag))) onChange([...tags, tag]);
     setTagText("");
   };
   return (
@@ -144,7 +146,7 @@ export function TagEditor({
           </button>
         ))}
         {suggestions
-          .filter((tag) => !tags.includes(tag))
+          .filter((tag) => !selectedTags.has(normalizeTag(tag)))
           .slice(0, 5)
           .map((tag) => (
             <button
