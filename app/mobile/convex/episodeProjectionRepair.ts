@@ -117,8 +117,11 @@ async function continueRepairPage(
       season.seasonVersion === undefined ||
       season.orderEpoch !== context.title.orderEpoch ||
       (context.mapping && season.orderEpoch !== context.mapping.orderEpoch)
-    )
-      return finishRepair(ctx, repair, result);
+    ) {
+      if (seasonInfo.episodeCountVerified !== false) return finishRepair(ctx, repair, result);
+      current = nextSeasonCursor(context, current.season);
+      continue;
+    }
     const seasonOrder =
       season.metadataProvider === 'tvdb' ? context.mapping?.seasonOrder : undefined;
     if (season.metadataProvider === 'tvdb' && seasonOrder === undefined)

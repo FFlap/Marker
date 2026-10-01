@@ -4,7 +4,7 @@ import { api } from '../../convex/_generated/api';
 import { useToast } from '@/components/ui/Toast';
 import type { SearchResult } from '@/types';
 
-type SearchResponse = { query: string; results: SearchResult[] };
+type SearchResponse = { query: string; results: SearchResult[]; failed?: boolean };
 const EMPTY_RESULTS: SearchResult[] = [];
 
 /** Shares one query lifecycle across title search screens and local media filters. */
@@ -19,6 +19,7 @@ export function useTitleSearch(
   const [response, setResponse] = useState<SearchResponse>();
   const ready = normalizedQuery.length >= 2;
   const settled = normalizedQuery === debouncedQuery;
+  if (response?.failed && response.query !== normalizedQuery) setResponse(undefined);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(normalizedQuery), delayMs);
@@ -35,7 +36,7 @@ export function useTitleSearch(
       })
       .catch(() => {
         if (!active) return;
-        setResponse({ query: normalizedQuery, results: [] });
+        setResponse({ query: normalizedQuery, results: [], failed: true });
         show('Search is unavailable right now');
       });
     return () => {

@@ -338,6 +338,108 @@ it('keeps queued episodes and repairs saved metadata when a refreshed title coun
   expect((await t.run((ctx) => ctx.db.get(savedId)))?.name).toBe('Canonical first');
 });
 
+it.each(['missing', 'stale', 'incomplete'])(
+  'processes later loaded seasons when an unknown season has %s canonical data',
+  async (state) => {
+    const t = convexTest({ schema, modules });
+    const userId = await t.run(async (ctx) => {
+      const userId = await ctx.db.insert('users', { clerkId: 'unknown-gap' });
+      await ctx.db.insert(
+        'resolvedTitles',
+        title({
+          metadataProvider: 'tvdb',
+          tvdbId: 222,
+          seasonOrder: 'official',
+          seasons: [
+            { season: 1, name: 'Unknown', episodeCount: 0, episodeCountVerified: false },
+            { season: 2, name: 'Loaded', episodeCount: 2 },
+          ],
+        }),
+      );
+      await ctx.db.insert('titleMappings', {
+        tmdbId: 88,
+        mediaType: 'tv',
+        tvdbId: 222,
+        seasonOrder: 'official',
+        source: 'manual',
+        orderEpoch: 0,
+        updatedAt: 1,
+      });
+      return userId;
+    });
+    const firstSeason = {
+      tmdbId: 88,
+      season: 1,
+      metadataProvider: 'tvdb' as const,
+      orderEpoch: 0,
+      refreshedAt: 10,
+      refreshAfter: 30,
+      episodes: [{ season: 1, episode: 1, name: 'Earlier episode', providerEpisodeId: 101 }],
+    };
+    if (state !== 'missing') {
+      await putSeason(t, { ...firstSeason, orderEpoch: state === 'stale' ? 1 : 0 });
+      if (state === 'incomplete')
+        await t.run(async (ctx) => {
+          const season = await ctx.db
+            .query('resolvedSeasons')
+            .withIndex('by_tmdb_season', (q) => q.eq('tmdbId', 88).eq('season', 1))
+            .unique();
+          await ctx.db.patch(season!._id, { chunksComplete: false });
+        });
+    }
+    await putSeason(t, {
+      ...firstSeason,
+      season: 2,
+      episodes: [
+        { season: 2, episode: 1, name: 'Updated title', providerEpisodeId: 201 },
+        { season: 2, episode: 2, name: 'Next episode', providerEpisodeId: 202 },
+      ],
+    });
+    const itemId = await t
+      .withIdentity({ subject: 'unknown-gap' })
+      .mutation(api.library.items.addItem, {
+        tmdbId: 88,
+        mediaType: 'tv',
+        title: 'Returning series',
+        status: 'watching',
+      });
+    const savedId = await t.run(async (ctx) => {
+      await ctx.db.patch(itemId, {
+        nextEpisode: { season: 2, episode: 2, providerEpisodeId: 202 },
+      });
+      return ctx.db.insert('episodes', {
+        userId,
+        itemId,
+        season: 2,
+        episode: 1,
+        name: 'Outdated title',
+        watched: true,
+        tags: [],
+        metadataProvider: 'tvdb',
+        seasonOrder: 'official',
+        providerEpisodeId: 201,
+      });
+    });
+    await t.mutation(internal.episodeProjectionRepair.startEpisodeProjectionRepair, { itemId });
+    expect((await t.run((ctx) => ctx.db.get(savedId)))?.name).toBe('Updated title');
+    await t.mutation(internal.nextEpisode.startNextEpisodeRefresh, { itemId });
+    expect((await t.run((ctx) => ctx.db.get(itemId)))?.nextEpisode).toMatchObject({
+      season: 2,
+      episode: 2,
+      providerEpisodeId: 202,
+    });
+
+    // Once the earlier season is available, its episodes take precedence again.
+    await putSeason(t, firstSeason);
+    await t.mutation(internal.nextEpisode.startNextEpisodeRefresh, { itemId });
+    expect((await t.run((ctx) => ctx.db.get(itemId)))?.nextEpisode).toMatchObject({
+      season: 1,
+      episode: 1,
+      providerEpisodeId: 101,
+    });
+  },
+);
+
 it('returns a stable season version and restarts stale cursors at the new first chunk', async () => {
   const t = convexTest({ schema, modules });
   await t.run((ctx) => ctx.db.insert('users', { clerkId: 'season-version' }));

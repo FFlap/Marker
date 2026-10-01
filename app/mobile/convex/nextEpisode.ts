@@ -254,8 +254,13 @@ async function continueRefreshPage(
       season.seasonVersion === undefined ||
       (context.mapping && season.orderEpoch !== context.mapping.orderEpoch) ||
       season.orderEpoch !== context.title.orderEpoch
-    )
-      return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
+    ) {
+      if (seasonInfo.episodeCountVerified !== false)
+        return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
+      // Unknown totals may have no current canonical data; inspect later loaded seasons.
+      current = nextSeasonCursor(context, current.season);
+      continue;
+    }
     const seasonOrder =
       season.metadataProvider === 'tvdb' ? context.mapping?.seasonOrder : undefined;
     if (season.metadataProvider === 'tvdb' && seasonOrder === undefined)

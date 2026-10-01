@@ -130,6 +130,25 @@ describe('Explore', () => {
     expect(mockSearchMedia).toHaveBeenCalledTimes(3);
   });
 
+  it.each([0, 350])('retries a failed query after clearing it for %i ms', async (clearDelay) => {
+    mockSearchMedia
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce([{ id: 1, mediaType: 'movie', title: 'Recovered title' }]);
+    const q = await view();
+    const input = q.getByLabelText('Search movies, TV shows, people, and tags');
+    await fireEvent.changeText(input, 'First');
+    await act(async () => jest.advanceTimersByTimeAsync(350));
+    expect(q.getByText('Search is unavailable right now')).toBeTruthy();
+    await act(async () => jest.advanceTimersByTimeAsync(1_000));
+    expect(mockSearchMedia).toHaveBeenCalledTimes(1);
+    await fireEvent.changeText(input, '');
+    await act(async () => jest.advanceTimersByTimeAsync(clearDelay));
+    await fireEvent.changeText(input, 'First');
+    await act(async () => jest.advanceTimersByTimeAsync(350));
+    expect(mockSearchMedia).toHaveBeenCalledTimes(2);
+    expect(q.getByText('Recovered title')).toBeTruthy();
+  });
+
   it('ignores an in-flight search failure after leaving Explore', async () => {
     let rejectSearch!: (error: Error) => void;
     mockSearchMedia.mockImplementation(
