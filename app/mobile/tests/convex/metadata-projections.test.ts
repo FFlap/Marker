@@ -1,6 +1,7 @@
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../../convex/_generated/api';
+import type { ResolvedTitle } from '../../convex/resolvedMetadata/shared';
 import schema from '../../convex/schema';
 import { putSeason, putTitle } from './metadata-fixtures';
 
@@ -54,6 +55,106 @@ it.each(['movie', 'tv'] as const)(
 
     expect((await t.run((ctx) => ctx.db.get(itemId)))?.runtime).toBe(35);
     expect((await viewer.query(api.stats.profile, {})).totalWatchMinutes).toBe(35 * watchedCount);
+  },
+);
+
+it.each(['/corrected.jpg', undefined])(
+  'updates public and private tag previews when title metadata changes, including poster %s',
+  async (posterPath) => {
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    const userId = await t.run((ctx) => ctx.db.insert('users', { clerkId: 'tag-preview-refresh' }));
+    const viewer = t.withIdentity({ subject: 'tag-preview-refresh' });
+    const tags = ['Public favorites', 'Private favorites'];
+    const itemIds = [];
+    for (const tmdbId of [11, 22, 33])
+      itemIds.push(
+        await viewer.mutation(api.library.items.addItem, {
+          tmdbId,
+          mediaType: 'movie',
+          title: 'Original title',
+          posterPath: '/original.jpg',
+          status: 'watchlist',
+          tags,
+        }),
+      );
+    await viewer.mutation(api.tags.setVisibility, { tag: tags[0]!, isPublic: true });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    const collectionsBefore = await t.run((ctx) =>
+      ctx.db
+        .query('tagCollections')
+        .withIndex('by_user_tag', (query) => query.eq('userId', userId))
+        .take(10),
+    );
+    const membershipsBefore = await t.run((ctx) =>
+      ctx.db
+        .query('tagMemberships')
+        .withIndex('by_user_tag_item', (query) => query.eq('userId', userId))
+        .take(10),
+    );
+    const title: ResolvedTitle = {
+      tmdbId: 22,
+      mediaType: 'movie',
+      title: 'Corrected title',
+      ...(posterPath !== undefined && { posterPath }),
+      episodeRunTime: [],
+      genres: [],
+      cast: [],
+      seasons: [],
+      metadataProvider: 'tmdb',
+      orderEpoch: 0,
+      refreshedAt: Date.now(),
+      refreshAfter: Date.now() + 60_000,
+    };
+    vi.advanceTimersByTime(1_000);
+    await putTitle(t, { value: title });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+    const collectionsAfter = await t.run((ctx) =>
+      Promise.all(collectionsBefore.map((collection) => ctx.db.get(collection._id))),
+    );
+    for (const [index, before] of collectionsBefore.entries()) {
+      const after = collectionsAfter[index]!;
+      expect(after).toEqual({
+        ...before,
+        updatedAt: Date.now(),
+        previewPosters: [
+          before.previewPosters[0],
+          { itemId: itemIds[1], title: 'Corrected title', ...(posterPath && { posterPath }) },
+          before.previewPosters[2],
+        ],
+      });
+    }
+    const publicPreviews = await viewer.query(api.tags.myPublic, {});
+    expect(publicPreviews[0]?.posters[1]).toEqual({
+      title: 'Corrected title',
+      ...(posterPath && { posterPath }),
+    });
+    const privatePreviews = await viewer.query(api.tags.mine, {
+      paginationOpts: { cursor: null, numItems: 10 },
+    });
+    expect(privatePreviews.page.find((entry) => entry.tag === tags[1])?.posters[1]).toEqual({
+      itemId: itemIds[1],
+      title: 'Corrected title',
+      ...(posterPath && { posterPath }),
+    });
+    expect(
+      await t.run((ctx) =>
+        ctx.db
+          .query('tagMemberships')
+          .withIndex('by_user_tag_item', (query) => query.eq('userId', userId))
+          .take(10),
+      ),
+    ).toEqual(membershipsBefore);
+
+    vi.advanceTimersByTime(1_000);
+    await putTitle(t, { value: { ...title, refreshedAt: Date.now() } });
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    expect(
+      await t.run((ctx) =>
+        Promise.all(collectionsBefore.map((collection) => ctx.db.get(collection._id))),
+      ),
+    ).toEqual(collectionsAfter);
   },
 );
 

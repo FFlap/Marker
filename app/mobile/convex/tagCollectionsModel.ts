@@ -40,6 +40,34 @@ export async function refreshTagCollectionSummary(
   });
 }
 
+export async function updateItemTagPreviews(
+  ctx: MutationCtx,
+  itemId: Id<'items'>,
+  display: Pick<Doc<'items'>, 'title' | 'posterPath'>,
+) {
+  const memberships = await ctx.db
+    .query('tagMemberships')
+    .withIndex('by_item', (query) => query.eq('itemId', itemId))
+    .take(100);
+  for (const membership of memberships) {
+    const collection = await ctx.db.get(membership.collectionId);
+    if (
+      !collection?.previewPosters.some(
+        (poster) =>
+          poster.itemId === itemId &&
+          (poster.title !== display.title || poster.posterPath !== display.posterPath),
+      )
+    )
+      continue;
+    await ctx.db.patch(collection._id, {
+      previewPosters: collection.previewPosters.map((poster) =>
+        poster.itemId === itemId ? { ...poster, ...display } : poster,
+      ),
+      updatedAt: Date.now(),
+    });
+  }
+}
+
 export type TagCollectionDeltas = Map<Id<'tagCollections'>, number>;
 
 export async function refreshChangedTagCollections(
