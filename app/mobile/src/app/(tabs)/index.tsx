@@ -50,7 +50,6 @@ import {
   createDrawerEdgeSwipe,
   NativeDragMonitor,
   nativeDragAnimation,
-  StatusDropZone,
 } from '@/features/library/components/LibraryDragHelpers';
 import {
   libraryScreenStyles as s,
@@ -132,6 +131,7 @@ function Library() {
       ),
     [items, type, statusFilter, min, tags, search],
   );
+  const visibleItemIds = useMemo(() => new Set(filtered.map((item) => item._id)), [filtered]);
   const active =
     !!search.trim() || type !== 'all' || statusFilter !== 'all' || min > 0 || tags.length > 0;
   const visibleStatuses =
@@ -140,7 +140,6 @@ function Library() {
       : LIBRARY_STATUSES.filter(([status]) => status === statusFilter);
   const reordering = useLibraryReordering(items, active);
   const {
-    effectiveStatus,
     moveToStatus: performCategoryMove,
     orderedForStatus,
     requestStatusMove: requestCategoryMove,
@@ -285,16 +284,9 @@ function Library() {
             }}
           >
             {visibleStatuses.map(([status, label]) => {
-              const orderedIds = orderedForStatus(status).map((item) => item._id);
-              const data = filtered
-                .filter((i) => effectiveStatus(i) === status)
-                .sort((a, b) => {
-                  const aIndex = orderedIds.indexOf(a._id);
-                  const bIndex = orderedIds.indexOf(b._id);
-                  return aIndex === -1 || bIndex === -1 ? a.rank - b.rank : aIndex - bIndex;
-                });
+              const data = orderedForStatus(status).filter((item) => visibleItemIds.has(item._id));
               return (
-                <StatusDropZone
+                <View
                   key={status}
                   onLayout={(event) => {
                     const { height, y } = event.nativeEvent.layout;
@@ -450,7 +442,7 @@ function Library() {
                       )}
                     </View>
                   )}
-                </StatusDropZone>
+                </View>
               );
             })}
           </PinchDensity>

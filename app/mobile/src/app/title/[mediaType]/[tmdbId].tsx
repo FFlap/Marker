@@ -19,13 +19,9 @@ import { TagList } from '@/components/ui/TagList';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
-import { useMetadataRecoveryTimers, useTitleView } from '@/hooks/use-title-view';
+import { useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
-import {
-  SEASON_EPISODE_RENDER_BATCH,
-  selectAvailableSeason,
-  useSeasonView,
-} from '@/hooks/use-season-view';
+import { SEASON_EPISODE_RENDER_BATCH, useSeasonView } from '@/hooks/use-season-view';
 import { titleDetailScreenStyles as s } from '@/features/title/screens/TitleDetailScreen.styles';
 import {
   type MediaType,
@@ -93,36 +89,29 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     mediaType && validId ? { mediaType, tmdbId } : 'skip',
   );
   const {
-    view: titleView,
+    title: detail,
+    loading: titleViewLoading,
+    season,
+    titleRequestState,
+    seasonRequestState,
     touchError,
-    touchTitle,
+    refresh,
   } = useTitleView(
     mediaType && validId
       ? {
           mediaType,
           tmdbId,
           ...(preview?.title !== undefined && { title: preview.title }),
-          ...(mediaType === 'tv' && { season: selectedSeason }),
+          season: selectedSeason,
         }
       : undefined,
-    undefined,
-    undefined,
-    false,
   );
   const toast = useToast();
-  const returnedDetail = titleView?.title;
-  const detail =
-    returnedDetail?.tmdbId === tmdbId && returnedDetail.mediaType === mediaType
-      ? returnedDetail
-      : undefined;
-  const season = selectAvailableSeason(detail?.seasons, selectedSeason);
-  const metadataRefresh = useRefreshControl(() =>
-    touchTitle(mediaType === 'tv' ? { season, force: true } : { force: true }),
-  );
+  const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
   const availableHeroOwner =
     detail !== undefined
       ? 'canonical'
-      : preview !== undefined && titleView !== undefined
+      : preview !== undefined && !titleViewLoading
         ? 'preview'
         : undefined;
   const [storedHeroOwner, setHeroOwner] = useState(availableHeroOwner);
@@ -130,19 +119,13 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   if (storedHeroOwner === undefined && availableHeroOwner !== undefined)
     setHeroOwner(availableHeroOwner);
   const hero = heroOwner === 'canonical' ? detail : heroOwner === 'preview' ? preview : undefined;
-  const loading =
-    !detail && titleView?.requestState?.state !== 'failed' && touchError === undefined;
-  const failed =
-    !detail && (titleView?.requestState?.state === 'failed' || touchError !== undefined);
+  const loading = !detail && titleRequestState?.state !== 'failed' && touchError === undefined;
+  const failed = !detail && (titleRequestState?.state === 'failed' || touchError !== undefined);
   const [entryOpen, setEntryOpen] = useState(false);
   const [tagPrefix, setTagPrefix] = useState('');
   const [entrySaving, setEntrySaving] = useState(false);
   const canonicalSeason = useSeasonView(
     mediaType === 'tv' && validId ? { tmdbId, season } : undefined,
-  );
-  const seasonRequestState = useQuery(
-    api.resolvedMetadata.reads.getSeasonRequestState,
-    mediaType === 'tv' && validId ? { tmdbId, season } : 'skip',
   );
   const returnedSeasonRow = canonicalSeason.season;
   const seasonRow = returnedSeasonRow?.season === season ? returnedSeasonRow : undefined;
@@ -165,14 +148,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     episodes.length < seasonRow.totalCount;
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
   const [expanded, setExpanded] = useState<string>();
-  useMetadataRecoveryTimers({
-    titleKey: mediaType && validId ? `${mediaType}:${tmdbId}` : undefined,
-    titleState: titleView?.requestState,
-    seasonKey: mediaType === 'tv' && validId ? `season:${tmdbId}:${season}` : undefined,
-    seasonState: seasonRequestState,
-    retouchTitle: () => touchTitle(),
-    retouchSeason: () => touchTitle({ season }),
-  });
 
   const suggestions =
     useQuery(
@@ -332,13 +307,13 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         <View style={s.state}>
           <View style={s.inlineError}>
             <Text style={s.errorText}>Title details couldn’t be loaded.</Text>
-            <Button title="Retry" variant="ghost" onPress={() => touchTitle({ force: true })} />
+            <Button title="Retry" variant="ghost" onPress={() => refresh({ force: true })} />
           </View>
         </View>
       </View>
     );
 
-  if (titleView === undefined || heroOwner === undefined)
+  if (titleViewLoading || heroOwner === undefined)
     return (
       <View testID="title-detail-initial-placeholder" style={s.root}>
         <View style={s.initialPlaceholder}>
@@ -428,11 +403,12 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
             {failed && (
               <View style={s.inlineError}>
                 <Text style={s.errorText}>Title details couldn’t be loaded.</Text>
-                <Button title="Retry" variant="ghost" onPress={() => touchTitle({ force: true })} />
+                <Button title="Retry" variant="ghost" onPress={() => refresh({ force: true })} />
               </View>
             )}
-            {(titleView?.requestState?.state === 'failed' || touchError !== undefined) &&
-              detail && <Text style={s.metadataLoadingText}>couldn’t update — pull to retry</Text>}
+            {(titleRequestState?.state === 'failed' || touchError !== undefined) && detail && (
+              <Text style={s.metadataLoadingText}>couldn’t update — pull to retry</Text>
+            )}
 
             <SectionHeader
               title="Your Entry"
@@ -515,7 +491,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                         <Button
                           title="Retry"
                           variant="ghost"
-                          onPress={() => touchTitle({ season, force: true })}
+                          onPress={() => refresh({ force: true })}
                         />
                       </View>
                     )}

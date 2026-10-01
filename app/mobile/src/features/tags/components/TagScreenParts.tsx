@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import { router } from 'expo-router';
 import {
@@ -211,22 +211,6 @@ export function TagSkeleton() {
           </View>
         </View>
       ))}
-    </View>
-  );
-}
-
-export function TagStatusDropZone({
-  children,
-  onLayout,
-  style,
-}: {
-  children: ReactNode;
-  onLayout?: ComponentProps<typeof View>['onLayout'];
-  style: ComponentProps<typeof View>['style'];
-}) {
-  return (
-    <View onLayout={onLayout} style={style}>
-      {children}
     </View>
   );
 }

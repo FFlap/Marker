@@ -336,6 +336,21 @@ describe('item detail metadata subscriptions', () => {
     expect(view.getByTestId('episode-list').props.refreshControl.props.refreshing).toBe(false);
   });
 
+  it('offers a retry when an item refresh fails before request state is published', async () => {
+    itemView = { item, title: null, requestState: { title: undefined } };
+    mockSeasonView = {};
+    mockTouchItemView.mockRejectedValueOnce(new Error('offline'));
+    const view = await renderScreen();
+    await waitFor(() => expect(view.getByText('Title details couldn’t be loaded.')).toBeTruthy());
+    await userEvent.setup().press(view.getAllByText('Retry')[0]);
+    expect(mockTouchItemView).toHaveBeenLastCalledWith({
+      itemId: 'item',
+      season: 1,
+      force: true,
+    });
+    expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
+  });
+
   it('shows a non-blocking failure note when cached metadata exists', async () => {
     itemView = {
       item,

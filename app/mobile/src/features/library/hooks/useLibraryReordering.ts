@@ -60,12 +60,13 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
 
   const orderedForStatus = (status: Status) => {
     const order = optimisticOrders[status];
+    const orderIndex = new Map(order?.map((id, index) => [id, index]));
     return items
       .filter((item) => effectiveStatus(item) === status)
       .sort((left, right) => {
         if (!order) return left.rank - right.rank;
-        const leftIndex = order.indexOf(left._id);
-        const rightIndex = order.indexOf(right._id);
+        const leftIndex = orderIndex.get(left._id) ?? -1;
+        const rightIndex = orderIndex.get(right._id) ?? -1;
         if (leftIndex === -1) return rightIndex === -1 ? left.rank - right.rank : 1;
         if (rightIndex === -1) return -1;
         return leftIndex - rightIndex;
@@ -244,7 +245,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
 
   return {
     orderedForStatus,
-    effectiveStatus,
     saveOrder,
     moveToStatus,
     requestStatusMove,

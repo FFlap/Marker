@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { usePaginatedQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { currentSeasonPages } from '@/features/title/seasonPages';
-export { selectAvailableSeason } from '@/features/title/seasons';
 
 // One resolved season page contains at most 120 episodes. Render the complete
 // season so users can jump to any episode without waiting for another batch.
