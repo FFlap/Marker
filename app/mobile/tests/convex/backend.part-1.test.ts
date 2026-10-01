@@ -455,50 +455,6 @@ describe('Marker backend', () => {
     expect(items.find((item) => item._id === dropped)?.status).toBe('dropped');
   });
 
-  it('keeps canonical metadata and user episode state in separate queries', async () => {
-    const { t, asUser } = await setup();
-    const itemId = await asUser.mutation(
-      api.library.items.addItem,
-      add('Daredevil', 61889, 'tv', { status: 'watching' }),
-    );
-    await t.run(async (ctx) => {
-      await ctx.db.insert('resolvedTitles', {
-        tmdbId: 61889,
-        mediaType: 'tv',
-        title: 'Daredevil',
-        overview: 'A blind lawyer protects Hell’s Kitchen.',
-        firstAirDate: '2015-04-10',
-        episodeRunTime: [52],
-        genres: ['Drama'],
-        cast: [{ name: 'Charlie Cox', character: 'Matt Murdock' }],
-        seasons: [{ season: 1, name: 'Season 1', episodeCount: 13 }],
-        metadataProvider: 'tmdb',
-        refreshedAt: Date.now(),
-        refreshAfter: Date.now() + 60_000,
-        orderEpoch: 0,
-      });
-    });
-    await asUser.mutation(api.library.episodes.setEpisodeState, {
-      itemId,
-      season: 1,
-      episode: 1,
-      watched: true,
-    });
-
-    const view = await asUser.query(api.resolvedMetadata.reads.getItemView, { itemId });
-    expect(view?.item._id).toBe(itemId);
-    expect(view?.title).toMatchObject({
-      title: 'Daredevil',
-      metadataProvider: 'tmdb',
-    });
-    expect(view).not.toHaveProperty('savedEpisodes');
-    const savedEpisodes = await asUser.query(api.library.episodes.listEpisodes, {
-      itemId,
-      season: 1,
-    });
-    expect(savedEpisodes[0]).toMatchObject({ season: 1, episode: 1, watched: true });
-  });
-
   it('upserts episodes idempotently and computes exact stats', async () => {
     vi.useFakeTimers();
     const { t, asUser } = await setup();

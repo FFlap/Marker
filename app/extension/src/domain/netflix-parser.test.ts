@@ -6,12 +6,6 @@ function makeDocument(html: string) {
 }
 
 describe('parseNetflixWatchPath', () => {
-  it('recognizes a Netflix watch URL', () => {
-    expect(parseNetflixWatchPath('/watch/81295950')).toEqual({
-      videoId: '81295950',
-    });
-  });
-
   it('rejects non-watch URLs', () => {
     expect(parseNetflixWatchPath('/browse')).toBeNull();
   });

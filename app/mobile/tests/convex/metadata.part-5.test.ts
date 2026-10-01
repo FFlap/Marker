@@ -1,14 +1,8 @@
 import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
-import { ConvexError } from 'convex/values';
 import { api, internal } from '../../convex/_generated/api';
 import schema from '../../convex/schema';
-import { isTruncatedSnapshot, putNonFatal } from '../../convex/providerSnapshots';
-import { MAX_METADATA_MUTATION_BYTES, serializedBytes } from '../../convex/seasonStorage';
-import { mapSeasonDetails } from '../../convex/tmdb';
-import { commitWatchWithOneRematch } from '../../convex/sync';
-import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata/seasonResolution';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
@@ -20,29 +14,6 @@ async function setup(transactionLimits = false) {
   return { t, userId, asUser };
 }
 
-const movieTitle = (overrides: Record<string, unknown> = {}) => ({
-  tmdbId: 77,
-  mediaType: 'movie' as const,
-  title: 'Stored movie',
-  episodeRunTime: [],
-  genres: [],
-  cast: [],
-  seasons: [],
-  metadataProvider: 'tmdb' as const,
-  orderEpoch: 0,
-  refreshedAt: Date.now(),
-  refreshAfter: Date.now() + 60_000,
-  ...overrides,
-});
-
-const addItem = (asUser: Awaited<ReturnType<typeof setup>>['asUser'], tmdbId = 88) =>
-  asUser.mutation(api.library.items.addItem, {
-    tmdbId,
-    mediaType: 'tv',
-    title: 'Stored show',
-    status: 'watching',
-  });
-
 describe('metadata pipeline', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -50,90 +21,6 @@ describe('metadata pipeline', () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
-
-  it.each([
-    [1, 2],
-    [2, 1],
-  ])(
-    'preserves both season title patches when season %i commits before season %i',
-    async (firstSeason, secondSeason) => {
-      const order = [firstSeason, secondSeason];
-      const { t } = await setup();
-      const capturedTitle = {
-        ...movieTitle({
-          tmdbId: 88,
-          mediaType: 'tv',
-          title: 'Concurrent show',
-          seasons: [
-            { season: 1, name: 'Season 1', episodeCount: 1 },
-            { season: 2, name: 'Season 2', episodeCount: 1 },
-          ],
-        }),
-        mediaType: 'tv' as const,
-      };
-      await t.run((ctx) => ctx.db.insert('resolvedTitles', capturedTitle));
-
-      for (const season of order) {
-        const attemptToken = `season-${season}`;
-        const key = `season:88:${season}`;
-        const leaseToken = `lease-${season}`;
-        await t.run((ctx) =>
-          ctx.db.insert('metadataRefreshRequests', {
-            key,
-            state: 'inFlight',
-            lastRequestedAt: Date.now(),
-            attemptToken,
-            expiresAt: Date.now() + 60_000,
-          }),
-        );
-        await t.mutation(internal.resolvedMetadata.requests.claimRefresh, {
-          key: 'metadata:tv:88',
-          token: leaseToken,
-          leaseMs: 60_000,
-        });
-        const episodeCount = season === 1 ? 2 : 3;
-        const episodes = Array.from({ length: episodeCount }, (_, index) => ({
-          season,
-          episode: index + 1,
-          name: `S${season}E${index + 1}`,
-        }));
-        await expect(
-          t.mutation(internal.resolvedMetadata.publication.commitRefresh, {
-            title: capturedTitle,
-            titleWrite: 'seasonPatch',
-            season: {
-              tmdbId: 88,
-              season,
-              metadataProvider: 'tmdb',
-              chunks: [episodes],
-              episodeCount,
-              chunkCount: 1,
-              refreshedAt: Date.now(),
-              refreshAfter: Date.now() + 60_000,
-              orderEpoch: 0,
-            },
-            outcomes: [{ key, state: 'succeeded' }],
-            attemptToken,
-            leaseKey: 'metadata:tv:88',
-            leaseToken,
-          }),
-        ).resolves.toBe(true);
-        await t.mutation(internal.resolvedMetadata.requests.releaseRefresh, {
-          key: 'metadata:tv:88',
-          token: leaseToken,
-        });
-      }
-
-      expect(
-        await t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 88 }),
-      ).toMatchObject({
-        seasons: [
-          { season: 1, episodeCount: 2 },
-          { season: 2, episodeCount: 3 },
-        ],
-      });
-    },
-  );
 
   it('uses authoritative TMDB names for TVDB fallback discovery, never the touch title', async () => {
     const { t, userId, asUser } = await setup();

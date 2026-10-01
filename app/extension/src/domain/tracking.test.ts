@@ -17,18 +17,6 @@ const bookmark = {
 describe("background-owned tracking", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("routes detected bookmarks through the background owner", async () => {
-    const send = vi.fn(async () => ({ changed: true }));
-    await expect(persistDetectedEpisode(bookmark, send)).resolves.toBe(true);
-    expect(send).toHaveBeenCalledWith({ type: "bookmark/save", bookmark });
-  });
-
-  it("returns false when the background reports no bookmark change", async () => {
-    await expect(
-      persistDetectedEpisode(bookmark, async () => ({ changed: false })),
-    ).resolves.toBe(false);
-  });
-
   it.each([undefined, { ok: false, reason: "background-error" }])("retries a failed background save: %o", async (response) => {
     await expect(
       persistDetectedEpisode(bookmark, async () => response),

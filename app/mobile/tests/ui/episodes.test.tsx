@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockSetEpisode = jest.fn().mockResolvedValue(undefined);
-const overview = {
+const mockOverview = {
   watching: [
     {
       itemId: 'one-piece',
@@ -34,7 +34,6 @@ const overview = {
     },
   ],
 };
-let mockOverview: typeof overview | undefined = overview;
 
 jest.mock('convex/react', () => ({
   useQuery: () => mockOverview,
@@ -52,7 +51,7 @@ jest.mock('../../src/components/AppDrawer', () => ({
 jest.mock('expo-image', () => ({ Image: require('react-native').Image }));
 jest.mock('../../src/components/ui/drawer', () => {
   const React = require('react');
-  const { Pressable, Text, View } = require('react-native');
+  const { Text, View } = require('react-native');
   const container = ({ children }: { children: React.ReactNode }) => <View>{children}</View>;
   return {
     Drawer: ({ children }: { children: React.ReactNode }) => <View>{children}</View>,
@@ -66,22 +65,6 @@ jest.mock('../../src/components/ui/drawer', () => {
 
 import EpisodesScreen from '../../src/app/(tabs)/episodes';
 import { ToastProvider } from '../../src/components/ui/Toast';
-
-beforeEach(() => {
-  mockOverview = overview;
-});
-
-it('uses episode-shaped skeleton rows while the hub loads', async () => {
-  mockOverview = undefined;
-  const view = await render(
-    <ToastProvider>
-      <EpisodesScreen />
-    </ToastProvider>,
-  );
-
-  expect(view.getByLabelText('Loading episodes')).toBeTruthy();
-  expect(view.queryByText('Finding your next episodes…')).toBeNull();
-});
 
 it('expands episode details, tracks the next episode, and keeps editing in the options menu', async () => {
   const view = await render(

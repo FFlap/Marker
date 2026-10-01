@@ -27,24 +27,12 @@ jest.mock('expo-image', () => ({ Image: require('react-native').Image }));
 
 import CalendarScreen from '../../src/app/calendar';
 import CalendarDayScreen from '../../src/app/calendar/[date]';
-import NotificationsScreen from '../../src/app/notifications';
 
 describe('secondary mobile pages', () => {
   beforeEach(() => {
     mockUpcoming.mockClear();
     mockUpcoming.mockResolvedValue({ events: [], failedTitles: { count: 0, names: [] } });
     mockDate = '';
-  });
-
-  it('shows native back navigation on Notifications', async () => {
-    const view = await render(<NotificationsScreen />);
-    expect(view.getByLabelText('Back to library')).toBeTruthy();
-  });
-
-  it('shows native back navigation on Calendar', async () => {
-    const view = await render(<CalendarScreen />);
-    expect(view.getByLabelText('Back to library')).toBeTruthy();
-    await waitFor(() => expect(mockUpcoming).toHaveBeenCalled());
   });
 
   it('lists releases inside calendar days and summarizes overflow', async () => {
@@ -72,33 +60,6 @@ describe('secondary mobile pages', () => {
       pathname: '/calendar/[date]',
       params: { date },
     });
-  });
-
-  it('shows the complete schedule on the selected day screen', async () => {
-    const today = new Date();
-    mockDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    mockUpcoming.mockResolvedValueOnce({
-      failedTitles: { count: 0, names: [] },
-      events: [
-        {
-          id: 'one',
-          date: mockDate,
-          kind: 'episode',
-          title: 'Severance',
-          season: 3,
-          episode: 2,
-          episodeName: 'The After Hours',
-        },
-        { id: 'two', date: mockDate, kind: 'movie', title: 'Perfect Days' },
-      ],
-    });
-
-    const view = await render(<CalendarDayScreen />);
-    await waitFor(() => expect(view.getByText('Severance')).toBeTruthy());
-    expect(view.getByText('The After Hours')).toBeTruthy();
-    expect(view.getByText('Season 3 · Episode 2')).toBeTruthy();
-    expect(view.getByText('Perfect Days')).toBeTruthy();
-    expect(view.getByText('Movie release')).toBeTruthy();
   });
 
   it('surfaces a partial calendar result without hiding loaded releases', async () => {

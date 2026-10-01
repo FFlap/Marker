@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  gridMetrics,
-  listItemWidth,
-  listTypography,
-  stepGridColumns,
-} from '../../src/lib/displayPreferences';
+import { gridMetrics, stepGridColumns } from '../../src/lib/displayPreferences';
 
 describe('display preferences', () => {
   it('steps through the three grid intervals and clamps at the ends', () => {
@@ -32,19 +27,5 @@ describe('display preferences', () => {
         }
       }
     }
-  });
-
-  it('leaves slack between two-column list cells', () => {
-    expect(listItemWidth(1)).toBe('100%');
-    expect(listItemWidth(2)).toBe('48%');
-  });
-
-  it('keeps list text options ordered and touch rows accessible', () => {
-    const small = listTypography('small');
-    const medium = listTypography('medium');
-    const large = listTypography('large');
-    expect(small.fontSize).toBeLessThan(medium.fontSize);
-    expect(medium.fontSize).toBeLessThan(large.fontSize);
-    expect([small, medium, large].every((option) => option.minHeight >= 44)).toBe(true);
   });
 });

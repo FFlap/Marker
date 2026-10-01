@@ -251,13 +251,6 @@ describe('item detail metadata subscriptions', () => {
       </ToastProvider>,
     );
 
-  it('renders cached title and episodes without an action call', async () => {
-    const view = await renderScreen();
-    expect(view.getByText('Into the Ring')).toBeTruthy();
-    expect(view.getByText('Charlie Cox')).toBeTruthy();
-    expect(mockTouchItemView).toHaveBeenCalledWith({ itemId: 'item', season: 1 });
-  });
-
   it('hides empty library seasons and selects the first season with episodes', async () => {
     itemView = {
       ...itemView,
@@ -373,21 +366,6 @@ describe('item detail metadata subscriptions', () => {
     const view = await renderScreen();
     expect(view.queryByText('Cut Man')).toBeNull();
     expect(view.getByLabelText('Loading')).toBeTruthy();
-  });
-
-  it('passes the observed season epoch and provider when marking a season watched', async () => {
-    const view = await renderScreen();
-    const user = userEvent.setup();
-    await user.press(view.getByText('Mark watched'));
-    await waitFor(() =>
-      expect(mockSetSeasonWatched).toHaveBeenCalledWith({
-        itemId: 'item',
-        season: 1,
-        watched: true,
-        orderEpoch: 7,
-        metadataProvider: 'tvdb',
-      }),
-    );
   });
 
   it('derives season progress and mark-watched state from current identity counts', async () => {

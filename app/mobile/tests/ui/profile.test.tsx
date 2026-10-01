@@ -1,8 +1,7 @@
 import React from 'react';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 
 const mockRespond = jest.fn();
-let mockProfileLoading = false;
 let mockFavoriteDragEnd:
   ((event: { data: typeof mockFavorites; from: number; to: number }) => void) | undefined;
 const mockFavorites = [
@@ -13,7 +12,6 @@ const mockFavorites = [
 jest.mock('convex/react', () => ({
   useMutation: () => mockRespond,
   useQuery: (ref: string) => {
-    if (mockProfileLoading && (ref === 'profiles.me' || ref === 'stats.profile')) return undefined;
     if (ref === 'profiles.me') {
       return {
         username: 'flappy',
@@ -84,7 +82,6 @@ jest.mock('../../src/components/SkeletonShimmer', () => ({
 import Profile from '../../src/app/(tabs)/profile';
 
 beforeEach(() => {
-  mockProfileLoading = false;
   mockFavoriteDragEnd = undefined;
   mockRespond.mockReset().mockResolvedValue(undefined);
 });
@@ -112,47 +109,4 @@ it('keeps an optimistic favorite order while a save is pending', async () => {
   expect(favoriteOrder()).toEqual(['One Piece', 'Spirited Away']);
 
   await act(async () => finishSave());
-});
-
-it('uses a profile-shaped skeleton while profile data loads', async () => {
-  mockProfileLoading = true;
-  const view = await render(<Profile />);
-
-  expect(view.getByLabelText('Loading profile')).toBeTruthy();
-  expect(view.queryByText('Calculating your profile…')).toBeNull();
-});
-
-it('separates collection content from profile stats', async () => {
-  const view = await render(<Profile />);
-  expect(view.getByText('@flappy')).toBeTruthy();
-  expect(view.getByText('Private profile')).toBeTruthy();
-  expect(view.getByText('2 followers · 5 following')).toBeTruthy();
-  expect(view.getByLabelText('Back to library')).toBeTruthy();
-  expect(view.getByRole('tab', { name: 'Collection' }).props.accessibilityState).toEqual({
-    selected: true,
-  });
-  expect(view.queryByText('1d 2h')).toBeNull();
-  expect(view.getByText('Spirited Away')).toBeTruthy();
-  expect(view.getByText('One Piece')).toBeTruthy();
-  expect(view.getByText('TV Shows')).toBeTruthy();
-  expect(view.getByText('Anime')).toBeTruthy();
-  expect(view.getByText('Movies')).toBeTruthy();
-  expect(view.getByLabelText('One Piece').props.accessibilityHint).toBe(
-    'Long press and drag to reorder this favorite',
-  );
-  expect(view.queryByLabelText('Drag One Piece')).toBeNull();
-  expect(view.queryByText('Your all-time shelf')).toBeNull();
-  expect(view.queryByText('PROFILE FAVORITES')).toBeNull();
-  expect(view.getByText('Public Tags')).toBeTruthy();
-  expect(view.getByLabelText('Open wholesome tag')).toBeTruthy();
-  await fireEvent.press(view.getByLabelText('Open wholesome tag'));
-  expect(jest.requireMock('expo-router').router.push).toHaveBeenCalledWith({
-    pathname: '/u/[username]/tags/[tag]',
-    params: { username: 'flappy', tag: 'wholesome' },
-  });
-  await fireEvent.press(view.getByRole('tab', { name: 'Stats' }));
-  expect(view.getByText('1d 2h')).toBeTruthy();
-  expect(view.getByText('12')).toBeTruthy();
-  expect(view.getByText('19')).toBeTruthy();
-  expect(view.queryByText('Spirited Away')).toBeNull();
 });

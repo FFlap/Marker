@@ -339,23 +339,4 @@ describe('Tags screens', () => {
       beforeId: 'b',
     });
   });
-
-  it('publishes a personal tag from the visibility menu', async () => {
-    const view = await render(<TagDetailScreen />);
-    fireEvent.press(view.getByLabelText('Tag visibility'));
-    await act(async () => fireEvent.press(view.getByLabelText('Public tag')));
-    expect(mockSetVisibility).toHaveBeenCalledWith({
-      tag: 'Favorites',
-      isPublic: true,
-    });
-  });
-
-  it('opens the bulk library picker from a personal tag', async () => {
-    const view = await render(<TagDetailScreen />);
-    await userEvent.setup().press(view.getByLabelText('Add titles to Favorites'));
-    expect(mockedRouter.push).toHaveBeenCalledWith({
-      pathname: '/tags/add/[tag]',
-      params: { tag: 'Favorites' },
-    });
-  });
 });

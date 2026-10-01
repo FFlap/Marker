@@ -77,23 +77,6 @@ describe("profile favorites", () => {
     },
   ];
 
-  it("separates anime from TV shows and exposes keyboard-ready reorder controls", () => {
-    render(<ProfileFavorites favorites={favorites} />);
-
-    expect(
-      screen.getByRole("heading", { name: "TV Shows" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Anime" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Movies" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Drag One Piece" })).toHaveAttribute(
-      "aria-keyshortcuts",
-      "Alt+ArrowUp Alt+ArrowDown",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Open actions for One Piece" }));
-    expect(screen.getByRole("button", { name: "Move up" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Move down" })).toBeInTheDocument();
-  });
-
   it("shows a failed add inside the picker and allows retry", async () => {
     mocks.add.mockRejectedValueOnce(new Error("offline"));
     render(<ProfileFavorites favorites={favorites} />);

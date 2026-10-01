@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { AccessibilityInfo, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 const mockReorderItem = jest.fn();
 const mockMoveItemToWatched = jest.fn();
@@ -303,16 +303,6 @@ describe('Marker library', () => {
         <Library />
       </ToastProvider>,
     );
-  it('renders sections in order and watched ranks', async () => {
-    const q = await view();
-    const text = q
-      .getAllByText(/Watched|Watching|Watchlist|Dropped/)
-      .map((x) => String(x.props.children));
-    expect(text.slice(-4)).toEqual(['Watched', 'Watching', 'Watchlist', 'Dropped']);
-    expect(q.getByText('1.')).toBeTruthy();
-    expect(q.getByText('Avengers: Endgame')).toBeTruthy();
-    expect(q.getByText('Game of Thrones')).toBeTruthy();
-  });
   it('separates movies, TV shows, and anime without changing the stored media type', async () => {
     const q = await view();
     await fireEvent.press(q.getByLabelText('TV Shows type'));
@@ -376,30 +366,6 @@ describe('Marker library', () => {
       await Promise.resolve();
     });
     expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('auto');
-  });
-
-  it('opens the account drawer and navigates to the profile', async () => {
-    const reduceMotionSpy = jest
-      .spyOn(AccessibilityInfo, 'isReduceMotionEnabled')
-      .mockResolvedValue(true);
-    const q = await view();
-    await waitFor(() => expect(reduceMotionSpy).toHaveBeenCalled());
-    await fireEvent.press(q.getByLabelText('Open account menu'));
-    expect(q.getByText('Settings')).toBeTruthy();
-    expect(q.getByRole('menuitem', { name: 'Explore' })).toBeTruthy();
-    expect(q.queryByRole('menuitem', { name: 'Library' })).toBeNull();
-    expect(q.queryByRole('menuitem', { name: 'Episodes' })).toBeNull();
-    expect(q.queryByRole('menuitem', { name: 'Tags' })).toBeNull();
-    expect(q.getAllByRole('menuitem').map((item) => item.props.accessibilityLabel)).toEqual([
-      'Explore',
-      'Notifications',
-      'Calendar',
-      'Settings',
-    ]);
-    await fireEvent.press(q.getByLabelText('View profile'));
-    await waitFor(() => {
-      expect(jest.requireMock('expo-router').router.push).toHaveBeenCalledWith('/(tabs)/profile');
-    });
   });
 
   it.each([

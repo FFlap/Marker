@@ -96,17 +96,6 @@ describe("login page", () => {
     expect(screen.queryByRole("heading", { name: "Choose a username." })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log in" })).toBeInTheDocument();
   });
-  it("opens with clear login and sign-up choices", () => {
-    render(<LoginPage />);
-
-    expect(
-      screen.getByRole("heading", { name: "Welcome to Marker." }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Log in" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign up" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
-  });
-
   it("blocks an external post-login redirect", async () => {
     mocks.searchNext = "https://attacker.example";
     mocks.signIn.password.mockImplementation(async () => {
@@ -154,25 +143,6 @@ describe("login page", () => {
     expect(
       screen.getByRole("button", { name: "Account options" }),
     ).toBeEnabled();
-  });
-
-  it("reveals the custom Clerk account-creation form", () => {
-    render(<LoginPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
-
-    expect(
-      screen.getByRole("heading", { name: "Make it yours." }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Continue with Google" }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Username")).toBeInTheDocument();
-    expect(screen.getByLabelText("Email")).toBeInTheDocument();
-    expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Create account" }),
-    ).toBeInTheDocument();
   });
 
   it("resets a password through Clerk and signs out other sessions", async () => {

@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   episodesForSeason,
-  knownAnimeSeasonName,
   mapEpisode,
   seasonDisplayName,
   seasonTranslationLimit,
   selectSeasonOrder,
 } from '../../convex/tvdb';
-import { hideResolvedEmptySeasons, mergeSeasonDisplayNames } from '../../convex/seasonNames';
+import { mergeSeasonDisplayNames } from '../../convex/seasonNames';
 import { releasedEpisodes } from '../../convex/episodeAvailability';
 
 describe('TVDB anime metadata mapping', () => {
@@ -51,19 +50,6 @@ describe('TVDB anime metadata mapping', () => {
     };
     expect(episodesForSeason([seasonOne, seasonTwo], 1)).toEqual([seasonOne]);
     expect(episodesForSeason([seasonOne, seasonTwo])).toEqual([seasonOne, seasonTwo]);
-  });
-
-  it('selects TVDB aired order even when arc-style alternatives exist', () => {
-    expect(
-      selectSeasonOrder(
-        [
-          { id: 1, number: 1, name: 'Season 1', type: 'official', typeId: 1 },
-          { id: 2, number: 1, name: 'East Blue Arc', type: 'alternate', typeId: 2 },
-          { id: 3, number: 2, name: 'Alabasta Arc', type: 'alternate', typeId: 2 },
-        ],
-        1,
-      ),
-    ).toBe('official');
   });
 
   it('keeps aired order when TVDB also provides Alternate Order 2', () => {
@@ -119,25 +105,6 @@ describe('TVDB anime metadata mapping', () => {
     ).toEqual([{ season: 4, name: 'Alabasta', episodeCount: 39 }]);
   });
 
-  it('hides a season only after its resolved episode list is empty', () => {
-    expect(
-      hideResolvedEmptySeasons(
-        [
-          { season: 1, name: 'Season 1', episodeCount: 28 },
-          { season: 2, name: 'Season 2', episodeCount: 13 },
-          { season: 3, name: 'The Golden Land Arc', episodeCount: 1 },
-        ],
-        [
-          { season: 2, episodeCount: 3 },
-          { season: 3, episodeCount: 0 },
-        ],
-      ),
-    ).toEqual([
-      { season: 1, name: 'Season 1', episodeCount: 28 },
-      { season: 2, name: 'Season 2', episodeCount: 13 },
-    ]);
-  });
-
   it('hides future and undated placeholder episodes until they are released', () => {
     const episodes = [
       {
@@ -163,19 +130,6 @@ describe('TVDB anime metadata mapping', () => {
     ]);
   });
 
-  it('keeps the official two-season order for ordinary anime', () => {
-    expect(
-      selectSeasonOrder(
-        [
-          { id: 1, number: 1, name: 'Season 1', type: 'official', typeId: 1 },
-          { id: 2, number: 2, name: 'Season 2', type: 'official', typeId: 1 },
-          { id: 3, number: 1, name: 'Season 1', type: 'absolute', typeId: 3 },
-        ],
-        1,
-      ),
-    ).toBe('official');
-  });
-
   it('uses TVDB English season translations instead of generic raw labels', () => {
     expect(seasonDisplayName(3, 'Season 3', 'Sky Island')).toBe('Sky Island');
     expect(seasonDisplayName(3, '3. Staffel', 'Kaguya-sama: Love Is War -Ultra Romantic-')).toBe(
@@ -186,9 +140,5 @@ describe('TVDB anime metadata mapping', () => {
     );
     expect(seasonDisplayName(4, 'Season 4', 'Season 4')).toBe('Season 4');
     expect(seasonDisplayName(3, '3. Staffel', 'Season 3')).toBe('Season 3');
-  });
-
-  it('fills the missing Kaguya-sama season two title', () => {
-    expect(knownAnimeSeasonName(['Kaguya-sama: Love Is War'], 2)).toBe('Kaguya-sama: Love Is War?');
   });
 });

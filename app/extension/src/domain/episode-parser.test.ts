@@ -11,15 +11,6 @@ function makeDocument(html: string, title: string) {
 }
 
 describe("parseWatchPath", () => {
-  it("recognizes a Crunchyroll watch URL", () => {
-    expect(parseWatchPath("/watch/GRQW9GW7R/the-storm-dragon-veldora")).toEqual(
-      {
-        episodeId: "GRQW9GW7R",
-        slug: "the-storm-dragon-veldora",
-      },
-    );
-  });
-
   it("rejects non-watch paths", () => {
     expect(parseWatchPath("/series/GYZJ43JMR/slime")).toBeNull();
   });

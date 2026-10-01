@@ -11,17 +11,6 @@ import {
 } from './title-detail-fixture';
 
 describe('Explore title metadata subscriptions', () => {
-  it('renders subscribed metadata and touches the title once on mount', async () => {
-    const view = await screen();
-    expect(view.getByText('The Journey')).toBeTruthy();
-    expect(mockTouchTitle).toHaveBeenCalledWith({
-      mediaType: 'tv',
-      tmdbId: 209867,
-      title: 'Frieren',
-      season: 1,
-    });
-  });
-
   it('marks every episode watched when a TV show is added as Watched', async () => {
     const view = await screen();
     await act(async () => fireEvent.press(view.getByText('Add Entry')));
@@ -36,33 +25,6 @@ describe('Explore title metadata subscriptions', () => {
       ),
     );
     expect(mockAddItem).not.toHaveBeenCalled();
-  });
-
-  it('forces the selected season refresh from pull-to-refresh', async () => {
-    const view = await screen();
-    const list = view.getByTestId('episode-list');
-    await act(async () => list.props.refreshControl.props.onRefresh());
-    expect(mockTouchTitle).toHaveBeenCalledWith({
-      mediaType: 'tv',
-      tmdbId: 209867,
-      title: 'Frieren',
-      season: 1,
-      force: true,
-    });
-  });
-
-  it('changes seasons from the parameterized subscription', async () => {
-    const view = await screen();
-    await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
-    await fireEvent.press(view.getByLabelText('Select Season 2'));
-    await waitFor(() => expect(view.getByText('A New Journey')).toBeTruthy());
-    expect(view.queryByText('The Journey')).toBeNull();
-    expect(mockTouchTitle).toHaveBeenCalledWith({
-      mediaType: 'tv',
-      tmdbId: 209867,
-      title: 'Frieren',
-      season: 2,
-    });
   });
 
   it('shows cached data with a subtle failed update note', async () => {

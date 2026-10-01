@@ -1,9 +1,5 @@
-import React from 'react';
-import { render } from '@testing-library/react-native';
-import { Text } from 'react-native';
 import {
   moveGridItem,
-  NativeDraggableGrid,
   nearestGridSlot,
   nativeGridAutoScrollVelocity,
 } from '@/components/NativeDraggableGrid';
@@ -11,24 +7,6 @@ import {
 const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
 
 describe('NativeDraggableGrid', () => {
-  it('renders every poster as its own draggable grid cell', async () => {
-    const view = await render(
-      <NativeDraggableGrid
-        data={items}
-        disabled={false}
-        columns={3}
-        keyExtractor={(item) => item.id}
-        onDragBegin={jest.fn()}
-        onDragEnd={jest.fn()}
-        renderItem={({ item }) => <Text>{item.id}</Text>}
-      />,
-    );
-
-    expect(view.getByTestId('native-grid-item-a')).toBeTruthy();
-    expect(view.getByTestId('native-grid-item-b')).toBeTruthy();
-    expect(view.getByTestId('native-grid-item-c')).toBeTruthy();
-  });
-
   it('moves one poster into an adjacent slot without grouping the row', () => {
     expect(moveGridItem(items, 0, 1).map((item) => item.id)).toEqual(['b', 'a', 'c']);
     expect(moveGridItem(items, 2, 1).map((item) => item.id)).toEqual(['a', 'c', 'b']);

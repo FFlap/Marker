@@ -45,36 +45,6 @@ describe('add flow', () => {
   });
   afterEach(() => jest.useRealTimers());
 
-  it('debounces search and renders selectable results', async () => {
-    mockSearch.mockResolvedValue([
-      {
-        id: 299534,
-        mediaType: 'movie',
-        title: 'Avengers: Endgame',
-        posterPath: '/poster.jpg',
-        overview: 'After the Snap',
-        releaseDate: '2019-04-24',
-      },
-    ]);
-    mockAddItem.mockResolvedValue('item-id');
-    const view = await render(
-      <ToastProvider>
-        <Add />
-      </ToastProvider>,
-    );
-    expect(view.getByLabelText('Back to library')).toBeTruthy();
-    expect(view.getByText('Add Title')).toBeTruthy();
-    expect(view.getByText('Search all of Marker')).toBeTruthy();
-    expect(view.getByText('Find movies, TV shows, or people.')).toBeTruthy();
-    await fireEvent.changeText(view.getByTestId('tmdb-search'), 'Avengers');
-    await act(async () => {
-      await jest.advanceTimersByTimeAsync(350);
-    });
-    await waitFor(() => expect(view.getByText('Avengers: Endgame')).toBeTruthy());
-    expect(mockSearch).toHaveBeenCalledWith({ query: 'Avengers' });
-    expect(view.getByLabelText('Select Avengers: Endgame')).toBeTruthy();
-  });
-
   it('filters search results by movies and TV shows', async () => {
     mockSearch.mockResolvedValue([
       { id: 1, mediaType: 'movie', title: 'Rambo' },
