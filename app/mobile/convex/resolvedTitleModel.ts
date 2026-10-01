@@ -39,34 +39,3 @@ export async function activeResolvedTitles(
     ),
   );
 }
-
-export function resolvedItemRuntime(
-  item: Pick<Doc<'items'>, 'runtime'>,
-  title: ResolvedTitle | null | undefined,
-) {
-  return (
-    title?.runtime ??
-    (title?.episodeRunTime.length
-      ? title.episodeRunTime.reduce((sum, runtime) => sum + runtime, 0) /
-        title.episodeRunTime.length
-      : item.runtime)
-  );
-}
-
-export function hydrateLibraryItem(
-  item: Doc<'items'>,
-  title: ResolvedTitle | null | undefined,
-): Doc<'items'> {
-  if (!title) return item;
-  return {
-    ...item,
-    title: title.title,
-    normalizedTitle: title.title.toLocaleLowerCase(),
-    posterPath: title.posterPath,
-    overview: title.overview,
-    releaseDate: title.releaseDate ?? title.firstAirDate,
-    runtime: resolvedItemRuntime(item, title),
-    genres: title.genres,
-    isAnime: title.genres.some((genre) => genre.toLocaleLowerCase() === 'anime'),
-  };
-}

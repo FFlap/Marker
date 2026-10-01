@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
+import { requestProfileStatsRefresh } from '../profileStatsRefresh';
 import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
   FAILED_TOUCH_BACKOFF_MS,
@@ -130,6 +131,7 @@ export const refreshItemProjections = internalMutation({
         genres: title.genres,
         isAnime: title.genres.some((genre) => genre.toLowerCase() === 'anime'),
       });
+      if (item.runtime !== runtime) await requestProfileStatsRefresh(ctx, item.userId);
       if (type === 'tv') {
         await ctx.scheduler.runAfter(0, internal.nextEpisode.startNextEpisodeRefresh, {
           itemId: item._id,
