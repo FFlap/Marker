@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Grid3X3, List, Plus } from "lucide-react";
 import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
 import { FilterDialog } from "@/components/filter-dialog";
 import { SortableHandle, SortableItemActions } from "@/components/sortable-item-controls";
 import { AddTitleDialog } from "@/components/title-dialog";
@@ -169,10 +168,10 @@ export function LibraryPage() {
     setMoving(String(moved._id));
     try {
       await reorderItem({
-        itemId: moved._id as Id<"items">,
+        itemId: moved._id,
         status,
-        ...(next[to - 1] && { beforeId: next[to - 1]._id as Id<"items"> }),
-        ...(next[to + 1] && { afterId: next[to + 1]._id as Id<"items"> }),
+        ...(next[to - 1] && { beforeId: next[to - 1]._id }),
+        ...(next[to + 1] && { afterId: next[to + 1]._id }),
       });
       setOrders((current) => ({ ...current, [status]: undefined }));
     } catch {
@@ -196,9 +195,9 @@ export function LibraryPage() {
     setError("");
     try {
       const placement = {
-        itemId: item._id as Id<"items">,
-        ...(placed[insertion - 1] && { beforeId: placed[insertion - 1]._id as Id<"items"> }),
-        ...(placed[insertion + 1] && { afterId: placed[insertion + 1]._id as Id<"items"> }),
+        itemId: item._id,
+        ...(placed[insertion - 1] && { beforeId: placed[insertion - 1]._id }),
+        ...(placed[insertion + 1] && { afterId: placed[insertion + 1]._id }),
       };
       if (status === "watched") await moveItemToWatched(placement);
       else await reorderItem({ ...placement, status });

@@ -52,7 +52,7 @@ function EntryDialog({
   const [draft, setDraft] = useState<EntryDraft>({
     status: item.status,
     rating: item.rating,
-    timesWatched: item.timesWatched ?? (item.status === "watched" ? 1 : 0),
+    timesWatched: item.timesWatched,
     tags: item.tags,
   });
   const [busy, setBusy] = useState<"save" | "remove">();
@@ -63,7 +63,7 @@ function EntryDialog({
     setError("");
     try {
       await updateItem({
-        itemId: item._id as Id<"items">,
+        itemId: item._id,
         ...(item.mediaType !== "tv" || draft.status !== "watched"
           ? { status: draft.status }
           : {}),
@@ -74,7 +74,7 @@ function EntryDialog({
         tags: draft.tags,
       });
       if (item.mediaType === "tv" && draft.status === "watched")
-        await moveItemToWatched({ itemId: item._id as Id<"items"> });
+        await moveItemToWatched({ itemId: item._id });
       setOpen(false);
     } catch {
       setError("Couldn’t save this entry. Try again.");
@@ -88,7 +88,7 @@ function EntryDialog({
       return;
     setBusy("remove");
     try {
-      await removeItem({ itemId: item._id as Id<"items"> });
+      await removeItem({ itemId: item._id });
       setOpen(false);
       onRemoved();
     } catch {
@@ -106,7 +106,7 @@ function EntryDialog({
           setDraft({
             status: item.status,
             rating: item.rating,
-            timesWatched: item.timesWatched ?? (item.status === "watched" ? 1 : 0),
+            timesWatched: item.timesWatched,
             tags: item.tags,
           });
           setError("");
@@ -166,13 +166,13 @@ export function ItemDetailPage() {
   const savedEpisodes = useQuery(
     api.library.episodes.listEpisodes,
     item?.mediaType === "tv"
-      ? { itemId: item._id as Id<"items">, season, pageCount: Math.max(1, guide.loadedPageCount) }
+      ? { itemId: item._id, season, pageCount: Math.max(1, guide.loadedPageCount) }
       : "skip",
   );
   const episodeProgress = useQuery(
     api.library.episodes.listEpisodeProgress,
     item?.mediaType === "tv"
-      ? { itemId: item._id as Id<"items"> }
+      ? { itemId: item._id }
       : "skip",
   );
   const titleRequestState = useQuery(
@@ -201,7 +201,7 @@ export function ItemDetailPage() {
   const [seasonActionError, setSeasonActionError] = useState("");
   const [metadataActionError, setMetadataActionError] = useState("");
   const [episodeActionError, setEpisodeActionError] = useState("");
-  const touchItemId = item?._id as Id<"items"> | undefined;
+  const touchItemId = item?._id;
   const touchMediaType = item?.mediaType;
 
   useEffect(() => {
@@ -319,7 +319,7 @@ export function ItemDetailPage() {
               setMetadataActionError("");
               setTouchError(false);
               void touchItemView({
-                itemId: item._id as Id<"items">,
+                itemId: item._id,
                 ...(item.mediaType === "tv" && { season }),
                 force: true,
               }).catch(() => {
@@ -359,7 +359,7 @@ export function ItemDetailPage() {
               Watched
             </span>
             <strong className="mt-1.5 block text-base">
-              {item.timesWatched ?? 0}×
+              {item.timesWatched}×
             </strong>
           </div>
         </div>
@@ -451,7 +451,7 @@ export function ItemDetailPage() {
                   setSeasonPending(true);
                   setSeasonActionError("");
                   void setSeasonWatched({
-                    itemId: item._id as Id<"items">,
+                    itemId: item._id,
                     season,
                     watched,
                     orderEpoch: seasonRow.orderEpoch,
@@ -489,7 +489,7 @@ export function ItemDetailPage() {
                   setMetadataActionError("");
                   setTouchError(false);
                   void touchItemView({
-                    itemId: item._id as Id<"items">,
+                    itemId: item._id,
                     season,
                     force: true,
                   }).catch(() => {
@@ -596,7 +596,7 @@ export function ItemDetailPage() {
                             setEpisodePending((current) => new Set(current).add(key));
                             setEpisodeActionError("");
                             void setEpisodeState({
-                              itemId: item._id as Id<"items">,
+                              itemId: item._id,
                               season: episode.season,
                               episode: episode.episode,
                               seasonName: episodeView.seasonName,

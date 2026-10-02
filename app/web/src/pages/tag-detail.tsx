@@ -8,7 +8,6 @@ import { Link, useParams } from "@tanstack/react-router";
 import { EllipsisVertical, Globe2, LockKeyhole, Plus } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
 import { FilterDialog } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import {
@@ -217,12 +216,12 @@ function TagDetail({ tag }: { tag: string }) {
     try {
       await reorderTagItem({
         tag,
-        itemId: moved._id as Id<"items">,
+        itemId: moved._id,
         ...(next[to - 1] && {
-          beforeId: next[to - 1]._id as Id<"items">,
+          beforeId: next[to - 1]._id,
         }),
         ...(next[to + 1] && {
-          afterId: next[to + 1]._id as Id<"items">,
+          afterId: next[to + 1]._id,
         }),
       });
       setOrders((current) => ({ ...current, [status]: undefined }));
@@ -248,8 +247,8 @@ function TagDetail({ tag }: { tag: string }) {
     setError("");
     try {
       const placement = {
-        itemId: item._id as Id<"items">,
-        ...(target.at(-1) && { beforeId: target.at(-1)!._id as Id<"items"> }),
+        itemId: item._id,
+        ...(target.at(-1) && { beforeId: target.at(-1)!._id }),
       };
       if (status === "watched") await moveItemToWatched(placement);
       else await reorderItem({ ...placement, status });

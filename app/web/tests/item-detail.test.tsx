@@ -126,7 +126,7 @@ describe("item detail metadata lifecycle", () => {
   });
 
   it("keeps each episode disabled until its own watched mutation completes", async () => {
-    mocks.pages = [{ season: 1, totalCount: 2, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, episodes: [
+    mocks.pages = [{ season: 1, totalCount: 2, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, seasonVersion: "current", episodes: [
       { season: 1, episode: 1, name: "First" }, { season: 1, episode: 2, name: "Second" },
     ] }];
     let finishFirst!: () => void;

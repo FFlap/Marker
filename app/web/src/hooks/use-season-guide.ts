@@ -3,14 +3,10 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import type { SeasonPage, TitleDetail } from "@/lib/catalog";
 
-type SeasonOption = TitleDetail["seasons"][number] & {
-  episodeCountVerified?: boolean;
-};
-
 export function useSeasonGuide({ mediaType, tmdbId, title, refreshError = false }: {
   mediaType?: "movie" | "tv";
   tmdbId?: number;
-  title?: { seasons: SeasonOption[] } | null;
+  title?: Pick<TitleDetail, "seasons"> | null;
   refreshError?: boolean;
 }) {
   const identity = `${mediaType}:${tmdbId}`;
@@ -33,7 +29,7 @@ export function useSeasonGuide({ mediaType, tmdbId, title, refreshError = false 
   );
   const request = useQuery(api.resolvedMetadata.reads.getSeasonRequestState, args);
   const pages = useMemo(() => {
-    const results: SeasonPage[] = pagination.results;
+    const results = pagination.results;
     const first = results.find((page) => page.season === season && page.chunkIndex === 0);
     if (!first) return [];
     const chunks = new Map<number, SeasonPage>();

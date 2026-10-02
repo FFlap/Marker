@@ -57,7 +57,7 @@ describe("season guide", () => {
     rerender();
     expect(result.current.loading).toBe(true);
     mocks.request = { state: "succeeded" };
-    mocks.pages = [{ season: 1, totalCount: 0, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, episodes: [] }];
+    mocks.pages = [{ season: 1, totalCount: 0, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, seasonVersion: "current", episodes: [] }];
     rerender();
     expect(result.current.loading).toBe(false);
     expect(result.current.failed).toBe(false);
@@ -85,7 +85,7 @@ describe("season guide", () => {
     const { result, rerender } = renderHook(() => useSeasonGuide({ mediaType: "tv", tmdbId: 1, title: { seasons }, refreshError: true }));
     expect(result.current.failed).toBe(true);
     expect(result.current.loading).toBe(false);
-    mocks.pages = [{ season: 1, totalCount: 1, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, episodes: [{ season: 1, episode: 1, name: "Pilot" }] }];
+    mocks.pages = [{ season: 1, totalCount: 1, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, seasonVersion: "current", episodes: [{ season: 1, episode: 1, name: "Pilot" }] }];
     rerender();
     expect(result.current.failed).toBe(false);
     expect(result.current.episodes[0]?.name).toBe("Pilot");

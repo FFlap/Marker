@@ -10,11 +10,9 @@ export type SearchResult = Pick<SearchResponse, "id" | "title" | "mediaType"> &
 export type TitleDetail = NonNullable<
   FunctionReturnType<typeof api.resolvedMetadata.reads.getTitle>
 >;
-type SeasonResponse = FunctionReturnType<
+export type SeasonPage = FunctionReturnType<
   typeof api.resolvedMetadata.reads.getSeasonView
 >["page"][number];
-// Older deployments omit this field; newer deployments always return it.
-export type SeasonPage = Omit<SeasonResponse, "seasonVersion"> & { seasonVersion?: string };
 export const TITLE_SEARCH_MAX_LENGTH = 100;
 
 export function titleRuntime(
