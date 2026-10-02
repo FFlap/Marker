@@ -43,6 +43,12 @@ export async function getClerkUserId(ctx: AuthOnlyCtx): Promise<Id<'users'> | nu
   })) as Id<'users'> | null;
 }
 
+export async function requireUser(ctx: AuthOnlyCtx): Promise<Id<'users'>> {
+  const userId = await getClerkUserId(ctx);
+  if (!userId) throw new Error('Authentication required');
+  return userId;
+}
+
 function usernameCandidate(identity: UserIdentity, requestedUsername?: string) {
   const claimed = requestedUsername ?? identity.preferredUsername ?? identity.nickname;
   if (claimed) {

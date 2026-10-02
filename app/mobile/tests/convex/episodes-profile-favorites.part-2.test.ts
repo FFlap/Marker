@@ -3,11 +3,6 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
-import {
-  COORDINATE_CHUNK_PAIR_LIMIT,
-  coordinateChunkPairBudget,
-  coordinateChunkWindow,
-} from '../../convex/nextEpisode';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 

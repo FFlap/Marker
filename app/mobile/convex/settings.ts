@@ -1,4 +1,4 @@
-import { getClerkUserId } from './clerkAuth';
+import { requireUser } from './clerkAuth';
 import { mutation, query } from './_generated/server';
 import { v } from 'convex/values';
 const view = v.union(v.literal('list'), v.literal('posters'));
@@ -14,11 +14,6 @@ const defaults = {
   activityWatching: true,
   activityWatched: true,
 };
-async function user(ctx: Parameters<typeof getClerkUserId>[0]) {
-  const id = await getClerkUserId(ctx);
-  if (!id) throw new Error('Authentication required');
-  return id;
-}
 export const getSettings = query({
   args: {},
   returns: v.object({
@@ -34,7 +29,7 @@ export const getSettings = query({
     activityWatched: v.boolean(),
   }),
   handler: async (ctx) => {
-    const userId = await user(ctx);
+    const userId = await requireUser(ctx);
     const stored = await ctx.db
       .query('settings')
       .withIndex('by_user', (q) => q.eq('userId', userId))
@@ -54,7 +49,7 @@ export const setSettings = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await user(ctx);
+    const userId = await requireUser(ctx);
     const old = await ctx.db
       .query('settings')
       .withIndex('by_user', (q) => q.eq('userId', userId))

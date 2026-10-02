@@ -6,7 +6,7 @@ import { Check, EllipsisVertical, Star } from 'lucide-react-native';
 import { api } from '../../../convex/_generated/api';
 import { EpisodePageSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
-import type { Id } from '../../../convex/_generated/dataModel';
+import type { FunctionReturnType } from 'convex/server';
 import type { AppDrawerHandle } from '@/components/AppDrawer';
 import { Button, EmptyState } from '@/components/ui/primitives';
 import { RatingControl, TagEditor } from '@/components/ui/library-controls';
@@ -28,22 +28,7 @@ import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { MobileNav } from '@/components/MobileNav';
 import { TabHeader } from '@/components/TabHeader';
 
-type EpisodeHubItem = {
-  itemId: Id<'items'>;
-  title: string;
-  posterPath?: string;
-  isAnime: boolean;
-  season: number;
-  episode: number;
-  name: string;
-  overview?: string;
-  runtime?: number;
-  imageUrl?: string;
-  airDate?: string;
-  seasonName?: string;
-  rating?: number;
-  tags: string[];
-};
+type EpisodeHubItem = FunctionReturnType<typeof api.episodeHub.overview>['watching'][number];
 
 type EpisodeTab = 'watching' | 'favorites';
 const EMPTY_EPISODES: EpisodeHubItem[] = [];
@@ -84,10 +69,13 @@ export default function EpisodesScreen() {
 
 function Episodes() {
   const today = useLocalToday();
-  const overview = useQuery(api.episodeHub.overview, { today }) as
-    { watching: EpisodeHubItem[]; favorites: EpisodeHubItem[] } | undefined;
+  const overview = useQuery(api.episodeHub.overview, { today });
   const setEpisode = useMutation(api.library.episodes.setEpisodeState);
+  const refreshWatching = useMutation(api.episodeHub.refreshWatching);
   const toast = useToast();
+  useEffect(() => {
+    void refreshWatching({}).catch(() => toast.show('Couldn’t refresh your episodes'));
+  }, [refreshWatching, toast]);
   const drawerRef = useRef<AppDrawerHandle>(null);
   const [tab, setTab] = useState<EpisodeTab>('watching');
   const [search, setSearch] = useState('');

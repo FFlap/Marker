@@ -54,6 +54,7 @@ const tvdbAnimeLookupKey = (tmdbId: number) =>
 
 const API_ROOT = 'https://api4.thetvdb.com/v4';
 const GUIDE_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
+const INCOMPLETE_GUIDE_SNAPSHOT_MS = 5 * 60 * 1000;
 const SEASON_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
 const MAX_EPISODE_PAGES = 5;
 const EPISODE_FETCH_DEADLINE_MS = 20_000;
@@ -77,7 +78,9 @@ async function login(ctx: { runMutation: Function }) {
       provider: 'tvdb',
       operation: '/login',
       beforeRequest: () =>
-        ctx.runMutation(internal.tmdb.consumeGlobalProviderLimiter, { provider: 'tvdb' }),
+        ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+          provider: 'tvdb',
+        }),
     },
   );
   if (!response.ok) throw new Error(`TVDB login failed (${response.status})`);
@@ -103,7 +106,9 @@ async function request(
       provider: 'tvdb',
       operation: path.split('?')[0],
       beforeRequest: () =>
-        ctx.runMutation(internal.tmdb.consumeGlobalProviderLimiter, { provider: 'tvdb' }),
+        ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+          provider: 'tvdb',
+        }),
     },
   );
   if (response.status === 401 && retryAuth) {
@@ -294,6 +299,9 @@ async function resolveAnime(
         season.number === selectedSeason && selectedEpisodes !== undefined
           ? releasedEpisodes(selectedEpisodes).length
           : (counts.get(season.number) ?? 0),
+      episodeCountVerified:
+        (season.number === selectedSeason && selectedEpisodes !== undefined) ||
+        counts.has(season.number),
     })),
     ...(selectedSeason !== undefined && {
       selectedSeason,
@@ -340,6 +348,12 @@ type SnapshotActionCtx = {
   runMutation: Function;
 };
 type StoredSnapshot = { value: unknown; refreshedAt: number } | null;
+const guideSnapshotFresh = (refreshedAt: number, guide: AnimeDetails) =>
+  refreshedAt >
+  Date.now() -
+    (guide.seasons.some((season) => season.episodeCountVerified === false)
+      ? INCOMPLETE_GUIDE_SNAPSHOT_MS
+      : GUIDE_SNAPSHOT_MS);
 const guideSnapshotKey = (tmdbId: number, tvdbId: number, order: SeasonOrder) =>
   tvdbAnimeGuideKey(tmdbId, tvdbId, order);
 const guideLookupKey = tvdbAnimeLookupKey;
@@ -410,7 +424,12 @@ async function animeSnapshot(
         isTruncatedSnapshot(stored.value) ? null : stored.value
       ) as AnimeDetails | null;
       if (value === null) return null;
-      if (value?.tvdbId === pinned.tvdbId && value.order === pinned.order) return value;
+      if (
+        value?.tvdbId === pinned.tvdbId &&
+        value.order === pinned.order &&
+        guideSnapshotFresh(stored.refreshedAt, value)
+      )
+        return value;
     }
   } else if (!pinned) {
     const lookup: StoredSnapshot = await ctx.runQuery(internal.providerSnapshots.get, {
@@ -437,7 +456,12 @@ async function animeSnapshot(
         const value = (
           isTruncatedSnapshot(stored.value) ? null : stored.value
         ) as AnimeDetails | null;
-        if (value?.tvdbId === identity.tvdbId && value.order === identity.order) return value;
+        if (
+          value?.tvdbId === identity.tvdbId &&
+          value.order === identity.order &&
+          guideSnapshotFresh(stored.refreshedAt, value)
+        )
+          return value;
       }
     }
   }

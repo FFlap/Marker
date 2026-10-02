@@ -70,10 +70,24 @@ export const setTitleMapping = (
     };
     if (existing) await ctx.db.replace(existing._id, value);
     else await ctx.db.insert('titleMappings', value);
-    if (args.mediaType === 'tv')
-      await ctx.scheduler.runAfter(0, internal.nextEpisode.refreshForTitle, {
-        tmdbId: args.tmdbId,
-      });
+    if (args.mediaType === 'tv') {
+      const items = await ctx.db
+        .query('items')
+        .withIndex('by_media_tmdb', (query) =>
+          query.eq('mediaType', 'tv').eq('tmdbId', args.tmdbId),
+        )
+        .collect();
+      for (const item of items) {
+        await ctx.scheduler.runAfter(0, internal.nextEpisode.startNextEpisodeRefresh, {
+          itemId: item._id,
+        });
+        await ctx.scheduler.runAfter(
+          0,
+          internal.episodeProjectionRepair.startEpisodeProjectionRepair,
+          { itemId: item._id },
+        );
+      }
+    }
     return value;
   });
 

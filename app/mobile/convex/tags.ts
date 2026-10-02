@@ -1,4 +1,4 @@
-import { getClerkUserId } from './clerkAuth';
+import { getClerkUserId, requireUser } from './clerkAuth';
 import { mutation, query } from './_generated/server';
 import { paginationOptsValidator, paginationResultValidator } from 'convex/server';
 import { v } from 'convex/values';
@@ -32,12 +32,6 @@ type PublicTagPageState = {
   collectionCreatedAt: number;
   cursor: string | null;
 };
-
-async function requireUser(ctx: Parameters<typeof getClerkUserId>[0]) {
-  const userId = await getClerkUserId(ctx);
-  if (!userId) throw new Error('Authentication required');
-  return userId;
-}
 
 const publicTitle = (item: {
   tmdbId: number;

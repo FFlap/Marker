@@ -6,6 +6,7 @@ const mockAddItemAndMarkWatched = jest.fn();
 const mockTouchTitle = jest.fn().mockResolvedValue(undefined);
 const mockAddItem = jest.fn();
 let mockResolvedTitle: Record<string, unknown> | undefined;
+let mockParams: { prefill?: string } = {};
 jest.mock('convex/react', () => ({
   useAction: (ref: string) =>
     ref === 'addItemAndMarkWatched' ? mockAddItemAndMarkWatched : mockSearch,
@@ -20,14 +21,14 @@ jest.mock('../../convex/_generated/api', () => ({
       touch: { touchTitle: 'touchTitle' },
     },
     library: {
-      items: { addItem: 'add', listItems: 'list' },
+      items: { addItem: 'add', listTagSuggestions: 'listTagSuggestions' },
       seasonWatched: { addItemAndMarkWatched: 'addItemAndMarkWatched' },
     },
   },
 }));
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), replace: jest.fn(), canGoBack: () => true },
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockParams,
 }));
 jest.mock('expo-image', () => ({ Image: require('react-native').Image }));
 
@@ -38,12 +39,24 @@ describe('add flow', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     mockSearch.mockReset();
+    mockParams = {};
     mockResolvedTitle = undefined;
     mockTouchTitle.mockClear();
     mockAddItem.mockReset();
     mockAddItemAndMarkWatched.mockReset();
   });
   afterEach(() => jest.useRealTimers());
+
+  it('rejects malformed route prefills before requesting metadata', async () => {
+    mockParams = { prefill: JSON.stringify({ id: -1, title: 'Invalid', mediaType: 'movie' }) };
+    const view = await render(
+      <ToastProvider>
+        <Add />
+      </ToastProvider>,
+    );
+    expect(view.getByTestId('tmdb-search').props.value).toBe('');
+    expect(mockTouchTitle).not.toHaveBeenCalled();
+  });
 
   it('filters search results by movies and TV shows', async () => {
     mockSearch.mockResolvedValue([

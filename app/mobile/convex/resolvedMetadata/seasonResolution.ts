@@ -90,9 +90,11 @@ export async function resolveFreshSeason(
 
   const tmdbEpisodes = tmdbResult.ok ? tmdbResult.value : [];
   const tvdbEpisodes = tvdbResult?.ok ? tvdbResult.value : [];
-  const episodes = tvdbEpisodes.length
-    ? mergeEpisodes(tvdbEpisodes, tmdbEpisodes)
-    : releasedEpisodes(tmdbEpisodes).map(cleanEpisode);
+  const episodes =
+    title.metadataProvider === 'tvdb'
+      ? mergeEpisodes(tvdbEpisodes, tmdbEpisodes)
+      : releasedEpisodes(tmdbEpisodes).map(cleanEpisode);
+  // Preserve the last known season during a partial upstream outage.
   if (episodes.length === 0 && !tmdbResult.ok && current)
     return {
       episodes: current.episodes,
@@ -240,9 +242,7 @@ export async function resolveAndCommitCanonical(
       title,
       currentSeason,
       args.force,
-      titleResult.selectedSeason === requestedSeason && titleResult.selectedEpisodes?.length
-        ? titleResult.selectedEpisodes
-        : undefined,
+      titleResult.selectedSeason === requestedSeason ? titleResult.selectedEpisodes : undefined,
     );
     seasonPartial = seasonResult.partial;
     seasonError = seasonResult.error;
@@ -277,7 +277,7 @@ export async function resolveAndCommitCanonical(
         ...title,
         seasons: title.seasons.map((entry) =>
           entry.season === requestedSeason
-            ? { ...entry, episodeCount: seasonResult.episodes.length }
+            ? { ...entry, episodeCount: seasonResult.episodes.length, episodeCountVerified: true }
             : entry,
         ),
       };

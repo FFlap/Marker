@@ -3,12 +3,11 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import { isEpisodeReleased } from './episodeAvailability';
+import { requestRefresh } from './resolvedMetadata/touch';
 import { EPISODES_PER_CHUNK } from './seasonStorage';
 
 const MAX_TITLE_SEASONS = 1_000;
 const MAX_ITEM_SUMMARIES = 1_001;
-const ITEM_FAN_OUT_BATCH_SIZE = 10;
-const FAVORITE_DISPLAY_PATCH_LIMIT = 20;
 export const COORDINATE_CHUNK_PAIR_LIMIT = 2;
 
 type CoordinateCursor = { season: number; chunkIndex: number };
@@ -51,39 +50,37 @@ const savedMatchesCanonical = (
   saved.seasonOrder === (provider === 'tvdb' ? seasonOrder : undefined) &&
   (providerEpisodeId === undefined || saved.providerEpisodeId === providerEpisodeId);
 
-/**
- * Returns the only chunk indexes a coordinate transaction may inspect. The
- * injectable limit makes the transaction bound directly testable without
- * relying on Convex's internal read counters.
- */
-export function coordinateChunkWindow(
-  startChunkIndex: number,
-  chunkCount: number,
-  maximum = COORDINATE_CHUNK_PAIR_LIMIT,
-) {
-  if (!Number.isInteger(maximum) || maximum < 1 || maximum > COORDINATE_CHUNK_PAIR_LIMIT)
-    throw new Error(`Coordinate refreshes are limited to ${COORDINATE_CHUNK_PAIR_LIMIT} chunks`);
-  const start = Math.max(0, startChunkIndex);
-  return Array.from(
-    { length: Math.min(maximum, Math.max(0, chunkCount - start)) },
-    (_, offset) => start + offset,
-  );
+async function loadMissingMetadata(ctx: MutationCtx, item: Doc<'items'>, season?: number) {
+  if (item.status !== 'watching') return;
+  // Provider admission runs separately so an outage or rate limit cannot roll
+  // back a saved watch. Canonical publication resumes the coordinate refresh.
+  await ctx.scheduler.runAfter(0, internal.nextEpisode.requestMissingMetadata, {
+    itemId: item._id,
+    ...(season !== undefined && { season }),
+  });
 }
 
-export function coordinateChunkPairBudget(maximum = COORDINATE_CHUNK_PAIR_LIMIT) {
-  if (!Number.isInteger(maximum) || maximum < 1 || maximum > COORDINATE_CHUNK_PAIR_LIMIT)
-    throw new Error(`Coordinate refreshes are limited to ${COORDINATE_CHUNK_PAIR_LIMIT} chunks`);
-  let reads = 0;
-  return {
-    canRead: () => reads < maximum,
-    recordRead: () => {
-      if (reads >= maximum)
-        throw new Error(`Coordinate refreshes are limited to ${maximum} chunks`);
-      reads += 1;
-      return reads;
-    },
-  };
-}
+export const requestMissingMetadata = internalMutation({
+  args: { itemId: v.id('items'), season: v.optional(v.number()) },
+  returns: v.null(),
+  handler: async (ctx, { itemId, season }) => {
+    const item = await ctx.db.get(itemId);
+    if (
+      !item ||
+      item.mediaType !== 'tv' ||
+      item.status !== 'watching' ||
+      item.deletingAt !== undefined
+    )
+      return;
+    await requestRefresh(ctx, {
+      userId: item.userId,
+      mediaType: 'tv',
+      tmdbId: item.tmdbId,
+      title: item.title,
+      season,
+    });
+  },
+});
 
 async function loadRefreshContext(ctx: MutationCtx, item: Doc<'items'>) {
   const [title, mapping, summaries] = await Promise.all([
@@ -116,13 +113,15 @@ async function loadRefreshContext(ctx: MutationCtx, item: Doc<'items'>) {
 type RefreshContext = NonNullable<Awaited<ReturnType<typeof loadRefreshContext>>>;
 
 function seasonNeedsCoordinate(context: RefreshContext, season: RefreshContext['seasons'][number]) {
+  // Unknown provider totals cannot rule out already-published canonical episodes.
+  if (season.episodeCountVerified === false) return true;
   if (season.episodeCount <= 0) return false;
   const summary = context.summaryBySeason.get(season.season);
   if (!summary) return true;
   const key = identityKey(context.title, context.mapping?.seasonOrder);
   return (
     summary.currentIdentityKey !== key ||
-    (summary.currentWatchedCount ?? 0) < (summary.currentTotal ?? season.episodeCount)
+    (summary.currentWatchedCount ?? 0) < Math.max(summary.currentTotal ?? 0, season.episodeCount)
   );
 }
 
@@ -228,15 +227,17 @@ async function continueRefreshPage(
   item: Doc<'items'>,
   refresh: Doc<'nextEpisodeRefreshes'>,
   cursor: CoordinateCursor,
+  context: RefreshContext | null,
 ): Promise<RefreshResult> {
-  const context = await loadRefreshContext(ctx, item);
-  if (!context) return finishRefresh(ctx, item, refresh, undefined, 0);
+  if (!context) {
+    await loadMissingMetadata(ctx, item);
+    return finishRefresh(ctx, item, refresh, undefined, 0);
+  }
 
   let current: CoordinateCursor | undefined = cursor;
   let chunkPairsRead = 0;
-  let displayPatches = 0;
-  const chunkPairBudget = coordinateChunkPairBudget();
-  while (current && chunkPairBudget.canRead()) {
+  let requestedMissingSeason = false;
+  while (current && chunkPairsRead < COORDINATE_CHUNK_PAIR_LIMIT) {
     const seasonInfo = context.seasons.find((season) => season.season === current!.season);
     if (!seasonInfo) return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
     const season = await ctx.db
@@ -252,22 +253,37 @@ async function continueRefreshPage(
       season.seasonVersion === undefined ||
       (context.mapping && season.orderEpoch !== context.mapping.orderEpoch) ||
       season.orderEpoch !== context.title.orderEpoch
-    )
-      return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
+    ) {
+      if (!requestedMissingSeason) {
+        await loadMissingMetadata(ctx, item, current.season);
+        requestedMissingSeason = true;
+      }
+      if (seasonInfo.episodeCountVerified !== false)
+        return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
+      // Unknown totals may have no current canonical data; inspect later loaded seasons.
+      current = nextSeasonCursor(context, current.season);
+      continue;
+    }
     const seasonOrder =
       season.metadataProvider === 'tvdb' ? context.mapping?.seasonOrder : undefined;
     if (season.metadataProvider === 'tvdb' && seasonOrder === undefined)
       return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
 
+    // A newer title can announce releases beyond this season's cached chunks.
+    if (
+      !requestedMissingSeason &&
+      seasonInfo.episodeCount > (season.episodeCount ?? 0) &&
+      season.refreshedAt < context.title.refreshedAt
+    ) {
+      await loadMissingMetadata(ctx, item, current.season);
+      requestedMissingSeason = true;
+    }
+
     if (current.chunkIndex >= season.chunkCount) {
       current = nextSeasonCursor(context, current.season);
       continue;
     }
-    const [chunkIndex] = coordinateChunkWindow(current.chunkIndex, season.chunkCount, 1);
-    if (chunkIndex === undefined) {
-      current = nextSeasonCursor(context, current.season);
-      continue;
-    }
+    const chunkIndex = current.chunkIndex;
     const chunk = await ctx.db
       .query('resolvedSeasonChunks')
       .withIndex('by_tmdb_season_version_chunk', (query) =>
@@ -278,8 +294,11 @@ async function continueRefreshPage(
           .eq('chunkIndex', chunkIndex),
       )
       .unique();
-    chunkPairsRead = chunkPairBudget.recordRead();
-    if (!chunk) return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
+    chunkPairsRead += 1;
+    if (!chunk) {
+      await loadMissingMetadata(ctx, item, current.season);
+      return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
+    }
     const canonical = [...chunk.episodes].sort((left, right) => left.episode - right.episode);
     if (canonical.length) {
       const firstEpisode = canonical[0]!.episode;
@@ -307,27 +326,6 @@ async function continueRefreshPage(
           seasonOrder,
           candidate.providerEpisodeId,
         );
-        if (matches && state && displayPatches < FAVORITE_DISPLAY_PATCH_LIMIT) {
-          const display = {
-            seasonName: seasonInfo.name,
-            name: candidate.name,
-            overview: candidate.overview,
-            runtime: candidate.runtime,
-            imageUrl: candidate.imageUrl,
-            airDate: candidate.airDate,
-          };
-          if (
-            state.seasonName !== display.seasonName ||
-            state.name !== display.name ||
-            state.overview !== display.overview ||
-            state.runtime !== display.runtime ||
-            state.imageUrl !== display.imageUrl ||
-            state.airDate !== display.airDate
-          ) {
-            await ctx.db.patch(state._id, display);
-            displayPatches += 1;
-          }
-        }
         if (!state?.watched || !matches) {
           const nextEpisode: NonNullable<Doc<'items'>['nextEpisode']> = {
             season: candidate.season,
@@ -377,6 +375,8 @@ export async function refreshNextEpisode(
   if (!item || item.mediaType !== 'tv' || item.deletingAt !== undefined)
     return { state: 'skipped', chunkPairsRead: 0 };
   const context = await loadRefreshContext(ctx, item);
+  // Exhausted cached seasons cannot reveal a new season until the title is refreshed.
+  if (!context || context.title.refreshAfter <= Date.now()) await loadMissingMetadata(ctx, item);
   const cursor = context ? await firstCursor(ctx, context, item, watchedEpisode) : undefined;
   const existing = await activeRefresh(ctx, item._id);
   if (!cursor) {
@@ -390,7 +390,7 @@ export async function refreshNextEpisode(
     ? (await ctx.db.replace(existing._id, value), existing._id)
     : await ctx.db.insert('nextEpisodeRefreshes', value);
   const refresh = (await ctx.db.get(refreshId))!;
-  return continueRefreshPage(ctx, item, refresh, cursor);
+  return continueRefreshPage(ctx, item, refresh, cursor, context);
 }
 
 export const startNextEpisodeRefresh = internalMutation({
@@ -425,39 +425,6 @@ export const continueNextEpisodeRefresh = internalMutation({
       refresh.chunkIndex !== args.chunkIndex
     )
       return { state: 'superseded', chunkPairsRead: 0 };
-    return continueRefreshPage(ctx, item, refresh, args);
-  },
-});
-
-/** Fans title/mapping publications out by scheduling independent item transactions. */
-export const refreshForTitle = internalMutation({
-  args: {
-    tmdbId: v.number(),
-    cursor: v.optional(v.string()),
-  },
-  returns: v.object({ updated: v.number(), isDone: v.boolean() }),
-  handler: async (ctx, args) => {
-    const page = await ctx.db
-      .query('items')
-      .withIndex('by_media_tmdb', (query) => query.eq('mediaType', 'tv').eq('tmdbId', args.tmdbId))
-      .paginate({ cursor: args.cursor ?? null, numItems: ITEM_FAN_OUT_BATCH_SIZE });
-    for (const item of page.page) {
-      await ctx.scheduler.runAfter(0, internal.nextEpisode.startNextEpisodeRefresh, {
-        itemId: item._id,
-      });
-      await ctx.scheduler.runAfter(
-        0,
-        internal.episodeProjectionRepair.startEpisodeProjectionRepair,
-        {
-          itemId: item._id,
-        },
-      );
-    }
-    if (!page.isDone)
-      await ctx.scheduler.runAfter(0, internal.nextEpisode.refreshForTitle, {
-        tmdbId: args.tmdbId,
-        cursor: page.continueCursor,
-      });
-    return { updated: page.page.length, isDone: page.isDone };
+    return continueRefreshPage(ctx, item, refresh, args, await loadRefreshContext(ctx, item));
   },
 });

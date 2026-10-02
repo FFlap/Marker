@@ -13,14 +13,15 @@ import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SearchResultsSkeleton } from '@/components/PageSkeletons';
-import type { LibraryItem, SearchResult, Status } from '@/types';
+import type { SearchResult, Status } from '@/types';
+import { parseTitlePreview } from '@/features/title/titleRoute';
+import { useTitleSearch } from '@/hooks/use-title-search';
 type MediaFilter = 'all' | SearchResult['mediaType'];
 const mediaFilters: { value: MediaFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'movie', label: 'Movies' },
   { value: 'tv', label: 'TV Shows' },
 ];
-const EMPTY_LIBRARY: LibraryItem[] = [];
 const mediaLabel = (mediaType: SearchResult['mediaType'], genres?: string[]) => {
   const anime = genres?.some((genre) => genre.toLocaleLowerCase() === 'anime');
   if (anime) return mediaType === 'movie' ? 'Anime Movie' : 'Anime';
@@ -28,73 +29,24 @@ const mediaLabel = (mediaType: SearchResult['mediaType'], genres?: string[]) => 
 };
 export default function Add() {
   const { prefill } = useLocalSearchParams<{ prefill?: string }>();
-  const initialResult = useMemo(() => {
-    if (!prefill) return undefined;
-    try {
-      const value = JSON.parse(prefill) as Partial<SearchResult>;
-      if (
-        typeof value.id !== 'number' ||
-        typeof value.title !== 'string' ||
-        (value.mediaType !== 'movie' && value.mediaType !== 'tv')
-      )
-        return undefined;
-      return value as SearchResult;
-    } catch {
-      return undefined;
-    }
-  }, [prefill]);
-  const searchAction = useAction(api.tmdb.searchMulti);
+  const initialResult = useMemo(() => parseTitlePreview(prefill), [prefill]);
   const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const add = useMutation(api.library.items.addItem);
-  const libraryQuery = useQuery(api.library.items.listItems);
-  const library = libraryQuery ?? EMPTY_LIBRARY;
   const toast = useToast();
   const [query, setQuery] = useState(initialResult?.title ?? '');
   const [filter, setFilter] = useState<MediaFilter>('all');
-  const [searchResult, setSearchResult] = useState<{
-    query: string;
-    results: SearchResult[];
-  }>({ query: '', results: [] });
-  const [loadingQuery, setLoadingQuery] = useState<string>();
   const [picked, setPicked] = useState<SearchResult | undefined>(initialResult);
+  const { results, loading } = useTitleSearch(query, { enabled: !picked, delayMs: 350 });
   const resolvedTitle = useQuery(
     api.resolvedMetadata.reads.getTitle,
     picked ? { mediaType: picked.mediaType, tmdbId: picked.id } : 'skip',
   );
-  const requestGeneration = useRef(0);
   const [status, setStatus] = useState<Status>('watchlist');
   const [rating, setRating] = useState<number>();
   const [times, setTimes] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  useEffect(() => {
-    if (picked) return;
-    const normalizedQuery = query.trim();
-    if (normalizedQuery.length < 2) {
-      requestGeneration.current += 1;
-      return;
-    }
-    const generation = ++requestGeneration.current;
-    const timer = setTimeout(async () => {
-      setLoadingQuery(normalizedQuery);
-      try {
-        const next = await searchAction({ query: normalizedQuery });
-        if (generation === requestGeneration.current)
-          setSearchResult({ query: normalizedQuery, results: next });
-      } catch {
-        if (generation === requestGeneration.current) {
-          setSearchResult({ query: normalizedQuery, results: [] });
-          toast.show('Search is unavailable right now');
-        }
-      }
-      if (generation === requestGeneration.current) setLoadingQuery(undefined);
-    }, 350);
-    return () => {
-      clearTimeout(timer);
-      requestGeneration.current += 1;
-    };
-  }, [query, picked, searchAction, toast]);
   const changeStatus = (nextStatus: Status) => {
     setStatus(nextStatus);
     setTimes((current) =>
@@ -126,13 +78,12 @@ export default function Add() {
       title: initialResult.title,
     }).catch(() => undefined);
   }, [initialResult, touchTitle]);
-  const suggestions = useMemo(() => [...new Set(library.flatMap((i) => i.tags))], [library]);
-  const normalizedQuery = query.trim();
-  const results =
-    normalizedQuery.length >= 2 && searchResult.query === normalizedQuery
-      ? searchResult.results
-      : [];
-  const loading = normalizedQuery.length >= 2 && loadingQuery === normalizedQuery;
+  const [tagPrefix, setTagPrefix] = useState('');
+  const suggestions =
+    useQuery(
+      api.library.items.listTagSuggestions,
+      picked ? { prefix: tagPrefix.trim() || undefined } : 'skip',
+    ) ?? [];
   const visibleResults =
     filter === 'all' ? results : results.filter((result) => result.mediaType === filter);
   const resolvedRuntime =
@@ -262,7 +213,12 @@ export default function Add() {
             {status === 'watched' && (
               <Stepper label="Times watched" value={times} onChange={setTimes} min={1} />
             )}
-            <TagEditor tags={tags} onChange={setTags} suggestions={suggestions} />
+            <TagEditor
+              tags={tags}
+              onChange={setTags}
+              suggestions={suggestions}
+              onInputChange={setTagPrefix}
+            />
             <Button
               testID="add-submit"
               title={

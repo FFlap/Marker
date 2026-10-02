@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMutation, useQuery } from 'convex/react';
+import { useQuery } from 'convex/react';
 import { api } from '../../../../../convex/_generated/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { LibraryFiltersDrawer } from '@/components/LibraryFiltersDrawer';
@@ -14,7 +14,7 @@ import { Button, EmptyState, Input } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
-import { DEFAULT_DISPLAY_PREFERENCES, type GridColumns } from '@/lib/displayPreferences';
+import { useGridColumns } from '@/hooks/use-grid-columns';
 import type { Status } from '@/types';
 import {
   LIBRARY_STATUSES,
@@ -80,16 +80,8 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
   };
   const library = useQuery(api.library.items.listItems);
   const settings = useQuery(api.settings.getSettings);
-  const setSettings = useMutation(api.settings.setSettings);
   const [search, setSearch] = useState('');
-  const [gridOverride, setGridOverride] = useState<{
-    base: GridColumns | undefined;
-    value: GridColumns;
-  }>();
-  const gridColumns =
-    gridOverride && settings?.gridColumns === gridOverride.base
-      ? gridOverride.value
-      : (settings?.gridColumns ?? DEFAULT_DISPLAY_PREFERENCES.gridColumns);
+  const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const grid = useGridMetrics(gridColumns);
   const [type, setType] = useState<MediaTypeFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -131,10 +123,6 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
     setType('all');
     setStatusFilter('all');
     setMinimumRating(0);
-  };
-  const updateGridColumns = (next: GridColumns) => {
-    setGridOverride({ base: settings?.gridColumns, value: next });
-    void setSettings({ gridColumns: next }).catch(() => setGridOverride(undefined));
   };
 
   const openTitle = (title: PublicTitle) => {

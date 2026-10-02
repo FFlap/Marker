@@ -28,6 +28,8 @@ export const resolvedSeasonValidator = v.object({
   season: v.number(),
   name: v.string(),
   episodeCount: v.number(),
+  // Older snapshots contain verified counts without an explicit marker.
+  episodeCountVerified: v.optional(v.boolean()),
 });
 export const nextEpisodeValidator = v.object({
   season: v.number(),

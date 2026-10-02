@@ -12,12 +12,7 @@ import {
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
-
-export type SeasonChoice = {
-  season: number;
-  name?: string;
-  episodeCount: number;
-};
+import { availableSeasons, type SeasonChoice } from '@/features/title/seasons';
 
 type SeasonPickerProps = {
   open: boolean;
@@ -35,6 +30,10 @@ const SEASON_ROW_HEIGHT = 64;
 const SHEET_INSET = 24;
 
 const episodeCountLabel = (count: number) => `${count} ${count === 1 ? 'episode' : 'episodes'}`;
+const seasonCountLabel = (choice: SeasonChoice) =>
+  choice.episodeCountVerified === false
+    ? 'Episodes pending'
+    : episodeCountLabel(choice.episodeCount);
 
 const seasonDisplayLabel = (choice: SeasonChoice) => {
   const label = seasonLabel(choice);
@@ -46,7 +45,7 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
   const menuRef = useRef<ScrollView>(null);
   const positionedForOpen = useRef(false);
   const { height: windowHeight } = useWindowDimensions();
-  const visibleOptions = options.filter((choice) => choice.season >= 0 && choice.episodeCount > 0);
+  const visibleOptions = availableSeasons(options);
   const selected = visibleOptions.find((choice) => choice.season === value) ?? visibleOptions[0];
   if (!selected) return null;
   const selectedIndex = Math.max(
@@ -112,11 +111,7 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
                     <NativePressable
                       accessibilityRole="menuitem"
                       accessibilityLabel={`Select ${label}`}
-                      accessibilityHint={
-                        item.episodeCount > 0
-                          ? episodeCountLabel(item.episodeCount)
-                          : 'Episode count unavailable'
-                      }
+                      accessibilityHint={seasonCountLabel(item)}
                       accessibilityState={{ selected: isSelected }}
                       onPress={() => onChange(item.season)}
                       style={[
@@ -130,11 +125,7 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
                         <Text numberOfLines={1} style={s.optionTitle}>
                           {seasonDisplayLabel(item)}
                         </Text>
-                        <Text style={s.optionMeta}>
-                          {item.episodeCount > 0
-                            ? episodeCountLabel(item.episodeCount)
-                            : 'Count unavailable'}
-                        </Text>
+                        <Text style={s.optionMeta}>{seasonCountLabel(item)}</Text>
                       </View>
                       {isSelected && <Check size={18} color={colors.text} strokeWidth={2} />}
                     </NativePressable>

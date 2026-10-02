@@ -144,6 +144,7 @@ jest.mock('../../convex/_generated/api', () => ({
     library: {
       items: {
         listItems: 'listItems',
+        listTagSuggestions: 'listTagSuggestions',
         updateItem: 'updateItem',
         removeItem: 'removeItem',
       },
@@ -251,6 +252,14 @@ describe('item detail metadata subscriptions', () => {
       </ToastProvider>,
     );
 
+  it('trusts a missing item view instead of falling back to the library subscription', async () => {
+    itemView = null;
+    const view = await renderScreen();
+    expect(view.getByText('Title not found')).toBeTruthy();
+    expect(mockUseQuery).not.toHaveBeenCalledWith('listItems');
+    expect(mockUseQuery).toHaveBeenCalledWith('listTagSuggestions', 'skip');
+  });
+
   it('hides empty library seasons and selects the first season with episodes', async () => {
     itemView = {
       ...itemView,
@@ -325,6 +334,21 @@ describe('item detail metadata subscriptions', () => {
       await refreshPromise;
     });
     expect(view.getByTestId('episode-list').props.refreshControl.props.refreshing).toBe(false);
+  });
+
+  it('offers a retry when an item refresh fails before request state is published', async () => {
+    itemView = { item, title: null, requestState: { title: undefined } };
+    mockSeasonView = {};
+    mockTouchItemView.mockRejectedValueOnce(new Error('offline'));
+    const view = await renderScreen();
+    await waitFor(() => expect(view.getByText('Title details couldn’t be loaded.')).toBeTruthy());
+    await userEvent.setup().press(view.getAllByText('Retry')[0]);
+    expect(mockTouchItemView).toHaveBeenLastCalledWith({
+      itemId: 'item',
+      season: 1,
+      force: true,
+    });
+    expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
   });
 
   it('shows a non-blocking failure note when cached metadata exists', async () => {
