@@ -242,9 +242,7 @@ export async function resolveAndCommitCanonical(
       title,
       currentSeason,
       args.force,
-      titleResult.selectedSeason === requestedSeason && titleResult.selectedEpisodes?.length
-        ? titleResult.selectedEpisodes
-        : undefined,
+      titleResult.selectedSeason === requestedSeason ? titleResult.selectedEpisodes : undefined,
     );
     seasonPartial = seasonResult.partial;
     seasonError = seasonResult.error;

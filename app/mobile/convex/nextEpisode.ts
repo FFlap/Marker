@@ -121,7 +121,7 @@ function seasonNeedsCoordinate(context: RefreshContext, season: RefreshContext['
   const key = identityKey(context.title, context.mapping?.seasonOrder);
   return (
     summary.currentIdentityKey !== key ||
-    (summary.currentWatchedCount ?? 0) < (summary.currentTotal ?? season.episodeCount)
+    (summary.currentWatchedCount ?? 0) < Math.max(summary.currentTotal ?? 0, season.episodeCount)
   );
 }
 
@@ -227,8 +227,8 @@ async function continueRefreshPage(
   item: Doc<'items'>,
   refresh: Doc<'nextEpisodeRefreshes'>,
   cursor: CoordinateCursor,
+  context: RefreshContext | null,
 ): Promise<RefreshResult> {
-  const context = await loadRefreshContext(ctx, item);
   if (!context) {
     await loadMissingMetadata(ctx, item);
     return finishRefresh(ctx, item, refresh, undefined, 0);
@@ -268,6 +268,16 @@ async function continueRefreshPage(
       season.metadataProvider === 'tvdb' ? context.mapping?.seasonOrder : undefined;
     if (season.metadataProvider === 'tvdb' && seasonOrder === undefined)
       return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
+
+    // A newer title can announce releases beyond this season's cached chunks.
+    if (
+      !requestedMissingSeason &&
+      seasonInfo.episodeCount > (season.episodeCount ?? 0) &&
+      season.refreshedAt < context.title.refreshedAt
+    ) {
+      await loadMissingMetadata(ctx, item, current.season);
+      requestedMissingSeason = true;
+    }
 
     if (current.chunkIndex >= season.chunkCount) {
       current = nextSeasonCursor(context, current.season);
@@ -365,7 +375,8 @@ export async function refreshNextEpisode(
   if (!item || item.mediaType !== 'tv' || item.deletingAt !== undefined)
     return { state: 'skipped', chunkPairsRead: 0 };
   const context = await loadRefreshContext(ctx, item);
-  if (!context) await loadMissingMetadata(ctx, item);
+  // Exhausted cached seasons cannot reveal a new season until the title is refreshed.
+  if (!context || context.title.refreshAfter <= Date.now()) await loadMissingMetadata(ctx, item);
   const cursor = context ? await firstCursor(ctx, context, item, watchedEpisode) : undefined;
   const existing = await activeRefresh(ctx, item._id);
   if (!cursor) {
@@ -379,7 +390,7 @@ export async function refreshNextEpisode(
     ? (await ctx.db.replace(existing._id, value), existing._id)
     : await ctx.db.insert('nextEpisodeRefreshes', value);
   const refresh = (await ctx.db.get(refreshId))!;
-  return continueRefreshPage(ctx, item, refresh, cursor);
+  return continueRefreshPage(ctx, item, refresh, cursor, context);
 }
 
 export const startNextEpisodeRefresh = internalMutation({
@@ -414,6 +425,6 @@ export const continueNextEpisodeRefresh = internalMutation({
       refresh.chunkIndex !== args.chunkIndex
     )
       return { state: 'superseded', chunkPairsRead: 0 };
-    return continueRefreshPage(ctx, item, refresh, args);
+    return continueRefreshPage(ctx, item, refresh, args, await loadRefreshContext(ctx, item));
   },
 });
