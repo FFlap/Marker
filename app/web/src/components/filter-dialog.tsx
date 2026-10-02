@@ -8,12 +8,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-export type LibraryFilters = {
-  media: "all" | "movie" | "tv" | "anime";
-  minimum: number;
-  status: "all" | "watched" | "watching" | "watchlist" | "dropped";
-  tags: string[];
-};
+import { normalizeTag, type LibraryFilters } from "@/lib/library-filters";
 
 const statuses = [
   "all",
@@ -108,13 +103,13 @@ export function FilterDialog({
               ariaLabel: `Tag: ${tag}`,
             }))}
             value=""
-            isSelected={(tag) => value.tags.includes(tag)}
+            isSelected={(tag) => value.tags.some((entry) => normalizeTag(entry) === normalizeTag(tag))}
             onChange={(tag) => {
-              const selected = value.tags.includes(tag);
+              const selected = value.tags.some((entry) => normalizeTag(entry) === normalizeTag(tag));
               onChange({
                 ...value,
                 tags: selected
-                  ? value.tags.filter((entry) => entry !== tag)
+                  ? value.tags.filter((entry) => normalizeTag(entry) !== normalizeTag(tag))
                   : [...value.tags, tag],
               });
             }}

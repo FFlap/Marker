@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useReducer,
   useState,
   type FormEvent,
   type ReactNode,
@@ -18,49 +17,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { posterUrl } from "@/lib/utils";
+import { TITLE_SEARCH_MAX_LENGTH, titleRuntime, type SearchResult } from "@/lib/catalog";
+import { useTitleSearch } from "@/hooks/use-title-search";
 
-export type SearchResult = {
-  id: number;
-  title: string;
-  mediaType: "movie" | "tv";
-  posterPath?: string;
-  overview?: string;
-  releaseDate?: string;
-  runtime?: number;
-  genres?: string[];
-};
-
-type DialogState = EntryDraft & {
-  query: string;
-  results: SearchResult[];
-  selected?: SearchResult;
-  busy: boolean;
-  error: string;
-};
-
-const freshTitleFields: EntryDraft & { error: string } = {
+const initialDraft: EntryDraft = {
   status: "watchlist",
   rating: undefined,
   timesWatched: 0,
   tags: [],
-  error: "",
 };
-const initialState: DialogState = {
-  ...freshTitleFields,
-  query: "",
-  results: [],
-  busy: false,
-};
-
-type DialogAction =
-  | { type: "patch"; value: Partial<DialogState> }
-  | { type: "reset"; selected?: SearchResult };
-
-function dialogReducer(state: DialogState, action: DialogAction): DialogState {
-  if (action.type === "reset")
-    return { ...initialState, selected: action.selected };
-  return { ...state, ...action.value };
-}
 
 export function AddTitleDialog({
   children,
@@ -71,26 +36,19 @@ export function AddTitleDialog({
   initialSelection?: SearchResult;
   onAdded?: (itemId: string) => void;
 }) {
-  const searchTitles = useAction(api.tmdb.searchMulti);
   const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
   const addItem = useMutation(api.library.items.addItem);
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const [open, setOpen] = useState(false);
-  const [state, dispatch] = useReducer(dialogReducer, {
-    ...initialState,
-    selected: initialSelection,
-  });
-  const {
-    query,
-    results,
-    selected,
-    status,
-    rating,
-    timesWatched,
-    tags,
-    busy,
-    error,
-  } = state;
+  const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
+  const [selected, setSelected] = useState(initialSelection);
+  const [draft, setDraft] = useState(initialDraft);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const { status, rating, timesWatched, tags } = draft;
+  const { results, loading: searching, error: searchError, retry: retrySearch } = useTitleSearch(submittedQuery, open && !selected);
+  const error = saveError || searchError;
   const resolvedTitle = useQuery(
     api.resolvedMetadata.reads.getTitle,
     open && selected ? { mediaType: selected.mediaType, tmdbId: selected.id } : "skip",
@@ -99,14 +57,7 @@ export function AddTitleDialog({
     api.library.items.listTagSuggestions,
     !open || !selected ? "skip" : {},
   );
-  const canonicalRuntime =
-    resolvedTitle?.runtime ??
-    (resolvedTitle?.episodeRunTime.length
-      ? resolvedTitle.episodeRunTime.reduce(
-          (total, value) => total + value,
-          0,
-        ) / resolvedTitle.episodeRunTime.length
-      : selected?.runtime);
+  const canonicalRuntime = titleRuntime(resolvedTitle, selected?.runtime);
 
   useEffect(() => {
     if (!open || !selected) return;
@@ -117,23 +68,10 @@ export function AddTitleDialog({
     }).catch(() => undefined);
   }, [open, selected, touchTitle]);
 
-  const search = async (event: FormEvent) => {
+  const search = (event: FormEvent) => {
     event.preventDefault();
-    if (query.trim().length < 2) return;
-    dispatch({ type: "patch", value: { busy: true, error: "" } });
-    try {
-      dispatch({
-        type: "patch",
-        value: { results: await searchTitles({ query: query.trim() }) },
-      });
-    } catch {
-      dispatch({
-        type: "patch",
-        value: { error: "Couldn’t search right now. Try again." },
-      });
-    } finally {
-      dispatch({ type: "patch", value: { busy: false } });
-    }
+    if (submittedQuery === query.trim()) retrySearch();
+    else setSubmittedQuery(query.trim());
   };
 
   const save = async () => {
@@ -144,20 +82,15 @@ export function AddTitleDialog({
         rating < 0 ||
         rating > 5)
     ) {
-      dispatch({
-        type: "patch",
-        value: { error: "Rating must be between 0 and 5." },
-      });
+      setSaveError("Rating must be between 0 and 5.");
       return;
     }
     if (!Number.isInteger(timesWatched) || timesWatched < 0) {
-      dispatch({
-        type: "patch",
-        value: { error: "Times watched must be a non-negative number." },
-      });
+      setSaveError("Times watched must be a non-negative number.");
       return;
     }
-    dispatch({ type: "patch", value: { busy: true, error: "" } });
+    setBusy(true);
+    setSaveError("");
     try {
       const addArgs = {
         tmdbId: selected.id,
@@ -180,20 +113,15 @@ export function AddTitleDialog({
           ? await addItemAndMarkWatched(addArgs)
           : await addItem(addArgs);
       setOpen(false);
-      dispatch({ type: "reset", selected: initialSelection });
       onAdded?.(String(itemId));
     } catch (cause) {
-      dispatch({
-        type: "patch",
-        value: {
-          error:
-            cause instanceof Error && /already exists/i.test(cause.message)
-              ? "That title is already in your library."
-              : "Couldn’t add this title. Check the rating and try again.",
-        },
-      });
+      setSaveError(
+        cause instanceof Error && /already exists/i.test(cause.message)
+          ? "That title is already in your library."
+          : "Couldn’t add this title. Check the rating and try again.",
+      );
     } finally {
-      dispatch({ type: "patch", value: { busy: false } });
+      setBusy(false);
     }
   };
 
@@ -203,10 +131,11 @@ export function AddTitleDialog({
       onOpenChange={(next) => {
         if (busy && !next) return;
         setOpen(next);
-        dispatch({
-          type: "reset",
-          selected: next ? initialSelection : undefined,
-        });
+        setQuery("");
+        setSubmittedQuery("");
+        setSelected(next ? initialSelection : undefined);
+        setDraft(initialDraft);
+        setSaveError("");
       }}
     >
       <DialogTrigger asChild>{children}</DialogTrigger>
@@ -237,9 +166,9 @@ export function AddTitleDialog({
               </div>
             ) : null}
             <LibraryEntryControls
-              value={{ status, rating, timesWatched, tags }}
+              value={draft}
               suggestions={suggestions ?? []}
-              onChange={(next) => dispatch({ type: "patch", value: next })}
+              onChange={setDraft}
             />
             {error && (
               <p role="alert" className="text-xs text-destructive">
@@ -251,12 +180,11 @@ export function AddTitleDialog({
                 <Button
                   variant="ghost"
                   disabled={busy}
-                  onClick={() =>
-                    dispatch({
-                      type: "patch",
-                      value: { selected: undefined, ...freshTitleFields },
-                    })
-                  }
+                  onClick={() => {
+                    setSelected(undefined);
+                    setDraft(initialDraft);
+                    setSaveError("");
+                  }}
                 >
                   Back
                 </Button>
@@ -275,21 +203,20 @@ export function AddTitleDialog({
                 <Input
                   aria-label="Search TMDB"
                   value={query}
-                  onChange={(event) =>
-                    dispatch({
-                      type: "patch",
-                      value: { query: event.target.value },
-                    })
-                  }
+                  onChange={(event) => {
+                    setSubmittedQuery("");
+                    setQuery(event.target.value);
+                  }}
+                  maxLength={TITLE_SEARCH_MAX_LENGTH}
                   placeholder="Search TMDB"
                   className="pl-10"
                 />
               </div>
               <Button
                 type="submit"
-                disabled={busy || query.trim().length < 2}
+                disabled={busy || searching || query.trim().length < 2}
               >
-                {busy ? "Searching…" : "Search"}
+                {searching ? "Searching…" : "Search"}
               </Button>
             </form>
             {results.length ? (
@@ -298,12 +225,11 @@ export function AddTitleDialog({
                   <button
                     type="button"
                     key={`${result.mediaType}:${result.id}`}
-                    onClick={() =>
-                      dispatch({
-                        type: "patch",
-                        value: { selected: result, ...freshTitleFields },
-                      })
-                    }
+                    onClick={() => {
+                      setSelected(result);
+                      setDraft(initialDraft);
+                      setSaveError("");
+                    }}
                     className="flex min-h-11 items-center gap-3 rounded-xl p-2 text-left hover:bg-card"
                   >
                     <div className="h-14 w-10 shrink-0 overflow-hidden rounded bg-card">
@@ -328,7 +254,7 @@ export function AddTitleDialog({
                   </button>
                 ))}
               </div>
-            ) : query.trim().length >= 2 && !busy ? (
+            ) : submittedQuery.length >= 2 && !searching && !error ? (
               <p className="py-5 text-center text-xs text-muted-foreground">
                 No matches yet.
               </p>

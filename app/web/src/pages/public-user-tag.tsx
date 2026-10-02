@@ -3,12 +3,12 @@ import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import { FilterDialog, type LibraryFilters } from "@/components/filter-dialog";
+import { FilterDialog } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { gridWidth } from "@/lib/display-preferences";
-import { matchesMediaType } from "@/lib/library-filters";
+import { filterLibraryItems, type LibraryFilters } from "@/lib/library-filters";
 import { posterUrl } from "@/lib/utils";
 
 const labels = {
@@ -49,16 +49,10 @@ export function PublicUserTagPage() {
       ),
     [library],
   );
-  const titles = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    return (collection?.titles ?? []).filter(
-      (title) =>
-        (!query || title.title.toLocaleLowerCase().includes(query)) &&
-        matchesMediaType(title, filters.media) &&
-        (filters.status === "all" || title.status === filters.status) &&
-        (!filters.minimum || (title.rating ?? -1) >= filters.minimum),
-    );
-  }, [collection, filters, search]);
+  const titles = useMemo(
+    () => filterLibraryItems(collection?.titles ?? [], filters, search),
+    [collection, filters, search],
+  );
   const filtersActive =
     Boolean(search.trim()) ||
     filters.media !== "all" ||

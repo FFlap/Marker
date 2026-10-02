@@ -105,6 +105,7 @@ const protectedRoutes = [
       preview: typeof search.preview === "string" ? search.preview : undefined,
     }),
     component: TitleDetailPage,
+    remountDeps: ({ params }) => [params.mediaType, params.tmdbId],
   }),
 ];
 const publicRoutes = [

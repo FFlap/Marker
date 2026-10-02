@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
   Check,
@@ -10,7 +10,6 @@ import {
 import {
   useAction,
   useMutation,
-  usePaginatedQuery,
   useQuery,
 } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
@@ -30,38 +29,8 @@ import {
 } from "@/components/ui/dialog";
 import type { WebLibraryItem as LibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-
-type TitleDetail = {
-  title?: string;
-  posterPath?: string;
-  overview?: string;
-  releaseDate?: string;
-  firstAirDate?: string;
-  runtime?: number;
-  episodeRunTime?: number[];
-  genres?: string[];
-  seasons?: Array<{ season: number; name: string; episodeCount: number }>;
-  cast?: Array<{ name: string; character: string; profilePath?: string }>;
-  metadataProvider?: "tmdb" | "tvdb";
-  orderEpoch?: number;
-};
-
-type SeasonPage = {
-  season: number;
-  totalCount: number;
-  chunkIndex: number;
-  metadataProvider: "tmdb" | "tvdb";
-  orderEpoch: number;
-  episodes: Array<{
-    season: number;
-    episode: number;
-    name: string;
-    overview?: string;
-    runtime?: number;
-    imageUrl?: string;
-    airDate?: string;
-  }>;
-};
+import { titleRuntime } from "@/lib/catalog";
+import { useSeasonGuide } from "@/hooks/use-season-guide";
 
 function EntryDialog({
   item,
@@ -83,7 +52,7 @@ function EntryDialog({
   const [draft, setDraft] = useState<EntryDraft>({
     status: item.status,
     rating: item.rating,
-    timesWatched: item.timesWatched ?? (item.status === "watched" ? 1 : 0),
+    timesWatched: item.timesWatched,
     tags: item.tags,
   });
   const [busy, setBusy] = useState<"save" | "remove">();
@@ -94,7 +63,7 @@ function EntryDialog({
     setError("");
     try {
       await updateItem({
-        itemId: item._id as Id<"items">,
+        itemId: item._id,
         ...(item.mediaType !== "tv" || draft.status !== "watched"
           ? { status: draft.status }
           : {}),
@@ -105,7 +74,7 @@ function EntryDialog({
         tags: draft.tags,
       });
       if (item.mediaType === "tv" && draft.status === "watched")
-        await moveItemToWatched({ itemId: item._id as Id<"items"> });
+        await moveItemToWatched({ itemId: item._id });
       setOpen(false);
     } catch {
       setError("Couldn’t save this entry. Try again.");
@@ -119,7 +88,7 @@ function EntryDialog({
       return;
     setBusy("remove");
     try {
-      await removeItem({ itemId: item._id as Id<"items"> });
+      await removeItem({ itemId: item._id });
       setOpen(false);
       onRemoved();
     } catch {
@@ -137,7 +106,7 @@ function EntryDialog({
           setDraft({
             status: item.status,
             rating: item.rating,
-            timesWatched: item.timesWatched ?? (item.status === "watched" ? 1 : 0),
+            timesWatched: item.timesWatched,
             tags: item.tags,
           });
           setError("");
@@ -179,46 +148,31 @@ function EntryDialog({
 export function ItemDetailPage() {
   const { itemId } = useParams({ from: "/app/item/$itemId" });
   const navigate = useNavigate();
-  const listQuery = useQuery(api.library.items.listItems, {});
   const touchItemView = useMutation(api.resolvedMetadata.touch.touchItemView);
   const setSeasonWatched = useAction(api.library.seasonWatched.setSeasonWatched);
   const itemView = useQuery(
     api.resolvedMetadata.reads.getItemView,
     { itemId: itemId as Id<"items"> },
   );
-  const item = (itemView?.item ??
-    listQuery?.find((entry) => String(entry._id) === itemId)) as LibraryItem | undefined;
-  const title = itemView?.title as TitleDetail | null | undefined;
-  const seasons = useMemo(
-    () => title?.seasons?.filter((entry) => entry.season >= 0 && entry.episodeCount > 0).toSorted((left, right) => left.season - right.season) ?? [],
-    [title?.seasons],
-  );
-  const [selectedSeason, setSeason] = useState(1);
-  const season = seasons.some((entry) => entry.season === selectedSeason)
-    ? selectedSeason
-    : (seasons.find((entry) => entry.season > 0)?.season ??
-      seasons[0]?.season ??
-      1);
+  const item = itemView?.item;
+  const title = itemView?.title;
+  const [touchError, setTouchError] = useState(false);
+  const refreshGeneration = useRef(0);
+  const guide = useSeasonGuide({ mediaType: item?.mediaType, tmdbId: item?.tmdbId, title, refreshError: touchError });
+  const { seasons, season, setSeason, episodes, summary: seasonRow } = guide;
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
-  const [episodePending, setEpisodePending] = useState<string>();
+  const [episodePending, setEpisodePending] = useState<ReadonlySet<string>>(() => new Set());
   const setEpisodeState = useMutation(api.library.episodes.setEpisodeState);
-  const seasonView = usePaginatedQuery(
-    api.resolvedMetadata.reads.getSeasonView,
-    item?.mediaType === "tv" && item.tmdbId !== undefined
-      ? { tmdbId: item.tmdbId, season }
-      : "skip",
-    { initialNumItems: 1 },
-  );
   const savedEpisodes = useQuery(
     api.library.episodes.listEpisodes,
     item?.mediaType === "tv"
-      ? { itemId: item._id as Id<"items">, season, pageCount: Math.max(1, seasonView.results.length) }
+      ? { itemId: item._id, season, pageCount: Math.max(1, guide.loadedPageCount) }
       : "skip",
   );
   const episodeProgress = useQuery(
     api.library.episodes.listEpisodeProgress,
     item?.mediaType === "tv"
-      ? { itemId: item._id as Id<"items"> }
+      ? { itemId: item._id }
       : "skip",
   );
   const titleRequestState = useQuery(
@@ -227,32 +181,16 @@ export function ItemDetailPage() {
       ? { mediaType: item.mediaType, tmdbId: item.tmdbId }
       : "skip",
   );
-  const seasonRequestState = useQuery(
-    api.resolvedMetadata.reads.getSeasonRequestState,
-    item?.mediaType === "tv" && item.tmdbId !== undefined
-      ? { tmdbId: item.tmdbId, season }
-      : "skip",
-  );
-  const seasonPages = seasonView.results as SeasonPage[];
-  const episodes = useMemo(
-    () =>
-      seasonPages
-        .filter((page) => page.season === season)
-        .toSorted((left, right) => left.chunkIndex - right.chunkIndex)
-        .flatMap((page) => page.episodes),
-    [season, seasonPages],
-  );
   const savedByEpisode = useMemo(
     () =>
       new Map(
         (savedEpisodes ?? []).map((entry) => [
           entry.episode,
-          entry as { watched?: boolean; rating?: number; tags?: string[] },
+          entry,
         ]),
       ),
     [savedEpisodes],
   );
-  const seasonRow = seasonPages.find((page) => page.season === season);
   const watchedSeasonCount =
     episodeProgress?.find((entry) => entry.season === season)
       ?.currentWatchedCount ?? 0;
@@ -263,18 +201,25 @@ export function ItemDetailPage() {
   const [seasonActionError, setSeasonActionError] = useState("");
   const [metadataActionError, setMetadataActionError] = useState("");
   const [episodeActionError, setEpisodeActionError] = useState("");
-  const touchItemId = item?._id as Id<"items"> | undefined;
+  const touchItemId = item?._id;
   const touchMediaType = item?.mediaType;
 
   useEffect(() => {
-    if (!touchItemId || !touchMediaType) return;
+    const generation = ++refreshGeneration.current;
+    setTouchError(false);
+    setMetadataActionError("");
+    if (!touchItemId || !touchMediaType) return undefined;
     void touchItemView({
       itemId: touchItemId,
       ...(touchMediaType === "tv" && { season }),
-    }).catch(() => undefined);
-  }, [season, touchItemId, touchItemView, touchMediaType]);
+    }).catch(() => {
+      if (generation === refreshGeneration.current) setTouchError(true);
+    });
+    // Invalidate automatic and manual refreshes when this item/season leaves.
+    return () => { refreshGeneration.current += 1; };
+  }, [itemId, season, touchItemId, touchItemView, touchMediaType]);
 
-  if (itemView === undefined || (!item && listQuery === undefined)) {
+  if (itemView === undefined) {
     return (
       <Page width="compact">
         <PageHeader title="Details" back />
@@ -304,18 +249,11 @@ export function ItemDetailPage() {
   const overview = meta.overview;
   const releaseDate = meta.releaseDate;
   const genres = meta.genres;
-  const runtime =
-    title?.runtime ??
-    title?.episodeRunTime?.find((value) => value > 0) ??
-    item.runtime;
+  const runtime = titleRuntime(title, item.runtime);
   const titleFailed =
     !title &&
-    (titleRequestState?.state === "failed" ||
+    (touchError || titleRequestState?.state === "failed" ||
       titleRequestState?.state === "notFound");
-  const seasonFailed =
-    !seasonRow &&
-    (seasonRequestState?.state === "failed" ||
-      seasonRequestState?.state === "notFound");
 
   return (
     <Page width="wide" className="max-w-5xl">
@@ -377,12 +315,18 @@ export function ItemDetailPage() {
             variant="ghost"
             size="sm"
             onClick={() => {
+              const generation = ++refreshGeneration.current;
               setMetadataActionError("");
+              setTouchError(false);
               void touchItemView({
-                itemId: item._id as Id<"items">,
+                itemId: item._id,
                 ...(item.mediaType === "tv" && { season }),
                 force: true,
-              }).catch(() => setMetadataActionError("Couldn’t retry loading title details."));
+              }).catch(() => {
+                if (generation !== refreshGeneration.current) return;
+                setTouchError(true);
+                setMetadataActionError("Couldn’t retry loading title details.");
+              });
             }}
           >
             <RefreshCw className="size-4" /> Retry
@@ -415,7 +359,7 @@ export function ItemDetailPage() {
               Watched
             </span>
             <strong className="mt-1.5 block text-base">
-              {item.timesWatched ?? 0}×
+              {item.timesWatched}×
             </strong>
           </div>
         </div>
@@ -507,7 +451,7 @@ export function ItemDetailPage() {
                   setSeasonPending(true);
                   setSeasonActionError("");
                   void setSeasonWatched({
-                    itemId: item._id as Id<"items">,
+                    itemId: item._id,
                     season,
                     watched,
                     orderEpoch: seasonRow.orderEpoch,
@@ -532,7 +476,7 @@ export function ItemDetailPage() {
               {seasonActionError}
             </p>
           )}
-          {seasonFailed ? (
+          {guide.failed ? (
             <div className="mt-5 flex items-center justify-between gap-4 border-y border-border py-4">
               <p className="text-xs text-muted-foreground">
                 Episodes couldn’t be loaded.
@@ -541,18 +485,24 @@ export function ItemDetailPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
+                  const generation = ++refreshGeneration.current;
                   setMetadataActionError("");
+                  setTouchError(false);
                   void touchItemView({
-                    itemId: item._id as Id<"items">,
+                    itemId: item._id,
                     season,
                     force: true,
-                  }).catch(() => setMetadataActionError("Couldn’t retry loading episodes."));
+                  }).catch(() => {
+                    if (generation !== refreshGeneration.current) return;
+                    setTouchError(true);
+                    setMetadataActionError("Couldn’t retry loading episodes.");
+                  });
                 }}
               >
                 <RefreshCw className="size-4" /> Retry
               </Button>
             </div>
-          ) : seasonView.status === "LoadingFirstPage" ? (
+          ) : guide.loading ? (
             <div className="mt-4 grid gap-2">
               {[0, 1, 2].map((key) => (
                 <div
@@ -576,12 +526,10 @@ export function ItemDetailPage() {
                   season: episode.season,
                   episode: episode.episode,
                   name: episode.name,
-                  overview:
-                    "overview" in episode ? episode.overview : undefined,
-                  runtime: "runtime" in episode ? episode.runtime : undefined,
-                  imageUrl:
-                    "imageUrl" in episode ? episode.imageUrl : undefined,
-                  airDate: "airDate" in episode ? episode.airDate : undefined,
+                  overview: episode.overview,
+                  runtime: episode.runtime,
+                  imageUrl: episode.imageUrl,
+                  airDate: episode.airDate,
                   rating: saved?.rating,
                   tags: saved?.tags ?? [],
                   watched: saved?.watched ?? false,
@@ -590,7 +538,7 @@ export function ItemDetailPage() {
                   <div key={key} className="py-3">
                     <div className="grid min-h-28 w-full grid-cols-[96px_1fr_auto] items-center gap-4 py-3 sm:grid-cols-[112px_1fr_auto]">
                       <span className="aspect-video overflow-hidden rounded-xl bg-card">
-                        {"imageUrl" in episode && episode.imageUrl ? (
+                        {episode.imageUrl ? (
                           <img
                             src={episode.imageUrl}
                             alt=""
@@ -615,15 +563,14 @@ export function ItemDetailPage() {
                           <strong className="font-semibold text-foreground">
                             EP {String(episode.episode).padStart(2, "0")}
                           </strong>
-                          {"runtime" in episode && episode.runtime && (
+                          {episode.runtime && (
                             <span>{episode.runtime} min</span>
                           )}
                         </span>
                         <strong className="mt-1.5 block truncate text-base">
                           {episode.name}
                         </strong>
-                        {"overview" in episode &&
-                        episode.overview &&
+                        {episode.overview &&
                         !expanded ? (
                           <span className="mt-1.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
                             {episode.overview}
@@ -644,12 +591,12 @@ export function ItemDetailPage() {
                         <button
                           type="button"
                           aria-label={`Mark episode ${episode.episode} watched`}
-                          disabled={episodePending === key}
+                          disabled={episodePending.has(key)}
                           onClick={() => {
-                            setEpisodePending(key);
+                            setEpisodePending((current) => new Set(current).add(key));
                             setEpisodeActionError("");
                             void setEpisodeState({
-                              itemId: item._id as Id<"items">,
+                              itemId: item._id,
                               season: episode.season,
                               episode: episode.episode,
                               seasonName: episodeView.seasonName,
@@ -669,7 +616,11 @@ export function ItemDetailPage() {
                               watched: true,
                             })
                               .catch(() => setEpisodeActionError("Couldn’t mark that episode watched."))
-                              .finally(() => setEpisodePending(undefined));
+                              .finally(() => setEpisodePending((current) => {
+                                const next = new Set(current);
+                                next.delete(key);
+                                return next;
+                              }));
                           }}
                           className="grid size-11 place-items-center rounded-full border border-border text-muted-foreground transition hover:bg-foreground hover:text-background disabled:opacity-50 sm:size-8"
                         >
@@ -702,11 +653,11 @@ export function ItemDetailPage() {
             </div>
           )}
           {episodeActionError && <p role="alert" className="mt-3 text-xs text-destructive">{episodeActionError}</p>}
-          {seasonView.status === "CanLoadMore" && (
+          {guide.canLoadMore && (
             <Button
               variant="outline"
               className="mt-5 w-full"
-              onClick={() => seasonView.loadMore(1)}
+              onClick={guide.loadMore}
             >
               Load more episodes
             </Button>

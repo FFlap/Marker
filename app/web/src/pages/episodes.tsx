@@ -2,9 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, EllipsisVertical, SlidersHorizontal, Star } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
 import { ChipGroup } from "@/components/chip-group";
-import { EpisodeDialog, type EpisodeView } from "@/components/episode-dialog";
+import { EpisodeDialog } from "@/components/episode-dialog";
 import { Page } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,13 +14,6 @@ import {
 } from "@/components/ui/dialog";
 import { SearchField } from "@/components/ui/search-field";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-type Episode = EpisodeView & {
-  posterPath?: string;
-  imageUrl?: string;
-  isAnime: boolean;
-  tags: string[];
-};
 
 const localDateKey = (date = new Date()) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -61,10 +53,9 @@ function useLocalToday() {
 
 export function EpisodesPage() {
   const today = useLocalToday();
-  const queried = useQuery(api.episodeHub.overview, { today });
+  const data = useQuery(api.episodeHub.overview, { today });
   const setEpisode = useMutation(api.library.episodes.setEpisodeState);
-  const data = queried as
-    { watching: Episode[]; favorites: Episode[] } | undefined;
+  const refreshWatching = useMutation(api.episodeHub.refreshWatching);
   const [tab, setTab] = useState<"watching" | "favorites">("watching");
   const [search, setSearch] = useState("");
   const [showType, setShowType] = useState<"all" | "anime" | "other">("all");
@@ -73,6 +64,13 @@ export function EpisodesPage() {
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const [error, setError] = useState("");
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    void refreshWatching({}).catch(() => {
+      if (active) setError("Couldn’t refresh your next episodes. Try reopening this tab.");
+    });
+    return () => { active = false; };
+  }, [refreshWatching]);
   const favoriteTags = useMemo(() => {
     const byKey = new Map<string, string>();
     for (const episode of data?.favorites ?? [])
@@ -97,7 +95,7 @@ export function EpisodesPage() {
           (tab !== "favorites" ||
             tag === "all" ||
             episode.tags.some((entry) => entry.toLocaleLowerCase() === tag)),
-      ) as Episode[],
+      ),
     [data, minimumRating, search, showType, tab, tag],
   );
   const filtersActive =
@@ -269,7 +267,7 @@ export function EpisodesPage() {
                       setPending((current) => new Set(current).add(key));
                       setError("");
                       void setEpisode({
-                        itemId: episode.itemId as Id<"items">,
+                        itemId: episode.itemId,
                         season: episode.season,
                         episode: episode.episode,
                         seasonName: episode.seasonName,
@@ -339,7 +337,7 @@ export function EpisodesPage() {
           );
         })}
         {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
-        {queried === undefined ? (
+        {data === undefined ? (
           ["one", "two", "three", "four"].map((key) => (
             <div key={key} className="h-20 animate-pulse rounded-2xl bg-card" />
           ))

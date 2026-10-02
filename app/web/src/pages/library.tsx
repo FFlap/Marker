@@ -3,8 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Grid3X3, List, Plus } from "lucide-react";
 import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
-import { FilterDialog, type LibraryFilters } from "@/components/filter-dialog";
+import { FilterDialog } from "@/components/filter-dialog";
 import { SortableHandle, SortableItemActions } from "@/components/sortable-item-controls";
 import { AddTitleDialog } from "@/components/title-dialog";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { Page, SectionHeader } from "@/components/page";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-import { matchesMediaType } from "@/lib/library-filters";
+import { filterLibraryItems, uniqueTags, type LibraryFilters } from "@/lib/library-filters";
 import { gridWidth, listType, listWidth } from "@/lib/display-preferences";
 import { usePointerSortable, type SortableLocation } from "@/hooks/use-pointer-sortable";
 import { useSessionLibraryView } from "@/hooks/use-session-library-view";
@@ -95,11 +94,10 @@ function PosterItem({ item, index, ranked }: { item: WebLibraryItem; index: numb
 }
 
 export function LibraryPage() {
-  const queried = useQuery(api.library.items.listItems, {});
+  const items = useQuery(api.library.items.listItems, {});
   const settings = useQuery(api.settings.getSettings, {});
   const reorderItem = useMutation(api.library.ordering.reorderItem);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
-  const items = queried as WebLibraryItem[] | undefined;
   const { view, setView } = useSessionLibraryView(
     settings?.defaultView ?? "list",
   );
@@ -119,21 +117,11 @@ export function LibraryPage() {
   const [error, setError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const allTags = useMemo(
-    () => [...new Set((items ?? []).flatMap((item) => item.tags))].toSorted((a, b) => a.localeCompare(b)),
+    () => uniqueTags((items ?? []).flatMap((item) => item.tags)),
     [items],
   );
   const filtered = useMemo(
-    () =>
-      (items ?? []).filter(
-        (item) =>
-          item.title
-            .toLocaleLowerCase()
-            .includes(search.trim().toLocaleLowerCase()) &&
-          matchesMediaType(item, filters.media) &&
-          (filters.status === "all" || item.status === filters.status) &&
-          (!filters.minimum || (item.rating ?? -1) >= filters.minimum) &&
-          filters.tags.every((tag) => item.tags.includes(tag)),
-      ),
+    () => filterLibraryItems(items ?? [], filters, search),
     [items, search, filters],
   );
   const visibleStatuses = statuses.filter(
@@ -180,10 +168,10 @@ export function LibraryPage() {
     setMoving(String(moved._id));
     try {
       await reorderItem({
-        itemId: moved._id as Id<"items">,
+        itemId: moved._id,
         status,
-        ...(next[to - 1] && { beforeId: next[to - 1]._id as Id<"items"> }),
-        ...(next[to + 1] && { afterId: next[to + 1]._id as Id<"items"> }),
+        ...(next[to - 1] && { beforeId: next[to - 1]._id }),
+        ...(next[to + 1] && { afterId: next[to + 1]._id }),
       });
       setOrders((current) => ({ ...current, [status]: undefined }));
     } catch {
@@ -207,9 +195,9 @@ export function LibraryPage() {
     setError("");
     try {
       const placement = {
-        itemId: item._id as Id<"items">,
-        ...(placed[insertion - 1] && { beforeId: placed[insertion - 1]._id as Id<"items"> }),
-        ...(placed[insertion + 1] && { afterId: placed[insertion + 1]._id as Id<"items"> }),
+        itemId: item._id,
+        ...(placed[insertion - 1] && { beforeId: placed[insertion - 1]._id }),
+        ...(placed[insertion + 1] && { afterId: placed[insertion + 1]._id }),
       };
       if (status === "watched") await moveItemToWatched(placement);
       else await reorderItem({ ...placement, status });
@@ -289,7 +277,7 @@ export function LibraryPage() {
         </p>
       )}
 
-      {queried === undefined || settings === undefined ? (
+      {items === undefined || settings === undefined ? (
         <div className="mt-12 grid gap-3">
           {["one", "two", "three", "four", "five", "six"].map((key) => (
             <div key={key} className="h-16 animate-pulse rounded-xl bg-card" />

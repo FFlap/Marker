@@ -12,12 +12,11 @@ import { posterUrl } from "@/lib/utils";
 
 export function TagAddPage() {
   const { tag } = useParams({ from: "/app/tags/$tag/add" });
-  const itemQuery = useQuery(api.library.items.listItems, {});
-  const items = itemQuery as WebLibraryItem[] | undefined;
+  const items = useQuery(api.library.items.listItems, {});
   const addTagToItems = useMutation(api.library.items.addTagToItems);
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selected, setSelected] = useState<Set<Id<"items">>>(() => new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const tagKey = tag.trim().toLocaleLowerCase();
@@ -31,7 +30,7 @@ export function TagAddPage() {
   }, [items, search]);
   const isMember = (item: WebLibraryItem) =>
     item.tags.some((entry) => entry.trim().toLocaleLowerCase() === tagKey);
-  const toggle = (itemId: string) => {
+  const toggle = (itemId: Id<"items">) => {
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(itemId)) next.delete(itemId);
@@ -45,7 +44,7 @@ export function TagAddPage() {
     setError("");
     let savedCount = 0;
     try {
-      const ids = [...selected] as Id<"items">[];
+      const ids = [...selected];
       const batches = Array.from(
         { length: Math.ceil(ids.length / 100) },
         (_, index) => ids.slice(index * 100, index * 100 + 100),
@@ -97,7 +96,7 @@ export function TagAddPage() {
             <div className="divide-y divide-border">
               {filtered.map((item) => {
                 const member = isMember(item);
-                const checked = member || selected.has(String(item._id));
+                const checked = member || selected.has(item._id);
                 return (
                   <label
                     key={item._id}
@@ -107,7 +106,7 @@ export function TagAddPage() {
                       type="checkbox"
                       checked={checked}
                       disabled={member || saving}
-                      onChange={() => toggle(String(item._id))}
+                      onChange={() => toggle(item._id)}
                       aria-label={
                         member
                           ? `${item.title}, already in ${tag}`

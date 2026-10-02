@@ -1,19 +1,12 @@
 import { useState } from "react";
 import { useClerk } from "@clerk/react";
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionArgs } from "convex/server";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 
-type Preferences = {
-  defaultView: "list" | "posters";
-  gridColumns: 3 | 4 | 5;
-  listTextSize: "small" | "medium" | "large";
-  listColumns: 1 | 2;
-  activityRatings: boolean;
-  activityWatching: boolean;
-  activityWatched: boolean;
-};
+type Preferences = Required<FunctionArgs<typeof api.settings.setSettings>>;
 type FailedPreference = {
   [K in keyof Preferences]: { key: K; value: Preferences[K] };
 }[keyof Preferences];
