@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { isAuditCommandFailure } from "./audit-report.mjs";
+import { hasStrictForgeDigestValidation } from "./verify-node-forge.mjs";
 
 const allowedAdvisories = new Set([
   // Metro/Clerk image-size build dependency; owner: Marker maintainers; review by 2026-10-01.
@@ -27,6 +28,19 @@ try {
 if (isAuditCommandFailure(result.status, report)) {
   process.stderr.write(result.stderr || result.stdout);
   throw new Error("npm audit failed before returning a vulnerability report");
+}
+
+// No fixed release exists yet. Mobile applies patches/node-forge+1.4.0.patch
+// for https://github.com/advisories/GHSA-86w9-cpqp-85rv. Accept only copies that
+// reject malformed DigestAlgorithm signatures while accepting valid signatures.
+const forge = report.vulnerabilities?.["node-forge"];
+if (
+  Array.isArray(forge?.nodes) &&
+  forge.nodes.length > 0 &&
+  forge.nodes.every(hasStrictForgeDigestValidation)
+) {
+  allowedAdvisories.add("GHSA-86w9-cpqp-85rv");
+  console.log("Verified installed node-forge patch for GHSA-86w9-cpqp-85rv.");
 }
 
 const advisories = Object.values(report.vulnerabilities ?? {}).flatMap(
@@ -74,7 +88,7 @@ if (blocking.length > 0) {
   (report.metadata?.vulnerabilities?.critical ?? 0) > 0
 ) {
   console.warn(
-    "Only the allowlisted image-size advisories inherited through Metro/Clerk build dependencies remain.",
+    "Only reviewed dependency advisories or verified local patches remain.",
   );
 } else {
   console.log("No high or critical production dependency advisories found.");
