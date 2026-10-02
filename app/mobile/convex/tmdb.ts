@@ -1,7 +1,7 @@
 import { action, internalAction } from './_generated/server';
 import { internal } from './_generated/api';
 import { v } from 'convex/values';
-import { getClerkUserId } from './clerkAuth';
+import { requireUser } from './clerkAuth';
 import { providerFetch } from './providerHttp';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
 import { boundedEpisode, MAX_SEASON_EPISODES } from './seasonStorage';
@@ -188,15 +188,8 @@ async function search(ctx: ProviderRequestCtx, query: string, type?: 'movie' | '
   if (type) for (const result of records(raw.results)) result.media_type = type;
   return mapSearchResponse(raw);
 }
-async function authenticated(ctx: Parameters<typeof getClerkUserId>[0]) {
-  const userId = await getClerkUserId(ctx);
-  if (!userId) throw new Error('Authentication required');
-  return userId;
-}
-async function authorizeAction(
-  ctx: Parameters<typeof getClerkUserId>[0] & { runMutation: Function },
-) {
-  const userId = await authenticated(ctx);
+async function authorizeAction(ctx: Parameters<typeof requireUser>[0] & { runMutation: Function }) {
+  const userId = await requireUser(ctx);
   const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
     key: `tmdb:${userId}`,
   });

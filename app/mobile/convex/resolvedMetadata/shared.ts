@@ -4,11 +4,7 @@ import {
   metadataProviderValidator,
   resolvedTitleValidator as publicResolvedTitleValidator,
 } from '../publicValidators';
-export {
-  castMemberValidator,
-  resolvedEpisodeValidator,
-  resolvedSeasonValidator,
-} from '../publicValidators';
+export { resolvedEpisodeValidator } from '../publicValidators';
 import type { Doc } from '../_generated/dataModel';
 export { requireUser } from '../clerkAuth';
 import { releasedEpisodes } from '../episodeAvailability';

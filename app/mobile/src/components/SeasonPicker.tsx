@@ -13,7 +13,6 @@ import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { availableSeasons, type SeasonChoice } from '@/features/title/seasons';
-export type { SeasonChoice } from '@/features/title/seasons';
 
 type SeasonPickerProps = {
   open: boolean;

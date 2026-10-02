@@ -193,6 +193,72 @@ describe('watching entries own their episode loading', () => {
     expect(await t.run((ctx) => ctx.db.query('resolvedTitles').collect())).toHaveLength(2);
   });
 
+  it.each(['season', 'episode'] as const)(
+    'discovers a new %s after a watching show exhausts its cached episodes',
+    async (change) => {
+      const { t, asUser, settle, overview, fetchMock } = await setup();
+      const itemId = await asUser.mutation(api.library.items.addItem, {
+        tmdbId: 88,
+        mediaType: 'tv',
+        title: 'Two seasons',
+        status: 'watching',
+      });
+      await settle();
+      for (const season of [1, 2]) {
+        await asUser.mutation(api.library.episodes.setEpisodeState, {
+          itemId,
+          season,
+          episode: 1,
+          watched: true,
+        });
+        await settle();
+      }
+      expect((await overview()).watching).toEqual([]);
+      fetchMock.mockClear();
+      await asUser.mutation(api.episodeHub.refreshWatching, {});
+      await settle();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // The provider has published new episodes since the last cached title.
+      vi.setSystemTime(Date.now() + 24 * 60 * 60 * 1000);
+      const fetchOriginal = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input) => {
+        if (change !== 'episode' || !String(input).endsWith('/season/2'))
+          return fetchOriginal(input);
+        return Response.json({
+          season_number: 2,
+          episodes: [1, 2].map((episode) => ({
+            id: 199 + episode,
+            episode_number: episode,
+            name: 'Returning episode',
+            air_date: '2026-09-01',
+          })),
+        });
+      });
+      fetchMock.mockResolvedValueOnce(
+        Response.json({
+          id: 88,
+          name: 'Three seasons',
+          genres: [],
+          seasons: (change === 'season' ? [1, 2, 3] : [1, 2]).map((number) => ({
+            season_number: number,
+            name: `Season ${number}`,
+            episode_count: change === 'episode' && number === 2 ? 2 : 1,
+          })),
+        }),
+      );
+      await asUser.mutation(api.episodeHub.refreshWatching, {});
+      await settle();
+      expect((await overview()).watching).toMatchObject([
+        { itemId, season: change === 'season' ? 3 : 2, episode: change === 'season' ? 1 : 2 },
+      ]);
+      expect(await t.run((ctx) => ctx.db.get(itemId))).toMatchObject({ status: 'watching' });
+      expect(
+        await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 2 }),
+      ).toMatchObject([{ episode: 1, watched: true }]);
+    },
+  );
+
   it('keeps a saved watch when provider admission is rate limited', async () => {
     const { t, asUser, userId, settle } = await setup();
     const itemId = await asUser.mutation(api.library.items.addItem, {

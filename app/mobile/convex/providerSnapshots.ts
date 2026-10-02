@@ -73,10 +73,6 @@ export const get = internalQuery({
     ...providerSnapshotEntryValidator.members.map((entry) =>
       v.object({
         ...entry.fields,
-        _id: v.id('providerSnapshots'),
-        _creationTime: v.number(),
-        key: v.string(),
-        entry: providerSnapshotEntryValidator,
         refreshedAt: v.number(),
       }),
     ),
@@ -86,7 +82,7 @@ export const get = internalQuery({
       .query('providerSnapshots')
       .withIndex('by_key', (query) => query.eq('key', key))
       .unique();
-    return stored ? { ...stored, ...stored.entry } : null;
+    return stored ? { ...stored.entry, refreshedAt: stored.refreshedAt } : null;
   },
 });
 
