@@ -67,7 +67,11 @@ const lookup = v.object({
 const calendarMovie = v.array(v.object({ date: v.string(), priority: v.number() }));
 const calendarTv = v.object({ airDate: v.string(), season: v.number() });
 const calendarTvSchedule = v.array(
-  v.object({ season: v.number(), airDate: v.optional(v.string()) }),
+  v.object({
+    season: v.number(),
+    airDate: v.optional(v.string()),
+    lastAirDate: v.optional(v.string()),
+  }),
 );
 const calendarSeason = v.array(
   v.object({

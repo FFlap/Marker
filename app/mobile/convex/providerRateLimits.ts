@@ -37,7 +37,11 @@ export const consumeThrottle = internalMutation({
 
 /** Each provider shares one budget across search, title, season, and calendar requests. */
 export const consumeGlobalProviderLimiter = internalMutation({
-  args: { provider: v.union(v.literal('tmdb'), v.literal('tvdb')) },
+  args: { provider: v.union(v.literal('tmdb'), v.literal('tvdb')), amount: v.optional(v.number()) },
   returns: v.boolean(),
-  handler: (ctx, { provider }) => consumeWindowBudget(ctx, provider + '-global', 300, 60_000),
+  handler: (ctx, { provider, amount = 1 }) => {
+    if (!Number.isInteger(amount) || amount < 1 || amount > 10)
+      throw new Error('Invalid provider budget reservation');
+    return consumeWindowBudget(ctx, provider + '-global', 300, 60_000, amount);
+  },
 });

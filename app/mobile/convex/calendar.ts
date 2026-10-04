@@ -32,7 +32,7 @@ type CalendarEvent = LibraryTitle & {
 };
 
 const CALENDAR_TTL_MS = 6 * 60 * 60 * 1000;
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 const cursorValidator = v.object({
   status: v.union(v.literal('watching'), v.literal('watchlist'), v.literal('watched')),
   after: v.union(v.string(), v.null()),
@@ -103,14 +103,31 @@ export const libraryTitles = internalQuery({
 
 function createRequest(ctx: ActionCtx) {
   let budgetQueue: Promise<unknown> = Promise.resolve();
+  let reserved = 0;
   const beforeRequest = () => {
     // Provider fetches can overlap, but this action must not race itself on
     // the shared rate-limit document. Other actions are covered by retries.
-    const pending = budgetQueue.then(() =>
-      ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+    const pending = budgetQueue.then(async () => {
+      if (reserved > 0) {
+        reserved--;
+        return true;
+      }
+      const granted = await ctx.runMutation(
+        internal.providerRateLimits.consumeGlobalProviderLimiter,
+        {
+          provider: 'tmdb',
+          amount: 5,
+        },
+      );
+      if (granted) {
+        reserved = 4;
+        return true;
+      }
+      // Use the tail of a nearly exhausted window without exceeding it.
+      return ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
         provider: 'tmdb',
-      }),
-    );
+      });
+    });
     budgetQueue = pending.catch(() => undefined);
     return pending;
   };
@@ -209,14 +226,24 @@ const normalizedMovieReleases = (payload: Json, region: string) => {
 
 // Next-episode pointers move after airing and disappear between seasons.
 const normalizedTvSchedule = (payload: Json) => {
-  const seasons = new Map<number, { season: number; airDate?: string }>();
+  const seasons = new Map<number, { season: number; airDate?: string; lastAirDate?: string }>();
+  const last = records([payload.last_episode_to_air])[0];
   for (const entry of records(payload.seasons)) {
     const season = number(entry.season_number);
     const date = string(entry.air_date);
+    const lastDate = string(last?.air_date);
+    const completed =
+      season !== 0 &&
+      season === number(last?.season_number) &&
+      number(entry.episode_count) === number(last?.episode_number) &&
+      number(entry.episode_count) !== undefined &&
+      lastDate &&
+      isDate(lastDate);
     if (season !== undefined)
       seasons.set(season, {
         season,
         ...(date && isDate(date) ? { airDate: date } : {}),
+        ...(completed ? { lastAirDate: lastDate } : {}),
       });
   }
   for (const entry of records([payload.last_episode_to_air, payload.next_episode_to_air])) {
@@ -234,6 +261,7 @@ const relevantSeasons = (
 ) =>
   seasons.filter((season, index) => {
     if (season.airDate && season.airDate > endDate) return false;
+    if (season.lastAirDate && season.lastAirDate < startDate) return false;
     const next = seasons[index + 1];
     // Specials and undated seasons can span regular season boundaries.
     return season.season === 0 || !season.airDate || !next?.airDate || next.airDate >= startDate;
@@ -254,6 +282,40 @@ const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
       },
     ];
   });
+
+function seasonLoader(
+  tmdbId: number,
+  missing: number[],
+  request: ReturnType<typeof createRequest>,
+) {
+  const batches = new Map<number, number[]>();
+  const pending = new Map<number, Promise<Json>>();
+  for (let offset = 0; offset < missing.length; offset += 5) {
+    const batch = missing.slice(offset, offset + 5);
+    for (const season of batch) batches.set(season, batch);
+  }
+  return async (season: number) => {
+    const batch = batches.get(season) ?? [season];
+    if (batch.length === 1) return request(`/tv/${tmdbId}/season/${season}`);
+    const key = batch[0];
+    let response = pending.get(key);
+    if (!response) {
+      response = request(
+        `/tv/${tmdbId}?append_to_response=${batch.map((number) => `season/${number}`).join(',')}`,
+      );
+      pending.set(key, response);
+    }
+    const payload = (await response)[`season/${season}`];
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !('episodes' in payload) ||
+      !Array.isArray(payload.episodes)
+    )
+      throw new Error(`TMDB did not return season ${season}`);
+    return payload as Json;
+  };
+}
 
 async function titleEvents(
   ctx: ActionCtx,
@@ -287,17 +349,33 @@ async function titleEvents(
     snapshots,
   );
   const relevant = relevantSeasons(seasons, startDate, endDate);
+  await loadSnapshots(
+    ctx,
+    relevant
+      .map(({ season }) => `calendar:season:${item.tmdbId}:${season}`)
+      .filter((key) => !snapshots.has(key)),
+    snapshots,
+  );
+  const missing = relevant.filter(({ season }) => {
+    const stored = snapshots.get(`calendar:season:${item.tmdbId}:${season}`);
+    return (
+      !stored ||
+      isTruncatedSnapshot(stored.value) ||
+      stored.refreshedAt <= Date.now() - CALENDAR_TTL_MS
+    );
+  });
+  const loadSeason = seasonLoader(
+    item.tmdbId,
+    missing.map(({ season }) => season),
+    request,
+  );
   const seasonEpisodes = [];
   for (const season of relevant) {
     try {
       const episodes = await cached(
         ctx,
         `calendar:season:${item.tmdbId}:${season.season}`,
-        async () =>
-          normalizedSeasonEpisodes(
-            await request(`/tv/${item.tmdbId}/season/${season.season}`),
-            season.season,
-          ),
+        async () => normalizedSeasonEpisodes(await loadSeason(season.season), season.season),
         onFailure,
         snapshots,
       );
@@ -413,7 +491,7 @@ export const upcoming = action({
     let cursor = 0;
     // A slow title must not hold up the next batch of otherwise independent work.
     await Promise.all(
-      Array.from({ length: Math.min(5, items.length) }, async () => {
+      Array.from({ length: Math.min(10, items.length) }, async () => {
         while (cursor < items.length) {
           const item = items[cursor++];
           let failed = false;

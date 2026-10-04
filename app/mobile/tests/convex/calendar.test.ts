@@ -103,9 +103,8 @@ describe('calendar episode dates', () => {
       });
     });
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
-    const fetch = vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      const value = url.endsWith('/season/1')
+    const payloadFor = (url: string) =>
+      url.endsWith('/season/1')
         ? {
             episodes: [
               { air_date: '2026-09-02', season_number: 1, episode_number: 1, name: 'First' },
@@ -119,6 +118,12 @@ describe('calendar episode dates', () => {
               ],
             }
           : payload;
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      const appended = new URL(url).searchParams.get('append_to_response');
+      const value = appended
+        ? Object.fromEntries(appended.split(',').map((path) => [path, payloadFor(`/${path}`)]))
+        : payloadFor(url);
       return new Response(JSON.stringify(value), { status: 200 });
     });
     vi.stubGlobal('fetch', fetch);
@@ -155,8 +160,31 @@ describe('calendar episode dates', () => {
     expect(day.events).toHaveLength(1);
   });
 
+  it('skips completed seasons before this month but keeps their month available', async () => {
+    const { t, fetch } = await setup({
+      seasons: [{ season_number: 1, air_date: '2026-09-02', episode_count: 2 }],
+      last_episode_to_air: { season_number: 1, episode_number: 2, air_date: '2026-09-09' },
+    });
+    const upcoming = await scheduleFor(t, { startDate: '2026-10-01', endDate: '2026-10-31' });
+    expect(upcoming.events).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const previous = await scheduleFor(t, { startDate: '2026-09-01', endDate: '2026-09-30' });
+    expect(previous.events).toHaveLength(2);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not skip a season when its last aired episode is not the final episode', async () => {
+    const { t, fetch } = await setup({
+      seasons: [{ season_number: 1, air_date: '2026-08-01', episode_count: 12 }],
+      last_episode_to_air: { season_number: 1, episode_number: 3, air_date: '2026-08-21' },
+    });
+    const upcoming = await scheduleFor(t, { startDate: '2026-09-01', endDate: '2026-09-30' });
+    expect(upcoming.events).toHaveLength(2);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('includes both seasons when a month crosses a season boundary', async () => {
-    const { t } = await setup({
+    const { t, fetch } = await setup({
       seasons: [
         { season_number: 1, air_date: '2026-09-02' },
         { season_number: 2, air_date: '2026-09-23' },
@@ -168,6 +196,12 @@ describe('calendar episode dates', () => {
       endDate: '2026-09-30',
     });
     expect(month.events.map((event) => event.episodeName)).toEqual(['First', 'Second', 'Return']);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(
+      fetch.mock.calls.some(([url]) =>
+        String(url).includes('append_to_response=season/1,season/2'),
+      ),
+    ).toBe(true);
   });
 
   it('does not expose another account’s library and requires authentication', async () => {
@@ -386,7 +420,7 @@ describe('calendar repeat loading', () => {
         userId,
         ...(cursor && { cursor }),
       });
-      expect(page.titles.length).toBeLessThanOrEqual(20);
+      expect(page.titles.length).toBeLessThanOrEqual(100);
       titles.push(...page.titles);
       cursor = page.nextCursor ?? undefined;
     } while (cursor);
