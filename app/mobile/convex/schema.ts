@@ -66,6 +66,7 @@ export default defineSchema({
   items: defineTable(itemValidator.omit('_id', '_creationTime'))
     .index('by_user', ['userId'])
     .index('by_user_status', ['userId', 'status', 'rank'])
+    .index('by_user_status_active', ['userId', 'status', 'deletingAt', 'rank'])
     .index('by_user_status_title', ['userId', 'status', 'normalizedTitle'])
     .index('by_user_normalized', ['userId', 'normalizedTitle'])
     .index('by_user_tmdb', ['userId', 'mediaType', 'tmdbId'])

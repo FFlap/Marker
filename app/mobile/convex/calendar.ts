@@ -1,9 +1,17 @@
 import { getClerkUserId } from './clerkAuth';
-import { v } from 'convex/values';
-import { action, internalQuery } from './_generated/server';
+import { type Infer, v } from 'convex/values';
+import { action, internalQuery, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { providerFetch } from './providerHttp';
-import { putNonFatal } from './providerSnapshots';
+import {
+  CALENDAR_SNAPSHOT_BATCH_SIZE,
+  isTruncatedSnapshot,
+  putNonFatal,
+} from './providerSnapshots';
+import type { providerSnapshotEntryValidator } from './providerValidators';
+
+type Snapshot = Infer<typeof providerSnapshotEntryValidator> & { refreshedAt: number };
+type SnapshotMap = Map<string, Snapshot | null>;
 
 type Json = Record<string, unknown>;
 type LibraryTitle = {
@@ -47,16 +55,30 @@ const isDate = (value: string) => {
 const inRange = (date: string, startDate: string, endDate: string) =>
   date >= startDate && date <= endDate;
 
+const libraryTitleValidator = v.object({
+  tmdbId: v.number(),
+  mediaType: v.union(v.literal('movie'), v.literal('tv')),
+  title: v.string(),
+  posterPath: v.optional(v.string()),
+  releaseDate: v.optional(v.string()),
+  status: v.union(v.literal('watched'), v.literal('watching'), v.literal('watchlist')),
+});
+
 export const libraryTitles = internalQuery({
   args: { userId: v.id('users') },
+  returns: v.array(libraryTitleValidator),
   handler: async (ctx, { userId }) => {
-    const rows = await ctx.db
-      .query('items')
-      .withIndex('by_user', (q) => q.eq('userId', userId))
-      .filter((q) =>
-        q.and(q.eq(q.field('deletingAt'), undefined), q.neq(q.field('status'), 'dropped')),
-      )
-      .take(MAX_TITLES + 1);
+    const groups = await Promise.all(
+      (['watching', 'watchlist', 'watched'] as const).map((status) =>
+        ctx.db
+          .query('items')
+          .withIndex('by_user_status_active', (q) =>
+            q.eq('userId', userId).eq('status', status).eq('deletingAt', undefined),
+          )
+          .take(MAX_TITLES + 1),
+      ),
+    );
+    const rows = groups.flat().slice(0, MAX_TITLES + 1);
     return rows.map((item) => ({
       tmdbId: item.tmdbId,
       mediaType: item.mediaType,
@@ -68,7 +90,7 @@ export const libraryTitles = internalQuery({
   },
 });
 
-async function request(ctx: { runMutation: Function }, path: string) {
+async function request(ctx: ActionCtx, path: string) {
   const token = process.env.TMDB_API_READ_ACCESS_TOKEN;
   if (!token) throw new Error('TMDB_API_READ_ACCESS_TOKEN is not configured');
   const response = await providerFetch(
@@ -88,15 +110,51 @@ async function request(ctx: { runMutation: Function }, path: string) {
 }
 
 async function cached<T>(
-  ctx: { runQuery: Function; runMutation: Function },
+  ctx: ActionCtx,
   key: string,
   load: () => Promise<T>,
+  onFailure: () => void,
+  snapshots?: SnapshotMap,
 ) {
-  const stored = await ctx.runQuery(internal.providerSnapshots.get, { key });
-  if (stored && stored.refreshedAt > Date.now() - CALENDAR_TTL_MS) return stored.value as T;
-  const value = await load();
-  await putNonFatal(ctx, { key, value, metricKey: 'calendar' });
-  return value;
+  const stored = snapshots?.has(key)
+    ? snapshots.get(key)
+    : await ctx.runQuery(internal.providerSnapshots.get, { key });
+  if (
+    stored &&
+    !isTruncatedSnapshot(stored.value) &&
+    stored.refreshedAt > Date.now() - CALENDAR_TTL_MS
+  )
+    return stored.value as T;
+  try {
+    const value = await load();
+    await putNonFatal(ctx, { key, value, metricKey: 'calendar' });
+    return value;
+  } catch (error) {
+    if (!stored || isTruncatedSnapshot(stored.value)) throw error;
+    onFailure();
+    return stored.value as T;
+  }
+}
+
+async function loadSnapshots(ctx: ActionCtx, keys: string[], snapshots: SnapshotMap) {
+  await Promise.all(
+    Array.from({ length: Math.ceil(keys.length / CALENDAR_SNAPSHOT_BATCH_SIZE) }, async (_, i) => {
+      const batch = keys.slice(
+        i * CALENDAR_SNAPSHOT_BATCH_SIZE,
+        (i + 1) * CALENDAR_SNAPSHOT_BATCH_SIZE,
+      );
+      const stored = await ctx.runQuery(internal.providerSnapshots.getCalendarSnapshots, {
+        keys: batch,
+      });
+      batch.forEach((key, index) => {
+        const snapshot = stored[index];
+        snapshots.set(
+          key,
+          snapshot ? { ...snapshot.entry, refreshedAt: snapshot.refreshedAt } : null,
+        );
+      });
+    }),
+  );
 }
 
 function movieDate(
@@ -127,12 +185,37 @@ const normalizedMovieReleases = (payload: Json, region: string) => {
   });
 };
 
-const normalizedTvNext = (payload: Json) => {
-  const next = payload.next_episode_to_air as Json | undefined;
-  const airDate = string(next?.air_date);
-  const season = number(next?.season_number);
-  return airDate && isDate(airDate) && season !== undefined ? { airDate, season } : null;
+// Next-episode pointers move after airing and disappear between seasons.
+const normalizedTvSchedule = (payload: Json) => {
+  const seasons = new Map<number, { season: number; airDate?: string }>();
+  for (const entry of records(payload.seasons)) {
+    const season = number(entry.season_number);
+    const date = string(entry.air_date);
+    if (season !== undefined)
+      seasons.set(season, {
+        season,
+        ...(date && isDate(date) ? { airDate: date } : {}),
+      });
+  }
+  for (const entry of records([payload.last_episode_to_air, payload.next_episode_to_air])) {
+    const season = number(entry.season_number);
+    // An episode date must not be used as a season's start date.
+    if (season !== undefined && !seasons.has(season)) seasons.set(season, { season });
+  }
+  return [...seasons.values()].sort((a, b) => a.season - b.season);
 };
+
+const relevantSeasons = (
+  seasons: ReturnType<typeof normalizedTvSchedule>,
+  startDate: string,
+  endDate: string,
+) =>
+  seasons.filter((season, index) => {
+    if (season.airDate && season.airDate > endDate) return false;
+    const next = seasons[index + 1];
+    // Specials and undated seasons can span regular season boundaries.
+    return season.season === 0 || !season.airDate || !next?.airDate || next.airDate >= startDate;
+  });
 
 const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
   records(payload.episodes).flatMap((episode) => {
@@ -151,34 +234,56 @@ const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
   });
 
 async function titleEvents(
-  ctx: { runQuery: Function; runMutation: Function },
+  ctx: ActionCtx,
   item: LibraryTitle,
   startDate: string,
   endDate: string,
   region: string,
+  snapshots: SnapshotMap,
+  onFailure: () => void,
 ): Promise<CalendarEvent[]> {
   if (item.mediaType === 'movie') {
-    const releases = await cached(ctx, `calendar:movie:${item.tmdbId}:${region}`, async () =>
-      normalizedMovieReleases(await request(ctx, `/movie/${item.tmdbId}/release_dates`), region),
+    const releases = await cached(
+      ctx,
+      `calendar:movie:${item.tmdbId}:${region}`,
+      async () =>
+        normalizedMovieReleases(await request(ctx, `/movie/${item.tmdbId}/release_dates`), region),
+      onFailure,
+      snapshots,
     );
     const date = movieDate(releases, startDate, endDate, item.releaseDate);
     return date && inRange(date, startDate, endDate)
       ? [{ ...item, id: `movie:${item.tmdbId}:${date}`, date, kind: 'movie' }]
       : [];
   }
-  const next = await cached(ctx, `calendar:tv:${item.tmdbId}`, async () =>
-    normalizedTvNext(await request(ctx, `/tv/${item.tmdbId}`)),
-  );
-  if (!next || next.airDate > endDate) return [];
-  const seasonEpisodes = await cached(
+  const seasons = await cached(
     ctx,
-    `calendar:season:${item.tmdbId}:${next.season}`,
-    async () =>
-      normalizedSeasonEpisodes(
-        await request(ctx, `/tv/${item.tmdbId}/season/${next.season}`),
-        next.season,
-      ),
+    `calendar:tv:v2:${item.tmdbId}`,
+    async () => normalizedTvSchedule(await request(ctx, `/tv/${item.tmdbId}`)),
+    onFailure,
+    snapshots,
   );
+  const relevant = relevantSeasons(seasons, startDate, endDate);
+  const seasonEpisodes = [];
+  for (const season of relevant) {
+    try {
+      const episodes = await cached(
+        ctx,
+        `calendar:season:${item.tmdbId}:${season.season}`,
+        async () =>
+          normalizedSeasonEpisodes(
+            await request(ctx, `/tv/${item.tmdbId}/season/${season.season}`),
+            season.season,
+          ),
+        onFailure,
+        snapshots,
+      );
+      seasonEpisodes.push(...episodes);
+    } catch {
+      // A broken season (including specials) must not hide the rest of a show.
+      onFailure();
+    }
+  }
   return seasonEpisodes.flatMap((episode) => {
     if (!inRange(episode.date, startDate, endDate)) return [];
     return [
@@ -235,23 +340,50 @@ export const upcoming = action({
       userId,
     })) as LibraryTitle[];
     const items = loaded.slice(0, MAX_TITLES);
+    const keys = items.map((item) =>
+      item.mediaType === 'movie'
+        ? `calendar:movie:${item.tmdbId}:${region}`
+        : `calendar:tv:v2:${item.tmdbId}`,
+    );
+    const snapshots: SnapshotMap = new Map();
+    await loadSnapshots(ctx, keys, snapshots);
+    // Repeat visits can read all known season schedules in batches instead of
+    // paying one action/query round trip per show and season.
+    const seasonKeys = items.flatMap((item, index) => {
+      const snapshot = snapshots.get(keys[index]);
+      return snapshot?.kind === 'calendarTvSchedule'
+        ? relevantSeasons(snapshot.value, startDate, endDate).map(
+            ({ season }) => `calendar:season:${item.tmdbId}:${season}`,
+          )
+        : [];
+    });
+    await loadSnapshots(ctx, [...new Set(seasonKeys)], snapshots);
     const events: CalendarEvent[] = [];
     const failedNames: string[] = [];
     let failedCount = 0;
-    for (let index = 0; index < items.length; index += 5) {
-      const batch = await Promise.all(
-        items.slice(index, index + 5).map(async (item) => {
+    let cursor = 0;
+    // A slow title must not hold up the next batch of otherwise independent work.
+    await Promise.all(
+      Array.from({ length: Math.min(5, items.length) }, async () => {
+        while (cursor < items.length) {
+          const item = items[cursor++];
+          let failed = false;
           try {
-            return await titleEvents(ctx, item, startDate, endDate, region);
+            events.push(
+              ...(await titleEvents(ctx, item, startDate, endDate, region, snapshots, () => {
+                failed = true;
+              })),
+            );
           } catch {
+            failed = true;
+          }
+          if (failed) {
             failedCount += 1;
             if (failedNames.length < 5) failedNames.push(item.title);
-            return [];
           }
-        }),
-      );
-      events.push(...batch.flat());
-    }
+        }
+      }),
+    );
     return {
       events: events.sort(
         (left, right) =>
