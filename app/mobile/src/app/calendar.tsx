@@ -165,7 +165,9 @@ export default function CalendarScreen() {
         <View style={s.status}>
           {loading && (
             <Text accessibilityLiveRegion="polite" style={s.notice}>
-              Loading releases for your library…
+              {result?.needsRefresh && result.events.length > 0
+                ? 'Updating release dates…'
+                : 'Loading releases for your library…'}
             </Text>
           )}
           {!loading && (error || partialFailure) && (

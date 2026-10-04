@@ -130,6 +130,89 @@ describe('calendar episode dates', () => {
     return { t: t.withIdentity({ subject: 'calendar_tv' }), base: t, fetch };
   };
 
+  it('serves fresh and expired saved schedules without provider requests, then updates normally', async () => {
+    const { t, base, fetch } = await setup({
+      seasons: [{ season_number: 1, air_date: '2026-09-02' }],
+    });
+    const args = { startDate: '2026-09-01', endDate: '2026-09-30' };
+    const initial = await scheduleFor(t, args);
+    fetch.mockClear();
+    const fresh = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
+    expect(fresh).toMatchObject({ events: initial.events, needsRefresh: false, nextCursor: null });
+    await base.run(async (ctx) => {
+      for (const row of await ctx.db.query('providerSnapshots').collect())
+        await ctx.db.patch(row._id, { refreshedAt: Date.now() - 7 * 60 * 60 * 1000 });
+    });
+    const stale = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
+    expect(stale).toMatchObject({
+      events: initial.events,
+      needsRefresh: true,
+      failedTitles: { count: 0 },
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    fetch.mockImplementation(
+      async (input) =>
+        new Response(
+          JSON.stringify(
+            String(input).endsWith('/season/1')
+              ? {
+                  episodes: [
+                    { air_date: '2026-09-03', season_number: 1, episode_number: 1, name: 'Moved' },
+                  ],
+                }
+              : { seasons: [{ season_number: 1, air_date: '2026-09-03' }] },
+          ),
+          { status: 200 },
+        ),
+    );
+    const updated = await scheduleFor(t, args);
+    expect(updated.events).toMatchObject([{ date: '2026-09-03', episodeName: 'Moved' }]);
+    expect(updated.events).toHaveLength(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('marks missing and truncated saved schedules for refresh without fetching providers', async () => {
+    const { t, base, fetch } = await setup({ seasons: [] });
+    const args = { startDate: '2026-09-01', endDate: '2026-09-30', cachedOnly: true };
+    const missing = await t.action(api.calendar.upcoming, args);
+    expect(missing).toMatchObject({ events: [], needsRefresh: true, failedTitles: { count: 0 } });
+    await base.mutation(internal.providerSnapshots.put, {
+      key: 'calendar:tv:v2:42',
+      entry: {
+        kind: 'truncated',
+        value: { __truncatedProviderSnapshot: true, originalBytes: 999_999 },
+      },
+    });
+    const truncated = await t.action(api.calendar.upcoming, args);
+    expect(truncated).toMatchObject({ events: [], needsRefresh: true, failedTitles: { count: 0 } });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await base.run((ctx) => ctx.db.query('requestThrottle').collect())).toEqual([]);
+  });
+
+  it('keeps saved seasons visible when another season is missing', async () => {
+    const { t, base, fetch } = await setup({
+      seasons: [
+        { season_number: 1, air_date: '2026-09-02' },
+        { season_number: 2, air_date: '2026-09-23' },
+      ],
+    });
+    const args = { startDate: '2026-09-01', endDate: '2026-09-30' };
+    await scheduleFor(t, args);
+    await base.run(async (ctx) => {
+      const row = await ctx.db
+        .query('providerSnapshots')
+        .withIndex('by_key', (q) => q.eq('key', 'calendar:season:42:2'))
+        .unique();
+      await ctx.db.delete(row!._id);
+    });
+    fetch.mockClear();
+    const saved = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
+    expect(saved.events).toHaveLength(2);
+    expect(saved.needsRefresh).toBe(true);
+    expect(saved.failedTitles.count).toBe(0);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('returns earlier episodes even when the next episode airs after the selected day', async () => {
     const { t, fetch } = await setup({
       seasons: [{ season_number: 1, air_date: '2026-09-02' }],
@@ -414,16 +497,20 @@ describe('calendar repeat loading', () => {
       return userId;
     });
     const titles = [];
+    let pages = 0;
     let cursor: CalendarCursor | undefined;
     do {
       const page = await t.query(internal.calendar.libraryTitles, {
         userId,
         ...(cursor && { cursor }),
       });
+      pages++;
+      expect(page.titles.length).toBeGreaterThan(0);
       expect(page.titles.length).toBeLessThanOrEqual(100);
       titles.push(...page.titles);
       cursor = page.nextCursor ?? undefined;
     } while (cursor);
+    expect(pages).toBe(2);
     expect(titles).toHaveLength(102);
     expect(titles[0].tmdbId).toBe(103);
     expect(titles.at(-1)?.tmdbId).toBe(204);

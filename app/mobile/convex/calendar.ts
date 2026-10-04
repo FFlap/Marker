@@ -12,6 +12,8 @@ import type { providerSnapshotEntryValidator } from './providerValidators';
 
 type Snapshot = Infer<typeof providerSnapshotEntryValidator> & { refreshedAt: number };
 type SnapshotMap = Map<string, Snapshot | null>;
+type CacheRead = { cachedOnly: boolean; needsRefresh: boolean };
+class MissingSchedule extends Error {}
 
 type Json = Record<string, unknown>;
 type LibraryTitle = {
@@ -75,15 +77,29 @@ export const libraryTitles = internalQuery({
     nextCursor: v.union(cursorValidator, v.null()),
   }),
   handler: async (ctx, { userId, cursor }) => {
-    const status = cursor?.status ?? 'watching';
+    const statuses = ['watching', 'watchlist', 'watched'] as const;
+    const findNextStatus = async (start: number) => {
+      for (let index = start; index < statuses.length; index++) {
+        const status = statuses[index];
+        const first = await ctx.db
+          .query('items')
+          .withIndex('by_user_status_active', (q) =>
+            q.eq('userId', userId).eq('status', status).eq('deletingAt', undefined),
+          )
+          .first();
+        if (first) return status;
+      }
+      return null;
+    };
+    const status = cursor?.status ?? (await findNextStatus(0));
+    if (!status) return { titles: [], nextCursor: null };
     const page = await ctx.db
       .query('items')
       .withIndex('by_user_status_active', (q) =>
         q.eq('userId', userId).eq('status', status).eq('deletingAt', undefined),
       )
       .paginate({ cursor: cursor?.after ?? null, numItems: PAGE_SIZE });
-    const nextStatus =
-      status === 'watching' ? 'watchlist' : status === 'watchlist' ? 'watched' : null;
+    const nextStatus = page.isDone ? await findNextStatus(statuses.indexOf(status) + 1) : null;
     const nextCursor: Infer<typeof cursorValidator> | null = !page.isDone
       ? { status, after: page.continueCursor }
       : nextStatus
@@ -153,7 +169,8 @@ async function cached<T>(
   key: string,
   load: () => Promise<T>,
   onFailure: (error: unknown) => void,
-  snapshots?: SnapshotMap,
+  snapshots: SnapshotMap,
+  read: CacheRead,
 ) {
   const stored = snapshots?.has(key)
     ? snapshots.get(key)
@@ -164,6 +181,11 @@ async function cached<T>(
     stored.refreshedAt > Date.now() - CALENDAR_TTL_MS
   )
     return stored.value as T;
+  if (read.cachedOnly) {
+    read.needsRefresh = true;
+    if (stored && !isTruncatedSnapshot(stored.value)) return stored.value as T;
+    throw new MissingSchedule();
+  }
   try {
     const value = await load();
     await putNonFatal(ctx, { key, value, metricKey: 'calendar' });
@@ -326,6 +348,7 @@ async function titleEvents(
   snapshots: SnapshotMap,
   onFailure: (error: unknown) => void,
   request: ReturnType<typeof createRequest>,
+  read: CacheRead,
 ): Promise<CalendarEvent[]> {
   if (item.mediaType === 'movie') {
     const releases = await cached(
@@ -335,6 +358,7 @@ async function titleEvents(
         normalizedMovieReleases(await request(`/movie/${item.tmdbId}/release_dates`), region),
       onFailure,
       snapshots,
+      read,
     );
     const date = movieDate(releases, startDate, endDate, item.releaseDate);
     return date && inRange(date, startDate, endDate)
@@ -347,6 +371,7 @@ async function titleEvents(
     async () => normalizedTvSchedule(await request(`/tv/${item.tmdbId}`)),
     onFailure,
     snapshots,
+    read,
   );
   const relevant = relevantSeasons(seasons, startDate, endDate);
   await loadSnapshots(
@@ -378,6 +403,7 @@ async function titleEvents(
         async () => normalizedSeasonEpisodes(await loadSeason(season.season), season.season),
         onFailure,
         snapshots,
+        read,
       );
       seasonEpisodes.push(...episodes);
     } catch (error) {
@@ -408,6 +434,7 @@ export const upcoming = action({
     region: v.optional(v.string()),
     cursor: v.optional(cursorValidator),
     timeZoneOffsetMinutes: v.optional(v.number()),
+    cachedOnly: v.optional(v.boolean()),
   },
   returns: v.object({
     events: v.array(
@@ -431,10 +458,18 @@ export const upcoming = action({
     region: v.string(),
     nextCursor: v.union(cursorValidator, v.null()),
     retryAfterMs: v.optional(v.number()),
+    needsRefresh: v.optional(v.boolean()),
   }),
   handler: async (
     ctx,
-    { startDate, endDate, region: rawRegion, cursor: pageCursor, timeZoneOffsetMinutes = 0 },
+    {
+      startDate,
+      endDate,
+      region: rawRegion,
+      cursor: pageCursor,
+      timeZoneOffsetMinutes = 0,
+      cachedOnly = false,
+    },
   ) => {
     const userId = await getClerkUserId(ctx);
     if (!userId) throw new Error('Authentication required');
@@ -466,6 +501,7 @@ export const upcoming = action({
       });
     const items = loaded.titles;
     const request = createRequest(ctx);
+    const read: CacheRead = { cachedOnly, needsRefresh: false };
     const keys = items.map((item) =>
       item.mediaType === 'movie'
         ? `calendar:movie:${item.tmdbId}:${region}`
@@ -496,6 +532,7 @@ export const upcoming = action({
           const item = items[cursor++];
           let failed = false;
           const onFailure = (error: unknown) => {
+            if (error instanceof MissingSchedule) return;
             failed = true;
             if (
               error instanceof ConvexError &&
@@ -515,6 +552,7 @@ export const upcoming = action({
                 snapshots,
                 onFailure,
                 request,
+                read,
               )),
             );
           } catch (error) {
@@ -535,6 +573,7 @@ export const upcoming = action({
       truncated: loaded.nextCursor !== null,
       nextCursor: loaded.nextCursor,
       ...(retryAfterMs && { retryAfterMs }),
+      ...(cachedOnly && { needsRefresh: read.needsRefresh }),
       failedTitles: { count: failedCount, names: failedNames },
       region,
     };

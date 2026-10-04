@@ -82,6 +82,42 @@ describe('secondary mobile pages', () => {
     ).toHaveLength(1);
   });
 
+  it('shows saved releases in the month and day while background updates are pending', async () => {
+    const saved = {
+      events: [
+        {
+          id: 'saved',
+          date: '2026-09-02',
+          kind: 'episode',
+          title: 'Saved show',
+          season: 1,
+          episode: 2,
+        },
+      ],
+      failedTitles: { count: 0, names: [] },
+      needsRefresh: true,
+    };
+    let finish!: (value: object) => void;
+    mockUpcoming.mockResolvedValueOnce(saved).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = await render(<CalendarScreen />);
+    await waitFor(() => expect(view.getByText('Updating release dates…')).toBeTruthy());
+    expect(view.getByText('Saved show')).toBeTruthy();
+    mockDate = '2026-09-02';
+    await view.rerender(<CalendarDayScreen />);
+    expect(view.getByText('Updating release dates…')).toBeTruthy();
+    expect(view.getByText('Season 1 · Episode 2')).toBeTruthy();
+    expect(mockUpcoming).toHaveBeenCalledTimes(2);
+    await act(async () => finish({ events: [], failedTitles: { count: 0, names: [] } }));
+    await waitFor(() => expect(view.queryByText('Updating release dates…')).toBeNull());
+    expect(view.queryByText('Saved show')).toBeNull();
+    expect(view.getByText('No releases')).toBeTruthy();
+  });
+
   it('surfaces a partial calendar result without hiding loaded releases', async () => {
     mockUpcoming.mockResolvedValueOnce({
       events: [],
@@ -135,6 +171,7 @@ describe('secondary mobile pages', () => {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
       region: expect.any(String),
+      cachedOnly: true,
       timeZoneOffsetMinutes: expect.any(Number),
     });
   });

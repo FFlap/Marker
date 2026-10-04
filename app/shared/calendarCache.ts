@@ -85,12 +85,16 @@ export class CalendarCache {
     this.entries.set(key, entry);
     entry.pending = Promise.resolve().then(async () => {
       try {
-        const result = await loadCalendarPages(
+        const args = {
+          ...monthRange(month),
+          region,
+          timeZoneOffsetMinutes: new Date(Date.now()).getTimezoneOffset(),
+        };
+        let result = await loadCalendarPages(
           fetch,
           {
-            ...monthRange(month),
-            region,
-            timeZoneOffsetMinutes: new Date(Date.now()).getTimezoneOffset(),
+            ...args,
+            ...(!force && { cachedOnly: true }),
           },
           (progress) => {
             // A refresh keeps the complete old snapshot until its replacement is ready.
@@ -104,6 +108,32 @@ export class CalendarCache {
             }
           },
         );
+        if (result.needsRefresh) {
+          // A saved schedule can be shown immediately after an app restart,
+          // even when provider snapshots need refreshing. Keep loading true
+          // until the authoritative refresh completes; never claim missing
+          // schedules are a finished, empty calendar.
+          const saved = result.events.length
+            ? result
+            : (previous?.snapshot.result ?? result);
+          const hasSavedEvents = saved.events.length > 0;
+          entry.snapshot = {
+            result: { ...saved, needsRefresh: true },
+            loading: true,
+            error: false,
+          };
+          this.listeners.get(key)?.forEach((listener) => listener());
+          result = await loadCalendarPages(fetch, args, (progress) => {
+            if (!hasSavedEvents) {
+              entry.snapshot = {
+                result: progress,
+                loading: true,
+                error: false,
+              };
+              this.listeners.get(key)?.forEach((listener) => listener());
+            }
+          });
+        }
         // The server retains stale data only for failed providers. Merging here
         // would resurrect removed titles or episodes whose release date moved.
         entry.snapshot = { result, loading: false, error: false };

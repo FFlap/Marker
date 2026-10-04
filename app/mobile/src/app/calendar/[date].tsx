@@ -51,7 +51,11 @@ function CalendarDay({ date }: { date: string }) {
           />
         ) : events?.length ? (
           <View style={s.list}>
-            {loading && <Text style={s.notice}>Loading more releases…</Text>}
+            {loading && (
+              <Text style={s.notice}>
+                {result?.needsRefresh ? 'Updating release dates…' : 'Loading more releases…'}
+              </Text>
+            )}
             {events.map((event) => {
               const Icon = event.kind === 'movie' ? Film : Tv2;
               return (

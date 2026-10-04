@@ -172,7 +172,9 @@ export function CalendarPage() {
         <section>
           {loading && (
             <p className="mb-3 text-xs text-muted-foreground">
-              Loading releases for your library…
+              {result?.needsRefresh && result.events.length > 0
+                ? "Updating release dates…"
+                : "Loading releases for your library…"}
             </p>
           )}
           {!loading && partialFailure && (

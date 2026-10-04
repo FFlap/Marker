@@ -40,6 +40,17 @@ describe('complete library calendar loading', () => {
     expect(result.truncated).toBe(false);
   });
 
+  it('retains the refresh requirement across saved library pages', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ...page('first', cursor), needsRefresh: true })
+      .mockResolvedValueOnce({ ...page('second'), needsRefresh: false });
+    const result = await loadCalendarPages(fetch, { ...args, cachedOnly: true }, () => {});
+    expect(result.needsRefresh).toBe(true);
+    expect(result.events).toHaveLength(2);
+    expect(fetch.mock.calls.every(([request]) => request.cachedOnly === true)).toBe(true);
+  });
+
   it('waits for provider budget and retries the same page before continuing', async () => {
     vi.useFakeTimers();
     const fetch = vi

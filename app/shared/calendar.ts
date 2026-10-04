@@ -19,6 +19,7 @@ export type CalendarResult = {
   truncated?: boolean;
   nextCursor?: CalendarCursor | null;
   retryAfterMs?: number;
+  needsRefresh?: boolean;
 };
 
 export type CalendarFetch = (args: {
@@ -27,6 +28,7 @@ export type CalendarFetch = (args: {
   region: string;
   cursor?: CalendarCursor;
   timeZoneOffsetMinutes?: number;
+  cachedOnly?: boolean;
 }) => Promise<CalendarResult>;
 
 export const currentCalendarMonth = () => {
@@ -42,12 +44,14 @@ export async function loadCalendarPages(
     endDate: string;
     region: string;
     timeZoneOffsetMinutes?: number;
+    cachedOnly?: boolean;
   },
   onProgress: (result: CalendarResult) => void,
 ): Promise<CalendarResult> {
   const events = new Map<string, CalendarEvent>();
   const names = new Set<string>();
   let count = 0;
+  let needsRefresh = false;
   let cursor: CalendarCursor | undefined;
   let retries = 0;
   let result: CalendarResult = {
@@ -56,6 +60,7 @@ export async function loadCalendarPages(
   };
   do {
     const page = await fetch({ ...args, ...(cursor && { cursor }) });
+    needsRefresh ||= page.needsRefresh === true;
     const merged = new Map(events);
     for (const event of page.events) merged.set(event.id, event);
     result = {
@@ -68,6 +73,7 @@ export async function loadCalendarPages(
         names: [...new Set([...names, ...page.failedTitles.names])].slice(0, 5),
       },
       truncated: false,
+      ...(needsRefresh && { needsRefresh: true }),
     };
     onProgress(result);
     if (page.retryAfterMs && retries < 2) {

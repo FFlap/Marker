@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CalendarResult } from '../../../shared/calendar';
 import { CalendarCache, monthRange } from '../../../shared/calendarCache';
 
 const result = (title = 'Arrival') => ({
@@ -57,6 +58,108 @@ describe('shared calendar schedules', () => {
     });
     await cache.load('2026-09', 'US', async () => result('Updated'), true);
     expect(cache.get('2026-09', 'US')).toMatchObject({ error: false, result: result('Updated') });
+  });
+
+  it('shows saved releases while refreshing and deduplicates month and day requests', async () => {
+    const cache = new CalendarCache();
+    let finish!: (value: CalendarResult) => void;
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ...result('Saved'), needsRefresh: true })
+      .mockImplementationOnce(
+        () =>
+          new Promise<CalendarResult>((resolve) => {
+            finish = resolve;
+          }),
+      );
+    const loading = cache.load('2026-09', 'CA', fetch);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(cache.get('2026-09', 'CA')).toMatchObject({
+      loading: true,
+      error: false,
+      result: { ...result('Saved'), needsRefresh: true },
+    });
+    const day = cache.load('2026-09', 'CA', fetch);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][0].cachedOnly).toBe(true);
+    expect(fetch.mock.calls[1][0].cachedOnly).toBeUndefined();
+    finish(result('Moved'));
+    await Promise.all([loading, day]);
+    expect(cache.get('2026-09', 'CA')).toMatchObject({ loading: false, result: result('Moved') });
+    expect(cache.get('2026-09', 'CA').result?.needsRefresh).toBeUndefined();
+  });
+
+  it('retains saved releases after a background refresh fails', async () => {
+    const cache = new CalendarCache();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ...result(), needsRefresh: true })
+      .mockRejectedValueOnce(new Error('offline'));
+    await cache.load('2026-09', 'CA', fetch);
+    expect(cache.get('2026-09', 'CA')).toMatchObject({
+      loading: false,
+      error: true,
+      result: result(),
+    });
+  });
+
+  it('keeps the previous client schedule when server snapshots have been evicted', async () => {
+    const cache = new CalendarCache();
+    await cache.load('2026-09', 'CA', async () => result());
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 10, 1) + 6 * 60_000);
+    let finish!: (value: CalendarResult) => void;
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        events: [],
+        failedTitles: { count: 0, names: [] },
+        needsRefresh: true,
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise<CalendarResult>((resolve) => {
+            finish = resolve;
+          }),
+      );
+    const loading = cache.load('2026-09', 'CA', fetch);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(cache.get('2026-09', 'CA')).toMatchObject({ loading: true, result: result() });
+    finish({ events: [], failedTitles: { count: 0, names: [] } });
+    await loading;
+    expect(cache.get('2026-09', 'CA')).toMatchObject({ loading: false, result: { events: [] } });
+  });
+
+  it('publishes every fresh page when there are no saved releases', async () => {
+    const cache = new CalendarCache();
+    let finish!: (value: CalendarResult) => void;
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        events: [],
+        failedTitles: { count: 0, names: [] },
+        needsRefresh: true,
+      })
+      .mockResolvedValueOnce({ ...result('First'), nextCursor: { status: 'watching', after: '2' } })
+      .mockResolvedValueOnce({
+        ...result('Second'),
+        nextCursor: { status: 'watching', after: '3' },
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise<CalendarResult>((resolve) => {
+            finish = resolve;
+          }),
+      );
+    const loading = cache.load('2026-09', 'CA', fetch);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
+    expect(cache.get('2026-09', 'CA').loading).toBe(true);
+    expect(cache.get('2026-09', 'CA').result?.events.map((event) => event.title)).toEqual([
+      'First',
+      'Second',
+    ]);
+    finish(result('Third'));
+    await loading;
+    expect(cache.get('2026-09', 'CA').result?.events).toHaveLength(3);
   });
 
   it('does not let an old request overwrite a different month', async () => {
