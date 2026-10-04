@@ -14,7 +14,7 @@ export default function CalendarDayScreen() {
 }
 
 function CalendarDay({ date }: { date: string }) {
-  const { result, loading, error, valid: isValid, retry } = useCalendar(date);
+  const { result, loading, error, valid: isValid, past, retry } = useCalendar(date);
   const events = result?.events.filter((event) => event.date === date);
   const partialFailure = (result?.failedTitles.count ?? 0) > 0;
   const parsedDate = isValid ? new Date(`${date}T00:00:00`) : undefined;
@@ -39,12 +39,11 @@ function CalendarDay({ date }: { date: string }) {
             </Text>
           </Pressable>
         )}
-        {result?.truncated && (
-          <Text style={s.notice}>Showing releases for the first 100 library titles.</Text>
-        )}
         {!isValid ? (
           <Text style={s.error}>This calendar date is invalid.</Text>
-        ) : events === undefined && loading ? (
+        ) : past ? (
+          <Text style={s.notice}>The calendar shows releases from this month onward.</Text>
+        ) : !events?.length && loading ? (
           <ActivityIndicator
             accessibilityLabel="Loading releases"
             color={colors.muted}
@@ -52,6 +51,7 @@ function CalendarDay({ date }: { date: string }) {
           />
         ) : events?.length ? (
           <View style={s.list}>
+            {loading && <Text style={s.notice}>Loading more releases…</Text>}
             {events.map((event) => {
               const Icon = event.kind === 'movie' ? Film : Tv2;
               return (

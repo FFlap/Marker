@@ -1,5 +1,5 @@
 import { getClerkUserId } from './clerkAuth';
-import { type Infer, v } from 'convex/values';
+import { ConvexError, type Infer, v } from 'convex/values';
 import { action, internalQuery, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { providerFetch } from './providerHttp';
@@ -32,7 +32,11 @@ type CalendarEvent = LibraryTitle & {
 };
 
 const CALENDAR_TTL_MS = 6 * 60 * 60 * 1000;
-const MAX_TITLES = 100;
+const PAGE_SIZE = 20;
+const cursorValidator = v.object({
+  status: v.union(v.literal('watching'), v.literal('watchlist'), v.literal('watched')),
+  after: v.union(v.string(), v.null()),
+});
 const string = (value: unknown) => (typeof value === 'string' ? value : undefined);
 const number = (value: unknown) => (typeof value === 'number' ? value : undefined);
 const records = (value: unknown): Json[] =>
@@ -65,21 +69,27 @@ const libraryTitleValidator = v.object({
 });
 
 export const libraryTitles = internalQuery({
-  args: { userId: v.id('users') },
-  returns: v.array(libraryTitleValidator),
-  handler: async (ctx, { userId }) => {
-    const groups = await Promise.all(
-      (['watching', 'watchlist', 'watched'] as const).map((status) =>
-        ctx.db
-          .query('items')
-          .withIndex('by_user_status_active', (q) =>
-            q.eq('userId', userId).eq('status', status).eq('deletingAt', undefined),
-          )
-          .take(MAX_TITLES + 1),
-      ),
-    );
-    const rows = groups.flat().slice(0, MAX_TITLES + 1);
-    return rows.map((item) => ({
+  args: { userId: v.id('users'), cursor: v.optional(cursorValidator) },
+  returns: v.object({
+    titles: v.array(libraryTitleValidator),
+    nextCursor: v.union(cursorValidator, v.null()),
+  }),
+  handler: async (ctx, { userId, cursor }) => {
+    const status = cursor?.status ?? 'watching';
+    const page = await ctx.db
+      .query('items')
+      .withIndex('by_user_status_active', (q) =>
+        q.eq('userId', userId).eq('status', status).eq('deletingAt', undefined),
+      )
+      .paginate({ cursor: cursor?.after ?? null, numItems: PAGE_SIZE });
+    const nextStatus =
+      status === 'watching' ? 'watchlist' : status === 'watchlist' ? 'watched' : null;
+    const nextCursor: Infer<typeof cursorValidator> | null = !page.isDone
+      ? { status, after: page.continueCursor }
+      : nextStatus
+        ? { status: nextStatus, after: null }
+        : null;
+    const titles = page.page.map((item) => ({
       tmdbId: item.tmdbId,
       mediaType: item.mediaType,
       title: item.title,
@@ -87,33 +97,45 @@ export const libraryTitles = internalQuery({
       ...(item.releaseDate && { releaseDate: item.releaseDate }),
       status: item.status as LibraryTitle['status'],
     }));
+    return { titles, nextCursor };
   },
 });
 
-async function request(ctx: ActionCtx, path: string) {
-  const token = process.env.TMDB_API_READ_ACCESS_TOKEN;
-  if (!token) throw new Error('TMDB_API_READ_ACCESS_TOKEN is not configured');
-  const response = await providerFetch(
-    `https://api.themoviedb.org/3${path}`,
-    { headers: { Authorization: `Bearer ${token}`, accept: 'application/json' } },
-    {
-      provider: 'tmdb',
-      operation: path.split('?')[0],
-      beforeRequest: () =>
-        ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
-          provider: 'tmdb',
-        }),
-    },
-  );
-  if (!response.ok) throw new Error(`TMDB calendar request failed (${response.status})`);
-  return (await response.json()) as Json;
+function createRequest(ctx: ActionCtx) {
+  let budgetQueue: Promise<unknown> = Promise.resolve();
+  const beforeRequest = () => {
+    // Provider fetches can overlap, but this action must not race itself on
+    // the shared rate-limit document. Other actions are covered by retries.
+    const pending = budgetQueue.then(() =>
+      ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+        provider: 'tmdb',
+      }),
+    );
+    budgetQueue = pending.catch(() => undefined);
+    return pending;
+  };
+  return async (path: string) => {
+    const token = process.env.TMDB_API_READ_ACCESS_TOKEN;
+    if (!token) throw new Error('TMDB_API_READ_ACCESS_TOKEN is not configured');
+    const response = await providerFetch(
+      `https://api.themoviedb.org/3${path}`,
+      { headers: { Authorization: `Bearer ${token}`, accept: 'application/json' } },
+      {
+        provider: 'tmdb',
+        operation: path.split('?')[0],
+        beforeRequest,
+      },
+    );
+    if (!response.ok) throw new Error(`TMDB calendar request failed (${response.status})`);
+    return (await response.json()) as Json;
+  };
 }
 
 async function cached<T>(
   ctx: ActionCtx,
   key: string,
   load: () => Promise<T>,
-  onFailure: () => void,
+  onFailure: (error: unknown) => void,
   snapshots?: SnapshotMap,
 ) {
   const stored = snapshots?.has(key)
@@ -131,7 +153,7 @@ async function cached<T>(
     return value;
   } catch (error) {
     if (!stored || isTruncatedSnapshot(stored.value)) throw error;
-    onFailure();
+    onFailure(error);
     return stored.value as T;
   }
 }
@@ -240,14 +262,15 @@ async function titleEvents(
   endDate: string,
   region: string,
   snapshots: SnapshotMap,
-  onFailure: () => void,
+  onFailure: (error: unknown) => void,
+  request: ReturnType<typeof createRequest>,
 ): Promise<CalendarEvent[]> {
   if (item.mediaType === 'movie') {
     const releases = await cached(
       ctx,
       `calendar:movie:${item.tmdbId}:${region}`,
       async () =>
-        normalizedMovieReleases(await request(ctx, `/movie/${item.tmdbId}/release_dates`), region),
+        normalizedMovieReleases(await request(`/movie/${item.tmdbId}/release_dates`), region),
       onFailure,
       snapshots,
     );
@@ -259,7 +282,7 @@ async function titleEvents(
   const seasons = await cached(
     ctx,
     `calendar:tv:v2:${item.tmdbId}`,
-    async () => normalizedTvSchedule(await request(ctx, `/tv/${item.tmdbId}`)),
+    async () => normalizedTvSchedule(await request(`/tv/${item.tmdbId}`)),
     onFailure,
     snapshots,
   );
@@ -272,16 +295,16 @@ async function titleEvents(
         `calendar:season:${item.tmdbId}:${season.season}`,
         async () =>
           normalizedSeasonEpisodes(
-            await request(ctx, `/tv/${item.tmdbId}/season/${season.season}`),
+            await request(`/tv/${item.tmdbId}/season/${season.season}`),
             season.season,
           ),
         onFailure,
         snapshots,
       );
       seasonEpisodes.push(...episodes);
-    } catch {
+    } catch (error) {
       // A broken season (including specials) must not hide the rest of a show.
-      onFailure();
+      onFailure(error);
     }
   }
   return seasonEpisodes.flatMap((episode) => {
@@ -305,6 +328,8 @@ export const upcoming = action({
     startDate: v.string(),
     endDate: v.string(),
     region: v.optional(v.string()),
+    cursor: v.optional(cursorValidator),
+    timeZoneOffsetMinutes: v.optional(v.number()),
   },
   returns: v.object({
     events: v.array(
@@ -326,8 +351,13 @@ export const upcoming = action({
     truncated: v.boolean(),
     failedTitles: v.object({ count: v.number(), names: v.array(v.string()) }),
     region: v.string(),
+    nextCursor: v.union(cursorValidator, v.null()),
+    retryAfterMs: v.optional(v.number()),
   }),
-  handler: async (ctx, { startDate, endDate, region: rawRegion }) => {
+  handler: async (
+    ctx,
+    { startDate, endDate, region: rawRegion, cursor: pageCursor, timeZoneOffsetMinutes = 0 },
+  ) => {
     const userId = await getClerkUserId(ctx);
     if (!userId) throw new Error('Authentication required');
     if (!isDate(startDate) || !isDate(endDate) || startDate > endDate)
@@ -336,10 +366,28 @@ export const upcoming = action({
       (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000;
     if (rangeDays > 93) throw new Error('Calendar ranges are limited to 93 days');
     const region = /^[A-Za-z]{2}$/.test(rawRegion ?? '') ? rawRegion!.toUpperCase() : 'US';
-    const loaded = (await ctx.runQuery(internal.calendar.libraryTitles, {
-      userId,
-    })) as LibraryTitle[];
-    const items = loaded.slice(0, MAX_TITLES);
+    // Never spend provider budget on months before the current month.
+    if (!Number.isFinite(timeZoneOffsetMinutes) || Math.abs(timeZoneOffsetMinutes) > 14 * 60)
+      throw new Error('Invalid calendar time zone');
+    const currentMonth = new Date(Date.now() - timeZoneOffsetMinutes * 60_000)
+      .toISOString()
+      .slice(0, 7);
+    if (endDate < `${currentMonth}-01`)
+      return {
+        events: [],
+        truncated: false,
+        failedTitles: { count: 0, names: [] },
+        region,
+        nextCursor: null,
+      };
+    startDate = startDate < `${currentMonth}-01` ? `${currentMonth}-01` : startDate;
+    const loaded: { titles: LibraryTitle[]; nextCursor: Infer<typeof cursorValidator> | null } =
+      await ctx.runQuery(internal.calendar.libraryTitles, {
+        userId,
+        ...(pageCursor && { cursor: pageCursor }),
+      });
+    const items = loaded.titles;
+    const request = createRequest(ctx);
     const keys = items.map((item) =>
       item.mediaType === 'movie'
         ? `calendar:movie:${item.tmdbId}:${region}`
@@ -361,6 +409,7 @@ export const upcoming = action({
     const events: CalendarEvent[] = [];
     const failedNames: string[] = [];
     let failedCount = 0;
+    let retryAfterMs: number | undefined;
     let cursor = 0;
     // A slow title must not hold up the next batch of otherwise independent work.
     await Promise.all(
@@ -368,14 +417,30 @@ export const upcoming = action({
         while (cursor < items.length) {
           const item = items[cursor++];
           let failed = false;
+          const onFailure = (error: unknown) => {
+            failed = true;
+            if (
+              error instanceof ConvexError &&
+              typeof error.data === 'object' &&
+              error.data?.code === 'provider_global_limiter'
+            )
+              retryAfterMs = 60_000;
+          };
           try {
             events.push(
-              ...(await titleEvents(ctx, item, startDate, endDate, region, snapshots, () => {
-                failed = true;
-              })),
+              ...(await titleEvents(
+                ctx,
+                item,
+                startDate,
+                endDate,
+                region,
+                snapshots,
+                onFailure,
+                request,
+              )),
             );
-          } catch {
-            failed = true;
+          } catch (error) {
+            onFailure(error);
           }
           if (failed) {
             failedCount += 1;
@@ -389,7 +454,9 @@ export const upcoming = action({
         (left, right) =>
           left.date.localeCompare(right.date) || left.title.localeCompare(right.title),
       ),
-      truncated: loaded.length > MAX_TITLES,
+      truncated: loaded.nextCursor !== null,
+      nextCursor: loaded.nextCursor,
+      ...(retryAfterMs && { retryAfterMs }),
       failedTitles: { count: failedCount, names: failedNames },
       region,
     };

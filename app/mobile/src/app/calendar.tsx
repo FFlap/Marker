@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { AppState, Pressable, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
@@ -16,15 +16,34 @@ const addDays = (date: Date, days: number) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
 export default function CalendarScreen() {
-  const [month, setMonth] = useState(() => startOfMonth(new Date()));
+  const [month, setMonth] = useState(() => startOfMonth(new Date(Date.now())));
   const [cellHeight, setCellHeight] = useState(0);
-  const today = keyFor(new Date());
-  const start = startOfMonth(month);
+  const [today, setToday] = useState(() => keyFor(new Date(Date.now())));
+  useFocusEffect(
+    useCallback(() => {
+      const update = () => setToday(keyFor(new Date(Date.now())));
+      update();
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') update();
+      });
+      return () => subscription.remove();
+    }, []),
+  );
+  const minimumMonth = today.slice(0, 7);
+  const visibleMonth =
+    keyFor(month).slice(0, 7) < minimumMonth ? new Date(`${minimumMonth}-01T00:00:00`) : month;
+  const start = startOfMonth(visibleMonth);
+  const canGoBack = keyFor(start).slice(0, 7) > minimumMonth;
   const { result, loading, error, retry } = useCalendar(keyFor(start), true);
   const events = result?.events;
   const partialFailure = (result?.failedTitles.count ?? 0) > 0;
   const moveMonth = useCallback((offset: number) => {
-    setMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+    setMonth((current) => {
+      const minimum = startOfMonth(new Date(Date.now()));
+      const base = current < minimum ? minimum : current;
+      const next = new Date(base.getFullYear(), base.getMonth() + offset, 1);
+      return next < minimum ? minimum : next;
+    });
   }, []);
   const monthSwipe = useMemo(
     () =>
@@ -58,14 +77,16 @@ export default function CalendarScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Previous month"
+            accessibilityState={{ disabled: !canGoBack }}
+            disabled={!canGoBack}
             onPress={() => moveMonth(-1)}
             hitSlop={8}
             style={s.arrow}
           >
-            <ChevronLeft size={18} color={colors.text} />
+            <ChevronLeft size={18} color={canGoBack ? colors.text : colors.muted} />
           </Pressable>
           <Text accessibilityLiveRegion="polite" style={s.month}>
-            {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+            {visibleMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -93,7 +114,8 @@ export default function CalendarScreen() {
             {days.map((day, index) => {
               const date = keyFor(day);
               const active = date === today;
-              const inMonth = day.getMonth() === month.getMonth();
+              const inMonth = day.getMonth() === visibleMonth.getMonth();
+              const past = date.slice(0, 7) < minimumMonth;
               const dayEvents = byDate.get(date) ?? [];
               const hasOverflow = dayEvents.length > rowCapacity;
               const visibleCount = hasOverflow ? Math.max(0, rowCapacity - 1) : dayEvents.length;
@@ -103,7 +125,8 @@ export default function CalendarScreen() {
                   key={date}
                   accessibilityRole="button"
                   accessibilityLabel={`${day.toLocaleDateString()}, ${dayEvents.length} release${dayEvents.length === 1 ? '' : 's'}`}
-                  accessibilityState={{ selected: active }}
+                  accessibilityState={{ selected: active, disabled: past }}
+                  disabled={past}
                   onPress={() => router.push({ pathname: '/calendar/[date]', params: { date } })}
                   onLayout={
                     index === 0
@@ -142,7 +165,7 @@ export default function CalendarScreen() {
         <View style={s.status}>
           {loading && (
             <Text accessibilityLiveRegion="polite" style={s.notice}>
-              {result ? 'Refreshing releases…' : 'Loading releases…'}
+              Loading releases for your library…
             </Text>
           )}
           {!loading && (error || partialFailure) && (
@@ -157,9 +180,6 @@ export default function CalendarScreen() {
                 to retry.
               </Text>
             </Pressable>
-          )}
-          {!loading && result?.truncated && (
-            <Text style={s.notice}>Showing releases for the first 100 library titles.</Text>
           )}
         </View>
       </View>

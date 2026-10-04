@@ -1,18 +1,22 @@
-import type { CalendarEvent } from './calendar';
-
-export type CalendarResult = {
-  events: CalendarEvent[];
-  failedTitles: { count: number; names: string[] };
-  truncated?: boolean;
-};
+import {
+  currentCalendarMonth,
+  loadCalendarPages,
+  type CalendarFetch,
+  type CalendarResult,
+} from "./calendar";
 type Snapshot = { result?: CalendarResult; loading: boolean; error: boolean };
 type Entry = { snapshot: Snapshot; updatedAt: number; pending?: Promise<void> };
 const EMPTY: Snapshot = { loading: true, error: false };
+const PAST: Snapshot = {
+  loading: false,
+  error: false,
+  result: { events: [], failedTitles: { count: 0, names: [] } },
+};
 const FRESH_MS = 5 * 60 * 1000;
 const MAX_MONTHS = 12;
 
 export const monthRange = (month: string) => {
-  const [year, number] = month.split('-').map(Number);
+  const [year, number] = month.split("-").map(Number);
   return {
     startDate: `${month}-01`,
     endDate: `${month}-${new Date(year, number, 0).getDate()}`,
@@ -37,7 +41,9 @@ export class CalendarCache {
   };
 
   get = (month: string, region: string) =>
-    this.entries.get(`${region}:${month}`)?.snapshot ?? EMPTY;
+    month < currentCalendarMonth()
+      ? PAST
+      : (this.entries.get(`${region}:${month}`)?.snapshot ?? EMPTY);
 
   private prune() {
     for (const [key, entry] of this.entries) {
@@ -50,13 +56,10 @@ export class CalendarCache {
   async load(
     month: string,
     region: string,
-    fetch: (args: {
-      startDate: string;
-      endDate: string;
-      region: string;
-    }) => Promise<CalendarResult>,
+    fetch: CalendarFetch,
     force = false,
   ): Promise<void> {
+    if (month < currentCalendarMonth()) return;
     const key = `${region}:${month}`;
     const previous = this.entries.get(key);
     if (previous) {
@@ -66,17 +69,41 @@ export class CalendarCache {
     }
     if (previous?.pending) return previous.pending;
     const ttl =
-      previous?.snapshot.error || previous?.snapshot.result?.failedTitles.count ? 30_000 : FRESH_MS;
+      previous?.snapshot.error || previous?.snapshot.result?.failedTitles.count
+        ? 30_000
+        : FRESH_MS;
     if (!force && previous && Date.now() - previous.updatedAt < ttl) return;
     const entry: Entry = {
-      snapshot: { result: previous?.snapshot.result, loading: true, error: false },
+      snapshot: {
+        result: previous?.snapshot.result,
+        loading: true,
+        error: false,
+      },
       updatedAt: 0,
     };
     this.entries.delete(key);
     this.entries.set(key, entry);
     entry.pending = Promise.resolve().then(async () => {
       try {
-        const result = await fetch({ ...monthRange(month), region });
+        const result = await loadCalendarPages(
+          fetch,
+          {
+            ...monthRange(month),
+            region,
+            timeZoneOffsetMinutes: new Date(Date.now()).getTimezoneOffset(),
+          },
+          (progress) => {
+            // A refresh keeps the complete old snapshot until its replacement is ready.
+            if (!previous?.snapshot.result || previous.snapshot.error) {
+              entry.snapshot = {
+                result: progress,
+                loading: true,
+                error: false,
+              };
+              this.listeners.get(key)?.forEach((listener) => listener());
+            }
+          },
+        );
         // The server retains stale data only for failed providers. Merging here
         // would resurrect removed titles or episodes whose release date moved.
         entry.snapshot = { result, loading: false, error: false };

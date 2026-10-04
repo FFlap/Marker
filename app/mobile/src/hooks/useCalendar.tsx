@@ -10,7 +10,8 @@ import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { CalendarCache } from '@/lib/calendarCache';
+import { CalendarCache } from '../../../shared/calendarCache';
+import { currentCalendarMonth } from '../../../shared/calendar';
 import { deviceRegion } from '@/lib/calendar';
 
 const CalendarContext = createContext<CalendarCache | null>(null);
@@ -25,6 +26,7 @@ export function useCalendar(date: string, prefetch = false) {
   if (!cache) throw new Error('CalendarProvider is required');
   const upcoming = useAction(api.calendar.upcoming);
   const month = date.slice(0, 7);
+  const past = month < currentCalendarMonth();
   const region = deviceRegion();
   const parsed = new Date(`${date}T00:00:00Z`);
   const valid =
@@ -38,12 +40,12 @@ export function useCalendar(date: string, prefetch = false) {
   );
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const retry = useCallback(() => {
-    if (valid) void cache.load(month, region, upcoming, true);
-  }, [cache, month, region, upcoming, valid]);
+    if (valid && !past) void cache.load(month, region, upcoming, true);
+  }, [cache, month, region, upcoming, valid, past]);
 
   useFocusEffect(
     useCallback(() => {
-      if (!valid) return;
+      if (!valid || past) return;
       let active = true;
       const load = async () => {
         await cache.load(month, region, upcoming);
@@ -55,13 +57,11 @@ export function useCalendar(date: string, prefetch = false) {
         )
           return;
         const [year, number] = month.split('-').map(Number);
-        // Warm neighbors only after the visible month; navigation shares in-flight requests.
-        for (const offset of [1, -1]) {
-          if (!active || AppState.currentState === 'background') break;
-          const neighbor = new Date(year, number - 1 + offset, 1);
-          const key = `${neighbor.getFullYear()}-${String(neighbor.getMonth() + 1).padStart(2, '0')}`;
-          await cache.load(key, region, upcoming);
-        }
+        // Warm only the next month after the visible month is complete.
+        if (!active || AppState.currentState === 'background') return;
+        const neighbor = new Date(year, number, 1);
+        const key = `${neighbor.getFullYear()}-${String(neighbor.getMonth() + 1).padStart(2, '0')}`;
+        await cache.load(key, region, upcoming);
       };
       void load();
       const subscription = AppState.addEventListener('change', (state) => {
@@ -71,8 +71,8 @@ export function useCalendar(date: string, prefetch = false) {
         active = false;
         subscription.remove();
       };
-    }, [cache, month, region, upcoming, valid, prefetch]),
+    }, [cache, month, region, upcoming, valid, past, prefetch]),
   );
 
-  return { ...snapshot, valid, retry };
+  return { ...snapshot, valid, past, retry };
 }

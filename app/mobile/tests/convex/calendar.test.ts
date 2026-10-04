@@ -1,10 +1,23 @@
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
+import { loadCalendarPages, type CalendarCursor } from '../../../shared/calendar';
 import * as snapshots from '../../convex/providerSnapshots';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
+
+beforeEach(() => vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 7, 1, 12)));
+
+const scheduleFor = (
+  t: ReturnType<typeof convexTest>,
+  args: { startDate: string; endDate: string; region?: string },
+) =>
+  loadCalendarPages(
+    (page) => t.action(api.calendar.upcoming, page),
+    { region: 'US', ...args },
+    () => {},
+  );
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -57,7 +70,7 @@ describe('calendar partial failures', () => {
     );
 
     await expect(
-      t.withIdentity({ subject: 'calendar_user' }).action(api.calendar.upcoming, {
+      scheduleFor(t.withIdentity({ subject: 'calendar_user' }), {
         startDate: '2026-08-01',
         endDate: '2026-08-31',
         region: 'US',
@@ -117,11 +130,11 @@ describe('calendar episode dates', () => {
       seasons: [{ season_number: 1, air_date: '2026-09-02' }],
       next_episode_to_air: { season_number: 1, air_date: '2026-09-09' },
     });
-    const month = await t.action(api.calendar.upcoming, {
+    const month = await scheduleFor(t, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     });
-    const day = await t.action(api.calendar.upcoming, {
+    const day = await scheduleFor(t, {
       startDate: '2026-09-02',
       endDate: '2026-09-02',
     });
@@ -135,7 +148,7 @@ describe('calendar episode dates', () => {
       seasons: [{ season_number: 1, air_date: '2026-09-02' }],
       next_episode_to_air: null,
     });
-    const day = await t.action(api.calendar.upcoming, {
+    const day = await scheduleFor(t, {
       startDate: '2026-09-02',
       endDate: '2026-09-02',
     });
@@ -150,7 +163,7 @@ describe('calendar episode dates', () => {
       ],
       next_episode_to_air: { season_number: 2, air_date: '2026-09-23' },
     });
-    const month = await t.action(api.calendar.upcoming, {
+    const month = await scheduleFor(t, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     });
@@ -160,13 +173,13 @@ describe('calendar episode dates', () => {
   it('does not expose another account’s library and requires authentication', async () => {
     const { base } = await setup({ seasons: [] });
     await expect(
-      base.withIdentity({ subject: 'stranger' }).action(api.calendar.upcoming, {
+      scheduleFor(base.withIdentity({ subject: 'stranger' }), {
         startDate: '2026-09-01',
         endDate: '2026-09-30',
       }),
     ).rejects.toThrow('Authentication required');
     await expect(
-      base.action(api.calendar.upcoming, {
+      scheduleFor(base, {
         startDate: '2026-09-01',
         endDate: '2026-09-30',
       }),
@@ -174,7 +187,7 @@ describe('calendar episode dates', () => {
     await base.run(async (ctx) => {
       await ctx.db.insert('users', { clerkId: 'stranger' });
     });
-    const other = await base.withIdentity({ subject: 'stranger' }).action(api.calendar.upcoming, {
+    const other = await scheduleFor(base.withIdentity({ subject: 'stranger' }), {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     });
@@ -186,7 +199,7 @@ describe('calendar episode dates', () => {
       seasons: [{ season_number: 1, air_date: '2026-09-02' }],
     });
     const args = { startDate: '2026-09-01', endDate: '2026-09-30' };
-    const initial = await t.action(api.calendar.upcoming, args);
+    const initial = await scheduleFor(t, args);
     await base.run(async (ctx) => {
       for (const key of ['calendar:tv:v2:42', 'calendar:season:42:1']) {
         const row = await ctx.db
@@ -197,7 +210,7 @@ describe('calendar episode dates', () => {
       }
     });
     fetch.mockImplementation(async () => new Response('{}', { status: 503 }));
-    const offline = await t.action(api.calendar.upcoming, args);
+    const offline = await scheduleFor(t, args);
     expect(offline.events).toEqual(initial.events);
     expect(offline.failedTitles).toEqual({ count: 1, names: ['Weekly show'] });
   });
@@ -213,7 +226,7 @@ describe('calendar episode dates', () => {
     fetch.mockImplementation(async (input) =>
       String(input).endsWith('/season/0') ? new Response('{}', { status: 404 }) : original(input),
     );
-    const month = await t.action(api.calendar.upcoming, {
+    const month = await scheduleFor(t, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     });
@@ -232,13 +245,56 @@ describe('calendar episode dates', () => {
         value: { __truncatedProviderSnapshot: true, originalBytes: 999_999 },
       },
     });
-    const month = await t.action(api.calendar.upcoming, {
+    const month = await scheduleFor(t, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     });
     expect(month.events).toHaveLength(2);
     expect(month.failedTitles.count).toBe(0);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not read schedules or call providers for past months', async () => {
+    const { t, fetch } = await setup({ seasons: [{ season_number: 1, air_date: '2026-09-02' }] });
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 15));
+    const reads = vi.spyOn(snapshots.getCalendarSnapshots, '_handler');
+    const past = await t.action(api.calendar.upcoming, {
+      startDate: '2026-09-01',
+      endDate: '2026-09-30',
+    });
+    expect(past).toMatchObject({ events: [], nextCursor: null, truncated: false });
+    expect(reads).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the device’s current month available at a UTC month boundary', async () => {
+    const { t, fetch } = await setup({ seasons: [{ season_number: 1, air_date: '2026-09-02' }] });
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 1, 1));
+    const local = await t.action(api.calendar.upcoming, {
+      startDate: '2026-09-01',
+      endDate: '2026-09-30',
+      timeZoneOffsetMinutes: 360,
+    });
+    expect(local.events).toHaveLength(2);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns a retry delay when the provider budget is temporarily exhausted', async () => {
+    const { t, base, fetch } = await setup({ seasons: [] });
+    await base.run(async (ctx) => {
+      await ctx.db.insert('requestThrottle', {
+        key: 'tmdb-global',
+        windowStart: Date.now(),
+        count: 300,
+      });
+    });
+    const limited = await t.action(api.calendar.upcoming, {
+      startDate: '2026-09-01',
+      endDate: '2026-09-30',
+    });
+    expect(limited.retryAfterMs).toBe(60_000);
+    expect(limited.failedTitles.count).toBe(1);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -247,7 +303,7 @@ describe('calendar repeat loading', () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       const userId = await ctx.db.insert('users', { clerkId: 'cached_library' });
-      for (let tmdbId = 1; tmdbId <= 45; tmdbId++) {
+      for (let tmdbId = 1; tmdbId <= 125; tmdbId++) {
         await ctx.db.insert('items', {
           userId,
           tmdbId,
@@ -287,21 +343,21 @@ describe('calendar repeat loading', () => {
     const asUser = t.withIdentity({ subject: 'cached_library' });
     for (const month of ['09', '10']) {
       batchedRead.mockClear();
-      const schedule = await asUser.action(api.calendar.upcoming, {
+      const schedule = await scheduleFor(asUser, {
         startDate: `2026-${month}-01`,
         endDate: `2026-${month}-30`,
       });
-      expect(schedule.events).toHaveLength(45);
+      expect(schedule.events).toHaveLength(125);
       expect(schedule.events.every((event) => event.date === `2026-${month}-02`)).toBe(true);
       expect(schedule.failedTitles.count).toBe(0);
-      expect(batchedRead).toHaveBeenCalledTimes(6);
+      expect(batchedRead).toHaveBeenCalledTimes(14);
       expect(batchedRead.mock.calls.every(([, args]) => args.keys.length <= 20)).toBe(true);
     }
     expect(fetch).not.toHaveBeenCalled();
     expect(individualRead).not.toHaveBeenCalled();
   });
 
-  it('excludes deleting and dropped titles before applying the library limit', async () => {
+  it('loads every active title across pages, excluding deleting and dropped titles', async () => {
     const t = convexTest(schema, modules);
     const userId = await t.run(async (ctx) => {
       const userId = await ctx.db.insert('users', { clerkId: 'large_library' });
@@ -323,9 +379,19 @@ describe('calendar repeat loading', () => {
         });
       return userId;
     });
-    const titles = await t.query(internal.calendar.libraryTitles, { userId });
-    expect(titles).toHaveLength(101);
+    const titles = [];
+    let cursor: CalendarCursor | undefined;
+    do {
+      const page = await t.query(internal.calendar.libraryTitles, {
+        userId,
+        ...(cursor && { cursor }),
+      });
+      expect(page.titles.length).toBeLessThanOrEqual(20);
+      titles.push(...page.titles);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect(titles).toHaveLength(102);
     expect(titles[0].tmdbId).toBe(103);
-    expect(titles.at(-1)?.tmdbId).toBe(203);
+    expect(titles.at(-1)?.tmdbId).toBe(204);
   });
 });

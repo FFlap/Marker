@@ -1,11 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CalendarCache, monthRange } from '../../src/lib/calendarCache';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CalendarCache, monthRange } from '../../../shared/calendarCache';
 
 const result = (title = 'Arrival') => ({
   events: [{ id: title, date: '2026-09-02', kind: 'movie' as const, title }],
   failedTitles: { count: 0, names: [] },
 });
 
+beforeEach(() => vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 10, 1)));
 afterEach(() => vi.restoreAllMocks());
 
 describe('shared calendar schedules', () => {
@@ -117,7 +118,7 @@ describe('shared calendar schedules', () => {
       await cache.load(`2026-${String(month).padStart(2, '0')}`, 'US', fetch);
     await cache.load('2026-01', 'US', fetch);
     await cache.load('2027-01', 'US', fetch);
-    expect(cache.get('2026-01', 'US').result).toEqual(result());
+    expect(cache.get('2026-01', 'US').result).toMatchObject(result());
     expect(cache.get('2026-02', 'US').result).toBeUndefined();
     expect(fetch).toHaveBeenCalledTimes(13);
   });
@@ -130,10 +131,41 @@ describe('shared calendar schedules', () => {
     listener.mockClear();
     for (let month = 1; month <= 12; month++)
       await cache.load(`2026-${String(month).padStart(2, '0')}`, 'US', async () => result());
-    expect(cache.get('2025-12', 'US').result).toEqual(result());
+    expect(cache.get('2025-12', 'US').result).toMatchObject(result());
     expect(listener).not.toHaveBeenCalled();
     unsubscribe();
     await cache.load('2027-01', 'US', async () => result());
     expect(cache.get('2025-12', 'US').result).toBeUndefined();
+  });
+
+  it('skips past months even when explicitly refreshed', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 15));
+    const fetch = vi.fn(async () => result());
+    const cache = new CalendarCache();
+    await cache.load('2026-09', 'US', fetch, true);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(cache.get('2026-09', 'US')).toMatchObject({
+      loading: false,
+      error: false,
+      result: { events: [] },
+    });
+    await cache.load('2026-10', 'US', fetch);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the first library page visible if a later page fails and retries on demand', async () => {
+    const cache = new CalendarCache();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ...result(), nextCursor: { status: 'watching', after: 'page2' } })
+      .mockRejectedValueOnce(new Error('Connection lost'));
+    await cache.load('2026-09', 'US', fetch);
+    expect(cache.get('2026-09', 'US')).toMatchObject({
+      loading: false,
+      error: true,
+      result: result(),
+    });
+    await cache.load('2026-09', 'US', async () => result('Recovered'), true);
+    expect(cache.get('2026-09', 'US')).toMatchObject({ error: false, result: result('Recovered') });
   });
 });

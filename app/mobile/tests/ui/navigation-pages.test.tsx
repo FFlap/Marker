@@ -38,14 +38,16 @@ import CalendarDayScreen from '../../src/app/calendar/[date]';
 
 describe('secondary mobile pages', () => {
   beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 1, 12));
     mockUpcoming.mockClear();
     mockUpcoming.mockResolvedValue({ events: [], failedTitles: { count: 0, names: [] } });
     mockDate = '';
     mockFocused = true;
   });
+  afterEach(() => jest.spyOn(Date, 'now').mockRestore());
 
   it('lists releases inside calendar days and summarizes overflow', async () => {
-    const today = new Date();
+    const today = new Date(Date.now());
     const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     mockUpcoming.mockResolvedValueOnce({
       failedTitles: { count: 0, names: [] },
@@ -62,7 +64,7 @@ describe('secondary mobile pages', () => {
     });
 
     const view = await render(<CalendarScreen />);
-    await waitFor(() => expect(view.getByText('Severance')).toBeTruthy());
+    await waitFor(() => expect(view.getByText('Andor')).toBeTruthy());
     expect(view.getByText(/^\+\d+ more$/)).toBeTruthy();
     await fireEvent.press(view.getByLabelText(/8 releases/));
     expect(jest.requireMock('expo-router').router.push).toHaveBeenCalledWith({
@@ -133,6 +135,7 @@ describe('secondary mobile pages', () => {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
       region: expect.any(String),
+      timeZoneOffsetMinutes: expect.any(Number),
     });
   });
 
@@ -155,8 +158,69 @@ describe('secondary mobile pages', () => {
     expect(mockUpcoming).not.toHaveBeenCalled();
   });
 
+  it('blocks past months and only prefetches the next month', async () => {
+    const view = await render(<CalendarScreen />);
+    await waitFor(() => expect(mockUpcoming).toHaveBeenCalledTimes(2));
+    expect(mockUpcoming.mock.calls.map(([args]) => args.startDate)).toEqual([
+      '2026-09-01',
+      '2026-10-01',
+    ]);
+    expect(view.getByLabelText('Previous month')).toBeDisabled();
+    await fireEvent.press(view.getByLabelText('Previous month'));
+    expect(mockUpcoming).toHaveBeenCalledTimes(2);
+    expect(view.queryByText(/first 100/)).toBeNull();
+  });
+
+  it('does not fetch old deep links', async () => {
+    mockDate = '2026-08-02';
+    const view = await render(<CalendarDayScreen />);
+    expect(view.getByText('The calendar shows releases from this month onward.')).toBeTruthy();
+    expect(mockUpcoming).not.toHaveBeenCalled();
+  });
+
+  it('loads all library pages and keeps day details loading until the last page arrives', async () => {
+    mockDate = '2026-09-02';
+    let resolve!: (value: unknown) => void;
+    const cursor = { status: 'watchlist', after: 'page2' };
+    mockUpcoming.mockResolvedValueOnce({
+      events: [],
+      failedTitles: { count: 0, names: [] },
+      nextCursor: cursor,
+      truncated: true,
+    });
+    mockUpcoming.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const view = await render(<CalendarDayScreen />);
+    await waitFor(() => expect(mockUpcoming).toHaveBeenCalledTimes(2));
+    expect(view.queryByText('No releases')).toBeNull();
+    expect(view.getByLabelText('Loading releases')).toBeTruthy();
+    await act(async () =>
+      resolve({
+        events: [
+          {
+            id: 'later',
+            date: mockDate,
+            kind: 'episode',
+            title: 'Later library title',
+            season: 1,
+            episode: 2,
+          },
+        ],
+        failedTitles: { count: 0, names: [] },
+        nextCursor: null,
+      }),
+    );
+    expect(view.getByText('Later library title')).toBeTruthy();
+    expect(mockUpcoming.mock.calls[1][0].cursor).toEqual(cursor);
+    expect(view.queryByText(/first 100/)).toBeNull();
+  });
+
   it('keeps cached titles visible when returning to a month', async () => {
-    const now = new Date();
+    const now = new Date(Date.now());
     const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-10`;
     mockUpcoming.mockImplementation(async ({ startDate }) => ({
       events:
