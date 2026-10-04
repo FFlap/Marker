@@ -103,6 +103,33 @@ describe('shared calendar schedules', () => {
     });
   });
 
+  it('keeps saved releases when background discovery exhausts its retries', async () => {
+    vi.useFakeTimers();
+    try {
+      const cache = new CalendarCache();
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ...result(), needsRefresh: true })
+        .mockResolvedValue({
+          events: [],
+          failedTitles: { count: 1, names: [] },
+          refreshPending: true,
+          retryAfterMs: 1_000,
+        });
+      const loading = cache.load('2026-09', 'CA', fetch);
+      await vi.runAllTimersAsync();
+      await loading;
+      expect(fetch).toHaveBeenCalledTimes(4);
+      expect(cache.get('2026-09', 'CA')).toMatchObject({
+        loading: false,
+        error: true,
+        result: result(),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the previous client schedule when server snapshots have been evicted', async () => {
     const cache = new CalendarCache();
     await cache.load('2026-09', 'CA', async () => result());

@@ -2,10 +2,28 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
-import { loadCalendarPages, type CalendarCursor } from '../../../shared/calendar';
+import { loadCalendarPages } from '../../../shared/calendar';
 import * as snapshots from '../../convex/providerSnapshots';
+import { catalogRegion } from '../../convex/calendarTypes';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
+
+const seedCatalog = async (
+  t: ReturnType<typeof convexTest>,
+  candidates: { mediaType: 'movie' | 'tv'; tmdbId: number }[],
+) => {
+  await t.run(async (ctx) => {
+    for (const month of ['2026-08', '2026-09', '2026-10'])
+      for (const mediaType of ['tv', 'movie'] as const)
+        await ctx.db.insert('calendarMonths', {
+          month,
+          region: catalogRegion('US', mediaType),
+          candidates: candidates.filter((candidate) => candidate.mediaType === mediaType),
+          version: 'fixture',
+          refreshedAt: Date.now(),
+        });
+  });
+};
 
 beforeEach(() => vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 7, 1, 12)));
 
@@ -49,6 +67,10 @@ describe('calendar partial failures', () => {
           updatedAt: 1,
         });
     });
+    await seedCatalog(t, [
+      { mediaType: 'movie', tmdbId: 1 },
+      { mediaType: 'movie', tmdbId: 2 },
+    ]);
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     vi.stubGlobal(
       'fetch',
@@ -102,6 +124,7 @@ describe('calendar episode dates', () => {
         updatedAt: 1,
       });
     });
+    await seedCatalog(t, [{ mediaType: 'tv', tmdbId: 42 }]);
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     const payloadFor = (url: string) =>
       url.endsWith('/season/1')
@@ -140,7 +163,10 @@ describe('calendar episode dates', () => {
     const fresh = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
     expect(fresh).toMatchObject({ events: initial.events, needsRefresh: false, nextCursor: null });
     await base.run(async (ctx) => {
-      for (const row of await ctx.db.query('providerSnapshots').collect())
+      for (const row of [
+        ...(await ctx.db.query('providerSnapshots').collect()),
+        ...(await ctx.db.query('calendarSchedules').collect()),
+      ])
         await ctx.db.patch(row._id, { refreshedAt: Date.now() - 7 * 60 * 60 * 1000 });
     });
     const stale = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
@@ -204,6 +230,10 @@ describe('calendar episode dates', () => {
         .withIndex('by_key', (q) => q.eq('key', 'calendar:season:42:2'))
         .unique();
       await ctx.db.delete(row!._id);
+    });
+    await base.run(async (ctx) => {
+      for (const row of await ctx.db.query('calendarSchedules').collect())
+        await ctx.db.delete(row._id);
     });
     fetch.mockClear();
     const saved = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
@@ -318,6 +348,8 @@ describe('calendar episode dates', () => {
     const args = { startDate: '2026-09-01', endDate: '2026-09-30' };
     const initial = await scheduleFor(t, args);
     await base.run(async (ctx) => {
+      for (const row of await ctx.db.query('calendarSchedules').collect())
+        await ctx.db.patch(row._id, { refreshedAt: Date.now() - 7 * 60 * 60 * 1000 });
       for (const key of ['calendar:tv:v2:42', 'calendar:season:42:1']) {
         const row = await ctx.db
           .query('providerSnapshots')
@@ -385,8 +417,14 @@ describe('calendar episode dates', () => {
   });
 
   it('keeps the device’s current month available at a UTC month boundary', async () => {
-    const { t, fetch } = await setup({ seasons: [{ season_number: 1, air_date: '2026-09-02' }] });
+    const { t, base, fetch } = await setup({
+      seasons: [{ season_number: 1, air_date: '2026-09-02' }],
+    });
     vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 1, 1));
+    await base.run(async (ctx) => {
+      for (const row of await ctx.db.query('calendarMonths').collect())
+        await ctx.db.patch(row._id, { refreshedAt: Date.now() });
+    });
     const local = await t.action(api.calendar.upcoming, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
@@ -453,6 +491,10 @@ describe('calendar repeat loading', () => {
         });
       }
     });
+    await seedCatalog(
+      t,
+      Array.from({ length: 125 }, (_, index) => ({ mediaType: 'tv', tmdbId: index + 1 })),
+    );
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const individualRead = vi.spyOn(snapshots.get, '_handler');
@@ -472,6 +514,9 @@ describe('calendar repeat loading', () => {
     }
     expect(fetch).not.toHaveBeenCalled();
     expect(individualRead).not.toHaveBeenCalled();
+    batchedRead.mockClear();
+    await scheduleFor(asUser, { startDate: '2026-09-01', endDate: '2026-09-30' });
+    expect(batchedRead).not.toHaveBeenCalled();
   });
 
   it('loads every active title across pages, excluding deleting and dropped titles', async () => {
@@ -496,21 +541,19 @@ describe('calendar repeat loading', () => {
         });
       return userId;
     });
-    const titles = [];
-    let pages = 0;
-    let cursor: CalendarCursor | undefined;
-    do {
-      const page = await t.query(internal.calendar.libraryTitles, {
-        userId,
-        ...(cursor && { cursor }),
-      });
-      pages++;
-      expect(page.titles.length).toBeGreaterThan(0);
-      expect(page.titles.length).toBeLessThanOrEqual(100);
-      titles.push(...page.titles);
-      cursor = page.nextCursor ?? undefined;
-    } while (cursor);
-    expect(pages).toBe(2);
+    await seedCatalog(
+      t,
+      Array.from({ length: 205 }, (_, index) => ({ mediaType: 'movie', tmdbId: index + 1 })),
+    );
+    const page = await t.query(internal.calendarCatalog.page, {
+      userId,
+      mediaType: 'movie',
+      month: '2026-09',
+      region: 'US',
+      offset: 0,
+    });
+    expect(page.nextOffset).toBeNull();
+    const titles = page.titles.map((entry) => entry.item);
     expect(titles).toHaveLength(102);
     expect(titles[0].tmdbId).toBe(103);
     expect(titles.at(-1)?.tmdbId).toBe(204);

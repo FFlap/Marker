@@ -19,7 +19,7 @@ afterEach(() => vi.useRealTimers());
 describe('complete library calendar loading', () => {
   it('publishes each page and loads beyond 100 titles without losing failures or duplicating events', async () => {
     const fetch = vi.fn(async ({ cursor: position }: { cursor?: CalendarCursor }) => {
-      const offset = Number(position?.after ?? 0);
+      const offset = Number(position && 'after' in position ? position.after : 0);
       return {
         ...page(
           String(offset),

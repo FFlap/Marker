@@ -10,6 +10,7 @@ import {
   statusValidator,
 } from './publicValidators';
 import { providerSnapshotEntryValidator } from './providerValidators';
+import { candidateValidator, releaseValidator } from './calendarTypes';
 
 const users = defineTable({
   clerkId: v.string(),
@@ -226,6 +227,25 @@ export default defineSchema({
     windowStart: v.number(),
     count: v.number(),
   }).index('by_key', ['key']),
+  calendarMonths: defineTable({
+    month: v.string(),
+    region: v.string(),
+    candidates: v.array(candidateValidator),
+    version: v.string(),
+    refreshedAt: v.number(),
+    leaseToken: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+  })
+    .index('by_region_month', ['region', 'month'])
+    .index('by_month', ['month']),
+  calendarSchedules: defineTable({
+    key: v.string(),
+    month: v.string(),
+    events: v.array(releaseValidator),
+    refreshedAt: v.number(),
+  })
+    .index('by_key', ['key'])
+    .index('by_month', ['month']),
   providerSnapshots: defineTable({
     key: v.string(),
     entry: providerSnapshotEntryValidator,

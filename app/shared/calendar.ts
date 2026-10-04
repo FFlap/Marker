@@ -8,10 +8,17 @@ export type CalendarEvent = {
   episodeName?: string;
 };
 
-export type CalendarCursor = {
-  status: "watching" | "watchlist" | "watched";
-  after: string | null;
-};
+export type CalendarCursor =
+  | {
+      month: string;
+      offset: number;
+      version: string;
+      mediaType?: "movie" | "tv";
+    }
+  | {
+      status: "watching" | "watchlist" | "watched";
+      after: string | null;
+    };
 
 export type CalendarResult = {
   events: CalendarEvent[];
@@ -19,6 +26,7 @@ export type CalendarResult = {
   truncated?: boolean;
   nextCursor?: CalendarCursor | null;
   retryAfterMs?: number;
+  refreshPending?: boolean;
   needsRefresh?: boolean;
 };
 
@@ -36,7 +44,7 @@ export const currentCalendarMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-/** Fetch every library page, publishing releases before the whole library finishes. */
+/** Fetch every date-index page, publishing releases before the whole library finishes. */
 export async function loadCalendarPages(
   fetch: CalendarFetch,
   args: {
@@ -82,6 +90,10 @@ export async function loadCalendarPages(
       await new Promise((resolve) => setTimeout(resolve, delay));
       continue;
     }
+    // A discovery refresh has no authoritative replacement until it finishes.
+    // Throw after bounded retries so CalendarCache preserves the saved schedule.
+    if (page.refreshPending)
+      throw new Error("Release dates are still updating. Please retry.");
     if (page.truncated && !page.nextCursor)
       throw new Error(
         "The calendar backend must be updated to load the full library",
