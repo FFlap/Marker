@@ -267,18 +267,53 @@ describe('date-first release discovery', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
   it('paginates beyond 100 matching titles without returning unrelated releases', async () => {
-    const { asUser } = await fixture(1601, 1605);
+    const { asUser } = await fixture(201, 205);
     const fetch = vi.fn((args) => asUser.action(api.calendar.upcoming, args));
     const result = await loadCalendarPages(fetch, { ...window, cachedOnly: true }, () => {});
-    expect(result.events).toHaveLength(1601);
-    expect(fetch).toHaveBeenCalledTimes(17);
+    expect(result.events.map((release) => release.tmdbId).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 201 }, (_, i) => i + 1),
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(fetch.mock.calls[1][0].cursor).toEqual({
       month: '2026-10',
       offset: 100,
       mediaType: 'tv',
       version: 'complete',
     });
-  }, 15_000);
+  });
+  it('continues past 1500 unrelated candidates even when the first page is empty', async () => {
+    const { t, asUser, userId } = await fixture(21, 0);
+    await t.run(async (ctx) => {
+      const catalog = await ctx.db
+        .query('calendarMonths')
+        .withIndex('by_region_month', (q) => q.eq('region', 'tv').eq('month', '2026-10'))
+        .unique();
+      await ctx.db.patch(catalog!._id, {
+        candidates: Array.from({ length: 1501 }, (_, i) => ({
+          tmdbId: 100 + i,
+          mediaType: 'tv' as const,
+        })),
+      });
+      await ctx.db.insert('items', item(userId, 1600));
+      await ctx.db.insert('calendarSchedules', {
+        month: '2026-10',
+        key: 'CA:2026-10:tv:1600:',
+        events: [event(1600)],
+        refreshedAt: Date.now(),
+      });
+    });
+    const fetch = vi.fn((args) => asUser.action(api.calendar.upcoming, args));
+    const result = await loadCalendarPages(fetch, { ...window, cachedOnly: true }, () => {});
+    expect(result.events.map((release) => release.tmdbId)).toEqual([1600]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(await fetch.mock.results[0].value).toMatchObject({ events: [] });
+    expect(fetch.mock.calls[1][0].cursor).toEqual({
+      month: '2026-10',
+      offset: 1500,
+      mediaType: 'tv',
+      version: 'complete',
+    });
+  });
   it('joins current membership and names without rebuilding saved schedules', async () => {
     const { t, asUser, userId } = await fixture(1, 2);
     expect((await asUser.action(api.calendar.upcoming, window)).events).toHaveLength(1);

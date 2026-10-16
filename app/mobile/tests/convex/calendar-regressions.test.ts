@@ -97,7 +97,7 @@ describe('resumable calendar discovery', () => {
       expect.arrayContaining(['calendarDiscovery:continueDiscovery', 'calendarRefresh:recover']),
     );
   });
-  it('resumes 301 pages after the shared budget resets and publishes over 8192 candidates', async () => {
+  it('resumes page 301 after the shared budget resets without skipping or replaying pages', async () => {
     const { t, userId } = await fixture(21);
     const requested: number[] = [];
     vi.stubGlobal(
@@ -108,9 +108,7 @@ describe('resumable calendar discovery', () => {
         return new Response(
           JSON.stringify({
             total_pages: 301,
-            results: Array.from({ length: 30 }, (_, index) => ({
-              id: (page - 1) * 30 + index + 1,
-            })),
+            results: [{ id: page }],
           }),
         );
       }),
@@ -127,22 +125,75 @@ describe('resumable calendar discovery', () => {
     await t.action(internal.calendarDiscovery.continueDiscovery, job);
     expect(requested).toEqual(Array.from({ length: 301 }, (_, i) => i + 1));
     expect(await t.run((ctx) => ctx.db.query('calendarMonths').first())).toMatchObject({
-      candidateCount: 9030,
+      candidateCount: 301,
       candidates: [],
       version: 'worker',
     });
     expect(await t.query(internal.calendarRefresh.progress, job)).toBeNull();
-    await t.run((ctx) => ctx.db.insert('items', item(userId, 9030)));
+    await t.run((ctx) => ctx.db.insert('items', item(userId, 301)));
     const tail = await t.query(internal.calendarCatalog.page, {
       month: job.month,
       region: 'CA',
       userId,
       mediaType: 'tv',
-      offset: 9000,
+      offset: 300,
     });
+    expect(tail.titles.map((entry) => entry.item.tmdbId)).toEqual([301]);
+    expect(tail.nextOffset).toBeNull();
+  }, 15_000);
+  it('publishes and pages over 8192 candidates from a durable checkpoint', async () => {
+    const { t, userId } = await fixture(21);
+    await t.mutation(internal.calendarCatalog.claim, job);
+    // convex-test scans the table for indexed lookups. Seed completed pages directly
+    // so this storage-boundary test does not repeat quadratic deduplication work.
+    for (let offset = 0; offset < 9000; offset += 1000)
+      await t.run(async (ctx) => {
+        for (let ordinal = offset; ordinal < offset + 1000; ordinal++)
+          await ctx.db.insert('calendarCandidates', {
+            month: job.month,
+            region: job.region,
+            version: job.token,
+            ordinal,
+            mediaType: 'tv',
+            tmdbId: ordinal + 1,
+          });
+      });
+    await t.run(async (ctx) => {
+      const catalog = await ctx.db.query('calendarMonths').first();
+      await ctx.db.patch(catalog!._id, { stagingCount: 9000, discoveryPage: 301 });
+      await ctx.db.insert('items', item(userId, 9030));
+    });
+    const pageArgs = { month: job.month, region: 'CA', userId, mediaType: 'tv' as const };
+    expect(await t.query(internal.calendarCatalog.page, { ...pageArgs, offset: 0 })).toMatchObject({
+      catalog: null,
+      titles: [],
+    });
+    const fetch = vi.fn(async (input: string) => {
+      expect(new URL(input).searchParams.get('page')).toBe('301');
+      return new Response(
+        JSON.stringify({
+          total_pages: 301,
+          // Include a repeated candidate to exercise deduplication against staged rows.
+          results: Array.from({ length: 31 }, (_, i) => ({ id: 9000 + i })),
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetch);
+    await t.action(internal.calendarDiscovery.continueDiscovery, job);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(await t.run((ctx) => ctx.db.query('calendarMonths').first())).toMatchObject({
+      candidateCount: 9030,
+      candidates: [],
+      version: 'worker',
+    });
+    expect(await t.query(internal.calendarRefresh.progress, job)).toBeNull();
+    const tail = await t.query(internal.calendarCatalog.page, { ...pageArgs, offset: 9000 });
     expect(tail.titles.map((entry) => entry.item.tmdbId)).toEqual([9030]);
     expect(tail.nextOffset).toBeNull();
-  }, 60_000);
+    const candidates = await t.run((ctx) => ctx.db.query('calendarCandidates').collect());
+    expect(candidates).toHaveLength(9030);
+    expect(new Set(candidates.map((candidate) => candidate.tmdbId)).size).toBe(9030);
+  }, 15_000);
   it('takes over an expired lease at its checkpoint and fences the abandoned worker', async () => {
     const { t } = await fixture();
     await t.mutation(internal.calendarCatalog.claim, job);
