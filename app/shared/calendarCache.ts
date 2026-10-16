@@ -27,6 +27,21 @@ export const monthRange = (month: string) => {
 export class CalendarCache {
   private entries = new Map<string, Entry>();
   private listeners = new Map<string, Set<() => void>>();
+  private libraryRevision: number | undefined;
+
+  setLibraryRevision(revision: number) {
+    if (this.libraryRevision !== undefined && revision <= this.libraryRevision)
+      return;
+    const changed = this.libraryRevision !== undefined;
+    this.libraryRevision = revision;
+    if (!changed) return;
+    // Membership changes invalidate every prefetched month. Detaching the entries
+    // also fences requests started before a title was removed or dropped.
+    this.entries.clear();
+    this.listeners.forEach((listeners) =>
+      listeners.forEach((listener) => listener()),
+    );
+  }
 
   subscribe = (month: string, region: string, listener: () => void) => {
     const key = `${region}:${month}`;
@@ -83,6 +98,13 @@ export class CalendarCache {
     };
     this.entries.delete(key);
     this.entries.set(key, entry);
+    const current = () => this.entries.get(key) === entry;
+    const fetchCurrent: CalendarFetch = async (args) => {
+      if (!current()) throw new Error("Calendar library changed");
+      const page = await fetch(args);
+      if (!current()) throw new Error("Calendar library changed");
+      return page;
+    };
     entry.pending = Promise.resolve().then(async () => {
       try {
         const args = {
@@ -91,7 +113,7 @@ export class CalendarCache {
           timeZoneOffsetMinutes: new Date(Date.now()).getTimezoneOffset(),
         };
         let result = await loadCalendarPages(
-          fetch,
+          fetchCurrent,
           {
             ...args,
             ...(!force && { cachedOnly: true }),
@@ -123,7 +145,7 @@ export class CalendarCache {
             error: false,
           };
           this.listeners.get(key)?.forEach((listener) => listener());
-          result = await loadCalendarPages(fetch, args, (progress) => {
+          result = await loadCalendarPages(fetchCurrent, args, (progress) => {
             if (!hasSavedEvents) {
               entry.snapshot = {
                 result: progress,
@@ -138,12 +160,15 @@ export class CalendarCache {
         // would resurrect removed titles or episodes whose release date moved.
         entry.snapshot = { result, loading: false, error: false };
       } catch {
-        entry.snapshot = { ...entry.snapshot, loading: false, error: true };
+        if (current())
+          entry.snapshot = { ...entry.snapshot, loading: false, error: true };
       } finally {
         entry.updatedAt = Date.now();
         entry.pending = undefined;
-        this.prune();
-        this.listeners.get(key)?.forEach((listener) => listener());
+        if (current()) {
+          this.prune();
+          this.listeners.get(key)?.forEach((listener) => listener());
+        }
       }
     });
     this.listeners.get(key)?.forEach((listener) => listener());

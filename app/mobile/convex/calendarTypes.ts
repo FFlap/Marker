@@ -29,6 +29,8 @@ export const dateCursorValidator = v.object({
   mediaType: v.optional(v.union(v.literal('movie'), v.literal('tv'))),
   month: v.string(),
   offset: v.number(),
+  releaseOffset: v.optional(v.number()),
+  releaseVersion: v.optional(v.string()),
   version: v.string(),
 });
 export const legacyCursorValidator = v.object({

@@ -4,6 +4,7 @@ import { internal } from './_generated/api';
 import { requireUser } from './clerkAuth';
 import { ensureMonth } from './calendarDiscovery';
 import { loadTitleSchedules } from './calendarProviders';
+import { readAll, save } from './calendarScheduleStore';
 import {
   CALENDAR_TTL_MS,
   dateCursorValidator,
@@ -13,7 +14,6 @@ import {
   inRange,
   monthEnd,
   scheduleKey,
-  type CalendarEvent,
 } from './calendarTypes';
 
 const resultValidator = v.object({
@@ -95,6 +95,7 @@ export const upcoming = action({
     }
     if (
       !page.emptyLibrary &&
+      !page.direct &&
       !cachedOnly &&
       !cursor?.version &&
       (!page.catalog || page.catalog.refreshedAt <= Date.now() - CALENDAR_TTL_MS)
@@ -120,9 +121,9 @@ export const upcoming = action({
     }
     const [year, number] = month.split('-').map(Number);
     const nextMonth = new Date(Date.UTC(year, number, 1)).toISOString().slice(0, 7);
-    const nextCursor: Infer<typeof dateCursorValidator> | null =
-      page.nextOffset !== null && page.catalog
-        ? { month, mediaType, offset: page.nextOffset, version: page.catalog.version }
+    let nextCursor: Infer<typeof dateCursorValidator> | null =
+      page.nextOffset !== null
+        ? { month, mediaType, offset: page.nextOffset, version: page.version }
         : page.nextMediaType
           ? { month, mediaType: page.nextMediaType, offset: 0, version: '' }
           : nextMonth <= endDate.slice(0, 7)
@@ -130,14 +131,16 @@ export const upcoming = action({
             : null;
     let needsRefresh =
       !page.emptyLibrary &&
+      !page.direct &&
       (!page.catalog || page.catalog.refreshedAt <= Date.now() - CALENDAR_TTL_MS);
-    const events: CalendarEvent[] = [];
     const pending = [];
+    const releaseContinuation = (cursor?.releaseOffset ?? 0) > 0;
+    if (releaseContinuation && !cursor?.releaseVersion)
+      throw new Error('Calendar loading changed. Please retry.');
     for (const entry of page.titles) {
       if (entry.saved && (cachedOnly || entry.saved.refreshedAt > Date.now() - CALENDAR_TTL_MS)) {
-        events.push(...entry.saved.events.map((event) => ({ ...entry.item, ...event })));
         needsRefresh ||= entry.saved.refreshedAt <= Date.now() - CALENDAR_TTL_MS;
-      } else pending.push(entry.item);
+      } else if (!releaseContinuation) pending.push(entry.item);
     }
     const loaded = await loadTitleSchedules(
       ctx,
@@ -151,40 +154,59 @@ export const upcoming = action({
       page.titles.map((entry) => [scheduleKey(month, region, entry.item), entry.saved]),
     );
     const failedNames: string[] = [];
-    const writes = [];
     for (const result of loaded.results) {
       needsRefresh ||= result.needsRefresh;
       const key = scheduleKey(month, region, result.item);
       const previous = savedByKey.get(key);
-      const releases =
-        result.failed && previous
-          ? previous.events.map((event) => ({ ...result.item, ...event }))
-          : result.events;
-      events.push(...releases);
+      const fallback =
+        previous && (result.unavailableTitle || result.missingSeasons.length)
+          ? (await readAll(ctx, key)).filter(
+              (event) =>
+                result.unavailableTitle ||
+                (event.season !== undefined && result.missingSeasons.includes(event.season)),
+            )
+          : [];
+      const releases = [...result.events, ...fallback].map(
+        ({ id, date, kind, season, episode, episodeName }) => ({
+          id,
+          date,
+          kind,
+          ...(season !== undefined && { season }),
+          ...(episode !== undefined && { episode }),
+          ...(episodeName !== undefined && { episodeName }),
+        }),
+      );
       if (result.failed) failedNames.push(result.item.title);
-      if (!result.failed && !result.needsRefresh) {
-        // Shared storage contains release facts only; user titles and membership are joined on read.
-        writes.push({
-          key,
-          month,
-          refreshedAt: result.refreshedAt,
-          events: result.events.map(({ id, date, kind, season, episode, episodeName }) => ({
-            id,
-            date,
-            kind,
-            ...(season !== undefined && { season }),
-            ...(episode !== undefined && { episode }),
-            ...(episodeName !== undefined && { episodeName }),
-          })),
-        });
+      // Preserve successful seasons; incomplete schedules remain stale for retry.
+      if (previous || releases.length || (!result.failed && !result.needsRefresh)) {
+        const refreshedAt =
+          result.failed || result.needsRefresh
+            ? Math.max(
+                previous?.refreshedAt ?? 0,
+                Math.min(result.refreshedAt, Date.now() - CALENDAR_TTL_MS),
+              )
+            : result.refreshedAt;
+        await save(ctx, key, month, refreshedAt, releases);
       }
     }
-    for (let offset = 0; offset < writes.length; offset += 20)
-      await ctx.runMutation(internal.calendarCatalog.saveSchedules, {
-        entries: writes.slice(offset, offset + 20),
-      });
+    const releases = await ctx.runQuery(internal.calendarScheduleStore.releases, {
+      month,
+      region,
+      items: page.titles.map((entry) => entry.item),
+      offset: cursor?.releaseOffset ?? 0,
+      ...(cursor?.releaseVersion && { version: cursor.releaseVersion }),
+    });
+    if (releases.nextOffset !== null)
+      nextCursor = {
+        month,
+        mediaType,
+        offset: pageArgs.offset,
+        version: page.version,
+        releaseOffset: releases.nextOffset,
+        releaseVersion: releases.version,
+      };
     return {
-      events: events
+      events: releases.events
         .filter((event) => inRange(event.date, startDate, endDate))
         .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)),
       truncated: nextCursor !== null,

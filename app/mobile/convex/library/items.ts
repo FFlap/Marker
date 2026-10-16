@@ -13,6 +13,7 @@ import { itemValidator } from '../publicValidators';
 import { refreshNextEpisode } from '../nextEpisode';
 import { requestProfileStatsRefresh } from '../profileStatsRefresh';
 import { validateTmdbId } from '../providerValidation';
+import { bumpCalendarRevision } from '../calendarLibrary';
 import {
   addItemFields,
   type AddItemArgs,
@@ -145,6 +146,7 @@ export async function insertItem(ctx: MutationCtx, userId: Id<'users'>, args: Ad
   });
   const item = await ctx.db.get(itemId);
   if (item) {
+    await bumpCalendarRevision(ctx, userId);
     await requestProfileStatsRefresh(ctx, userId);
     await syncItemTagMemberships(ctx, item, normalizedTags);
     const events: ActivityEventWrite[] = [];
@@ -205,6 +207,8 @@ export const updateItem = mutation({
       patch.rank = await rankAtEnd(ctx, userId, args.status);
     }
     await ctx.db.patch(args.itemId, patch);
+    if (args.status !== undefined && args.status !== item.status)
+      await bumpCalendarRevision(ctx, userId);
     await requestProfileStatsRefresh(ctx, userId);
     if (nextTags !== undefined) await syncItemTagMemberships(ctx, item, nextTags);
     const nextRating = args.clearRating
@@ -272,6 +276,7 @@ export const removeItem = mutation({
     if (item.userId !== userId) throw new Error('Item not found');
     if (item.deletingAt === undefined) {
       await ctx.db.patch(itemId, { deletingAt: Date.now() });
+      await bumpCalendarRevision(ctx, userId);
       await requestProfileStatsRefresh(ctx, userId);
     }
     await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });

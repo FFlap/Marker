@@ -1,14 +1,19 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { discoverMonth } from '../../convex/calendarDiscovery';
 import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
 import { loadCalendarPages } from '../../../shared/calendar';
 import type { Id } from '../../convex/_generated/dataModel';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
-beforeEach(() => vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 4)));
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(Date.UTC(2026, 9, 4));
+  vi.spyOn(console, 'info').mockImplementation(() => {});
+});
 afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
@@ -64,6 +69,46 @@ async function fixture(count = 1, candidateCount = count) {
   return { t, userId, asUser: t.withIdentity({ subject: 'calendar-index' }) };
 }
 
+/** Exercise the same durable worker that production schedules, including both movie feeds. */
+async function discoverMonth(
+  request: (path: string) => Promise<Record<string, unknown>>,
+  month: string,
+  region: string,
+  mediaType?: 'movie' | 'tv',
+) {
+  const t = convexTest(schema, modules);
+  vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      const url = new URL(input);
+      try {
+        return new Response(
+          JSON.stringify(await request(`${url.pathname.replace('/3', '')}${url.search}`)),
+        );
+      } catch {
+        return new Response(null, { status: 400 });
+      }
+    }),
+  );
+  const types = mediaType ? [mediaType] : (['tv', 'movie'] as const);
+  for (const type of types) {
+    const job = { month, region: type === 'tv' ? 'tv' : `movie:${region}`, token: type };
+    await t.mutation(internal.calendarCatalog.claim, job);
+    for (let step = 0; step < 1000; step++) {
+      if (!(await t.query(internal.calendarRefresh.progress, job))) break;
+      await t.action(internal.calendarDiscovery.continueDiscovery, job);
+    }
+    const catalog = await t.query(internal.calendarCatalog.metadata, { month, region: job.region });
+    if (catalog?.error) throw new Error(catalog.error);
+    if (!catalog?.version) throw new Error('Discovery did not finish');
+  }
+  const candidates = await t.run((ctx) => ctx.db.query('calendarCandidates').collect());
+  return candidates
+    .map(({ tmdbId, mediaType }) => ({ tmdbId, mediaType }))
+    .sort((a, b) => a.mediaType.localeCompare(b.mediaType) || a.tmdbId - b.tmdbId);
+}
+
 describe('date-first release discovery', () => {
   it('uses episode dates, every page, and regional and primary movie releases', async () => {
     const request = vi.fn(async (path: string) => {
@@ -111,7 +156,7 @@ describe('date-first release discovery', () => {
         '2026-10',
         'CA',
       ),
-    ).rejects.toThrow('offline');
+    ).rejects.toThrow('400');
   });
   it('skips unrelated media feeds and keeps movie page numbers attached to the right feed', async () => {
     const request = vi.fn(async () => ({ total_pages: 2, results: [{ id: 42 }] }));
@@ -132,7 +177,7 @@ describe('date-first release discovery', () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       const userId = await ctx.db.insert('users', { clerkId: 'limited' });
-      await ctx.db.insert('items', item(userId, 1));
+      for (let id = 1; id <= 21; id++) await ctx.db.insert('items', item(userId, id));
       await ctx.db.insert('requestThrottle', {
         key: 'tmdb-global',
         windowStart: Date.now(),
@@ -145,11 +190,15 @@ describe('date-first release discovery', () => {
     const result = await t
       .withIdentity({ subject: 'limited' })
       .action(api.calendar.upcoming, window);
-    expect(result).toMatchObject({ retryAfterMs: 60_000, failedTitles: { count: 1 } });
+    expect(result).toMatchObject({
+      refreshPending: true,
+      retryAfterMs: 1_000,
+      failedTitles: { count: 1 },
+    });
     expect(fetch).not.toHaveBeenCalled();
     expect(
       await t.query(internal.calendarCatalog.metadata, { month: '2026-10', region: 'tv' }),
-    ).toBeNull();
+    ).toMatchObject({ version: '', refreshedAt: 0 });
   });
 
   it('fences concurrent refreshes and preserves the old catalog after failure', async () => {
@@ -162,29 +211,40 @@ describe('date-first release discovery', () => {
     expect(await t.mutation(internal.calendarCatalog.claim, { ...args, token: 'second' })).toBe(
       false,
     );
+    const checkpoint = { ...args, feed: 0, page: 1, totalPages: 1, candidates: [] };
     expect(
-      await t.mutation(internal.calendarCatalog.publish, {
-        ...args,
+      await t.mutation(internal.calendarRefresh.checkpoint, {
+        ...checkpoint,
         token: 'second',
-        candidates: [],
       }),
     ).toBe(false);
-    await t.mutation(internal.calendarCatalog.publish, { ...args, token: 'first' });
+    await t.mutation(internal.calendarRefresh.failed, {
+      ...args,
+      token: 'first',
+      feed: 0,
+      page: 1,
+      permanent: true,
+      message: 'offline',
+    });
     expect(await t.query(internal.calendarCatalog.metadata, args)).toMatchObject({
       version: 'complete',
+      error: 'offline',
     });
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 6));
     expect(await t.mutation(internal.calendarCatalog.claim, { ...args, token: 'second' })).toBe(
       true,
     );
-    await t.mutation(internal.calendarCatalog.publish, {
-      ...args,
-      token: 'second',
-      candidates: [],
-    });
+    await t.mutation(internal.calendarRefresh.checkpoint, { ...checkpoint, token: 'second' });
     expect(await t.query(internal.calendarCatalog.metadata, args)).toMatchObject({
-      version: 'second',
+      version: 'first',
       refreshedAt: Date.now(),
     });
+    expect(
+      await t.mutation(internal.calendarRefresh.checkpoint, {
+        ...checkpoint,
+        token: 'first',
+      }),
+    ).toBe(false);
   });
   it('does no provider work for an empty library on a cold month', async () => {
     const t = convexTest(schema, modules);
@@ -211,14 +271,14 @@ describe('date-first release discovery', () => {
     const fetch = vi.fn((args) => asUser.action(api.calendar.upcoming, args));
     const result = await loadCalendarPages(fetch, { ...window, cachedOnly: true }, () => {});
     expect(result.events).toHaveLength(1601);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(17);
     expect(fetch.mock.calls[1][0].cursor).toEqual({
       month: '2026-10',
-      offset: 1500,
+      offset: 100,
       mediaType: 'tv',
       version: 'complete',
     });
-  });
+  }, 15_000);
   it('joins current membership and names without rebuilding saved schedules', async () => {
     const { t, asUser, userId } = await fixture(1, 2);
     expect((await asUser.action(api.calendar.upcoming, window)).events).toHaveLength(1);
@@ -289,7 +349,7 @@ describe('date-first release discovery', () => {
   });
 
   it('rejects invalid cursors instead of mixing catalog versions', async () => {
-    const { asUser } = await fixture();
+    const { asUser } = await fixture(21);
     for (const cursor of [
       { month: '2026-10', offset: 0, version: 'obsolete' },
       { month: '2026-10', offset: -1, version: 'complete' },

@@ -24,9 +24,17 @@ const string = (value: unknown) => (typeof value === 'string' ? value : undefine
 const number = (value: unknown) => (typeof value === 'number' ? value : undefined);
 const records = (value: unknown): Json[] =>
   Array.isArray(value)
-    ? value.filter((entry): entry is Json => typeof entry === 'object' && entry !== null)
+    ? value.filter(
+        (entry): entry is Json =>
+          typeof entry === 'object' && entry !== null && !Array.isArray(entry),
+      )
     : [];
-export function createRequest(ctx: ActionCtx) {
+const requiredRecords = (value: unknown, label: string): Json[] => {
+  if (!Array.isArray(value) || records(value).length !== value.length)
+    throw new Error(`Invalid TMDB ${label} response`);
+  return value as Json[];
+};
+export function createRequest(ctx: ActionCtx, reservationSize = 5) {
   let budgetQueue: Promise<unknown> = Promise.resolve();
   let reserved = 0;
   const beforeRequest = () => {
@@ -41,11 +49,11 @@ export function createRequest(ctx: ActionCtx) {
         internal.providerRateLimits.consumeGlobalProviderLimiter,
         {
           provider: 'tmdb',
-          amount: 5,
+          amount: reservationSize,
         },
       );
       if (granted) {
-        reserved = 4;
+        reserved = reservationSize - 1;
         return true;
       }
       // Use the tail of a nearly exhausted window without exceeding it.
@@ -144,15 +152,19 @@ function movieDate(
     .sort((left, right) => left.priority - right.priority || left.date.localeCompare(right.date));
   return (
     inWindow[0]?.date ??
-    (fallback && isDate(fallback) && inRange(fallback, startDate, endDate) ? fallback : undefined)
+    (!candidates.length && fallback && isDate(fallback) && inRange(fallback, startDate, endDate)
+      ? fallback
+      : undefined)
   );
 }
 
 const normalizedMovieReleases = (payload: Json, region: string) => {
-  const regional = records(payload.results).find(
+  const regional = requiredRecords(payload.results, 'movie release dates').find(
     (result) => string(result.iso_3166_1)?.toUpperCase() === region,
   );
-  return records(regional?.release_dates).flatMap((release) => {
+  return (
+    regional ? requiredRecords(regional.release_dates, 'regional release dates') : []
+  ).flatMap((release) => {
     const date = string(release.release_date)?.slice(0, 10);
     const type = number(release.type);
     return date && isDate(date)
@@ -165,8 +177,10 @@ const normalizedMovieReleases = (payload: Json, region: string) => {
 const normalizedTvSchedule = (payload: Json) => {
   const seasons = new Map<number, { season: number; airDate?: string; lastAirDate?: string }>();
   const last = records([payload.last_episode_to_air])[0];
-  for (const entry of records(payload.seasons)) {
+  for (const entry of requiredRecords(payload.seasons, 'TV seasons')) {
     const season = number(entry.season_number);
+    if (season === undefined || !Number.isInteger(season) || season < 0)
+      throw new Error('Invalid TMDB season number');
     const date = string(entry.air_date);
     const lastDate = string(last?.air_date);
     const completed =
@@ -196,20 +210,28 @@ const relevantSeasons = (
   startDate: string,
   endDate: string,
 ) =>
-  seasons.filter((season, index) => {
+  seasons.filter((season) => {
     if (season.airDate && season.airDate > endDate) return false;
     if (season.lastAirDate && season.lastAirDate < startDate) return false;
-    const next = seasons[index + 1];
-    // Specials and undated seasons can span regular season boundaries.
-    return season.season === 0 || !season.airDate || !next?.airDate || next.airDate >= startDate;
+    // A later season's premiere is not an end date for this season. Episodes
+    // can air out of order or overlap; only an observed final air date excludes it.
+    return true;
   });
 
 const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
-  records(payload.episodes).flatMap((episode) => {
+  requiredRecords(payload.episodes, 'season episodes').flatMap((episode) => {
     const date = string(episode.air_date);
     const episodeNumber = number(episode.episode_number);
     const season = number(episode.season_number) ?? fallbackSeason;
-    if (!date || !isDate(date) || episodeNumber === undefined) return [];
+    if (!date || !isDate(date)) return [];
+    if (
+      episodeNumber === undefined ||
+      !Number.isInteger(episodeNumber) ||
+      episodeNumber < 0 ||
+      !Number.isInteger(season) ||
+      season < 0
+    )
+      throw new Error('Invalid TMDB episode number');
     return [
       {
         date,
@@ -264,6 +286,7 @@ async function titleEvents(
   onFailure: (error: unknown) => void,
   request: ReturnType<typeof createRequest>,
   read: CacheRead,
+  missingSeasons: number[],
 ): Promise<CalendarEvent[]> {
   if (item.mediaType === 'movie') {
     const releases = await cached(
@@ -322,7 +345,8 @@ async function titleEvents(
       );
       seasonEpisodes.push(...episodes);
     } catch (error) {
-      // A broken season (including specials) must not hide the rest of a show.
+      // Only this season needs saved-release fallback.
+      missingSeasons.push(season.season);
       onFailure(error);
     }
   }
@@ -379,6 +403,8 @@ export async function loadTitleSchedules(
     item: LibraryTitle;
     events: CalendarEvent[];
     failed: boolean;
+    missingSeasons: number[];
+    unavailableTitle: boolean;
     needsRefresh: boolean;
     refreshedAt: number;
   }[] = [];
@@ -401,6 +427,8 @@ export async function loadTitleSchedules(
             retryAfterMs = 60_000;
         };
         let events: CalendarEvent[] = [];
+        const missingSeasons: number[] = [];
+        let unavailableTitle = false;
         try {
           events = await titleEvents(
             ctx,
@@ -412,14 +440,18 @@ export async function loadTitleSchedules(
             onFailure,
             request,
             read,
+            missingSeasons,
           );
         } catch (error) {
+          unavailableTitle = true;
           onFailure(error);
         }
         results.push({
           item,
           events,
           failed,
+          missingSeasons,
+          unavailableTitle,
           needsRefresh: read.needsRefresh,
           refreshedAt: read.refreshedAt,
         });

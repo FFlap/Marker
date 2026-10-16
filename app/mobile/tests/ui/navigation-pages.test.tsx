@@ -8,9 +8,10 @@ const mockUpcoming = jest.fn().mockResolvedValue({
 });
 let mockDate = '';
 let mockFocused = true;
+let mockLibraryRevision: number | undefined = 0;
 
 jest.mock('convex/react', () => ({
-  useQuery: () => [],
+  useQuery: (query: string) => (query === 'calendarRevision' ? mockLibraryRevision : []),
   useMutation: () => jest.fn().mockResolvedValue(undefined),
   useAction: () => mockUpcoming,
 }));
@@ -19,6 +20,7 @@ jest.mock('../../convex/_generated/api', () => ({
     profiles: { followRequests: 'followRequests', respondToFollow: 'respondToFollow' },
     notifications: { feed: 'notificationsFeed' },
     calendar: { upcoming: 'calendarUpcoming' },
+    calendarLibrary: { revision: 'calendarRevision' },
   },
 }));
 jest.mock('expo-router', () => ({
@@ -43,8 +45,38 @@ describe('secondary mobile pages', () => {
     mockUpcoming.mockResolvedValue({ events: [], failedTitles: { count: 0, names: [] } });
     mockDate = '';
     mockFocused = true;
+    mockLibraryRevision = 0;
   });
   afterEach(() => jest.spyOn(Date, 'now').mockRestore());
+
+  it('refreshes a cached day immediately after a library revision changes', async () => {
+    mockDate = '2026-09-02';
+    mockUpcoming.mockResolvedValue({
+      events: [{ id: 'removed', date: mockDate, kind: 'movie', title: 'Removed title' }],
+      failedTitles: { count: 0, names: [] },
+    });
+    const view = await render(<CalendarDayScreen />);
+    await waitFor(() => expect(view.getByText('Removed title')).toBeTruthy());
+    mockUpcoming.mockResolvedValue({
+      events: [{ id: 'new', date: mockDate, kind: 'movie', title: 'Added title' }],
+      failedTitles: { count: 0, names: [] },
+    });
+    mockLibraryRevision = 1;
+    await view.rerender(<CalendarDayScreen />);
+    await waitFor(() => expect(view.getByText('Added title')).toBeTruthy());
+    expect(view.queryByText('Removed title')).toBeNull();
+    expect(mockUpcoming).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits for the library revision before warming a calendar', async () => {
+    mockDate = '2026-09-02';
+    mockLibraryRevision = undefined;
+    const view = await render(<CalendarDayScreen />);
+    expect(mockUpcoming).not.toHaveBeenCalled();
+    mockLibraryRevision = 0;
+    await view.rerender(<CalendarDayScreen />);
+    await waitFor(() => expect(mockUpcoming).toHaveBeenCalledTimes(1));
+  });
 
   it('lists releases inside calendar days and summarizes overflow', async () => {
     const today = new Date(Date.now());

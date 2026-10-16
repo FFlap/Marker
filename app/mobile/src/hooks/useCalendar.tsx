@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { useAction } from 'convex/react';
+import { useAction, useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { CalendarCache } from '../../../shared/calendarCache';
 import { currentCalendarMonth } from '../../../shared/calendar';
@@ -25,6 +25,7 @@ export function useCalendar(date: string, prefetch = false) {
   const cache = useContext(CalendarContext);
   if (!cache) throw new Error('CalendarProvider is required');
   const upcoming = useAction(api.calendar.upcoming);
+  const libraryRevision = useQuery(api.calendarLibrary.revision);
   const month = date.slice(0, 7);
   const past = month < currentCalendarMonth();
   const region = deviceRegion();
@@ -40,12 +41,16 @@ export function useCalendar(date: string, prefetch = false) {
   );
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const retry = useCallback(() => {
-    if (valid && !past) void cache.load(month, region, upcoming, true);
-  }, [cache, month, region, upcoming, valid, past]);
+    if (valid && !past && libraryRevision !== undefined) {
+      cache.setLibraryRevision(libraryRevision);
+      void cache.load(month, region, upcoming, true);
+    }
+  }, [cache, month, region, upcoming, valid, past, libraryRevision]);
 
   useFocusEffect(
     useCallback(() => {
-      if (!valid || past) return;
+      if (!valid || past || libraryRevision === undefined) return;
+      cache.setLibraryRevision(libraryRevision);
       let active = true;
       const load = async () => {
         await cache.load(month, region, upcoming);
@@ -71,7 +76,7 @@ export function useCalendar(date: string, prefetch = false) {
         active = false;
         subscription.remove();
       };
-    }, [cache, month, region, upcoming, valid, past, prefetch]),
+    }, [cache, month, region, upcoming, valid, past, prefetch, libraryRevision]),
   );
 
   return { ...snapshot, valid, past, retry };

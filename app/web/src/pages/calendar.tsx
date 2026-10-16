@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { ChevronLeft, ChevronRight, Film, Tv2 } from "lucide-react";
-import { useAction } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader } from "@/components/page";
 import {
@@ -111,12 +111,20 @@ function regionFromLocale() {
 
 export function CalendarPage() {
   const fetchUpcoming = useAction(api.calendar.upcoming);
+  const libraryRevision = useQuery(api.calendarLibrary.revision);
   const [cache] = useState(() => new CalendarCache());
   const [month, setMonth] = useState(() => monthStart(new Date(Date.now())));
+  const [today, setToday] = useState(() => dateKey(new Date(Date.now())));
   const [selectedDate, setSelectedDate] = useState(() =>
     dateKey(new Date(Date.now())),
   );
-  const start = monthStart(month);
+  const visibleMonth =
+    dateKey(month).slice(0, 7) < today.slice(0, 7)
+      ? new Date(`${today.slice(0, 7)}-01T00:00:00`)
+      : month;
+  const visibleDate =
+    selectedDate.slice(0, 7) < today.slice(0, 7) ? today : selectedDate;
+  const start = monthStart(visibleMonth);
   const monthKey = dateKey(start).slice(0, 7);
   const region = regionFromLocale();
   const subscribe = useCallback(
@@ -142,13 +150,16 @@ export function CalendarPage() {
   );
 
   useEffect(() => {
+    if (libraryRevision === undefined) return () => undefined;
+    cache.setLibraryRevision(libraryRevision);
     const load = () => {
+      setToday(dateKey(new Date(Date.now())));
       void cache.load(monthKey, region, fetchUpcoming);
     };
     load();
     window.addEventListener("focus", load);
     return () => window.removeEventListener("focus", load);
-  }, [cache, monthKey, region, fetchUpcoming]);
+  }, [cache, monthKey, region, fetchUpcoming, libraryRevision]);
 
   const changeMonth = (next: Date) => {
     const nextMonth = monthStart(next);
@@ -159,11 +170,14 @@ export function CalendarPage() {
 
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const event of events ?? [])
-      map.set(event.date, [...(map.get(event.date) ?? []), event]);
+    for (const event of events ?? []) {
+      const dayEvents = map.get(event.date);
+      if (dayEvents) dayEvents.push(event);
+      else map.set(event.date, [event]);
+    }
     return map;
   }, [events]);
-  const selectedEvents = byDate.get(selectedDate) ?? [];
+  const selectedEvents = byDate.get(visibleDate) ?? [];
 
   return (
     <Page width="wide" className="max-w-5xl">
@@ -189,7 +203,11 @@ export function CalendarPage() {
               disabled={monthKey <= currentCalendarMonth()}
               onClick={() =>
                 changeMonth(
-                  new Date(month.getFullYear(), month.getMonth() - 1, 1),
+                  new Date(
+                    visibleMonth.getFullYear(),
+                    visibleMonth.getMonth() - 1,
+                    1,
+                  ),
                 )
               }
               className="grid size-11 place-items-center rounded-full bg-transparent transition hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-10"
@@ -197,7 +215,7 @@ export function CalendarPage() {
               <ChevronLeft className="size-4" />
             </button>
             <h2 className="text-[17px] font-bold">
-              {month.toLocaleDateString(undefined, {
+              {visibleMonth.toLocaleDateString(undefined, {
                 month: "long",
                 year: "numeric",
               })}
@@ -207,7 +225,11 @@ export function CalendarPage() {
               aria-label="Next month"
               onClick={() =>
                 changeMonth(
-                  new Date(month.getFullYear(), month.getMonth() + 1, 1),
+                  new Date(
+                    visibleMonth.getFullYear(),
+                    visibleMonth.getMonth() + 1,
+                    1,
+                  ),
                 )
               }
               className="grid size-11 place-items-center rounded-full bg-transparent transition hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-10"
@@ -236,8 +258,8 @@ export function CalendarPage() {
           <div className="grid grid-cols-7 border-l border-t border-border">
             {days.map((day) => {
               const key = dateKey(day);
-              const inMonth = day.getMonth() === month.getMonth();
-              const active = selectedDate === key;
+              const inMonth = day.getMonth() === visibleMonth.getMonth();
+              const active = visibleDate === key;
               const dayEvents = byDate.get(key) ?? [];
               return (
                 <CalendarDay
@@ -246,7 +268,10 @@ export function CalendarPage() {
                   events={dayEvents}
                   inMonth={inMonth}
                   active={active}
-                  onSelect={() => setSelectedDate(key)}
+                  onSelect={() => {
+                    if (!inMonth) changeMonth(day);
+                    setSelectedDate(key);
+                  }}
                 />
               );
             })}
@@ -254,24 +279,24 @@ export function CalendarPage() {
         </section>
         <aside className="mt-7 lg:sticky lg:top-8 lg:mt-0 lg:border-l lg:border-border lg:pl-8">
           <h2 className="text-[10px] font-bold uppercase tracking-[.06em] text-muted-foreground">
-            {new Date(`${selectedDate}T00:00:00`).toLocaleDateString(
-              undefined,
-              {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              },
-            )}
+            {new Date(`${visibleDate}T00:00:00`).toLocaleDateString(undefined, {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
           </h2>
-          {error && (
+          {(error || partialFailure) && (
             <button
               type="button"
+              disabled={loading}
               onClick={() => {
                 void cache.load(monthKey, region, fetchUpcoming, true);
               }}
               className="mt-4 text-xs text-destructive"
             >
-              Couldn’t refresh release dates. Retry
+              {error
+                ? "Couldn’t refresh release dates. Retry"
+                : "Retry missing release dates"}
             </button>
           )}
           {!selectedEvents.length && loading ? (

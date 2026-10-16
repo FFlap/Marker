@@ -14,6 +14,8 @@ export type CalendarCursor =
       offset: number;
       version: string;
       mediaType?: "movie" | "tv";
+      releaseOffset?: number;
+      releaseVersion?: string;
     }
   | {
       status: "watching" | "watchlist" | "watched";
@@ -62,13 +64,25 @@ export async function loadCalendarPages(
   let needsRefresh = false;
   let cursor: CalendarCursor | undefined;
   let retries = 0;
+  let refreshWaitMs = 0;
   let result: CalendarResult = {
     events: [],
     failedTitles: { count, names: [] },
   };
-  do {
+  while (true) {
     const page = await fetch({ ...args, ...(cursor && { cursor }) });
     needsRefresh ||= page.needsRefresh === true;
+    if (page.refreshPending) {
+      // Discovery progresses in background batches and can span several provider
+      // windows. Its polling budget is independent of per-title retry attempts.
+      // Pending discovery has no replacement data to publish over a saved view.
+      const delay = Math.min(Math.max(page.retryAfterMs ?? 1_000, 250), 60_000);
+      if (refreshWaitMs + delay > 5 * 60_000)
+        throw new Error("Release dates are still updating. Please retry.");
+      refreshWaitMs += delay;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      continue;
+    }
     const merged = new Map(events);
     for (const event of page.events) merged.set(event.id, event);
     result = {
@@ -90,10 +104,6 @@ export async function loadCalendarPages(
       await new Promise((resolve) => setTimeout(resolve, delay));
       continue;
     }
-    // A discovery refresh has no authoritative replacement until it finishes.
-    // Throw after bounded retries so CalendarCache preserves the saved schedule.
-    if (page.refreshPending)
-      throw new Error("Release dates are still updating. Please retry.");
     if (page.truncated && !page.nextCursor)
       throw new Error(
         "The calendar backend must be updated to load the full library",
@@ -107,6 +117,6 @@ export async function loadCalendarPages(
     if (next && JSON.stringify(next) === JSON.stringify(cursor))
       throw new Error("Calendar pagination did not advance");
     cursor = next;
-  } while (cursor || retries);
-  return result;
+    if (!cursor) return result;
+  }
 }

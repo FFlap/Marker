@@ -552,8 +552,20 @@ describe('calendar repeat loading', () => {
       region: 'US',
       offset: 0,
     });
-    expect(page.nextOffset).toBeNull();
-    const titles = page.titles.map((entry) => entry.item);
+    expect(page.nextOffset).toBe(202);
+    const pages = [page];
+    while (pages.at(-1)!.nextOffset !== null) {
+      pages.push(
+        await t.query(internal.calendarCatalog.page, {
+          userId,
+          mediaType: 'movie',
+          month: '2026-09',
+          region: 'US',
+          offset: pages.at(-1)!.nextOffset!,
+        }),
+      );
+    }
+    const titles = pages.flatMap((page) => page.titles.map((entry) => entry.item));
     expect(titles).toHaveLength(102);
     expect(titles[0].tmdbId).toBe(103);
     expect(titles.at(-1)?.tmdbId).toBe(204);

@@ -11,6 +11,52 @@ beforeEach(() => vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 10, 1)));
 afterEach(() => vi.restoreAllMocks());
 
 describe('shared calendar schedules', () => {
+  it('invalidates visible and prefetched months when library membership changes', async () => {
+    const cache = new CalendarCache();
+    cache.setLibraryRevision(3);
+    const fetch = vi.fn(async () => result('Removed title'));
+    await cache.load('2026-09', 'CA', fetch);
+    await cache.load('2026-10', 'CA', fetch);
+    const listener = vi.fn();
+    cache.subscribe('2026-09', 'CA', listener);
+    cache.setLibraryRevision(4);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(cache.get('2026-09', 'CA').result).toBeUndefined();
+    expect(cache.get('2026-10', 'CA').result).toBeUndefined();
+    fetch.mockResolvedValue(result('New title'));
+    await cache.load('2026-09', 'CA', fetch);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(cache.get('2026-09', 'CA').result).toMatchObject(result('New title'));
+    cache.setLibraryRevision(3);
+    cache.setLibraryRevision(4);
+    await cache.load('2026-09', 'CA', fetch);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('fences an in-flight page so it cannot restore removed titles or fetch more pages', async () => {
+    const cache = new CalendarCache();
+    cache.setLibraryRevision(0);
+    let finish!: (value: CalendarResult) => void;
+    const oldFetch = vi.fn(
+      () =>
+        new Promise<CalendarResult>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const old = cache.load('2026-09', 'US', oldFetch);
+    await Promise.resolve();
+    cache.setLibraryRevision(1);
+    await cache.load('2026-09', 'US', async () => result('Current library'));
+    finish({ ...result('Removed title'), nextCursor: { status: 'watching', after: 'more' } });
+    await old;
+    expect(oldFetch).toHaveBeenCalledTimes(1);
+    expect(cache.get('2026-09', 'US')).toMatchObject({
+      loading: false,
+      error: false,
+      result: result('Current library'),
+    });
+  });
+
   it('uses local month bounds including leap years and year transitions', () => {
     expect(monthRange('2028-02')).toEqual({ startDate: '2028-02-01', endDate: '2028-02-29' });
     expect(monthRange('2026-12').endDate).toBe('2026-12-31');
@@ -119,11 +165,48 @@ describe('shared calendar schedules', () => {
       const loading = cache.load('2026-09', 'CA', fetch);
       await vi.runAllTimersAsync();
       await loading;
-      expect(fetch).toHaveBeenCalledTimes(4);
+      expect(fetch).toHaveBeenCalledTimes(302);
       expect(cache.get('2026-09', 'CA')).toMatchObject({
         loading: false,
         error: true,
         result: result(),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retains the saved schedule when a manual retry is waiting for discovery', async () => {
+    vi.useFakeTimers();
+    try {
+      const cache = new CalendarCache();
+      await cache.load('2026-09', 'CA', async () => result('Saved'));
+      await cache.load(
+        '2026-09',
+        'CA',
+        async () => {
+          throw new Error('offline');
+        },
+        true,
+      );
+      const fetch = vi.fn().mockResolvedValue({
+        events: [],
+        failedTitles: { count: 1, names: [] },
+        refreshPending: true,
+        retryAfterMs: 60_000,
+      });
+      const retry = cache.load('2026-09', 'CA', fetch, true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(cache.get('2026-09', 'CA')).toMatchObject({
+        loading: true,
+        result: result('Saved'),
+      });
+      await vi.runAllTimersAsync();
+      await retry;
+      expect(cache.get('2026-09', 'CA')).toMatchObject({
+        loading: false,
+        error: true,
+        result: result('Saved'),
       });
     } finally {
       vi.useRealTimers();

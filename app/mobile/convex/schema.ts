@@ -14,6 +14,7 @@ import { candidateValidator, releaseValidator } from './calendarTypes';
 
 const users = defineTable({
   clerkId: v.string(),
+  calendarRevision: v.optional(v.number()),
   name: v.optional(v.string()),
   image: v.optional(v.string()),
   email: v.optional(v.string()),
@@ -235,13 +236,45 @@ export default defineSchema({
     refreshedAt: v.number(),
     leaseToken: v.optional(v.string()),
     leaseExpiresAt: v.optional(v.number()),
+    stagingVersion: v.optional(v.string()),
+    discoveryFeed: v.optional(v.number()),
+    discoveryPage: v.optional(v.number()),
+    stagingCount: v.optional(v.number()),
+    discoveryFailures: v.optional(v.number()),
+    discoveryError: v.optional(v.string()),
+    discoveryRetryAt: v.optional(v.number()),
+    candidateCount: v.optional(v.number()),
   })
     .index('by_region_month', ['region', 'month'])
+    .index('by_month', ['month']),
+  calendarCandidates: defineTable({
+    month: v.string(),
+    region: v.string(),
+    version: v.string(),
+    ordinal: v.number(),
+    ...candidateValidator.fields,
+  })
+    .index('by_catalog_ordinal', ['region', 'month', 'version', 'ordinal'])
+    .index('by_catalog_title', ['region', 'month', 'version', 'mediaType', 'tmdbId'])
+    .index('by_month', ['month']),
+  calendarReleaseChunks: defineTable({
+    key: v.string(),
+    month: v.string(),
+    version: v.string(),
+    chunk: v.number(),
+    events: v.array(releaseValidator),
+  })
+    .index('by_key_version_chunk', ['key', 'version', 'chunk'])
     .index('by_month', ['month']),
   calendarSchedules: defineTable({
     key: v.string(),
     month: v.string(),
     events: v.array(releaseValidator),
+    version: v.optional(v.string()),
+    eventCount: v.optional(v.number()),
+    stagingVersion: v.optional(v.string()),
+    stagingNextChunk: v.optional(v.number()),
+    stagingRefreshedAt: v.optional(v.number()),
     refreshedAt: v.number(),
   })
     .index('by_key', ['key'])

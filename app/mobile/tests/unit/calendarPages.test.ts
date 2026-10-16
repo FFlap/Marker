@@ -17,6 +17,45 @@ const page = (id: string, nextCursor: CalendarCursor | null = null): CalendarRes
 afterEach(() => vi.useRealTimers());
 
 describe('complete library calendar loading', () => {
+  it('waits through background discovery batches and provider windows without counting them as failures', async () => {
+    vi.useFakeTimers();
+    const pending = {
+      events: [],
+      failedTitles: { count: 1, names: [] },
+      refreshPending: true,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ...pending, retryAfterMs: 60_000 })
+      .mockResolvedValueOnce({ ...pending, retryAfterMs: 1_000 })
+      .mockResolvedValueOnce({ ...pending, retryAfterMs: 1_000 })
+      .mockResolvedValueOnce(page('ready'));
+    const loading = loadCalendarPages(fetch, args, () => {});
+    await vi.runAllTimersAsync();
+    await expect(loading).resolves.toMatchObject({
+      events: [{ id: 'ready' }],
+      failedTitles: { count: 0, names: [] },
+    });
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('passes release cursors through without losing events from the same title', async () => {
+    const next: CalendarCursor = {
+      month: '2026-10',
+      offset: 0,
+      version: 'saved',
+      releaseOffset: 500,
+      releaseVersion: 'releases-v1',
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(page('first', next))
+      .mockResolvedValueOnce(page('last'));
+    const result = await loadCalendarPages(fetch, args, () => {});
+    expect(fetch.mock.calls[1][0].cursor).toEqual(next);
+    expect(result.events.map((event) => event.id)).toEqual(['first', 'last']);
+  });
+
   it('publishes each page and loads beyond 100 titles without losing failures or duplicating events', async () => {
     const fetch = vi.fn(async ({ cursor: position }: { cursor?: CalendarCursor }) => {
       const offset = Number(position && 'after' in position ? position.after : 0);
