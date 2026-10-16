@@ -30,6 +30,7 @@ import { SeasonProgress } from '@/features/title/components/SeasonProgress';
 import { SectionHeader } from '@/features/title/components/SectionHeader';
 import { useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
+import { localDateKey } from '@/hooks/use-local-today';
 import { SEASON_EPISODE_RENDER_BATCH, useSeasonView } from '@/hooks/use-season-view';
 import { libraryItemScreenStyles as s } from '@/features/title/screens/LibraryItemScreen.styles';
 import { EpisodeCard } from '@/features/title/components/EpisodeCard';
@@ -288,6 +289,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       season: ep.season,
       episode: ep.episode,
       watched: !old?.watched,
+      ...(!old?.watched && { activityDate: localDateKey() }),
       seasonName:
         availableSeasons.find((entry) => entry.season === ep.season)?.name ??
         (ep.season === 0 ? 'Specials' : `Season ${ep.season}`),

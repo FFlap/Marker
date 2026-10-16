@@ -31,6 +31,7 @@ import type { WebLibraryItem as LibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
 import { titleRuntime } from "@/lib/catalog";
 import { useSeasonGuide } from "@/hooks/use-season-guide";
+import { localDateKey } from "@/hooks/use-local-today";
 
 function EntryDialog({
   item,
@@ -614,6 +615,7 @@ export function ItemDetailPage() {
                                 airDate: episodeView.airDate,
                               }),
                               watched: true,
+                              activityDate: localDateKey(),
                             })
                               .catch(() => setEpisodeActionError("Couldn’t mark that episode watched."))
                               .finally(() => setEpisodePending((current) => {

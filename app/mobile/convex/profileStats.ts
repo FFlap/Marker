@@ -1,10 +1,12 @@
 import type { Id } from './_generated/dataModel';
 import type { QueryCtx } from './_generated/server';
 import { profileFavoritesForUser } from './profileFavorites';
+import { watchActivityForUser } from './watchActivity';
 
 export async function profileStatsForUser(ctx: QueryCtx, userId: Id<'users'>) {
-  const [favorites, stats] = await Promise.all([
+  const [favorites, watchActivity, stats] = await Promise.all([
     profileFavoritesForUser(ctx, userId),
+    watchActivityForUser(ctx, userId),
     ctx.db
       .query('profileStats')
       .withIndex('by_user', (query) => query.eq('userId', userId))
@@ -19,5 +21,6 @@ export async function profileStatsForUser(ctx: QueryCtx, userId: Id<'users'>) {
     totalItems: stats?.totalItems ?? 0,
     avgRating: stats?.ratingCount ? stats.ratingTotal / stats.ratingCount : 0,
     topTags: stats?.topTags ?? [],
+    watchActivity,
   };
 }

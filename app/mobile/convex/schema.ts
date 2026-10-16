@@ -92,6 +92,11 @@ export default defineSchema({
     topTags: v.array(watchedTagCount),
     updatedAt: v.number(),
   }).index('by_user', ['userId']),
+  watchActivityDays: defineTable({
+    userId: v.id('users'),
+    date: v.string(),
+    episodes: v.number(),
+  }).index('by_user_date', ['userId', 'date']),
   profileStatsRefreshes: defineTable({
     userId: v.id('users'),
     phase: v.union(v.literal('items'), v.literal('summaries')),

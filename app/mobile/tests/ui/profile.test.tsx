@@ -1,9 +1,20 @@
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
+import { localDateKey } from '../../src/hooks/use-local-today';
 
 const mockRespond = jest.fn();
 let mockFavoriteDragEnd:
   ((event: { data: typeof mockFavorites; from: number; to: number }) => void) | undefined;
+const mockToday = new Date();
+const mockWatchActivity = [
+  {
+    date: localDateKey(
+      new Date(mockToday.getFullYear(), mockToday.getMonth(), mockToday.getDate() - 1),
+    ),
+    episodes: 2,
+  },
+  { date: localDateKey(mockToday), episodes: 5 },
+];
 const mockFavorites = [
   { _id: 'favorite-1', title: 'Spirited Away', mediaType: 'movie', isAnime: true, rank: 1 },
   { _id: 'favorite-2', title: 'One Piece', mediaType: 'tv', isAnime: true, rank: 2 },
@@ -32,6 +43,7 @@ jest.mock('convex/react', () => ({
       avgRating: 8.25,
       favorites: mockFavorites,
       topTags: [{ tag: 'hero', count: 5 }],
+      watchActivity: mockWatchActivity,
     };
   },
 }));
@@ -109,4 +121,17 @@ it('keeps an optimistic favorite order while a save is pending', async () => {
   expect(favoriteOrder()).toEqual(['One Piece', 'Spirited Away']);
 
   await act(async () => finishSave());
+});
+
+it('shows streaks, daily average, this week and the activity heatmap on the stats tab', async () => {
+  const view = await render(<Profile />);
+  await act(async () => fireEvent.press(view.getByText('Stats')));
+
+  expect(view.getByText('Daily Streak')).toBeTruthy();
+  expect(view.getAllByText('2 days')).toHaveLength(2);
+  expect(view.getByText('Watched today')).toBeTruthy();
+  expect(view.getByText('3.5')).toBeTruthy();
+  expect(view.getByText('This Week')).toBeTruthy();
+  expect(view.getByText(/^Last week: \d+$/)).toBeTruthy();
+  expect(view.getByText('Watch Activity')).toBeTruthy();
 });
