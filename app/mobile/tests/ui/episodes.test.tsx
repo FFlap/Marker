@@ -104,6 +104,7 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
       runtime: 24,
       airDate: '2001-05-27',
       watched: true,
+      activityDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     }),
   );
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));

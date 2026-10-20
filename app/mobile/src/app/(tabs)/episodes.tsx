@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useMutation, useQuery } from 'convex/react';
 import { Check, EllipsisVertical, Star } from 'lucide-react-native';
@@ -27,37 +27,12 @@ import { createAppStyles } from '@/lib/typography';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { MobileNav } from '@/components/MobileNav';
 import { TabHeader } from '@/components/TabHeader';
+import { localDateKey, useLocalToday } from '@/hooks/use-local-today';
 
 type EpisodeHubItem = FunctionReturnType<typeof api.episodeHub.overview>['watching'][number];
 
 type EpisodeTab = 'watching' | 'favorites';
 const EMPTY_EPISODES: EpisodeHubItem[] = [];
-
-const localDateKey = (date = new Date()) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
-function useLocalToday() {
-  const [today, setToday] = useState(localDateKey);
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => {
-      setToday(localDateKey());
-      const now = new Date();
-      const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(refresh, Math.max(1_000, nextDay.getTime() - now.getTime() + 100));
-    };
-    refresh();
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refresh();
-    });
-    return () => {
-      if (timer) clearTimeout(timer);
-      subscription.remove();
-    };
-  }, []);
-  return today;
-}
 
 export default function EpisodesScreen() {
   return (
@@ -142,6 +117,7 @@ function Episodes() {
           ...(episode.runtime !== undefined && { runtime: episode.runtime }),
           ...(episode.imageUrl !== undefined && { imageUrl: episode.imageUrl }),
           ...(episode.airDate !== undefined && { airDate: episode.airDate }),
+          ...(patch.watched && { activityDate: localDateKey() }),
           ...patch,
         }),
       );
