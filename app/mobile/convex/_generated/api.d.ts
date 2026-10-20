@@ -62,6 +62,8 @@ import type * as tmdb from "../tmdb.js";
 import type * as tvdb from "../tvdb.js";
 import type * as tvdbParsing from "../tvdbParsing.js";
 import type * as tvdbSeriesLookup from "../tvdbSeriesLookup.js";
+import type * as watchActivity from "../watchActivity.js";
+import type * as watchActivityStats from "../watchActivityStats.js";
 
 import type {
   ApiFromModules,
@@ -124,6 +126,8 @@ declare const fullApi: ApiFromModules<{
   tvdb: typeof tvdb;
   tvdbParsing: typeof tvdbParsing;
   tvdbSeriesLookup: typeof tvdbSeriesLookup;
+  watchActivity: typeof watchActivity;
+  watchActivityStats: typeof watchActivityStats;
 }>;
 
 /**

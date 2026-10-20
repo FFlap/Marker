@@ -2,7 +2,14 @@ import { Text, View } from 'react-native';
 import { Chip, StatTile } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
+import { useLocalToday } from '@/hooks/use-local-today';
 import { ProfileFavorites, type ProfileFavorite } from './ProfileFavorites';
+import { WatchHeatmap } from './WatchHeatmap';
+import {
+  formatActivityDate,
+  summarizeWatchActivity,
+  type WatchActivityDay,
+} from '../../convex/watchActivityStats';
 
 export type ProfileStatsValue = {
   totalWatchMinutes: number;
@@ -13,26 +20,56 @@ export type ProfileStatsValue = {
   avgRating: number;
   favorites: ProfileFavorite[];
   topTags: { tag: string; count: number }[];
+  watchActivity: WatchActivityDay[];
 };
 
+const dayCount = (count: number) => `${count.toLocaleString()} ${count === 1 ? 'day' : 'days'}`;
+
 export function ProfileMetrics({ stats }: { stats: ProfileStatsValue }) {
+  const today = useLocalToday();
+  const activity = summarizeWatchActivity(stats.watchActivity, today);
   const days = Math.floor(stats.totalWatchMinutes / 1440);
   const hours = Math.floor((stats.totalWatchMinutes % 1440) / 60);
   return (
-    <View style={s.tiles}>
-      <StatTile
-        label="Watch Time"
-        value={`${days}d ${hours}h`}
-        detail={`${stats.totalWatchMinutes.toLocaleString()} minutes`}
-      />
-      <StatTile label="Episodes" value={stats.episodesWatched} />
-      <StatTile label="Movies Watched" value={stats.moviesWatched} />
-      <StatTile label="Shows Watched" value={stats.showsWatched} />
-      <StatTile label="Library Items" value={stats.totalItems} />
-      <StatTile
-        label="Average Rating"
-        value={stats.avgRating !== undefined ? stats.avgRating.toFixed(1) : '—'}
-      />
+    <View style={s.metrics}>
+      <WatchHeatmap days={stats.watchActivity} today={today} />
+      <View style={s.tiles}>
+        <StatTile
+          label="Daily Streak"
+          value={dayCount(activity.currentStreak)}
+          detail={
+            activity.watchedToday
+              ? 'Watched today'
+              : activity.currentStreak
+                ? 'Watch today to keep it'
+                : undefined
+          }
+        />
+        <StatTile label="Highest Streak" value={dayCount(activity.longestStreak)} />
+        <StatTile
+          label="Avg Daily Episodes"
+          value={activity.dailyAverage.toFixed(1)}
+          detail={activity.firstDate && `Since ${formatActivityDate(activity.firstDate)}`}
+        />
+        <StatTile
+          label="This Week"
+          value={activity.thisWeek.toLocaleString()}
+          detail={`Last week: ${activity.lastWeek.toLocaleString()}`}
+        />
+        <StatTile
+          label="Watch Time"
+          value={`${days}d ${hours}h`}
+          detail={`${stats.totalWatchMinutes.toLocaleString()} minutes`}
+        />
+        <StatTile label="Episodes" value={stats.episodesWatched} />
+        <StatTile label="Movies Watched" value={stats.moviesWatched} />
+        <StatTile label="Shows Watched" value={stats.showsWatched} />
+        <StatTile label="Library Items" value={stats.totalItems} />
+        <StatTile
+          label="Average Rating"
+          value={stats.avgRating !== undefined ? stats.avgRating.toFixed(1) : '—'}
+        />
+      </View>
     </View>
   );
 }
@@ -63,6 +100,7 @@ export function ProfileCollection({
 
 const s = createAppStyles(
   {
+    metrics: { gap: 28 },
     tiles: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 12, rowGap: 4 },
     sections: { gap: 48 },
     sectionBlock: { gap: 16 },

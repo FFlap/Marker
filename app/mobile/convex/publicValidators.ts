@@ -111,6 +111,8 @@ export const episodeValidator = v.object({
   ratingScale: v.optional(v.literal(5)),
   tags: v.array(v.string()),
   watchedAt: v.optional(v.number()),
+  /** Local day an in-app mark was logged to watch activity; cleared on unmark. */
+  activityDate: v.optional(v.string()),
   metadataProvider: metadataProviderValidator,
   seasonOrder: v.optional(v.string()),
   providerEpisodeId: v.optional(v.number()),
@@ -139,6 +141,7 @@ export const statsValidator = v.object({
   totalItems: v.number(),
   avgRating: v.number(),
   topTags: v.array(v.object({ tag: v.string(), count: v.number() })),
+  watchActivity: v.array(v.object({ date: v.string(), episodes: v.number() })),
 });
 export const publicTagPreviewValidator = v.object({
   tag: v.string(),

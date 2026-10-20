@@ -6,6 +6,7 @@ import { seasonSummaryIdentityKey, updateSummaryForEpisodeUpsert } from '../epis
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
 import { episodeValidator } from '../publicValidators';
 import { refreshNextEpisode } from '../nextEpisode';
+import { recordWatchActivity, resolveActivityDate } from '../watchActivity';
 import {
   boundedOptional,
   episodeMatchesStamp,
@@ -33,6 +34,8 @@ const episodeArgs = {
   runtime: v.optional(v.number()),
   imageUrl: v.optional(v.string()),
   airDate: v.optional(v.string()),
+  /** The viewer's local `YYYY-MM-DD`; marks from the app count toward watch activity. */
+  activityDate: v.optional(v.string()),
 };
 export async function setEpisode(
   ctx: MutationCtx,
@@ -51,18 +54,21 @@ export async function setEpisode(
     runtime?: number;
     imageUrl?: string;
     airDate?: string;
+    activityDate?: string;
     stamp?: EpisodeMetadataStamp;
   },
-  knownItem?: Doc<'items'>,
-  knownExisting?: Doc<'episodes'> | null,
-  activityEvents?: ActivityEventWrite[],
-  refreshCoordinate = true,
+  batch?: {
+    item: Doc<'items'>;
+    existing: Doc<'episodes'> | null;
+    activityEvents: ActivityEventWrite[];
+    watchActivityDeltas: Map<string, number>;
+  },
 ) {
   if (!Number.isInteger(args.season) || args.season < 0 || args.season > 10_000)
     throw new Error('Season must be an integer between 0 and 10000');
   if (!Number.isInteger(args.episode) || args.episode < 0 || args.episode > 10_000)
     throw new Error('Episode must be an integer between 0 and 10000');
-  const item = knownItem ?? (await ownedItem(ctx, args.itemId, userId));
+  const item = batch?.item ?? (await ownedItem(ctx, args.itemId, userId));
   requireRating(args.rating);
   requireRuntime(args.runtime);
   boundedOptional('Season name', args.seasonName, 300);
@@ -71,15 +77,14 @@ export async function setEpisode(
   boundedOptional('Episode image URL', args.imageUrl, 500);
   boundedOptional('Episode air date', args.airDate, 50);
   const tags = args.tags === undefined ? undefined : normalizeTags(args.tags);
-  const existing =
-    knownExisting === undefined
-      ? await ctx.db
-          .query('episodes')
-          .withIndex('by_item', (q) =>
-            q.eq('itemId', args.itemId).eq('season', args.season).eq('episode', args.episode),
-          )
-          .unique()
-      : knownExisting;
+  const existing = batch
+    ? batch.existing
+    : await ctx.db
+        .query('episodes')
+        .withIndex('by_item', (q) =>
+          q.eq('itemId', args.itemId).eq('season', args.season).eq('episode', args.episode),
+        )
+        .unique();
   const watched = args.watched ?? existing?.watched ?? false;
   const nextRating = args.clearRating
     ? undefined
@@ -87,6 +92,8 @@ export async function setEpisode(
       ? args.rating
       : existing?.rating;
   const stamp = args.stamp ?? (await episodeMetadataStamp(ctx, item, args.season, args.episode));
+  // Only individual marks carry an activity date; bulk season writes do not.
+  const { activityDate } = args;
   const materializeDisplay = watched || nextRating !== undefined;
   const display = {
     seasonName: stamp.seasonName ?? args.seasonName,
@@ -113,7 +120,8 @@ export async function setEpisode(
     ...(materializeDisplay && display.imageUrl !== undefined && { imageUrl: display.imageUrl }),
     ...(materializeDisplay && display.airDate !== undefined && { airDate: display.airDate }),
     ...(watched && !existing?.watched && { watchedAt: Date.now() }),
-    ...(!watched && existing?.watched && { watchedAt: undefined }),
+    ...(watched && !existing?.watched && activityDate !== undefined && { activityDate }),
+    ...(!watched && existing?.watched && { watchedAt: undefined, activityDate: undefined }),
     metadataProvider: stamp.metadataProvider,
     seasonOrder: stamp.seasonOrder,
     providerEpisodeId: stamp.providerEpisodeId,
@@ -156,8 +164,17 @@ export async function setEpisode(
       episode: args.episode,
       ...(nextRating !== undefined && { rating: nextRating }),
     });
-  if (activityEvents) activityEvents.push(...semanticEvents);
+  if (batch) batch.activityEvents.push(...semanticEvents);
   else await writeActivityEvents(ctx, semanticEvents);
+  if (watched !== (existing?.watched ?? false)) {
+    const date = watched ? activityDate : existing?.activityDate;
+    if (date !== undefined) {
+      const delta = watched ? 1 : -1;
+      if (batch)
+        batch.watchActivityDeltas.set(date, (batch.watchActivityDeltas.get(date) ?? 0) + delta);
+      else await recordWatchActivity(ctx, userId, date, delta);
+    }
+  }
   let episodeId: Id<'episodes'>;
   if (existing) {
     await ctx.db.patch(existing._id, values);
@@ -172,7 +189,7 @@ export async function setEpisode(
       ...values,
     });
   }
-  if (refreshCoordinate)
+  if (!batch)
     await refreshNextEpisode(
       ctx,
       item._id,
@@ -183,7 +200,12 @@ export async function setEpisode(
 export const setEpisodeState = mutation({
   args: episodeArgs,
   returns: v.id('episodes'),
-  handler: async (ctx, args) => setEpisode(ctx, await requireUser(ctx), args),
+  handler: async (ctx, { activityDate, ...args }) =>
+    setEpisode(ctx, await requireUser(ctx), {
+      ...args,
+      // Older clients omit the local day; their marks still count, on the UTC day.
+      activityDate: resolveActivityDate(activityDate),
+    }),
 });
 
 const matchesCurrentEpisodeIdentity = (
