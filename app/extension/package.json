@@ -34,6 +34,9 @@
     "wxt": "^0.20.6"
   },
   "overrides": {
+    "metro": {
+      "image-size": "2.0.4"
+    },
     "@clerk/clerk-js": "6.25.12",
     "@clerk/react": "6.12.9",
     "@clerk/shared": "4.25.9",
