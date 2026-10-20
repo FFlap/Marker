@@ -158,7 +158,7 @@ describe("calendar partial failures", () => {
     upcoming.mockResolvedValueOnce({
       events: [],
       failedTitles: { count: 0, names: [] },
-      nextCursor: { status: "watchlist", after: "more" },
+      nextCursor: { month: date.slice(0, 7), offset: 20, version: "saved" },
       truncated: true,
     });
     upcoming.mockResolvedValueOnce({

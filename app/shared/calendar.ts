@@ -8,19 +8,14 @@ export type CalendarEvent = {
   episodeName?: string;
 };
 
-export type CalendarCursor =
-  | {
-      month: string;
-      offset: number;
-      version: string;
-      mediaType?: "movie" | "tv";
-      releaseOffset?: number;
-      releaseVersion?: string;
-    }
-  | {
-      status: "watching" | "watchlist" | "watched";
-      after: string | null;
-    };
+export type CalendarCursor = {
+  month: string;
+  offset: number;
+  version: string;
+  mediaType?: "movie" | "tv";
+  releaseOffset?: number;
+  releaseVersion?: string;
+};
 
 export type CalendarResult = {
   events: CalendarEvent[];
