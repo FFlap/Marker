@@ -11,6 +11,92 @@ beforeEach(() => vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 10, 1)));
 afterEach(() => vi.restoreAllMocks());
 
 describe('shared calendar schedules', () => {
+  it('bounds abandoned pending months and stops their pagination when they are evicted', async () => {
+    const cache = new CalendarCache();
+    const releases: ((value: CalendarResult) => void)[] = [];
+    const fetch = vi.fn(() => new Promise<CalendarResult>((resolve) => releases.push(resolve)));
+    const pending = [];
+    for (let month = 1; month <= 12; month++) {
+      pending.push(cache.load(`2026-${String(month).padStart(2, '0')}`, 'CA', fetch));
+      await Promise.resolve();
+    }
+    pending.push(cache.load('2027-01', 'CA', fetch));
+    await Promise.resolve();
+    releases[0]({ ...result('Evicted'), nextCursor: { status: 'watching', after: 'next' } });
+    for (const resolve of releases.slice(1)) resolve(result('Retained'));
+    await Promise.all(pending);
+    expect(fetch).toHaveBeenCalledTimes(13);
+    expect(cache.get('2026-01', 'CA').result).toBeUndefined();
+    expect(cache.get('2027-01', 'CA').result).toMatchObject(result('Retained'));
+  });
+
+  it('keeps all saved pages when a manual retry fails again after its first page', async () => {
+    const cache = new CalendarCache();
+    const saved = {
+      ...result('First'),
+      events: [...result('First').events, ...result('Last').events],
+    };
+    await cache.load('2026-09', 'CA', async () => saved);
+    await cache.load(
+      '2026-09',
+      'CA',
+      async () => {
+        throw new Error('offline');
+      },
+      true,
+    );
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ...result('First'),
+        nextCursor: { status: 'watching', after: 'last' },
+      })
+      .mockRejectedValueOnce(new Error('offline again'));
+    await cache.load('2026-09', 'CA', fetch, true);
+    expect(cache.get('2026-09', 'CA')).toMatchObject({
+      result: saved,
+      loading: false,
+      error: true,
+    });
+  });
+
+  it('keeps the complete client schedule when a cached pass only recovers some releases', async () => {
+    const cache = new CalendarCache();
+    const saved = {
+      ...result('First'),
+      events: [...result('First').events, ...result('Last').events],
+    };
+    await cache.load('2026-09', 'CA', async () => saved);
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 10, 1) + 6 * 60_000);
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ...result('First'), needsRefresh: true })
+      .mockRejectedValueOnce(new Error('offline'));
+    await cache.load('2026-09', 'CA', fetch);
+    expect(cache.get('2026-09', 'CA')).toMatchObject({
+      result: saved,
+      loading: false,
+      error: true,
+    });
+  });
+
+  it('leaves stale published catalogs retryable after the authoritative refresh pass', async () => {
+    const cache = new CalendarCache();
+    const stale = { ...result('Saved'), needsRefresh: true };
+    const fetch = vi.fn().mockResolvedValue(stale);
+    await cache.load('2026-09', 'CA', fetch);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(cache.get('2026-09', 'CA')).toMatchObject({
+      result: stale,
+      error: true,
+      loading: false,
+    });
+    fetch.mockClear();
+    await cache.load('2026-09', 'CA', fetch, true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(cache.get('2026-09', 'CA').error).toBe(true);
+  });
+
   it('invalidates visible and prefetched months when library membership changes', async () => {
     const cache = new CalendarCache();
     cache.setLibraryRevision(3);

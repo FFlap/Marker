@@ -30,13 +30,23 @@ export const begin = internalMutation({
       .query('calendarSchedules')
       .withIndex('by_key', (q) => q.eq('key', key))
       .unique();
-    if (row && Math.max(row.refreshedAt, row.stagingRefreshedAt ?? 0) > refreshedAt) return false;
+    if (
+      row &&
+      (row.refreshedAt > refreshedAt ||
+        ((row.stagingExpiresAt ?? 0) > Date.now() && (row.stagingRefreshedAt ?? 0) > refreshedAt))
+    )
+      return false;
     if (row?.stagingVersion && row.stagingVersion !== token)
       await ctx.scheduler.runAfter(0, internal.calendarScheduleStore.discardVersion, {
         key,
         version: row.stagingVersion,
       });
-    const staging = { stagingVersion: token, stagingNextChunk: 0, stagingRefreshedAt: refreshedAt };
+    const staging = {
+      stagingVersion: token,
+      stagingNextChunk: 0,
+      stagingRefreshedAt: refreshedAt,
+      stagingExpiresAt: Date.now() + 120_000,
+    };
     if (row) await ctx.db.patch(row._id, staging);
     else
       await ctx.db.insert('calendarSchedules', {
@@ -78,8 +88,9 @@ export const writeChunk = internalMutation({
             stagingVersion: undefined,
             stagingNextChunk: undefined,
             stagingRefreshedAt: undefined,
+            stagingExpiresAt: undefined,
           }
-        : { stagingNextChunk: chunk + 1 },
+        : { stagingNextChunk: chunk + 1, stagingExpiresAt: Date.now() + 120_000 },
     );
     if (done && row.version)
       await ctx.scheduler.runAfter(0, internal.calendarScheduleStore.discardVersion, {
@@ -201,7 +212,7 @@ export async function save(
   events: Infer<typeof releaseValidator>[],
 ) {
   const args = { key, month, refreshedAt, token: crypto.randomUUID() };
-  if (!(await ctx.runMutation(internal.calendarScheduleStore.begin, args))) return;
+  if (!(await ctx.runMutation(internal.calendarScheduleStore.begin, args))) return false;
   for (let offset = 0; offset < Math.max(1, events.length); offset += CHUNK_SIZE)
     if (
       !(await ctx.runMutation(internal.calendarScheduleStore.writeChunk, {
@@ -211,5 +222,6 @@ export async function save(
         done: offset + CHUNK_SIZE >= events.length,
       }))
     )
-      return;
+      return false;
+  return true;
 }

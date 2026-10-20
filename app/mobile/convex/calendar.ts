@@ -142,7 +142,8 @@ export const upcomingPage = action({
     for (const entry of page.titles) {
       if (entry.saved && (cachedOnly || entry.saved.refreshedAt > Date.now() - CALENDAR_TTL_MS)) {
         needsRefresh ||= entry.saved.refreshedAt <= Date.now() - CALENDAR_TTL_MS;
-      } else if (!releaseContinuation) pending.push(entry.item);
+      } else if (!releaseContinuation)
+        pending.push({ item: entry.item, hasSavedSchedule: entry.saved !== null });
     }
     const loaded = await loadTitleSchedules(
       ctx,
@@ -188,7 +189,7 @@ export const upcomingPage = action({
                 Math.min(result.refreshedAt, Date.now() - CALENDAR_TTL_MS),
               )
             : result.refreshedAt;
-        await save(ctx, key, month, refreshedAt, releases);
+        if (!(await save(ctx, key, month, refreshedAt, releases))) needsRefresh = true;
       }
     }
     const releases = await ctx.runQuery(internal.calendarScheduleStore.releases, {
@@ -215,7 +216,7 @@ export const upcomingPage = action({
       nextCursor,
       region,
       failedTitles: { count: failedNames.length, names: failedNames.slice(0, 5) },
-      ...(cachedOnly && { needsRefresh }),
+      ...((cachedOnly || needsRefresh) && { needsRefresh }),
       ...(loaded.retryAfterMs && { retryAfterMs: loaded.retryAfterMs }),
     };
   },

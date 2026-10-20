@@ -17,7 +17,12 @@ import {
 } from './calendarTypes';
 type Snapshot = Infer<typeof providerSnapshotEntryValidator> & { refreshedAt: number };
 type SnapshotMap = Map<string, Snapshot | null>;
-type CacheRead = { cachedOnly: boolean; needsRefresh: boolean; refreshedAt: number };
+type CacheRead = {
+  cachedOnly: boolean;
+  hasSavedSchedule: boolean;
+  needsRefresh: boolean;
+  refreshedAt: number;
+};
 class MissingSchedule extends Error {}
 type Json = Record<string, unknown>;
 const string = (value: unknown) => (typeof value === 'string' ? value : undefined);
@@ -37,10 +42,12 @@ const requiredRecords = (value: unknown, label: string): Json[] => {
 export function createRequest(ctx: ActionCtx, reservationSize = 5) {
   let budgetQueue: Promise<unknown> = Promise.resolve();
   let reserved = 0;
+  let limitedUntil = 0;
   const beforeRequest = () => {
     // Provider fetches can overlap, but this action must not race itself on
     // the shared rate-limit document. Other actions are covered by retries.
     const pending = budgetQueue.then(async () => {
+      if (Date.now() < limitedUntil) return false;
       if (reserved > 0) {
         reserved--;
         return true;
@@ -57,9 +64,15 @@ export function createRequest(ctx: ActionCtx, reservationSize = 5) {
         return true;
       }
       // Use the tail of a nearly exhausted window without exceeding it.
-      return ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
-        provider: 'tmdb',
-      });
+      if (
+        reservationSize > 1 &&
+        (await ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+          provider: 'tmdb',
+        }))
+      )
+        return true;
+      limitedUntil = Date.now() + 60_000;
+      return false;
     });
     budgetQueue = pending.catch(() => undefined);
     return pending;
@@ -113,7 +126,10 @@ async function cached<T>(
     await putNonFatal(ctx, { key, value, metricKey: 'calendar' });
     return value;
   } catch (error) {
-    if (!stored || isTruncatedSnapshot(stored.value)) throw error;
+    // Schedule publication can succeed after a best-effort snapshot write fails.
+    // Let the caller retain that saved title/season instead of replacing it with
+    // an older provider snapshot (which may contain no releases at all).
+    if (read.hasSavedSchedule || !stored || isTruncatedSnapshot(stored.value)) throw error;
     onFailure(error);
     read.refreshedAt = Math.min(read.refreshedAt, stored.refreshedAt);
     return stored.value as T;
@@ -369,15 +385,15 @@ async function titleEvents(
 /** Resolve only the titles selected by the date index, preserving batched provider cache reads. */
 export async function loadTitleSchedules(
   ctx: ActionCtx,
-  items: LibraryTitle[],
+  items: { item: LibraryTitle; hasSavedSchedule: boolean }[],
   startDate: string,
   endDate: string,
   region: string,
   cachedOnly: boolean,
 ) {
-  const request = createRequest(ctx);
+  const request = createRequest(ctx, Math.min(5, items.length) || 1);
   const snapshots: SnapshotMap = new Map();
-  const keys = items.map((item) =>
+  const keys = items.map(({ item }) =>
     item.mediaType === 'movie'
       ? `calendar:movie:${item.tmdbId}:${region}`
       : `calendar:tv:v2:${item.tmdbId}`,
@@ -387,7 +403,7 @@ export async function loadTitleSchedules(
     ctx,
     [
       ...new Set(
-        items.flatMap((item, index) => {
+        items.flatMap(({ item }, index) => {
           const snapshot = snapshots.get(keys[index]);
           return snapshot?.kind === 'calendarTvSchedule'
             ? relevantSeasons(snapshot.value, startDate, endDate).map(
@@ -413,8 +429,8 @@ export async function loadTitleSchedules(
   await Promise.all(
     Array.from({ length: Math.min(10, items.length) }, async () => {
       while (cursor < items.length) {
-        const item = items[cursor++];
-        const read = { cachedOnly, needsRefresh: false, refreshedAt: Date.now() };
+        const { item, hasSavedSchedule } = items[cursor++];
+        const read = { cachedOnly, hasSavedSchedule, needsRefresh: false, refreshedAt: Date.now() };
         let failed = false;
         const onFailure = (error: unknown) => {
           if (error instanceof MissingSchedule) return;

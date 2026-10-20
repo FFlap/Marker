@@ -127,6 +127,18 @@ describe('complete library calendar loading', () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
+  it('clears a transient refresh requirement when the same page succeeds on retry', async () => {
+    vi.useFakeTimers();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ...page('old'), needsRefresh: true, retryAfterMs: 1000 })
+      .mockResolvedValueOnce(page('corrected'));
+    const result = loadCalendarPages(fetch, args, () => {});
+    await vi.runAllTimersAsync();
+    await expect(result).resolves.toMatchObject({ events: [{ id: 'corrected' }] });
+    expect((await result).needsRefresh).toBeUndefined();
+  });
+
   it('does not silently accept a capped response from an old backend', async () => {
     await expect(
       loadCalendarPages(

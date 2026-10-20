@@ -71,7 +71,10 @@ export async function ensureMonth(
   const current = await ctx.runQuery(internal.calendarCatalog.metadata, args);
   if (current && current.refreshedAt > Date.now() - CALENDAR_TTL_MS) return;
   const token = crypto.randomUUID();
-  if (current?.error && (current.retryAt ?? 0) > Date.now()) throw new Error(current.error);
+  if (current?.error && (current.retryAt ?? 0) > Date.now()) {
+    if (current.version) return;
+    throw new Error(current.error);
+  }
   await ctx.runMutation(internal.calendarCatalog.claim, { ...args, token });
   const saved = await ctx.runQuery(internal.calendarCatalog.metadata, args);
   if (!saved || saved.refreshedAt <= Date.now() - CALENDAR_TTL_MS)

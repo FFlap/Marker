@@ -363,4 +363,28 @@ describe('secondary mobile pages', () => {
     now.mockRestore();
     subscription.mockRestore();
   });
+
+  it('updates a day view that became a past month while the app was backgrounded', async () => {
+    mockDate = '2026-09-30';
+    const now = jest.spyOn(Date, 'now').mockReturnValue(new Date(2026, 8, 30, 12).getTime());
+    let resume!: (state: string) => void;
+    const subscription = jest
+      .spyOn(AppState, 'addEventListener')
+      .mockImplementation((_type, listener) => {
+        resume = listener;
+        return { remove: jest.fn() };
+      });
+    mockUpcoming.mockResolvedValue({
+      events: [{ id: 'old', date: mockDate, kind: 'movie', title: 'Last month release' }],
+      failedTitles: { count: 0, names: [] },
+    });
+    const view = await render(<CalendarDayScreen />);
+    await waitFor(() => expect(view.getByText('Last month release')).toBeTruthy());
+    now.mockReturnValue(new Date(2026, 9, 1, 12).getTime());
+    await act(async () => resume('active'));
+    expect(view.getByText('The calendar shows releases from this month onward.')).toBeTruthy();
+    expect(view.queryByText('Last month release')).toBeNull();
+    expect(mockUpcoming).toHaveBeenCalledTimes(1);
+    subscription.mockRestore();
+  });
 });

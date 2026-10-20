@@ -72,6 +72,7 @@ export default defineSchema({
     .index('by_user_status_title', ['userId', 'status', 'normalizedTitle'])
     .index('by_user_normalized', ['userId', 'normalizedTitle'])
     .index('by_user_tmdb', ['userId', 'mediaType', 'tmdbId'])
+    .index('by_user_tmdb_active', ['userId', 'mediaType', 'deletingAt', 'tmdbId'])
     .index('by_media_tmdb', ['mediaType', 'tmdbId']),
   profileFavorites: defineTable({
     userId: v.id('users'),
@@ -275,6 +276,7 @@ export default defineSchema({
     stagingVersion: v.optional(v.string()),
     stagingNextChunk: v.optional(v.number()),
     stagingRefreshedAt: v.optional(v.number()),
+    stagingExpiresAt: v.optional(v.number()),
     refreshedAt: v.number(),
   })
     .index('by_key', ['key'])

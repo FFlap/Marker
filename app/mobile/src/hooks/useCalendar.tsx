@@ -26,8 +26,9 @@ export function useCalendar(date: string, prefetch = false) {
   if (!cache) throw new Error('CalendarProvider is required');
   const upcoming = useAction(api.calendar.upcomingPage);
   const libraryRevision = useQuery(api.calendarLibrary.revision);
+  const [currentMonth, setCurrentMonth] = useState(currentCalendarMonth);
   const month = date.slice(0, 7);
-  const past = month < currentCalendarMonth();
+  const past = month < currentMonth;
   const region = deviceRegion();
   const parsed = new Date(`${date}T00:00:00Z`);
   const valid =
@@ -49,10 +50,12 @@ export function useCalendar(date: string, prefetch = false) {
 
   useFocusEffect(
     useCallback(() => {
-      if (!valid || past || libraryRevision === undefined) return;
-      cache.setLibraryRevision(libraryRevision);
       let active = true;
       const load = async () => {
+        const nowMonth = currentCalendarMonth();
+        setCurrentMonth(nowMonth);
+        if (!valid || month < nowMonth || libraryRevision === undefined) return;
+        cache.setLibraryRevision(libraryRevision);
         await cache.load(month, region, upcoming);
         if (
           !prefetch ||
@@ -76,7 +79,7 @@ export function useCalendar(date: string, prefetch = false) {
         active = false;
         subscription.remove();
       };
-    }, [cache, month, region, upcoming, valid, past, prefetch, libraryRevision]),
+    }, [cache, month, region, upcoming, valid, prefetch, libraryRevision]),
   );
 
   return { ...snapshot, valid, past, retry };

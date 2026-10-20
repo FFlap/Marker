@@ -61,10 +61,10 @@ export class CalendarCache {
       : (this.entries.get(`${region}:${month}`)?.snapshot ?? EMPTY);
 
   private prune() {
-    for (const [key, entry] of this.entries) {
+    for (const key of this.entries.keys()) {
       if (this.entries.size <= MAX_MONTHS) break;
       // Mounted month and day screens must never lose their current snapshot.
-      if (!entry.pending && !this.listeners.has(key)) this.entries.delete(key);
+      if (!this.listeners.has(key)) this.entries.delete(key);
     }
   }
 
@@ -98,6 +98,7 @@ export class CalendarCache {
     };
     this.entries.delete(key);
     this.entries.set(key, entry);
+    this.prune();
     const current = () => this.entries.get(key) === entry;
     const fetchCurrent: CalendarFetch = async (args) => {
       if (!current()) throw new Error("Calendar library changed");
@@ -120,7 +121,7 @@ export class CalendarCache {
           },
           (progress) => {
             // A refresh keeps the complete old snapshot until its replacement is ready.
-            if (!previous?.snapshot.result || previous.snapshot.error) {
+            if (!previous?.snapshot.result) {
               entry.snapshot = {
                 result: progress,
                 loading: true,
@@ -130,14 +131,12 @@ export class CalendarCache {
             }
           },
         );
-        if (result.needsRefresh) {
+        if (!force && result.needsRefresh) {
           // A saved schedule can be shown immediately after an app restart,
           // even when provider snapshots need refreshing. Keep loading true
           // until the authoritative refresh completes; never claim missing
           // schedules are a finished, empty calendar.
-          const saved = result.events.length
-            ? result
-            : (previous?.snapshot.result ?? result);
+          const saved = previous?.snapshot.result ?? result;
           const hasSavedEvents = saved.events.length > 0;
           entry.snapshot = {
             result: { ...saved, needsRefresh: true },
@@ -158,7 +157,11 @@ export class CalendarCache {
         }
         // The server retains stale data only for failed providers. Merging here
         // would resurrect removed titles or episodes whose release date moved.
-        entry.snapshot = { result, loading: false, error: false };
+        entry.snapshot = {
+          result,
+          loading: false,
+          error: result.needsRefresh === true,
+        };
       } catch {
         if (current())
           entry.snapshot = { ...entry.snapshot, loading: false, error: true };

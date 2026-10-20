@@ -133,12 +133,16 @@ export const page = internalQuery({
     const [library, hasMovies] = await Promise.all([
       ctx.db
         .query('items')
-        .withIndex('by_user_tmdb', (q) => q.eq('userId', userId).eq('mediaType', mediaType))
+        .withIndex('by_user_tmdb_active', (q) =>
+          q.eq('userId', userId).eq('mediaType', mediaType).eq('deletingAt', undefined),
+        )
         .take(DIRECT_LIBRARY_LIMIT + 1),
       mediaType === 'tv'
         ? ctx.db
             .query('items')
-            .withIndex('by_user_tmdb', (q) => q.eq('userId', userId).eq('mediaType', 'movie'))
+            .withIndex('by_user_tmdb_active', (q) =>
+              q.eq('userId', userId).eq('mediaType', 'movie').eq('deletingAt', undefined),
+            )
             .first()
         : null,
     ]);
@@ -206,10 +210,11 @@ export const page = internalQuery({
         batch.map(async (candidate) => {
           const item = await ctx.db
             .query('items')
-            .withIndex('by_user_tmdb', (q) =>
+            .withIndex('by_user_tmdb_active', (q) =>
               q
                 .eq('userId', userId)
                 .eq('mediaType', candidate.mediaType)
+                .eq('deletingAt', undefined)
                 .eq('tmdbId', candidate.tmdbId),
             )
             .unique();

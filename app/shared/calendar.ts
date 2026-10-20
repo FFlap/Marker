@@ -71,7 +71,6 @@ export async function loadCalendarPages(
   };
   while (true) {
     const page = await fetch({ ...args, ...(cursor && { cursor }) });
-    needsRefresh ||= page.needsRefresh === true;
     if (page.refreshPending) {
       // Discovery progresses in background batches and can span several provider
       // windows. Its polling budget is independent of per-title retry attempts.
@@ -95,7 +94,7 @@ export async function loadCalendarPages(
         names: [...new Set([...names, ...page.failedTitles.names])].slice(0, 5),
       },
       truncated: false,
-      ...(needsRefresh && { needsRefresh: true }),
+      ...((needsRefresh || page.needsRefresh) && { needsRefresh: true }),
     };
     onProgress(result);
     if (page.retryAfterMs && retries < 2) {
@@ -109,6 +108,7 @@ export async function loadCalendarPages(
         "The calendar backend must be updated to load the full library",
       );
     retries = 0;
+    needsRefresh ||= page.needsRefresh === true;
     for (const event of page.events) events.set(event.id, event);
     count += page.failedTitles.count;
     for (const name of page.failedTitles.names)
