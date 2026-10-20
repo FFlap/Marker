@@ -1,16 +1,11 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { useAction } from 'convex/react';
 import { Film, Tv2 } from 'lucide-react-native';
-import { api } from '../../../convex/_generated/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { EmptyState } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
-import { type CalendarEvent, deviceRegion } from '@/lib/calendar';
+import { useCalendar } from '@/hooks/useCalendar';
 import { createAppStyles } from '@/lib/typography';
-
-const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 export default function CalendarDayScreen() {
   const params = useLocalSearchParams<{ date?: string | string[] }>();
@@ -19,58 +14,48 @@ export default function CalendarDayScreen() {
 }
 
 function CalendarDay({ date }: { date: string }) {
-  const upcoming = useAction(api.calendar.upcoming);
-  const [events, setEvents] = useState<CalendarEvent[]>();
-  const [error, setError] = useState(false);
-  const [partialFailure, setPartialFailure] = useState(false);
-  const isValid = validDate(date);
+  const { result, loading, error, valid: isValid, past, retry } = useCalendar(date);
+  const events = result?.events.filter((event) => event.date === date);
+  const partialFailure = (result?.failedTitles.count ?? 0) > 0;
   const parsedDate = isValid ? new Date(`${date}T00:00:00`) : undefined;
   const title = parsedDate
     ? parsedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
     : 'Schedule';
 
-  useEffect(() => {
-    let ignore = false;
-    if (!isValid) {
-      return () => {
-        ignore = true;
-      };
-    }
-    const load = async () => {
-      try {
-        const result = await upcoming({ startDate: date, endDate: date, region: deviceRegion() });
-        if (!ignore) {
-          setEvents(result.events as CalendarEvent[]);
-          setPartialFailure(result.failedTitles.count > 0);
-        }
-      } catch {
-        if (!ignore) {
-          setEvents([]);
-          setError(true);
-        }
-      }
-    };
-    void load();
-    return () => {
-      ignore = true;
-    };
-  }, [date, isValid, upcoming]);
-
   return (
     <View style={s.root}>
       <SecondaryHeader title={title} fallback="/calendar" maxWidth={720} />
       <ScrollView contentContainerStyle={s.content}>
-        {!error && partialFailure && (
-          <Text accessibilityLiveRegion="polite" style={s.notice}>
-            Some titles could not be loaded.
-          </Text>
+        {(error || partialFailure) && isValid && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading releases"
+            onPress={retry}
+            disabled={loading}
+          >
+            <Text accessibilityLiveRegion="polite" style={s.notice}>
+              {error ? 'Couldn’t load this day’s schedule.' : 'Some titles could not be loaded.'}{' '}
+              {loading ? 'Retrying…' : 'Tap to retry.'}
+            </Text>
+          </Pressable>
         )}
-        {!isValid || error ? (
-          <Text style={s.error}>Couldn’t load this day’s schedule. Try again shortly.</Text>
-        ) : events === undefined ? (
-          <ActivityIndicator color={colors.muted} style={s.loading} />
-        ) : events.length ? (
+        {!isValid ? (
+          <Text style={s.error}>This calendar date is invalid.</Text>
+        ) : past ? (
+          <Text style={s.notice}>The calendar shows releases from this month onward.</Text>
+        ) : !events?.length && loading ? (
+          <ActivityIndicator
+            accessibilityLabel="Loading releases"
+            color={colors.muted}
+            style={s.loading}
+          />
+        ) : events?.length ? (
           <View style={s.list}>
+            {loading && (
+              <Text style={s.notice}>
+                {result?.needsRefresh ? 'Updating release dates…' : 'Loading more releases…'}
+              </Text>
+            )}
             {events.map((event) => {
               const Icon = event.kind === 'movie' ? Film : Tv2;
               return (
@@ -97,7 +82,7 @@ function CalendarDay({ date }: { date: string }) {
               );
             })}
           </View>
-        ) : (
+        ) : error || partialFailure ? null : (
           <EmptyState
             title="No releases"
             detail="Nothing in your library is scheduled for this day."

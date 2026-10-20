@@ -34,6 +34,50 @@ describe('provider HTTP reliability', () => {
     expect(beforeRequest).toHaveBeenCalledTimes(2);
   });
 
+  it('recovers from a rate-limiter write conflict before sending the provider request', async () => {
+    vi.useFakeTimers();
+    const beforeRequest = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error(
+          'Documents read from or written to the "requestThrottle" table changed while this mutation was being run and on every subsequent retry.',
+        ),
+      )
+      .mockResolvedValue(true);
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const request = providerFetch(
+      'https://example.test/calendar',
+      {},
+      {
+        provider: 'tmdb',
+        operation: '/calendar',
+        beforeRequest,
+      },
+    );
+    await vi.runAllTimersAsync();
+    await expect(request).resolves.toMatchObject({ status: 200 });
+    expect(beforeRequest).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('never bypasses exhausted provider budget', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      providerFetch(
+        'https://example.test/calendar',
+        {},
+        {
+          provider: 'tmdb',
+          operation: '/calendar',
+          beforeRequest: async () => false,
+        },
+      ),
+    ).rejects.toMatchObject({ data: { code: 'provider_global_limiter' } });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each(['status', 'body'] as const)(
     'does not repeat POST after a response %s failure',
     async (failure) => {

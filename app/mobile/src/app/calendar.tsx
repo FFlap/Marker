@@ -1,67 +1,50 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
-import { useAction } from 'convex/react';
+import { useCallback, useMemo, useState } from 'react';
+import { AppState, Pressable, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { api } from '../../convex/_generated/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { colors } from '@/constants/colors';
-import { type CalendarEvent, deviceRegion } from '@/lib/calendar';
+import { type CalendarEvent } from '@/lib/calendar';
+import { useCalendar } from '@/hooks/useCalendar';
 import { createAppStyles } from '@/lib/typography';
 const keyFor = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
-const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
 const addDays = (date: Date, days: number) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
 export default function CalendarScreen() {
-  const upcoming = useAction(api.calendar.upcoming);
-  const [month, setMonth] = useState(() => startOfMonth(new Date()));
-  const [events, setEvents] = useState<CalendarEvent[]>();
-  const [error, setError] = useState(false);
-  const [partialFailure, setPartialFailure] = useState(false);
+  const [month, setMonth] = useState(() => startOfMonth(new Date(Date.now())));
   const [cellHeight, setCellHeight] = useState(0);
-  const today = keyFor(new Date());
-  const start = startOfMonth(month);
-  const end = endOfMonth(month);
-  const startDate = keyFor(start);
-  const endDate = keyFor(end);
-  useEffect(() => {
-    let ignore = false;
-    const load = async () => {
-      try {
-        const result = await upcoming({ startDate, endDate, region: deviceRegion() });
-        if (!ignore) {
-          setEvents(result.events as CalendarEvent[]);
-          setPartialFailure(result.failedTitles.count > 0);
-        }
-      } catch {
-        if (!ignore) {
-          setEvents([]);
-          setError(true);
-        }
-      }
-    };
-    void load();
-    return () => {
-      ignore = true;
-    };
-  }, [endDate, startDate, upcoming]);
-  const changeMonth = useCallback((next: Date) => {
-    setEvents(undefined);
-    setError(false);
-    setPartialFailure(false);
-    setMonth(startOfMonth(next));
-  }, []);
-  const moveMonth = useCallback(
-    (offset: number) => {
-      changeMonth(new Date(month.getFullYear(), month.getMonth() + offset, 1));
-    },
-    [changeMonth, month],
+  const [today, setToday] = useState(() => keyFor(new Date(Date.now())));
+  useFocusEffect(
+    useCallback(() => {
+      const update = () => setToday(keyFor(new Date(Date.now())));
+      update();
+      const subscription = AppState.addEventListener('change', (state) => {
+        if (state === 'active') update();
+      });
+      return () => subscription.remove();
+    }, []),
   );
+  const minimumMonth = today.slice(0, 7);
+  const visibleMonth =
+    keyFor(month).slice(0, 7) < minimumMonth ? new Date(`${minimumMonth}-01T00:00:00`) : month;
+  const start = startOfMonth(visibleMonth);
+  const canGoBack = keyFor(start).slice(0, 7) > minimumMonth;
+  const { result, loading, error, retry } = useCalendar(keyFor(start), true);
+  const events = result?.events;
+  const partialFailure = (result?.failedTitles.count ?? 0) > 0;
+  const moveMonth = useCallback((offset: number) => {
+    setMonth((current) => {
+      const minimum = startOfMonth(new Date(Date.now()));
+      const base = current < minimum ? minimum : current;
+      const next = new Date(base.getFullYear(), base.getMonth() + offset, 1);
+      return next < minimum ? minimum : next;
+    });
+  }, []);
   const monthSwipe = useMemo(
     () =>
       Gesture.Pan()
@@ -79,7 +62,9 @@ export default function CalendarScreen() {
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const event of events ?? []) {
-      map.set(event.date, [...(map.get(event.date) ?? []), event]);
+      const dayEvents = map.get(event.date);
+      if (dayEvents) dayEvents.push(event);
+      else map.set(event.date, [event]);
     }
     return map;
   }, [events]);
@@ -92,14 +77,16 @@ export default function CalendarScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Previous month"
+            accessibilityState={{ disabled: !canGoBack }}
+            disabled={!canGoBack}
             onPress={() => moveMonth(-1)}
             hitSlop={8}
             style={s.arrow}
           >
-            <ChevronLeft size={18} color={colors.text} />
+            <ChevronLeft size={18} color={canGoBack ? colors.text : colors.muted} />
           </Pressable>
           <Text accessibilityLiveRegion="polite" style={s.month}>
-            {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+            {visibleMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
           </Text>
           <Pressable
             accessibilityRole="button"
@@ -127,7 +114,8 @@ export default function CalendarScreen() {
             {days.map((day, index) => {
               const date = keyFor(day);
               const active = date === today;
-              const inMonth = day.getMonth() === month.getMonth();
+              const inMonth = day.getMonth() === visibleMonth.getMonth();
+              const past = date.slice(0, 7) < minimumMonth;
               const dayEvents = byDate.get(date) ?? [];
               const hasOverflow = dayEvents.length > rowCapacity;
               const visibleCount = hasOverflow ? Math.max(0, rowCapacity - 1) : dayEvents.length;
@@ -137,7 +125,8 @@ export default function CalendarScreen() {
                   key={date}
                   accessibilityRole="button"
                   accessibilityLabel={`${day.toLocaleDateString()}, ${dayEvents.length} release${dayEvents.length === 1 ? '' : 's'}`}
-                  accessibilityState={{ selected: active }}
+                  accessibilityState={{ selected: active, disabled: past }}
+                  disabled={past}
                   onPress={() => router.push({ pathname: '/calendar/[date]', params: { date } })}
                   onLayout={
                     index === 0
@@ -173,12 +162,28 @@ export default function CalendarScreen() {
             })}
           </View>
         </GestureDetector>
-        {error && <Text style={s.error}>Couldn’t refresh release dates. Try again shortly.</Text>}
-        {!error && partialFailure && (
-          <Text accessibilityLiveRegion="polite" style={s.notice}>
-            Some titles could not be loaded.
-          </Text>
-        )}
+        <View style={s.status}>
+          {loading && (
+            <Text accessibilityLiveRegion="polite" style={s.notice}>
+              {result?.needsRefresh && result.events.length > 0
+                ? 'Updating release dates…'
+                : 'Loading releases for your library…'}
+            </Text>
+          )}
+          {!loading && (error || partialFailure) && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading releases"
+              onPress={retry}
+              style={s.retry}
+            >
+              <Text style={error ? s.error : s.notice}>
+                {error ? 'Couldn’t refresh release dates.' : 'Some titles could not be loaded.'} Tap
+                to retry.
+              </Text>
+            </Pressable>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -260,28 +265,10 @@ const s = createAppStyles(
     },
     dayEventTitle: { color: colors.text, fontSize: 8, lineHeight: 11, fontWeight: '600' },
     more: { color: colors.muted, fontSize: 8, lineHeight: 11, paddingHorizontal: 3 },
-    error: {
-      position: 'absolute',
-      left: 12,
-      right: 12,
-      bottom: 14,
-      color: colors.danger,
-      backgroundColor: colors.bg,
-      fontSize: 12,
-      lineHeight: 18,
-      paddingVertical: 6,
-    },
-    notice: {
-      position: 'absolute',
-      left: 12,
-      right: 12,
-      bottom: 14,
-      color: colors.muted,
-      backgroundColor: colors.bg,
-      fontSize: 12,
-      lineHeight: 18,
-      paddingVertical: 6,
-    },
+    status: { minHeight: 48, justifyContent: 'center' },
+    retry: { minHeight: 44, justifyContent: 'center' },
+    error: { color: colors.danger, fontSize: 12, lineHeight: 18 },
+    notice: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   },
   [
     'month',

@@ -10,9 +10,11 @@ import {
   statusValidator,
 } from './publicValidators';
 import { providerSnapshotEntryValidator } from './providerValidators';
+import { candidateValidator, releaseValidator } from './calendarTypes';
 
 const users = defineTable({
   clerkId: v.string(),
+  calendarRevision: v.optional(v.number()),
   name: v.optional(v.string()),
   image: v.optional(v.string()),
   email: v.optional(v.string()),
@@ -66,6 +68,7 @@ export default defineSchema({
   items: defineTable(itemValidator.omit('_id', '_creationTime'))
     .index('by_user', ['userId'])
     .index('by_user_status', ['userId', 'status', 'rank'])
+    .index('by_user_status_active', ['userId', 'status', 'deletingAt', 'rank'])
     .index('by_user_status_title', ['userId', 'status', 'normalizedTitle'])
     .index('by_user_normalized', ['userId', 'normalizedTitle'])
     .index('by_user_tmdb', ['userId', 'mediaType', 'tmdbId'])
@@ -225,6 +228,57 @@ export default defineSchema({
     windowStart: v.number(),
     count: v.number(),
   }).index('by_key', ['key']),
+  calendarMonths: defineTable({
+    month: v.string(),
+    region: v.string(),
+    candidates: v.array(candidateValidator),
+    version: v.string(),
+    refreshedAt: v.number(),
+    leaseToken: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    stagingVersion: v.optional(v.string()),
+    discoveryFeed: v.optional(v.number()),
+    discoveryPage: v.optional(v.number()),
+    stagingCount: v.optional(v.number()),
+    discoveryFailures: v.optional(v.number()),
+    discoveryError: v.optional(v.string()),
+    discoveryRetryAt: v.optional(v.number()),
+    candidateCount: v.optional(v.number()),
+  })
+    .index('by_region_month', ['region', 'month'])
+    .index('by_month', ['month']),
+  calendarCandidates: defineTable({
+    month: v.string(),
+    region: v.string(),
+    version: v.string(),
+    ordinal: v.number(),
+    ...candidateValidator.fields,
+  })
+    .index('by_catalog_ordinal', ['region', 'month', 'version', 'ordinal'])
+    .index('by_catalog_title', ['region', 'month', 'version', 'mediaType', 'tmdbId'])
+    .index('by_month', ['month']),
+  calendarReleaseChunks: defineTable({
+    key: v.string(),
+    month: v.string(),
+    version: v.string(),
+    chunk: v.number(),
+    events: v.array(releaseValidator),
+  })
+    .index('by_key_version_chunk', ['key', 'version', 'chunk'])
+    .index('by_month', ['month']),
+  calendarSchedules: defineTable({
+    key: v.string(),
+    month: v.string(),
+    events: v.array(releaseValidator),
+    version: v.optional(v.string()),
+    eventCount: v.optional(v.number()),
+    stagingVersion: v.optional(v.string()),
+    stagingNextChunk: v.optional(v.number()),
+    stagingRefreshedAt: v.optional(v.number()),
+    refreshedAt: v.number(),
+  })
+    .index('by_key', ['key'])
+    .index('by_month', ['month']),
   providerSnapshots: defineTable({
     key: v.string(),
     entry: providerSnapshotEntryValidator,

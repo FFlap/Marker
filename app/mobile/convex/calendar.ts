@@ -1,265 +1,220 @@
-import { getClerkUserId } from './clerkAuth';
-import { v } from 'convex/values';
-import { action, internalQuery } from './_generated/server';
+import { ConvexError, type Infer, v } from 'convex/values';
+import { action } from './_generated/server';
 import { internal } from './_generated/api';
-import { providerFetch } from './providerHttp';
-import { putNonFatal } from './providerSnapshots';
+import { requireUser } from './clerkAuth';
+import { ensureMonth } from './calendarDiscovery';
+import { loadTitleSchedules } from './calendarProviders';
+import { readAll, save } from './calendarScheduleStore';
+import {
+  CALENDAR_TTL_MS,
+  dateCursorValidator,
+  legacyCursorValidator,
+  eventValidator,
+  isDate,
+  inRange,
+  monthEnd,
+  scheduleKey,
+} from './calendarTypes';
 
-type Json = Record<string, unknown>;
-type LibraryTitle = {
-  tmdbId: number;
-  mediaType: 'movie' | 'tv';
-  title: string;
-  posterPath?: string;
-  releaseDate?: string;
-  status: 'watched' | 'watching' | 'watchlist';
-};
-type CalendarEvent = LibraryTitle & {
-  id: string;
-  date: string;
-  kind: 'movie' | 'episode';
-  season?: number;
-  episode?: number;
-  episodeName?: string;
-};
-
-const CALENDAR_TTL_MS = 6 * 60 * 60 * 1000;
-const MAX_TITLES = 100;
-const string = (value: unknown) => (typeof value === 'string' ? value : undefined);
-const number = (value: unknown) => (typeof value === 'number' ? value : undefined);
-const records = (value: unknown): Json[] =>
-  Array.isArray(value)
-    ? value.filter((entry): entry is Json => typeof entry === 'object' && entry !== null)
-    : [];
-const isDate = (value: string) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return (
-    parsed.getUTCFullYear() === year &&
-    parsed.getUTCMonth() === month - 1 &&
-    parsed.getUTCDate() === day
-  );
-};
-const inRange = (date: string, startDate: string, endDate: string) =>
-  date >= startDate && date <= endDate;
-
-export const libraryTitles = internalQuery({
-  args: { userId: v.id('users') },
-  handler: async (ctx, { userId }) => {
-    const rows = await ctx.db
-      .query('items')
-      .withIndex('by_user', (q) => q.eq('userId', userId))
-      .filter((q) =>
-        q.and(q.eq(q.field('deletingAt'), undefined), q.neq(q.field('status'), 'dropped')),
-      )
-      .take(MAX_TITLES + 1);
-    return rows.map((item) => ({
-      tmdbId: item.tmdbId,
-      mediaType: item.mediaType,
-      title: item.title,
-      ...(item.posterPath && { posterPath: item.posterPath }),
-      ...(item.releaseDate && { releaseDate: item.releaseDate }),
-      status: item.status as LibraryTitle['status'],
-    }));
-  },
+const resultValidator = v.object({
+  events: v.array(eventValidator),
+  truncated: v.boolean(),
+  failedTitles: v.object({ count: v.number(), names: v.array(v.string()) }),
+  region: v.string(),
+  nextCursor: v.union(dateCursorValidator, v.null()),
+  retryAfterMs: v.optional(v.number()),
+  refreshPending: v.optional(v.boolean()),
+  needsRefresh: v.optional(v.boolean()),
 });
-
-async function request(ctx: { runMutation: Function }, path: string) {
-  const token = process.env.TMDB_API_READ_ACCESS_TOKEN;
-  if (!token) throw new Error('TMDB_API_READ_ACCESS_TOKEN is not configured');
-  const response = await providerFetch(
-    `https://api.themoviedb.org/3${path}`,
-    { headers: { Authorization: `Bearer ${token}`, accept: 'application/json' } },
-    {
-      provider: 'tmdb',
-      operation: path.split('?')[0],
-      beforeRequest: () =>
-        ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
-          provider: 'tmdb',
-        }),
-    },
-  );
-  if (!response.ok) throw new Error(`TMDB calendar request failed (${response.status})`);
-  return (await response.json()) as Json;
-}
-
-async function cached<T>(
-  ctx: { runQuery: Function; runMutation: Function },
-  key: string,
-  load: () => Promise<T>,
-) {
-  const stored = await ctx.runQuery(internal.providerSnapshots.get, { key });
-  if (stored && stored.refreshedAt > Date.now() - CALENDAR_TTL_MS) return stored.value as T;
-  const value = await load();
-  await putNonFatal(ctx, { key, value, metricKey: 'calendar' });
-  return value;
-}
-
-function movieDate(
-  candidates: { date: string; priority: number }[],
-  startDate: string,
-  endDate: string,
-  fallback?: string,
-) {
-  const inWindow = candidates
-    .filter(({ date }) => inRange(date, startDate, endDate))
-    .sort((left, right) => left.priority - right.priority || left.date.localeCompare(right.date));
-  return (
-    inWindow[0]?.date ??
-    (fallback && isDate(fallback) && inRange(fallback, startDate, endDate) ? fallback : undefined)
-  );
-}
-
-const normalizedMovieReleases = (payload: Json, region: string) => {
-  const regional = records(payload.results).find(
-    (result) => string(result.iso_3166_1)?.toUpperCase() === region,
-  );
-  return records(regional?.release_dates).flatMap((release) => {
-    const date = string(release.release_date)?.slice(0, 10);
-    const type = number(release.type);
-    return date && isDate(date)
-      ? [{ date, priority: type === 3 ? 0 : type === 2 ? 1 : type === 4 ? 2 : 3 }]
-      : [];
-  });
-};
-
-const normalizedTvNext = (payload: Json) => {
-  const next = payload.next_episode_to_air as Json | undefined;
-  const airDate = string(next?.air_date);
-  const season = number(next?.season_number);
-  return airDate && isDate(airDate) && season !== undefined ? { airDate, season } : null;
-};
-
-const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
-  records(payload.episodes).flatMap((episode) => {
-    const date = string(episode.air_date);
-    const episodeNumber = number(episode.episode_number);
-    const season = number(episode.season_number) ?? fallbackSeason;
-    if (!date || !isDate(date) || episodeNumber === undefined) return [];
-    return [
-      {
-        date,
-        season,
-        episode: episodeNumber,
-        ...(string(episode.name) && { name: string(episode.name) }),
-      },
-    ];
-  });
-
-async function titleEvents(
-  ctx: { runQuery: Function; runMutation: Function },
-  item: LibraryTitle,
-  startDate: string,
-  endDate: string,
-  region: string,
-): Promise<CalendarEvent[]> {
-  if (item.mediaType === 'movie') {
-    const releases = await cached(ctx, `calendar:movie:${item.tmdbId}:${region}`, async () =>
-      normalizedMovieReleases(await request(ctx, `/movie/${item.tmdbId}/release_dates`), region),
-    );
-    const date = movieDate(releases, startDate, endDate, item.releaseDate);
-    return date && inRange(date, startDate, endDate)
-      ? [{ ...item, id: `movie:${item.tmdbId}:${date}`, date, kind: 'movie' }]
-      : [];
-  }
-  const next = await cached(ctx, `calendar:tv:${item.tmdbId}`, async () =>
-    normalizedTvNext(await request(ctx, `/tv/${item.tmdbId}`)),
-  );
-  if (!next || next.airDate > endDate) return [];
-  const seasonEpisodes = await cached(
-    ctx,
-    `calendar:season:${item.tmdbId}:${next.season}`,
-    async () =>
-      normalizedSeasonEpisodes(
-        await request(ctx, `/tv/${item.tmdbId}/season/${next.season}`),
-        next.season,
-      ),
-  );
-  return seasonEpisodes.flatMap((episode) => {
-    if (!inRange(episode.date, startDate, endDate)) return [];
-    return [
-      {
-        ...item,
-        id: `episode:${item.tmdbId}:${episode.season}:${episode.episode}:${episode.date}`,
-        date: episode.date,
-        kind: 'episode' as const,
-        season: episode.season,
-        episode: episode.episode,
-        ...(episode.name && { episodeName: episode.name }),
-      },
-    ];
-  });
-}
 
 export const upcoming = action({
   args: {
     startDate: v.string(),
     endDate: v.string(),
     region: v.optional(v.string()),
+    cursor: v.optional(v.union(dateCursorValidator, legacyCursorValidator)),
+    timeZoneOffsetMinutes: v.optional(v.number()),
+    cachedOnly: v.optional(v.boolean()),
   },
-  returns: v.object({
-    events: v.array(
-      v.object({
-        id: v.string(),
-        date: v.string(),
-        kind: v.union(v.literal('movie'), v.literal('episode')),
-        tmdbId: v.number(),
-        mediaType: v.union(v.literal('movie'), v.literal('tv')),
-        title: v.string(),
-        posterPath: v.optional(v.string()),
-        releaseDate: v.optional(v.string()),
-        status: v.union(v.literal('watched'), v.literal('watching'), v.literal('watchlist')),
-        season: v.optional(v.number()),
-        episode: v.optional(v.number()),
-        episodeName: v.optional(v.string()),
-      }),
-    ),
-    truncated: v.boolean(),
-    failedTitles: v.object({ count: v.number(), names: v.array(v.string()) }),
-    region: v.string(),
-  }),
-  handler: async (ctx, { startDate, endDate, region: rawRegion }) => {
-    const userId = await getClerkUserId(ctx);
-    if (!userId) throw new Error('Authentication required');
+  returns: resultValidator,
+  handler: async (
+    ctx,
+    {
+      startDate,
+      endDate,
+      region: rawRegion,
+      cursor,
+      timeZoneOffsetMinutes = 0,
+      cachedOnly = false,
+    },
+  ): Promise<Infer<typeof resultValidator>> => {
+    const userId = await requireUser(ctx);
     if (!isDate(startDate) || !isDate(endDate) || startDate > endDate)
       throw new Error('Invalid calendar date range');
-    const rangeDays =
-      (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000;
-    if (rangeDays > 93) throw new Error('Calendar ranges are limited to 93 days');
+    if (
+      (Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86_400_000 >
+      93
+    )
+      throw new Error('Calendar ranges are limited to 93 days');
+    if (!Number.isFinite(timeZoneOffsetMinutes) || Math.abs(timeZoneOffsetMinutes) > 14 * 60)
+      throw new Error('Invalid calendar time zone');
     const region = /^[A-Za-z]{2}$/.test(rawRegion ?? '') ? rawRegion!.toUpperCase() : 'US';
-    const loaded = (await ctx.runQuery(internal.calendar.libraryTitles, {
+    const currentMonth = new Date(Date.now() - timeZoneOffsetMinutes * 60_000)
+      .toISOString()
+      .slice(0, 7);
+    const empty = {
+      events: [],
+      truncated: false,
+      failedTitles: { count: 0, names: [] },
+      region,
+      nextCursor: null,
+    };
+    if (endDate < `${currentMonth}-01`) return empty;
+    startDate = startDate < `${currentMonth}-01` ? `${currentMonth}-01` : startDate;
+    // Old clients can retry after the date-index rollout instead of silently skipping titles.
+    if (cursor && !('month' in cursor)) throw new Error('Calendar loading changed. Please retry.');
+    const month = cursor?.month ?? startDate.slice(0, 7);
+    if (!isDate(`${month}-01`) || month < startDate.slice(0, 7) || month > endDate.slice(0, 7))
+      throw new Error('Invalid calendar cursor');
+    let mediaType = cursor?.mediaType ?? 'tv';
+    const pageArgs = {
+      mediaType,
       userId,
-    })) as LibraryTitle[];
-    const items = loaded.slice(0, MAX_TITLES);
-    const events: CalendarEvent[] = [];
+      month,
+      region,
+      offset: cursor?.offset ?? 0,
+      ...(cursor?.version && { version: cursor.version }),
+    };
+    let page = await ctx.runQuery(internal.calendarCatalog.page, pageArgs);
+    if (page.emptyLibrary && page.nextMediaType) {
+      mediaType = page.nextMediaType;
+      pageArgs.mediaType = mediaType;
+      pageArgs.offset = 0;
+      delete pageArgs.version;
+      page = await ctx.runQuery(internal.calendarCatalog.page, pageArgs);
+    }
+    if (
+      !page.emptyLibrary &&
+      !page.direct &&
+      !cachedOnly &&
+      !cursor?.version &&
+      (!page.catalog || page.catalog.refreshedAt <= Date.now() - CALENDAR_TTL_MS)
+    ) {
+      try {
+        await ensureMonth(ctx, month, region, mediaType);
+      } catch (error) {
+        if (
+          error instanceof ConvexError &&
+          typeof error.data === 'object' &&
+          (error.data?.code === 'provider_global_limiter' ||
+            error.data?.code === 'calendar_refresh_pending')
+        )
+          return {
+            ...empty,
+            refreshPending: true,
+            retryAfterMs: error.data.code === 'provider_global_limiter' ? 60_000 : 1_000,
+            failedTitles: { count: 1, names: [] },
+          };
+        throw error;
+      }
+      page = await ctx.runQuery(internal.calendarCatalog.page, pageArgs);
+    }
+    const [year, number] = month.split('-').map(Number);
+    const nextMonth = new Date(Date.UTC(year, number, 1)).toISOString().slice(0, 7);
+    let nextCursor: Infer<typeof dateCursorValidator> | null =
+      page.nextOffset !== null
+        ? { month, mediaType, offset: page.nextOffset, version: page.version }
+        : page.nextMediaType
+          ? { month, mediaType: page.nextMediaType, offset: 0, version: '' }
+          : nextMonth <= endDate.slice(0, 7)
+            ? { month: nextMonth, offset: 0, version: '' }
+            : null;
+    let needsRefresh =
+      !page.emptyLibrary &&
+      !page.direct &&
+      (!page.catalog || page.catalog.refreshedAt <= Date.now() - CALENDAR_TTL_MS);
+    const pending = [];
+    const releaseContinuation = (cursor?.releaseOffset ?? 0) > 0;
+    if (releaseContinuation && !cursor?.releaseVersion)
+      throw new Error('Calendar loading changed. Please retry.');
+    for (const entry of page.titles) {
+      if (entry.saved && (cachedOnly || entry.saved.refreshedAt > Date.now() - CALENDAR_TTL_MS)) {
+        needsRefresh ||= entry.saved.refreshedAt <= Date.now() - CALENDAR_TTL_MS;
+      } else if (!releaseContinuation) pending.push(entry.item);
+    }
+    const loaded = await loadTitleSchedules(
+      ctx,
+      pending,
+      `${month}-01`,
+      monthEnd(month),
+      region,
+      cachedOnly,
+    );
+    const savedByKey = new Map(
+      page.titles.map((entry) => [scheduleKey(month, region, entry.item), entry.saved]),
+    );
     const failedNames: string[] = [];
-    let failedCount = 0;
-    for (let index = 0; index < items.length; index += 5) {
-      const batch = await Promise.all(
-        items.slice(index, index + 5).map(async (item) => {
-          try {
-            return await titleEvents(ctx, item, startDate, endDate, region);
-          } catch {
-            failedCount += 1;
-            if (failedNames.length < 5) failedNames.push(item.title);
-            return [];
-          }
+    for (const result of loaded.results) {
+      needsRefresh ||= result.needsRefresh;
+      const key = scheduleKey(month, region, result.item);
+      const previous = savedByKey.get(key);
+      const fallback =
+        previous && (result.unavailableTitle || result.missingSeasons.length)
+          ? (await readAll(ctx, key)).filter(
+              (event) =>
+                result.unavailableTitle ||
+                (event.season !== undefined && result.missingSeasons.includes(event.season)),
+            )
+          : [];
+      const releases = [...result.events, ...fallback].map(
+        ({ id, date, kind, season, episode, episodeName }) => ({
+          id,
+          date,
+          kind,
+          ...(season !== undefined && { season }),
+          ...(episode !== undefined && { episode }),
+          ...(episodeName !== undefined && { episodeName }),
         }),
       );
-      events.push(...batch.flat());
+      if (result.failed) failedNames.push(result.item.title);
+      // Preserve successful seasons; incomplete schedules remain stale for retry.
+      if (previous || releases.length || (!result.failed && !result.needsRefresh)) {
+        const refreshedAt =
+          result.failed || result.needsRefresh
+            ? Math.max(
+                previous?.refreshedAt ?? 0,
+                Math.min(result.refreshedAt, Date.now() - CALENDAR_TTL_MS),
+              )
+            : result.refreshedAt;
+        await save(ctx, key, month, refreshedAt, releases);
+      }
     }
-    return {
-      events: events.sort(
-        (left, right) =>
-          left.date.localeCompare(right.date) || left.title.localeCompare(right.title),
-      ),
-      truncated: loaded.length > MAX_TITLES,
-      failedTitles: { count: failedCount, names: failedNames },
+    const releases = await ctx.runQuery(internal.calendarScheduleStore.releases, {
+      month,
       region,
+      items: page.titles.map((entry) => entry.item),
+      offset: cursor?.releaseOffset ?? 0,
+      ...(cursor?.releaseVersion && { version: cursor.releaseVersion }),
+    });
+    if (releases.nextOffset !== null)
+      nextCursor = {
+        month,
+        mediaType,
+        offset: pageArgs.offset,
+        version: page.version,
+        releaseOffset: releases.nextOffset,
+        releaseVersion: releases.version,
+      };
+    return {
+      events: releases.events
+        .filter((event) => inRange(event.date, startDate, endDate))
+        .sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title)),
+      truncated: nextCursor !== null,
+      nextCursor,
+      region,
+      failedTitles: { count: failedNames.length, names: failedNames.slice(0, 5) },
+      ...(cachedOnly && { needsRefresh }),
+      ...(loaded.retryAfterMs && { retryAfterMs: loaded.retryAfterMs }),
     };
   },
 });

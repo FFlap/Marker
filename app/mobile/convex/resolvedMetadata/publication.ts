@@ -3,6 +3,7 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { bumpCalendarRevision } from '../calendarLibrary';
 import { updateItemTagPreviews } from '../tagCollectionsModel';
 import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
@@ -122,6 +123,12 @@ export const refreshItemProjections = internalMutation({
         ? title.episodeRunTime.reduce((sum, value) => sum + value, 0) / title.episodeRunTime.length
         : undefined);
     for (const item of page.page) {
+      if (
+        item.title !== title.title ||
+        item.posterPath !== title.posterPath ||
+        item.releaseDate !== (title.releaseDate ?? title.firstAirDate)
+      )
+        await bumpCalendarRevision(ctx, item.userId);
       await ctx.db.patch(item._id, {
         title: title.title,
         normalizedTitle: title.title.toLowerCase(),

@@ -11,6 +11,13 @@
 import type * as activityEvents from "../activityEvents.js";
 import type * as avatarUpload from "../avatarUpload.js";
 import type * as calendar from "../calendar.js";
+import type * as calendarCatalog from "../calendarCatalog.js";
+import type * as calendarDiscovery from "../calendarDiscovery.js";
+import type * as calendarLibrary from "../calendarLibrary.js";
+import type * as calendarProviders from "../calendarProviders.js";
+import type * as calendarRefresh from "../calendarRefresh.js";
+import type * as calendarScheduleStore from "../calendarScheduleStore.js";
+import type * as calendarTypes from "../calendarTypes.js";
 import type * as clerkAuth from "../clerkAuth.js";
 import type * as crons from "../crons.js";
 import type * as episodeAvailability from "../episodeAvailability.js";
@@ -73,6 +80,13 @@ declare const fullApi: ApiFromModules<{
   activityEvents: typeof activityEvents;
   avatarUpload: typeof avatarUpload;
   calendar: typeof calendar;
+  calendarCatalog: typeof calendarCatalog;
+  calendarDiscovery: typeof calendarDiscovery;
+  calendarLibrary: typeof calendarLibrary;
+  calendarProviders: typeof calendarProviders;
+  calendarRefresh: typeof calendarRefresh;
+  calendarScheduleStore: typeof calendarScheduleStore;
+  calendarTypes: typeof calendarTypes;
   clerkAuth: typeof clerkAuth;
   crons: typeof crons;
   episodeAvailability: typeof episodeAvailability;

@@ -3,6 +3,9 @@ import { isAuditCommandFailure } from "./audit-report.mjs";
 import { hasStrictForgeDigestValidation } from "./verify-node-forge.mjs";
 
 const allowedAdvisories = new Set([
+  // Metro/Tailwind/Clerk build-time glob parsing; patterns come from repository config,
+  // not user input. No patched braces release; owner: Marker maintainers; review by 2026-11-15.
+  "GHSA-vfj7-8cjw-p6xm",
   // Metro/Clerk image-size build dependency; owner: Marker maintainers; review by 2026-10-01.
   "GHSA-5p2g-fcmc-qvqq",
   // Metro/Clerk image-size build dependency; owner: Marker maintainers; review by 2026-10-01.

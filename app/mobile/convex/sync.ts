@@ -13,6 +13,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { seasonSummaryIdentityKey, updateSummaryForEpisodeUpsert } from './episodeSummaries';
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from './activityEvents';
 import { refreshNextEpisode } from './nextEpisode';
+import { bumpCalendarRevision } from './calendarLibrary';
 
 const resolvedTvArgs = {
   userId: v.id('users'),
@@ -54,6 +55,7 @@ async function getOrCreateResolvedTv(ctx: MutationCtx, a: ResolvedTvCandidate) {
     updatedAt: now,
   });
   const item = (await ctx.db.get(id))!;
+  await bumpCalendarRevision(ctx, a.userId);
   await writeActivityEvents(ctx, [
     { ...itemActivityBase(item), kind: 'status', status: 'watching' },
   ]);
@@ -234,6 +236,7 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
       ...stamp,
     });
   const movingToWatching = item.status !== 'watched' && item.status !== 'watching';
+  if (movingToWatching) await bumpCalendarRevision(ctx, a.userId);
   await ctx.db.patch(item._id, {
     ...(item.status !== 'watched' && { status: 'watching' }),
     ...(movingToWatching && { rank: await rankAtEnd(ctx, a.userId, 'watching') }),

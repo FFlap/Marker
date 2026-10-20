@@ -8,6 +8,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ToastProvider } from '@/components/ui/Toast';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
+import { CalendarProvider } from '@/hooks/useCalendar';
 import { AuthBoundary } from '@/components/AuthBoundary';
 import { colors } from '@/constants/colors';
 import { PortalHost } from '@rn-primitives/portal';
@@ -35,7 +36,7 @@ function ConvexClerkBridge({ children }: { children: React.ReactNode }) {
   const { sessionId } = useAuth();
   return (
     <ConvexProviderWithClerk key={sessionId ?? 'signed-out'} client={client} useAuth={useAuth}>
-      {children}
+      <CalendarProvider>{children}</CalendarProvider>
     </ConvexProviderWithClerk>
   );
 }

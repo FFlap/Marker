@@ -4,6 +4,7 @@ import { v } from 'convex/values';
 import { refreshTagCollectionSummary } from '../tagCollectionsModel';
 import { itemActivityBase, writeActivityEvents } from '../activityEvents';
 import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { bumpCalendarRevision } from '../calendarLibrary';
 import { hasTag, normalizedTagKey, ownedItem, requireUser, status } from './shared';
 
 type MoveItemArgs = {
@@ -178,6 +179,7 @@ async function moveItemToSlot(ctx: MutationCtx, userId: Id<'users'>, args: MoveI
     updatedAt: Date.now(),
   });
   await requestProfileStatsRefresh(ctx, userId);
+  if (targetStatus !== item.status) await bumpCalendarRevision(ctx, userId);
   if (targetStatus !== item.status)
     await writeActivityEvents(ctx, [
       {
