@@ -17,6 +17,7 @@ import { requestProfileStatsRefresh } from '../profileStatsRefresh';
 import { bumpCalendarRevision } from '../calendarLibrary';
 import { addItemFields, ownedItem, requireUser } from './shared';
 import { setEpisode } from './episodes';
+import { recordWatchActivity } from '../watchActivity';
 
 const SEASON_WATCH_BATCH_SIZE = EPISODES_PER_CHUNK;
 const MAX_SEASON_WATCH_RESTARTS = 4;
@@ -147,6 +148,12 @@ export const setSeasonWatchedBatch = internalMutation({
     expectedOrderEpoch: v.number(),
     expectedMetadataProvider: v.union(v.literal('tmdb'), v.literal('tvdb')),
   },
+  returns: v.object({
+    processed: v.number(),
+    episodeCount: v.number(),
+    refreshedAt: v.number(),
+    restarted: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const { item, mapping, resolved, episodeCount, epoch, seasonName } = await loadSeasonWatchState(
       ctx,
@@ -182,6 +189,7 @@ export const setSeasonWatchedBatch = internalMutation({
       ),
     );
     const activityEvents: ActivityEventWrite[] = [];
+    const watchActivityDeltas = new Map<string, number>();
     for (const [index, episode] of batch.entries())
       await setEpisode(
         ctx,
@@ -207,11 +215,11 @@ export const setSeasonWatchedBatch = internalMutation({
             },
           }),
         },
-        item,
-        existing[index] ?? null,
-        activityEvents,
-        false,
+        { item, existing: existing[index] ?? null, activityEvents, watchActivityDeltas },
       );
+    // Several episodes can share a day; update each counter just once per batch.
+    for (const [date, delta] of watchActivityDeltas)
+      await recordWatchActivity(ctx, args.userId, date, delta);
     await writeActivityEvents(ctx, activityEvents);
     const watchedCoordinate =
       args.watched &&

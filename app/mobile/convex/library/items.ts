@@ -12,6 +12,7 @@ import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from '
 import { itemValidator } from '../publicValidators';
 import { refreshNextEpisode } from '../nextEpisode';
 import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { recordWatchActivity } from '../watchActivity';
 import { validateTmdbId } from '../providerValidation';
 import { bumpCalendarRevision } from '../calendarLibrary';
 import {
@@ -287,6 +288,7 @@ const REMOVE_BATCH_SIZE = 500;
 
 export const continueRemoveItem = internalMutation({
   args: { itemId: v.id('items') },
+  returns: v.object({ deleted: v.number(), done: v.boolean() }),
   handler: async (ctx, { itemId }) => {
     const item = await ctx.db.get(itemId);
     if (!item || item.deletingAt === undefined) return { deleted: 0, done: true };
@@ -295,7 +297,17 @@ export const continueRemoveItem = internalMutation({
       .withIndex('by_item', (query) => query.eq('itemId', itemId))
       .take(REMOVE_BATCH_SIZE);
     if (episodes.length > 0) {
-      for (const episode of episodes) await ctx.db.delete(episode._id);
+      const activityCounts = new Map<string, number>();
+      for (const episode of episodes) {
+        if (episode.watched && episode.activityDate !== undefined)
+          activityCounts.set(
+            episode.activityDate,
+            (activityCounts.get(episode.activityDate) ?? 0) + 1,
+          );
+        await ctx.db.delete(episode._id);
+      }
+      for (const [date, count] of activityCounts)
+        await recordWatchActivity(ctx, item.userId, date, -count);
       await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: episodes.length, done: false };
     }

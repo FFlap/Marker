@@ -11,6 +11,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { ProfileFavorites } from "@/components/profile-favorites";
+import { ProfileStatsPanel } from "@/components/profile-stats";
 import { FollowRequestList } from "@/components/follow-request-list";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,20 +22,6 @@ export function ProfilePage() {
   const stats = useQuery(api.stats.profile, {});
   const publicTags = useQuery(api.tags.myPublic, {});
   const [tab, setTab] = useState<"collection" | "stats">("collection");
-  const cards = [
-    {
-      label: "Watch time",
-      value: stats
-        ? `${Math.floor(stats.totalWatchMinutes / 1440)}d ${Math.floor((stats.totalWatchMinutes % 1440) / 60)}h`
-        : "—",
-      detail: stats ? `${stats.totalWatchMinutes.toLocaleString()} minutes` : undefined,
-    },
-    { label: "Episodes", value: stats?.episodesWatched.toLocaleString() ?? "—", detail: undefined },
-    { label: "Movies Watched", value: stats?.moviesWatched.toLocaleString() ?? "—", detail: undefined },
-    { label: "Shows Watched", value: stats?.showsWatched.toLocaleString() ?? "—", detail: undefined },
-    { label: "Library Items", value: stats?.totalItems.toLocaleString() ?? "—", detail: undefined },
-    { label: "Average Rating", value: stats?.avgRating !== undefined ? stats.avgRating.toFixed(1) : "—", detail: undefined },
-  ];
 
   return (
     <Page width="wide" className="max-w-4xl">
@@ -106,16 +93,8 @@ export function ProfilePage() {
               ) : null}
             </TabsContent>
           ) : (
-            <TabsContent value="stats" className="mt-8 grid grid-cols-2 gap-x-[4%] gap-y-1">
-              {cards.map(({ label, value, detail }) => (
-                <div key={label} className="min-h-[110px] border-b border-border py-[18px]">
-                  <strong className="block text-[25px] font-bold tabular-nums">{value}</strong>
-                  <span className="mt-2 block text-xs text-muted-foreground">
-                    {label}
-                  </span>
-                  {detail && <span className="mt-1 block text-[11px] text-muted-foreground">{detail}</span>}
-                </div>
-              ))}
+            <TabsContent value="stats" className="mt-8">
+              <ProfileStatsPanel stats={stats} />
             </TabsContent>
           )}
           </Tabs>
