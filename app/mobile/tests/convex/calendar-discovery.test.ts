@@ -189,7 +189,7 @@ describe('date-first release discovery', () => {
     vi.stubGlobal('fetch', fetch);
     const result = await t
       .withIdentity({ subject: 'limited' })
-      .action(api.calendar.upcoming, window);
+      .action(api.calendar.upcomingPage, window);
     expect(result).toMatchObject({
       refreshPending: true,
       retryAfterMs: 1_000,
@@ -252,7 +252,7 @@ describe('date-first release discovery', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     expect(
-      await t.withIdentity({ subject: 'empty' }).action(api.calendar.upcoming, window),
+      await t.withIdentity({ subject: 'empty' }).action(api.calendar.upcomingPage, window),
     ).toMatchObject({ events: [], nextCursor: null, failedTitles: { count: 0 } });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -260,7 +260,7 @@ describe('date-first release discovery', () => {
     const { asUser } = await fixture(2000, 2);
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    const result = await asUser.action(api.calendar.upcoming, { ...window, cachedOnly: true });
+    const result = await asUser.action(api.calendar.upcomingPage, { ...window, cachedOnly: true });
     expect(result.events.map((release) => release.tmdbId)).toEqual([1, 2]);
     expect(result.nextCursor).toBeNull();
     expect(result.needsRefresh).toBe(false);
@@ -268,7 +268,7 @@ describe('date-first release discovery', () => {
   });
   it('paginates beyond 100 matching titles without returning unrelated releases', async () => {
     const { asUser } = await fixture(201, 205);
-    const fetch = vi.fn((args) => asUser.action(api.calendar.upcoming, args));
+    const fetch = vi.fn((args) => asUser.action(api.calendar.upcomingPage, args));
     const result = await loadCalendarPages(fetch, { ...window, cachedOnly: true }, () => {});
     expect(result.events.map((release) => release.tmdbId).sort((a, b) => a - b)).toEqual(
       Array.from({ length: 201 }, (_, i) => i + 1),
@@ -302,7 +302,7 @@ describe('date-first release discovery', () => {
         refreshedAt: Date.now(),
       });
     });
-    const fetch = vi.fn((args) => asUser.action(api.calendar.upcoming, args));
+    const fetch = vi.fn((args) => asUser.action(api.calendar.upcomingPage, args));
     const result = await loadCalendarPages(fetch, { ...window, cachedOnly: true }, () => {});
     expect(result.events.map((release) => release.tmdbId)).toEqual([1600]);
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -316,7 +316,7 @@ describe('date-first release discovery', () => {
   });
   it('joins current membership and names without rebuilding saved schedules', async () => {
     const { t, asUser, userId } = await fixture(1, 2);
-    expect((await asUser.action(api.calendar.upcoming, window)).events).toHaveLength(1);
+    expect((await asUser.action(api.calendar.upcomingPage, window)).events).toHaveLength(1);
     await t.run(async (ctx) => {
       await ctx.db.insert('items', { ...item(userId, 2), title: 'New library title' });
       const first = await ctx.db
@@ -327,21 +327,23 @@ describe('date-first release discovery', () => {
         .unique();
       await ctx.db.patch(first!._id, { status: 'dropped' });
     });
-    const result = await asUser.action(api.calendar.upcoming, { ...window, cachedOnly: true });
+    const result = await asUser.action(api.calendar.upcomingPage, { ...window, cachedOnly: true });
     expect(result.events).toMatchObject([{ tmdbId: 2, title: 'New library title' }]);
     expect(result.events).toHaveLength(1);
     await t.run((ctx) => ctx.db.insert('users', { clerkId: 'stranger' }));
     expect(
-      (await t.withIdentity({ subject: 'stranger' }).action(api.calendar.upcoming, window)).events,
+      (await t.withIdentity({ subject: 'stranger' }).action(api.calendar.upcomingPage, window))
+        .events,
     ).toEqual([]);
   });
   it('keeps day and multi-month queries within the requested date bounds', async () => {
     const { asUser } = await fixture();
     expect(
-      (await asUser.action(api.calendar.upcoming, { ...window, startDate: '2026-10-06' })).events,
+      (await asUser.action(api.calendar.upcomingPage, { ...window, startDate: '2026-10-06' }))
+        .events,
     ).toEqual([]);
     const result = await loadCalendarPages(
-      (args) => asUser.action(api.calendar.upcoming, args),
+      (args) => asUser.action(api.calendar.upcomingPage, args),
       {
         ...window,
         startDate: '2026-10-06',
@@ -390,6 +392,8 @@ describe('date-first release discovery', () => {
       { month: '2026-10', offset: -1, version: 'complete' },
       { month: '2026-11', offset: 0, version: 'complete' },
     ])
-      await expect(asUser.action(api.calendar.upcoming, { ...window, cursor })).rejects.toThrow();
+      await expect(
+        asUser.action(api.calendar.upcomingPage, { ...window, cursor }),
+      ).rejects.toThrow();
   });
 });

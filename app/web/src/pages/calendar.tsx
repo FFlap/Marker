@@ -110,7 +110,7 @@ function regionFromLocale() {
 }
 
 export function CalendarPage() {
-  const fetchUpcoming = useAction(api.calendar.upcoming);
+  const fetchUpcoming = useAction(api.calendar.upcomingPage);
   const libraryRevision = useQuery(api.calendarLibrary.revision);
   const [cache] = useState(() => new CalendarCache());
   const [month, setMonth] = useState(() => monthStart(new Date(Date.now())));

@@ -16,6 +16,8 @@ import {
   scheduleKey,
 } from './calendarTypes';
 
+export { upcoming, libraryTitles } from './calendarLegacy';
+
 const resultValidator = v.object({
   events: v.array(eventValidator),
   truncated: v.boolean(),
@@ -27,7 +29,7 @@ const resultValidator = v.object({
   needsRefresh: v.optional(v.boolean()),
 });
 
-export const upcoming = action({
+export const upcomingPage = action({
   args: {
     startDate: v.string(),
     endDate: v.string(),

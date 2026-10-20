@@ -24,7 +24,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
 export function useCalendar(date: string, prefetch = false) {
   const cache = useContext(CalendarContext);
   if (!cache) throw new Error('CalendarProvider is required');
-  const upcoming = useAction(api.calendar.upcoming);
+  const upcoming = useAction(api.calendar.upcomingPage);
   const libraryRevision = useQuery(api.calendarLibrary.revision);
   const month = date.slice(0, 7);
   const past = month < currentCalendarMonth();

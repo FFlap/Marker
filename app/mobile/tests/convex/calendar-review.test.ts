@@ -87,7 +87,7 @@ describe('calendar review regressions', () => {
           ),
       ),
     );
-    const result = await viewer.action(api.calendar.upcoming, range);
+    const result = await viewer.action(api.calendar.upcomingPage, range);
     expect(result.events).toMatchObject([episode]);
     expect(result.failedTitles.count).toBe(0);
   });
@@ -111,10 +111,10 @@ describe('calendar review regressions', () => {
           ),
       );
       vi.stubGlobal('fetch', fetch);
-      const saved = await viewer.action(api.calendar.upcoming, { ...range, cachedOnly: true });
+      const saved = await viewer.action(api.calendar.upcomingPage, { ...range, cachedOnly: true });
       expect(saved).toMatchObject({ events: [], needsRefresh: true });
       expect(fetch).not.toHaveBeenCalled();
-      const result = await viewer.action(api.calendar.upcoming, range);
+      const result = await viewer.action(api.calendar.upcomingPage, range);
       expect(result.events).toMatchObject([
         { ...episode, episode: episodeNumber, id: `episode:42:1:${episodeNumber}:${episode.date}` },
       ]);
@@ -122,7 +122,7 @@ describe('calendar review regressions', () => {
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(fetch.mock.calls.every(([url]) => !url.includes('/discover/'))).toBe(true);
       expect(await t.run((ctx) => ctx.db.query('calendarMonths').collect())).toEqual([]);
-      await viewer.action(api.calendar.upcoming, range);
+      await viewer.action(api.calendar.upcomingPage, range);
       expect(fetch).toHaveBeenCalledTimes(2);
     },
   );
@@ -144,11 +144,11 @@ describe('calendar review regressions', () => {
             ),
         ),
       );
-      const result = await viewer.action(api.calendar.upcoming, range);
+      const result = await viewer.action(api.calendar.upcomingPage, range);
       expect(result.events).toMatchObject([episode]);
       expect(result.failedTitles.count).toBe(1);
       expect(
-        await viewer.action(api.calendar.upcoming, { ...range, cachedOnly: true }),
+        await viewer.action(api.calendar.upcomingPage, { ...range, cachedOnly: true }),
       ).toMatchObject({
         events: [episode],
         needsRefresh: true,
@@ -175,11 +175,11 @@ describe('calendar review regressions', () => {
           ),
       ),
     );
-    const result = await viewer.action(api.calendar.upcoming, range);
+    const result = await viewer.action(api.calendar.upcomingPage, range);
     expect(result.events).toEqual([]);
     expect(result.failedTitles.count).toBe(1);
     expect(
-      await viewer.action(api.calendar.upcoming, { ...range, cachedOnly: true }),
+      await viewer.action(api.calendar.upcomingPage, { ...range, cachedOnly: true }),
     ).toMatchObject({
       events: [],
       needsRefresh: true,
@@ -202,10 +202,10 @@ describe('calendar review regressions', () => {
         ),
     );
     vi.stubGlobal('fetch', fetch);
-    expect((await viewer.action(api.calendar.upcoming, range)).events).toEqual([]);
+    expect((await viewer.action(api.calendar.upcomingPage, range)).events).toEqual([]);
     expect(
       (
-        await viewer.action(api.calendar.upcoming, {
+        await viewer.action(api.calendar.upcomingPage, {
           ...range,
           startDate: '2026-11-01',
           endDate: '2026-11-30',
@@ -221,7 +221,7 @@ describe('calendar review regressions', () => {
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ results: {} }))),
     );
-    const result = await viewer.action(api.calendar.upcoming, range);
+    const result = await viewer.action(api.calendar.upcomingPage, range);
     expect(result.events).toMatchObject([{ kind: 'movie', date: '2026-10-20' }]);
     expect(result.failedTitles.count).toBe(1);
   });
