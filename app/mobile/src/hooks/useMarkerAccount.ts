@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth, useUser } from '@clerk/expo';
 import { useConvexAuth, useMutation } from 'convex/react';
-import { api } from '../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 
 export function useMarkerAccount() {
   const auth = useConvexAuth();

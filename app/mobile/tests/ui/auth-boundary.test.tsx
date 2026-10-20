@@ -26,7 +26,7 @@ jest.mock('convex/react', () => ({
   useQuery: () => undefined,
   useMutation: () => mockEnsureAccount,
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     profiles: { me: 'profiles.me' },
     clerkAuth: { ensureCurrentUser: 'clerkAuth.ensureCurrentUser' },

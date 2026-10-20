@@ -1,6 +1,6 @@
 import type { Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
-import { activityDayNumber, activityDateFromDayNumber } from './watchActivityStats';
+import { activityDayNumber, activityDateFromDayNumber } from '../lib/watchActivityStats';
 
 // Bound profile reads to the latest 3,660 active days (at least ten years).
 const MAX_ACTIVITY_DAYS = 3_660;

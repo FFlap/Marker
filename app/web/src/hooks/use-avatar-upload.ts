@@ -1,8 +1,8 @@
 import { useAuth } from "@clerk/react";
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
+import { api } from "@marker/shared/api";
+import type { Id } from "@marker/shared/dataModel";
 
 export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const AVATAR_UPLOAD_TIMEOUT_MS = 30_000;

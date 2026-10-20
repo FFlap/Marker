@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus, Tags, UserRound } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { TITLE_SEARCH_MAX_LENGTH, type SearchResult } from "@/lib/catalog";
 import { useTitleSearch } from "@/hooks/use-title-search";
 import { Page, PageHeader, SectionHeader } from "@/components/page";

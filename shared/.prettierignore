@@ -1,0 +1,4 @@
+node_modules
+convex/_generated
+.convex
+coverage

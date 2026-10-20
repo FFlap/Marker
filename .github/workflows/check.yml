@@ -1,4 +1,4 @@
-name: Check apps
+name: Check shared code and apps
 
 on:
   pull_request:
@@ -29,14 +29,21 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: |
+            shared/package-lock.json
             app/mobile/package-lock.json
             app/web/package-lock.json
             app/extension/package-lock.json
       - name: Install dependencies
         run: |
+          npm ci --prefix shared
           npm ci --prefix app/mobile
           npm ci --prefix app/web
           npm ci --prefix app/extension
+      - name: Check shared code
+        working-directory: shared
+        run: |
+          npm run check
+          npm run audit:prod
       - name: Check mobile
         working-directory: app/mobile
         run: |

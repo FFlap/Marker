@@ -4,14 +4,12 @@
     "strict": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@/assets/*": ["./assets/*"],
-      "@convex/*": ["./convex/*"]
+      "@/assets/*": ["./assets/*"]
     }
   },
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    "convex/**/*.ts",
     "nativewind-env.d.ts",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { usePaginatedQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { MobileNav } from '@/components/MobileNav';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { TagGallery } from '@/components/TagGallery';

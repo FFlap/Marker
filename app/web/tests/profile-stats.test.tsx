@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProfileStatsPanel } from "@/components/profile-stats";
 import { localDateKey } from "@/hooks/use-local-today";
-import { formatActivityDate } from "../../mobile/convex/watchActivityStats";
+import { formatActivityDate } from "@marker/shared/watchActivityStats";
 
 const today = new Date();
 const daysAgo = (count: number) =>

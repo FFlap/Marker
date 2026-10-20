@@ -139,7 +139,7 @@ jest.mock('convex/react', () => ({
         ? mockMoveItemToWatched
         : jest.fn().mockResolvedValue([]),
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     library: {
       items: {

@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { router } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import { Globe2, LockKeyhole, Pencil } from 'lucide-react-native';
-import { api } from '../../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { useToast } from '@/components/ui/Toast';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';

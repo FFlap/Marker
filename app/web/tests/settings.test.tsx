@@ -19,7 +19,7 @@ vi.mock("convex/react", () => ({
 vi.mock("@clerk/react", () => ({
   useClerk: () => ({ signOut: mocks.signOut }),
 }));
-vi.mock("../../mobile/convex/_generated/api", () => ({
+vi.mock("@marker/shared/api", () => ({
   api: { settings: { getSettings: "get", setSettings: "set" } },
 }));
 vi.mock("@/components/page", () => ({

@@ -30,7 +30,7 @@ vi.mock("convex/react", () => ({
   },
 }));
 
-vi.mock("../../mobile/convex/_generated/api", () => ({
+vi.mock("@marker/shared/api", () => ({
   api: {
     profileFavorites: {
       add: "profileFavorites.add",

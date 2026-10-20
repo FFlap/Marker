@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Check, X } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 

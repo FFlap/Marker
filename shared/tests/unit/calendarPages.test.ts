@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  loadCalendarPages,
-  type CalendarCursor,
-  type CalendarResult,
-} from '../../../shared/calendar';
+import { loadCalendarPages, type CalendarCursor, type CalendarResult } from '../../lib/calendar';
 
 const args = { startDate: '2026-10-01', endDate: '2026-10-31', region: 'CA' };
 const cursor: CalendarCursor = { month: '2026-10', offset: 20, version: 'saved' };

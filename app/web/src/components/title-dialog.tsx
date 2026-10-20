@@ -6,7 +6,7 @@ import {
 } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Check, Search } from "lucide-react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { Button } from "@/components/ui/button";
 import { LibraryEntryControls, type EntryDraft } from "@/components/library-entry-controls";
 import {

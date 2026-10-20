@@ -3,7 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { api } from '../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { Button, EmptyState, Input, Segmented } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { RatingControl, Stepper, TagEditor } from '@/components/ui/library-controls';

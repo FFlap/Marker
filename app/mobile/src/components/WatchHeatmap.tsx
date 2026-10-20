@@ -6,7 +6,7 @@ import {
   buildActivityHeatmap,
   formatActivityDate,
   type WatchActivityDay,
-} from '../../convex/watchActivityStats';
+} from '@marker/shared/watchActivityStats';
 
 const TARGET_CELL = 12;
 const GAP = 3;

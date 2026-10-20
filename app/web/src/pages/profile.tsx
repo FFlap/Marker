@@ -8,7 +8,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { ProfileFavorites } from "@/components/profile-favorites";
 import { ProfileStatsPanel } from "@/components/profile-stats";

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CalendarResult } from '../../../shared/calendar';
-import { CalendarCache, monthRange } from '../../../shared/calendarCache';
+import type { CalendarResult } from '../../lib/calendar';
+import { CalendarCache, monthRange } from '../../lib/calendarCache';
 
 const result = (title = 'Arrival') => ({
   events: [{ id: title, date: '2026-09-02', kind: 'movie' as const, title }],

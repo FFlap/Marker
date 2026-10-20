@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Grid3X3, List, Plus } from "lucide-react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { FilterDialog } from "@/components/filter-dialog";
 import { SortableHandle, SortableItemActions } from "@/components/sortable-item-controls";
 import { AddTitleDialog } from "@/components/title-dialog";

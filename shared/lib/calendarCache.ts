@@ -3,7 +3,7 @@ import {
   loadCalendarPages,
   type CalendarFetch,
   type CalendarResult,
-} from "./calendar";
+} from './calendar';
 type Snapshot = { result?: CalendarResult; loading: boolean; error: boolean };
 type Entry = { snapshot: Snapshot; updatedAt: number; pending?: Promise<void> };
 const EMPTY: Snapshot = { loading: true, error: false };
@@ -16,7 +16,7 @@ const FRESH_MS = 5 * 60 * 1000;
 const MAX_MONTHS = 12;
 
 export const monthRange = (month: string) => {
-  const [year, number] = month.split("-").map(Number);
+  const [year, number] = month.split('-').map(Number);
   return {
     startDate: `${month}-01`,
     endDate: `${month}-${new Date(year, number, 0).getDate()}`,
@@ -30,17 +30,14 @@ export class CalendarCache {
   private libraryRevision: number | undefined;
 
   setLibraryRevision(revision: number) {
-    if (this.libraryRevision !== undefined && revision <= this.libraryRevision)
-      return;
+    if (this.libraryRevision !== undefined && revision <= this.libraryRevision) return;
     const changed = this.libraryRevision !== undefined;
     this.libraryRevision = revision;
     if (!changed) return;
     // Membership changes invalidate every prefetched month. Detaching the entries
     // also fences requests started before a title was removed or dropped.
     this.entries.clear();
-    this.listeners.forEach((listeners) =>
-      listeners.forEach((listener) => listener()),
-    );
+    this.listeners.forEach((listeners) => listeners.forEach((listener) => listener()));
   }
 
   subscribe = (month: string, region: string, listener: () => void) => {
@@ -68,12 +65,7 @@ export class CalendarCache {
     }
   }
 
-  async load(
-    month: string,
-    region: string,
-    fetch: CalendarFetch,
-    force = false,
-  ): Promise<void> {
+  async load(month: string, region: string, fetch: CalendarFetch, force = false): Promise<void> {
     if (month < currentCalendarMonth()) return;
     const key = `${region}:${month}`;
     const previous = this.entries.get(key);
@@ -84,9 +76,7 @@ export class CalendarCache {
     }
     if (previous?.pending) return previous.pending;
     const ttl =
-      previous?.snapshot.error || previous?.snapshot.result?.failedTitles.count
-        ? 30_000
-        : FRESH_MS;
+      previous?.snapshot.error || previous?.snapshot.result?.failedTitles.count ? 30_000 : FRESH_MS;
     if (!force && previous && Date.now() - previous.updatedAt < ttl) return;
     const entry: Entry = {
       snapshot: {
@@ -101,9 +91,9 @@ export class CalendarCache {
     this.prune();
     const current = () => this.entries.get(key) === entry;
     const fetchCurrent: CalendarFetch = async (args) => {
-      if (!current()) throw new Error("Calendar library changed");
+      if (!current()) throw new Error('Calendar library changed');
       const page = await fetch(args);
-      if (!current()) throw new Error("Calendar library changed");
+      if (!current()) throw new Error('Calendar library changed');
       return page;
     };
     entry.pending = Promise.resolve().then(async () => {
@@ -163,8 +153,7 @@ export class CalendarCache {
           error: result.needsRefresh === true,
         };
       } catch {
-        if (current())
-          entry.snapshot = { ...entry.snapshot, loading: false, error: true };
+        if (current()) entry.snapshot = { ...entry.snapshot, loading: false, error: true };
       } finally {
         entry.updatedAt = Date.now();
         entry.pending = undefined;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAction } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { TITLE_SEARCH_MAX_LENGTH, type SearchResult } from "@/lib/catalog";
 
 type SearchState = {

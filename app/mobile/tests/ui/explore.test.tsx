@@ -16,7 +16,7 @@ jest.mock('convex/react', () => ({
     return mockPeople;
   },
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     tmdb: { searchMulti: 'tmdb.searchMulti' },
     library: { items: { listItems: 'library/items:listItems' } },

@@ -9,9 +9,9 @@ import {
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { useAction, useQuery } from 'convex/react';
-import { api } from '../../convex/_generated/api';
-import { CalendarCache } from '../../../shared/calendarCache';
-import { currentCalendarMonth } from '../../../shared/calendar';
+import { api } from '@marker/shared/api';
+import { CalendarCache } from '@marker/shared/calendarCache';
+import { currentCalendarMonth } from '@marker/shared/calendar';
 import { deviceRegion } from '@/lib/calendar';
 
 const CalendarContext = createContext<CalendarCache | null>(null);

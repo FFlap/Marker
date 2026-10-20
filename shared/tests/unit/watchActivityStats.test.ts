@@ -3,7 +3,7 @@ import {
   buildActivityHeatmap,
   formatActivityDate,
   summarizeWatchActivity,
-} from '../../convex/watchActivityStats';
+} from '../../lib/watchActivityStats';
 
 describe('watch activity summary', () => {
   it('keeps a streak alive through today and measures the longest run', () => {

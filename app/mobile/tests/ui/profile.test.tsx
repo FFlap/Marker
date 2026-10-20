@@ -47,7 +47,7 @@ jest.mock('convex/react', () => ({
     };
   },
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     stats: { profile: 'stats.profile' },
     profiles: {

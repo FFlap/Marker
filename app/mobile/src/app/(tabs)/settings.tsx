@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useClerk } from '@clerk/expo';
 import { useMutation, useQuery } from 'convex/react';
-import { api } from '../../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { Button, Segmented } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';

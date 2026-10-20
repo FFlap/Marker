@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useAction, useMutation } from 'convex/react';
-import { api } from '@convex/_generated/api';
+import { api } from '@marker/shared/api';
 import type { NativeGridAutoScroll, NativeGridDragMotion } from '@/components/NativeDraggableGrid';
 import type {
   NativePosterDragLayout,

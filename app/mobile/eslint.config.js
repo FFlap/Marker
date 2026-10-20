@@ -4,7 +4,7 @@ const expoConfig = require('eslint-config-expo/flat');
 
 module.exports = defineConfig([
   expoConfig,
-  globalIgnores(['.expo/**', 'convex/_generated/**', 'dist/**']),
+  globalIgnores(['.expo/**', 'dist/**']),
   {
     rules: {
       // These rules reject React Native Animated values and the intentionally

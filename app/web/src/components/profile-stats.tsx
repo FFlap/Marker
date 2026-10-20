@@ -1,9 +1,9 @@
 import type { FunctionReturnType } from "convex/server";
-import type { api } from "../../../mobile/convex/_generated/api";
+import type { api } from "@marker/shared/api";
 import {
   formatActivityDate,
   summarizeWatchActivity,
-} from "../../../mobile/convex/watchActivityStats";
+} from "@marker/shared/watchActivityStats";
 import { WatchHeatmap } from "@/components/watch-heatmap";
 import { useLocalToday } from "@/hooks/use-local-today";
 

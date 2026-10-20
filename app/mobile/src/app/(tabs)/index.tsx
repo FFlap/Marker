@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useQuery } from 'convex/react';
-import { api } from '@convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { router } from 'expo-router';
 import {
   NestableDraggableFlatList,

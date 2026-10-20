@@ -13,7 +13,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { Brand } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import {

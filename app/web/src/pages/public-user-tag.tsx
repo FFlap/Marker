@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { LockKeyhole } from "lucide-react";
 import { useConvexAuth, useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { FilterDialog } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";

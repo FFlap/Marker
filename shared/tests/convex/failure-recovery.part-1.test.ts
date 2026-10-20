@@ -1,14 +1,8 @@
 import { putSeason, setTitleMapping } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
-import { ConvexError } from 'convex/values';
 import { api, internal } from '../../convex/_generated/api';
 import schema from '../../convex/schema';
-import { isTruncatedSnapshot, putNonFatal } from '../../convex/providerSnapshots';
-import { MAX_METADATA_MUTATION_BYTES, serializedBytes } from '../../convex/seasonStorage';
-import { mapSeasonDetails } from '../../convex/tmdb';
-import { commitWatchWithOneRematch } from '../../convex/sync';
-import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata/seasonResolution';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
@@ -133,7 +127,7 @@ describe('metadata failure recovery', () => {
 
   it('persists a forced title touch behind a scheduled season lease and completes after expiry', async () => {
     vi.useFakeTimers();
-    const { t, userId, asUser } = await setup();
+    const { t, asUser } = await setup();
     const startedAt = Date.now();
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
     vi.stubGlobal(

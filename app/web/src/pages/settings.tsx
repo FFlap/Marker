@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useClerk } from "@clerk/react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionArgs } from "convex/server";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 

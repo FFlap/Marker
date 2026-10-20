@@ -9,7 +9,7 @@ import {
   buildActivityHeatmap,
   formatActivityDate,
   type WatchActivityDay,
-} from "../../../mobile/convex/watchActivityStats";
+} from "@marker/shared/watchActivityStats";
 import { SectionHeader } from "@/components/page";
 import { cn } from "@/lib/utils";
 

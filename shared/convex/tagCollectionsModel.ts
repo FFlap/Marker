@@ -93,7 +93,7 @@ function mergeCollectionDeltas(target: TagCollectionDeltas, source: TagCollectio
 export async function requireTagCollection(ctx: MutationCtx, userId: Id<'users'>, label: string) {
   const tagKey = normalizeTagKey(label);
   if (!tagKey || tagKey.length > 40) throw new Error('Tag not found');
-  let collection = await ctx.db
+  const collection = await ctx.db
     .query('tagCollections')
     .withIndex('by_user_tag', (q) => q.eq('userId', userId).eq('tagKey', tagKey))
     .unique();

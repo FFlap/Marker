@@ -3,7 +3,7 @@ import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import { LockKeyhole } from 'lucide-react-native';
-import { api } from '../../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { EmptyState } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';

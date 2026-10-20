@@ -4,7 +4,7 @@ import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from 'convex/react';
-import { api } from '../../../../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { LibraryFiltersDrawer } from '@/components/LibraryFiltersDrawer';
 import { PinchDensity } from '@/components/PinchDensity';

@@ -3,7 +3,7 @@ import { useAuth, useClerk } from '@clerk/expo';
 import { useQuery } from 'convex/react';
 import { Redirect, useSegments } from 'expo-router';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { api } from '../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { Button } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 import { useMarkerAccount } from '@/hooks/useMarkerAccount';

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, EllipsisVertical, SlidersHorizontal, Star } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { ChipGroup } from "@/components/chip-group";
 import { EpisodeDialog } from "@/components/episode-dialog";
 import { Page } from "@/components/page";
