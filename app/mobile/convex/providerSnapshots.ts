@@ -38,6 +38,7 @@ const kindForKey = (key: string): Exclude<SnapshotKind, 'truncated'> => {
   if (/^tvdb:anime:v\d+:lookup:/.test(key)) return 'tvdbLookup';
   if (key.startsWith('tvdb:anime:')) return 'tvdbGuide';
   if (key.startsWith('calendar:movie:')) return 'calendarMovie';
+  if (key.startsWith('calendar:tv:v2:')) return 'calendarTvSchedule';
   if (key.startsWith('calendar:tv:')) return 'calendarTv';
   if (key.startsWith('calendar:season:')) return 'calendarSeason';
   return 'tmdbSearch';
@@ -83,6 +84,38 @@ export const get = internalQuery({
       .withIndex('by_key', (query) => query.eq('key', key))
       .unique();
     return stored ? { ...stored.entry, refreshedAt: stored.refreshedAt } : null;
+  },
+});
+
+export const CALENDAR_SNAPSHOT_BATCH_SIZE = 20;
+
+/** Bound each batch below the read/return limits, including large season snapshots. */
+export const getCalendarSnapshots = internalQuery({
+  args: { keys: v.array(v.string()) },
+  returns: v.array(
+    v.union(
+      v.null(),
+      v.object({
+        entry: providerSnapshotEntryValidator,
+        refreshedAt: v.number(),
+      }),
+    ),
+  ),
+  handler: async (ctx, { keys }) => {
+    if (
+      keys.length > CALENDAR_SNAPSHOT_BATCH_SIZE ||
+      keys.some((key) => !/^calendar:(movie|tv|season):/.test(key))
+    )
+      throw new Error('Invalid calendar snapshot keys');
+    return Promise.all(
+      keys.map(async (key) => {
+        const stored = await ctx.db
+          .query('providerSnapshots')
+          .withIndex('by_key', (q) => q.eq('key', key))
+          .unique();
+        return stored ? { entry: stored.entry, refreshedAt: stored.refreshedAt } : null;
+      }),
+    );
   },
 });
 

@@ -43,15 +43,18 @@ export async function providerFetch(url: string, init: RequestInit, options: Pro
   const startedAt = Date.now();
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
-    if (options.beforeRequest && !(await options.beforeRequest()))
-      throw new ConvexError({
-        code: 'provider_global_limiter',
-        provider: options.provider,
-        retryable: true,
-      });
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
+      // A transient failure while reserving budget (including an OCC conflict)
+      // must use the same bounded retry path as a failed GET request.
+      if (options.beforeRequest && !(await options.beforeRequest()))
+        throw new ConvexError({
+          code: 'provider_global_limiter',
+          provider: options.provider,
+          retryable: true,
+        });
+      timeout = setTimeout(() => controller.abort(), timeoutMs);
       const response = await fetch(url, { ...init, signal: controller.signal });
       if (retryableStatus(response.status)) {
         await response.body?.cancel();

@@ -504,3 +504,35 @@ it('keeps provider budgets independent and resets an expired window without incr
   ).toBe(true);
   expect((await t.run((ctx) => ctx.db.get(throttleId)))?.count).toBe(1);
 });
+
+it('reserves calendar request batches without exceeding the shared provider budget', async () => {
+  const t = convexTest({ schema, modules });
+  const throttleId = await t.run((ctx) =>
+    ctx.db.insert('requestThrottle', {
+      key: 'tmdb-global',
+      windowStart: Date.now(),
+      count: 294,
+    }),
+  );
+  expect(
+    await t.mutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+      provider: 'tmdb',
+      amount: 5,
+    }),
+  ).toBe(true);
+  expect(
+    await t.mutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+      provider: 'tmdb',
+      amount: 5,
+    }),
+  ).toBe(false);
+  expect((await t.run((ctx) => ctx.db.get(throttleId)))?.count).toBe(299);
+  for (const amount of [0, -1, 0.5, 11]) {
+    await expect(
+      t.mutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+        provider: 'tmdb',
+        amount,
+      }),
+    ).rejects.toThrow('Invalid provider budget reservation');
+  }
+});

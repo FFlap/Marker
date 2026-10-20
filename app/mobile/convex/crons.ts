@@ -27,4 +27,11 @@ crons.hourly(
   {},
 );
 
+crons.daily(
+  'Prune past calendar months',
+  { hourUTC: 4, minuteUTC: 20 },
+  internal.calendarCatalog.prune,
+  {},
+);
+
 export default crons;

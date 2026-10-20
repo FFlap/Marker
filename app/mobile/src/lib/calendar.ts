@@ -1,14 +1,6 @@
 import { getLocales } from 'expo-localization';
 
-export type CalendarEvent = {
-  id: string;
-  date: string;
-  kind: 'movie' | 'episode';
-  title: string;
-  season?: number;
-  episode?: number;
-  episodeName?: string;
-};
+export type { CalendarEvent } from '../../../shared/calendar';
 
 export const deviceRegion = () => {
   const region = getLocales()[0]?.regionCode?.toUpperCase();

@@ -75,6 +75,9 @@
     "format:check": "prettier --check ."
   },
   "overrides": {
+    "metro": {
+      "image-size": "2.0.4"
+    },
     "@expo/xcpretty": {
       "js-yaml": "4.3.2"
     },
@@ -87,6 +90,9 @@
   },
   "jest": {
     "preset": "jest-expo",
+    "modulePaths": [
+      "<rootDir>/node_modules"
+    ],
     "testMatch": [
       "<rootDir>/tests/ui/**/*.test.ts?(x)"
     ],

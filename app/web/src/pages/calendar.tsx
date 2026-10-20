@@ -1,11 +1,21 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { ChevronLeft, ChevronRight, Film, Tv2 } from "lucide-react";
-import { useAction } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
+import { useAction, useQuery } from "convex/react";
 import { api } from "../../../mobile/convex/_generated/api";
 import { Page, PageHeader } from "@/components/page";
-
-type CalendarEvent = FunctionReturnType<typeof api.calendar.upcoming>["events"][number];
+import {
+  currentCalendarMonth,
+  type CalendarEvent,
+} from "../../../shared/calendar";
+import { CalendarCache } from "../../../shared/calendarCache";
 
 function CalendarDay({
   day,
@@ -52,6 +62,7 @@ function CalendarDay({
       aria-pressed={active}
       aria-label={`${day.toLocaleDateString()}, ${events.length} release${events.length === 1 ? "" : "s"}`}
       onClick={onSelect}
+      disabled={dateKey(day).slice(0, 7) < currentCalendarMonth()}
       className={`aspect-[.68] min-h-11 min-w-0 overflow-hidden border-b border-r border-border p-1 text-left transition sm:aspect-[.86] sm:p-1.5 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${active ? "bg-card ring-1 ring-inset ring-foreground" : ""}`}
     >
       <span className="flex size-full min-w-0 flex-col gap-1">
@@ -86,8 +97,6 @@ const dateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const monthStart = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), 1);
-const monthEnd = (date: Date) =>
-  new Date(date.getFullYear(), date.getMonth() + 1, 0);
 const addDays = (date: Date, days: number) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
@@ -102,74 +111,87 @@ function regionFromLocale() {
 
 export function CalendarPage() {
   const fetchUpcoming = useAction(api.calendar.upcoming);
-  const [month, setMonth] = useState(() => monthStart(new Date()));
-  const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
-  const [events, setEvents] = useState<CalendarEvent[]>();
-  const [error, setError] = useState("");
-  const [partialFailure, setPartialFailure] = useState("");
-  const start = monthStart(month);
-  const end = monthEnd(month);
-  const startDate = dateKey(start);
-  const endDate = dateKey(end);
+  const libraryRevision = useQuery(api.calendarLibrary.revision);
+  const [cache] = useState(() => new CalendarCache());
+  const [month, setMonth] = useState(() => monthStart(new Date(Date.now())));
+  const [today, setToday] = useState(() => dateKey(new Date(Date.now())));
+  const [selectedDate, setSelectedDate] = useState(() =>
+    dateKey(new Date(Date.now())),
+  );
+  const visibleMonth =
+    dateKey(month).slice(0, 7) < today.slice(0, 7)
+      ? new Date(`${today.slice(0, 7)}-01T00:00:00`)
+      : month;
+  const visibleDate =
+    selectedDate.slice(0, 7) < today.slice(0, 7) ? today : selectedDate;
+  const start = monthStart(visibleMonth);
+  const monthKey = dateKey(start).slice(0, 7);
+  const region = regionFromLocale();
+  const subscribe = useCallback(
+    (listener: () => void) => cache.subscribe(monthKey, region, listener),
+    [cache, monthKey, region],
+  );
+  const getSnapshot = useCallback(
+    () => cache.get(monthKey, region),
+    [cache, monthKey, region],
+  );
+  const { result, loading, error } = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getSnapshot,
+  );
+  const events = result?.events;
+  const partialFailure = result?.failedTitles.count
+    ? `Some titles could not be loaded${result.failedTitles.names.length ? `: ${result.failedTitles.names.join(", ")}` : "."}`
+    : "";
   const gridStart = addDays(start, -start.getDay());
   const days = Array.from({ length: 42 }, (_, index) =>
     addDays(gridStart, index),
   );
 
   useEffect(() => {
-    let ignore = false;
-    const load = async () => {
-      try {
-        const result = await fetchUpcoming({
-          startDate,
-          endDate,
-          region: regionFromLocale(),
-        });
-        if (!ignore) {
-          setError("");
-          setEvents(result.events);
-          setPartialFailure(
-            result.failedTitles.count > 0
-              ? `Some titles could not be loaded${result.failedTitles.names.length ? `: ${result.failedTitles.names.join(", ")}` : "."}`
-              : "",
-          );
-        }
-      } catch {
-        if (!ignore) {
-          setEvents([]);
-          setError("Couldn’t refresh release dates. Try again shortly.");
-        }
-      }
+    if (libraryRevision === undefined) return () => undefined;
+    cache.setLibraryRevision(libraryRevision);
+    const load = () => {
+      setToday(dateKey(new Date(Date.now())));
+      void cache.load(monthKey, region, fetchUpcoming);
     };
-    void load();
-    return () => {
-      ignore = true;
-    };
-  }, [endDate, fetchUpcoming, startDate]);
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [cache, monthKey, region, fetchUpcoming, libraryRevision]);
 
   const changeMonth = (next: Date) => {
     const nextMonth = monthStart(next);
-    setEvents(undefined);
-    setError("");
-    setPartialFailure("");
+    if (dateKey(nextMonth).slice(0, 7) < currentCalendarMonth()) return;
     setMonth(nextMonth);
     setSelectedDate(dateKey(nextMonth));
   };
 
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const event of events ?? [])
-      map.set(event.date, [...(map.get(event.date) ?? []), event]);
+    for (const event of events ?? []) {
+      const dayEvents = map.get(event.date);
+      if (dayEvents) dayEvents.push(event);
+      else map.set(event.date, [event]);
+    }
     return map;
   }, [events]);
-  const selectedEvents = byDate.get(selectedDate) ?? [];
+  const selectedEvents = byDate.get(visibleDate) ?? [];
 
   return (
     <Page width="wide" className="max-w-5xl">
       <PageHeader title="Calendar" />
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-10">
         <section>
-          {partialFailure && (
+          {loading && (
+            <p className="mb-3 text-xs text-muted-foreground">
+              {result?.needsRefresh && result.events.length > 0
+                ? "Updating release dates…"
+                : "Loading releases for your library…"}
+            </p>
+          )}
+          {!loading && partialFailure && (
             <output className="mb-3 block text-xs leading-5 text-muted-foreground">
               {partialFailure}
             </output>
@@ -178,9 +200,14 @@ export function CalendarPage() {
             <button
               type="button"
               aria-label="Previous month"
+              disabled={monthKey <= currentCalendarMonth()}
               onClick={() =>
                 changeMonth(
-                  new Date(month.getFullYear(), month.getMonth() - 1, 1),
+                  new Date(
+                    visibleMonth.getFullYear(),
+                    visibleMonth.getMonth() - 1,
+                    1,
+                  ),
                 )
               }
               className="grid size-11 place-items-center rounded-full bg-transparent transition hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-10"
@@ -188,7 +215,7 @@ export function CalendarPage() {
               <ChevronLeft className="size-4" />
             </button>
             <h2 className="text-[17px] font-bold">
-              {month.toLocaleDateString(undefined, {
+              {visibleMonth.toLocaleDateString(undefined, {
                 month: "long",
                 year: "numeric",
               })}
@@ -198,7 +225,11 @@ export function CalendarPage() {
               aria-label="Next month"
               onClick={() =>
                 changeMonth(
-                  new Date(month.getFullYear(), month.getMonth() + 1, 1),
+                  new Date(
+                    visibleMonth.getFullYear(),
+                    visibleMonth.getMonth() + 1,
+                    1,
+                  ),
                 )
               }
               className="grid size-11 place-items-center rounded-full bg-transparent transition hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-10"
@@ -227,8 +258,8 @@ export function CalendarPage() {
           <div className="grid grid-cols-7 border-l border-t border-border">
             {days.map((day) => {
               const key = dateKey(day);
-              const inMonth = day.getMonth() === month.getMonth();
-              const active = selectedDate === key;
+              const inMonth = day.getMonth() === visibleMonth.getMonth();
+              const active = visibleDate === key;
               const dayEvents = byDate.get(key) ?? [];
               return (
                 <CalendarDay
@@ -237,7 +268,10 @@ export function CalendarPage() {
                   events={dayEvents}
                   inMonth={inMonth}
                   active={active}
-                  onSelect={() => setSelectedDate(key)}
+                  onSelect={() => {
+                    if (!inMonth) changeMonth(day);
+                    setSelectedDate(key);
+                  }}
                 />
               );
             })}
@@ -245,16 +279,27 @@ export function CalendarPage() {
         </section>
         <aside className="mt-7 lg:sticky lg:top-8 lg:mt-0 lg:border-l lg:border-border lg:pl-8">
           <h2 className="text-[10px] font-bold uppercase tracking-[.06em] text-muted-foreground">
-            {new Date(`${selectedDate}T00:00:00`).toLocaleDateString(
-              undefined,
-              {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              },
-            )}
+            {new Date(`${visibleDate}T00:00:00`).toLocaleDateString(undefined, {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+            })}
           </h2>
-          {events === undefined ? (
+          {(error || partialFailure) && (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                void cache.load(monthKey, region, fetchUpcoming, true);
+              }}
+              className="mt-4 text-xs text-destructive"
+            >
+              {error
+                ? "Couldn’t refresh release dates. Retry"
+                : "Retry missing release dates"}
+            </button>
+          )}
+          {!selectedEvents.length && loading ? (
             <div className="mt-4 grid gap-2">
               {[0, 1, 2].map((key) => (
                 <div
@@ -263,10 +308,6 @@ export function CalendarPage() {
                 />
               ))}
             </div>
-          ) : error ? (
-            <p role="alert" className="mt-4 text-xs leading-5 text-destructive">
-              {error}
-            </p>
           ) : selectedEvents.length ? (
             <div className="mt-2 divide-y divide-border">
               {selectedEvents.map((event) => (
@@ -296,7 +337,7 @@ export function CalendarPage() {
                 </article>
               ))}
             </div>
-          ) : (
+          ) : error || partialFailure ? null : (
             <div className="py-12 text-center">
               <p className="text-sm font-semibold">No releases</p>
               <p className="mt-2 text-xs text-muted-foreground">
