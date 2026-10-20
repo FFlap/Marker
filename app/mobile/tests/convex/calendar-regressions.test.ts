@@ -87,7 +87,7 @@ describe('resumable calendar discovery', () => {
     const { t, asUser } = await fixture(21);
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    expect(await asUser.action(api.calendar.upcomingPage, window)).toMatchObject({
+    expect(await asUser.action(api.calendar.upcoming, window)).toMatchObject({
       refreshPending: true,
       retryAfterMs: 1000,
     });
@@ -240,7 +240,7 @@ describe('resumable calendar discovery', () => {
       expect(await t.mutation(internal.calendarCatalog.claim, { ...job, token: 'retry' })).toBe(
         false,
       );
-      await expect(asUser.action(api.calendar.upcomingPage, window)).rejects.toThrow(/discovery/);
+      await expect(asUser.action(api.calendar.upcoming, window)).rejects.toThrow(/discovery/);
     },
   );
   it('bounds consecutive transient failures while keeping the last complete catalog', async () => {
@@ -278,7 +278,7 @@ describe('bounded release storage and responses', () => {
       t,
       Array.from({ length: 9000 }, (_, i) => release(i + 1)),
     );
-    const fetch = vi.fn((args) => asUser.action(api.calendar.upcomingPage, args));
+    const fetch = vi.fn((args) => asUser.action(api.calendar.upcoming, args));
     const result = await loadCalendarPages(fetch, { ...window, cachedOnly: true }, () => {});
     expect(result.events).toHaveLength(9000);
     expect(new Set(result.events.map((event) => event.id)).size).toBe(9000);
@@ -309,7 +309,7 @@ describe('bounded release storage and responses', () => {
         });
     });
     const result = await loadCalendarPages(
-      (args) => asUser.action(api.calendar.upcomingPage, args),
+      (args) => asUser.action(api.calendar.upcoming, args),
       { ...window, cachedOnly: true },
       () => {},
     );
@@ -325,12 +325,12 @@ describe('bounded release storage and responses', () => {
     );
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    const first = await asUser.action(api.calendar.upcomingPage, { ...window, cachedOnly: true });
+    const first = await asUser.action(api.calendar.upcoming, { ...window, cachedOnly: true });
     await t.run(async (ctx) => {
       const row = await ctx.db.query('calendarSchedules').first();
       await ctx.db.patch(row!._id, { refreshedAt: now - 7 * 60 * 60_000 });
     });
-    const second = await asUser.action(api.calendar.upcomingPage, {
+    const second = await asUser.action(api.calendar.upcoming, {
       ...window,
       cursor: first.nextCursor!,
     });
@@ -338,7 +338,7 @@ describe('bounded release storage and responses', () => {
     expect(fetch).not.toHaveBeenCalled();
     await write(t, [release(999)], 'changed');
     await expect(
-      asUser.action(api.calendar.upcomingPage, { ...window, cursor: first.nextCursor! }),
+      asUser.action(api.calendar.upcoming, { ...window, cursor: first.nextCursor! }),
     ).rejects.toThrow('Release dates changed');
   });
   it('keeps old releases until atomic publication and fences superseded partial writes', async () => {
@@ -405,13 +405,13 @@ describe('partial season refresh', () => {
         );
       }),
     );
-    const result = await asUser.action(api.calendar.upcomingPage, window);
+    const result = await asUser.action(api.calendar.upcoming, window);
     expect(result.events.map((event) => [event.season, event.date])).toEqual([
       [0, '2026-10-13'],
       [1, '2026-10-15'],
     ]);
     expect(result.failedTitles).toEqual({ count: 1, names: ['Show 1'] });
-    const saved = await asUser.action(api.calendar.upcomingPage, { ...window, cachedOnly: true });
+    const saved = await asUser.action(api.calendar.upcoming, { ...window, cachedOnly: true });
     expect(saved.events).toEqual(result.events);
     expect(saved.needsRefresh).toBe(true);
   });

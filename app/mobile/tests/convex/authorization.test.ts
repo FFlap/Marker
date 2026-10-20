@@ -89,9 +89,9 @@ describe('public API authorization', () => {
     ['profiles.removeAvatar', 'mutation', api.profiles.removeAvatar, {}],
     ['tmdb.searchMulti', 'action', api.tmdb.searchMulti, { query: 'x' }],
     [
-      'calendar.upcomingPage',
+      'calendar.upcoming',
       'action',
-      api.calendar.upcomingPage,
+      api.calendar.upcoming,
       { startDate: '2026-08-01', endDate: '2026-08-31' },
     ],
   ] as const)('%s rejects unauthenticated calls', async (_name, kind, fn, args) => {

@@ -33,10 +33,6 @@ export const dateCursorValidator = v.object({
   releaseVersion: v.optional(v.string()),
   version: v.string(),
 });
-export const legacyCursorValidator = v.object({
-  status: v.union(v.literal('watching'), v.literal('watchlist'), v.literal('watched')),
-  after: v.union(v.string(), v.null()),
-});
 export type LibraryTitle = Infer<typeof libraryTitleValidator>;
 export type CalendarEvent = Infer<typeof eventValidator>;
 export type Candidate = Infer<typeof candidateValidator>;

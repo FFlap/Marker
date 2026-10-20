@@ -13,7 +13,6 @@ import type * as avatarUpload from "../avatarUpload.js";
 import type * as calendar from "../calendar.js";
 import type * as calendarCatalog from "../calendarCatalog.js";
 import type * as calendarDiscovery from "../calendarDiscovery.js";
-import type * as calendarLegacy from "../calendarLegacy.js";
 import type * as calendarLibrary from "../calendarLibrary.js";
 import type * as calendarProviders from "../calendarProviders.js";
 import type * as calendarRefresh from "../calendarRefresh.js";
@@ -83,7 +82,6 @@ declare const fullApi: ApiFromModules<{
   calendar: typeof calendar;
   calendarCatalog: typeof calendarCatalog;
   calendarDiscovery: typeof calendarDiscovery;
-  calendarLegacy: typeof calendarLegacy;
   calendarLibrary: typeof calendarLibrary;
   calendarProviders: typeof calendarProviders;
   calendarRefresh: typeof calendarRefresh;

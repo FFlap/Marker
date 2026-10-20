@@ -32,7 +32,7 @@ const scheduleFor = (
   args: { startDate: string; endDate: string; region?: string },
 ) =>
   loadCalendarPages(
-    (page) => t.action(api.calendar.upcomingPage, page),
+    (page) => t.action(api.calendar.upcoming, page),
     { region: 'US', ...args },
     () => {},
   );
@@ -160,7 +160,7 @@ describe('calendar episode dates', () => {
     const args = { startDate: '2026-09-01', endDate: '2026-09-30' };
     const initial = await scheduleFor(t, args);
     fetch.mockClear();
-    const fresh = await t.action(api.calendar.upcomingPage, { ...args, cachedOnly: true });
+    const fresh = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
     expect(fresh).toMatchObject({ events: initial.events, needsRefresh: false, nextCursor: null });
     await base.run(async (ctx) => {
       for (const row of [
@@ -169,7 +169,7 @@ describe('calendar episode dates', () => {
       ])
         await ctx.db.patch(row._id, { refreshedAt: Date.now() - 7 * 60 * 60 * 1000 });
     });
-    const stale = await t.action(api.calendar.upcomingPage, { ...args, cachedOnly: true });
+    const stale = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
     expect(stale).toMatchObject({
       events: initial.events,
       needsRefresh: true,
@@ -200,7 +200,7 @@ describe('calendar episode dates', () => {
   it('marks missing and truncated saved schedules for refresh without fetching providers', async () => {
     const { t, base, fetch } = await setup({ seasons: [] });
     const args = { startDate: '2026-09-01', endDate: '2026-09-30', cachedOnly: true };
-    const missing = await t.action(api.calendar.upcomingPage, args);
+    const missing = await t.action(api.calendar.upcoming, args);
     expect(missing).toMatchObject({ events: [], needsRefresh: true, failedTitles: { count: 0 } });
     await base.mutation(internal.providerSnapshots.put, {
       key: 'calendar:tv:v2:42',
@@ -209,7 +209,7 @@ describe('calendar episode dates', () => {
         value: { __truncatedProviderSnapshot: true, originalBytes: 999_999 },
       },
     });
-    const truncated = await t.action(api.calendar.upcomingPage, args);
+    const truncated = await t.action(api.calendar.upcoming, args);
     expect(truncated).toMatchObject({ events: [], needsRefresh: true, failedTitles: { count: 0 } });
     expect(fetch).not.toHaveBeenCalled();
     expect(await base.run((ctx) => ctx.db.query('requestThrottle').collect())).toEqual([]);
@@ -236,7 +236,7 @@ describe('calendar episode dates', () => {
         await ctx.db.delete(row._id);
     });
     fetch.mockClear();
-    const saved = await t.action(api.calendar.upcomingPage, { ...args, cachedOnly: true });
+    const saved = await t.action(api.calendar.upcoming, { ...args, cachedOnly: true });
     expect(saved.events).toHaveLength(2);
     expect(saved.needsRefresh).toBe(true);
     expect(saved.failedTitles.count).toBe(0);
@@ -407,7 +407,7 @@ describe('calendar episode dates', () => {
     const { t, fetch } = await setup({ seasons: [{ season_number: 1, air_date: '2026-09-02' }] });
     vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 15));
     const reads = vi.spyOn(snapshots.getCalendarSnapshots, '_handler');
-    const past = await t.action(api.calendar.upcomingPage, {
+    const past = await t.action(api.calendar.upcoming, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     });
@@ -425,7 +425,7 @@ describe('calendar episode dates', () => {
       for (const row of await ctx.db.query('calendarMonths').collect())
         await ctx.db.patch(row._id, { refreshedAt: Date.now() });
     });
-    const local = await t.action(api.calendar.upcomingPage, {
+    const local = await t.action(api.calendar.upcoming, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
       timeZoneOffsetMinutes: 360,
@@ -443,7 +443,7 @@ describe('calendar episode dates', () => {
         count: 300,
       });
     });
-    const limited = await t.action(api.calendar.upcomingPage, {
+    const limited = await t.action(api.calendar.upcoming, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     });

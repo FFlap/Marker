@@ -8,15 +8,12 @@ import { readAll, save } from './calendarScheduleStore';
 import {
   CALENDAR_TTL_MS,
   dateCursorValidator,
-  legacyCursorValidator,
   eventValidator,
   isDate,
   inRange,
   monthEnd,
   scheduleKey,
 } from './calendarTypes';
-
-export { upcoming, libraryTitles } from './calendarLegacy';
 
 const resultValidator = v.object({
   events: v.array(eventValidator),
@@ -29,12 +26,12 @@ const resultValidator = v.object({
   needsRefresh: v.optional(v.boolean()),
 });
 
-export const upcomingPage = action({
+export const upcoming = action({
   args: {
     startDate: v.string(),
     endDate: v.string(),
     region: v.optional(v.string()),
-    cursor: v.optional(v.union(dateCursorValidator, legacyCursorValidator)),
+    cursor: v.optional(dateCursorValidator),
     timeZoneOffsetMinutes: v.optional(v.number()),
     cachedOnly: v.optional(v.boolean()),
   },
@@ -73,8 +70,6 @@ export const upcomingPage = action({
     };
     if (endDate < `${currentMonth}-01`) return empty;
     startDate = startDate < `${currentMonth}-01` ? `${currentMonth}-01` : startDate;
-    // Old clients can retry after the date-index rollout instead of silently skipping titles.
-    if (cursor && !('month' in cursor)) throw new Error('Calendar loading changed. Please retry.');
     const month = cursor?.month ?? startDate.slice(0, 7);
     if (!isDate(`${month}-01`) || month < startDate.slice(0, 7) || month > endDate.slice(0, 7))
       throw new Error('Invalid calendar cursor');

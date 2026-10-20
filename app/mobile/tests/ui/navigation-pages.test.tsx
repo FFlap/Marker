@@ -19,7 +19,7 @@ jest.mock('../../convex/_generated/api', () => ({
   api: {
     profiles: { followRequests: 'followRequests', respondToFollow: 'respondToFollow' },
     notifications: { feed: 'notificationsFeed' },
-    calendar: { upcomingPage: 'calendarUpcoming' },
+    calendar: { upcoming: 'calendarUpcoming' },
     calendarLibrary: { revision: 'calendarRevision' },
   },
 }));
