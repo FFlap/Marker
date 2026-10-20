@@ -6,7 +6,7 @@ import {
 } from '../../../shared/calendar';
 
 const args = { startDate: '2026-10-01', endDate: '2026-10-31', region: 'CA' };
-const cursor: CalendarCursor = { status: 'watchlist', after: 'next' };
+const cursor: CalendarCursor = { month: '2026-10', offset: 20, version: 'saved' };
 const page = (id: string, nextCursor: CalendarCursor | null = null): CalendarResult => ({
   events: [{ id, title: id, date: '2026-10-02', kind: 'movie' }],
   failedTitles: { count: 0, names: [] },
@@ -58,11 +58,11 @@ describe('complete library calendar loading', () => {
 
   it('publishes each page and loads beyond 100 titles without losing failures or duplicating events', async () => {
     const fetch = vi.fn(async ({ cursor: position }: { cursor?: CalendarCursor }) => {
-      const offset = Number(position && 'after' in position ? position.after : 0);
+      const offset = position?.offset ?? 0;
       return {
         ...page(
           String(offset),
-          offset < 120 ? { status: 'watching' as const, after: String(offset + 20) } : null,
+          offset < 120 ? { month: '2026-10', offset: offset + 20, version: 'saved' } : null,
         ),
         failedTitles: {
           count: offset === 20 ? 1 : 0,

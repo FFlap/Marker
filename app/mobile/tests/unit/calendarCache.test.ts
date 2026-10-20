@@ -22,7 +22,10 @@ describe('shared calendar schedules', () => {
     }
     pending.push(cache.load('2027-01', 'CA', fetch));
     await Promise.resolve();
-    releases[0]({ ...result('Evicted'), nextCursor: { status: 'watching', after: 'next' } });
+    releases[0]({
+      ...result('Evicted'),
+      nextCursor: { month: '2026-01', offset: 20, version: 'saved' },
+    });
     for (const resolve of releases.slice(1)) resolve(result('Retained'));
     await Promise.all(pending);
     expect(fetch).toHaveBeenCalledTimes(13);
@@ -49,7 +52,7 @@ describe('shared calendar schedules', () => {
       .fn()
       .mockResolvedValueOnce({
         ...result('First'),
-        nextCursor: { status: 'watching', after: 'last' },
+        nextCursor: { month: '2026-09', offset: 20, version: 'saved' },
       })
       .mockRejectedValueOnce(new Error('offline again'));
     await cache.load('2026-09', 'CA', fetch, true);
@@ -133,7 +136,10 @@ describe('shared calendar schedules', () => {
     await Promise.resolve();
     cache.setLibraryRevision(1);
     await cache.load('2026-09', 'US', async () => result('Current library'));
-    finish({ ...result('Removed title'), nextCursor: { status: 'watching', after: 'more' } });
+    finish({
+      ...result('Removed title'),
+      nextCursor: { month: '2026-09', offset: 20, version: 'saved' },
+    });
     await old;
     expect(oldFetch).toHaveBeenCalledTimes(1);
     expect(cache.get('2026-09', 'US')).toMatchObject({
@@ -335,10 +341,13 @@ describe('shared calendar schedules', () => {
         failedTitles: { count: 0, names: [] },
         needsRefresh: true,
       })
-      .mockResolvedValueOnce({ ...result('First'), nextCursor: { status: 'watching', after: '2' } })
+      .mockResolvedValueOnce({
+        ...result('First'),
+        nextCursor: { month: '2026-09', offset: 20, version: 'saved' },
+      })
       .mockResolvedValueOnce({
         ...result('Second'),
-        nextCursor: { status: 'watching', after: '3' },
+        nextCursor: { month: '2026-09', offset: 40, version: 'saved' },
       })
       .mockImplementationOnce(
         () =>
@@ -456,7 +465,10 @@ describe('shared calendar schedules', () => {
     const cache = new CalendarCache();
     const fetch = vi
       .fn()
-      .mockResolvedValueOnce({ ...result(), nextCursor: { status: 'watching', after: 'page2' } })
+      .mockResolvedValueOnce({
+        ...result(),
+        nextCursor: { month: '2026-09', offset: 20, version: 'saved' },
+      })
       .mockRejectedValueOnce(new Error('Connection lost'));
     await cache.load('2026-09', 'US', fetch);
     expect(cache.get('2026-09', 'US')).toMatchObject({
