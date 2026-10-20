@@ -34,7 +34,10 @@ export function WatchHeatmap({ days, today }: { days: WatchActivityDay[]; today:
     () => buildActivityHeatmap(days, today, weekCount),
     [days, today, weekCount],
   );
-  const selected = heatmap.weeks.flat().find((day) => day?.date === selectedDate);
+  const cells = heatmap.weeks.flat().filter((day) => day !== null);
+  const selected = cells.find((day) => day.date === selectedDate);
+  const accessibleIndex = selected ? cells.indexOf(selected) : cells.length - 1;
+  const accessibleDay = cells[accessibleIndex]!;
   const select = (event: GestureResponderEvent) => {
     const { locationX, locationY } = event.nativeEvent;
     const week = Math.floor(locationX / (cell + GAP));
@@ -44,7 +47,7 @@ export function WatchHeatmap({ days, today }: { days: WatchActivityDay[]; today:
   };
   const caption = selected
     ? `${episodesLabel(selected.episodes)} · ${formatActivityDate(selected.date)}`
-    : `${episodesLabel(heatmap.total)} in the last ${weekCount} weeks`;
+    : `${episodesLabel(heatmap.total)} in the last ${weekCount} ${weekCount === 1 ? 'week' : 'weeks'}`;
   return (
     <View style={s.root}>
       <Text style={s.section}>Watch Activity</Text>
@@ -68,8 +71,24 @@ export function WatchHeatmap({ days, today }: { days: WatchActivityDay[]; today:
               ))}
             </View>
             <Pressable
-              accessibilityRole="image"
-              accessibilityLabel={`Watch activity: ${caption}`}
+              accessibilityRole="adjustable"
+              accessibilityLabel="Daily watch activity"
+              accessibilityHint="Adjust to read the previous or next day."
+              accessibilityValue={{
+                min: 1,
+                max: cells.length,
+                now: accessibleIndex + 1,
+                text: `${episodesLabel(accessibleDay.episodes)} on ${formatActivityDate(accessibleDay.date)}`,
+              }}
+              accessibilityActions={[
+                { name: 'increment', label: 'Next day' },
+                { name: 'decrement', label: 'Previous day' },
+              ]}
+              onAccessibilityAction={({ nativeEvent: { actionName } }) => {
+                if (actionName !== 'increment' && actionName !== 'decrement') return;
+                const next = accessibleIndex + (actionName === 'increment' ? 1 : -1);
+                setSelectedDate(cells[Math.max(0, Math.min(cells.length - 1, next))]!.date);
+              }}
               onPress={select}
               style={s.grid}
             >
@@ -94,10 +113,12 @@ export function WatchHeatmap({ days, today }: { days: WatchActivityDay[]; today:
         )}
       </View>
       <View style={s.footer}>
-        <Text style={s.caption} numberOfLines={1}>
-          {caption}
-        </Text>
-        <View style={s.legend}>
+        <Text style={s.caption}>{caption}</Text>
+        <View
+          style={s.legend}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
           <Text style={s.legendText}>Less</Text>
           {LEVEL_COLORS.map((color) => (
             <View key={color} style={[s.legendCell, { backgroundColor: color }]} />
@@ -121,11 +142,12 @@ const s = createAppStyles(
     selected: { borderWidth: 1, borderColor: colors.muted },
     footer: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 12,
     },
-    caption: { flex: 1, color: colors.muted, fontSize: 11 },
+    caption: { flexGrow: 1, flexShrink: 1, flexBasis: 180, color: colors.muted, fontSize: 11 },
     legend: { flexDirection: 'row', alignItems: 'center', gap: 3 },
     legendText: { color: colors.muted, fontSize: 9, marginHorizontal: 2 },
     legendCell: { width: 9, height: 9, borderRadius: 2 },

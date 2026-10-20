@@ -58,6 +58,39 @@ describe('watch activity summary', () => {
     expect(formatActivityDate('2026-10-03')).toBe('Oct 3, 2026');
   });
 
+  it('counts leap days and DST boundaries as consecutive calendar days without mutating input', () => {
+    const leapDays = [
+      { date: '2024-03-01', episodes: 3 },
+      { date: '2024-02-28', episodes: 1 },
+      { date: '2024-02-29', episodes: 2 },
+    ];
+    const original = structuredClone(leapDays);
+    expect(summarizeWatchActivity(leapDays, '2024-03-01')).toMatchObject({
+      currentStreak: 3,
+      longestStreak: 3,
+      dailyAverage: 2,
+      thisWeek: 6,
+    });
+    expect(leapDays).toEqual(original);
+    for (const dates of [
+      ['2026-03-07', '2026-03-08', '2026-03-09'],
+      ['2026-10-31', '2026-11-01', '2026-11-02'],
+    ]) {
+      expect(
+        summarizeWatchActivity(
+          dates.map((date) => ({ date, episodes: 1 })),
+          dates[2]!,
+        ),
+      ).toMatchObject({
+        currentStreak: 3,
+        longestStreak: 3,
+        dailyAverage: 1,
+        thisWeek: 2,
+        lastWeek: 1,
+      });
+    }
+  });
+
   it('ignores days ahead of the viewer calendar, including in streaks and averages', () => {
     const days = [
       { date: '2026-10-09', episodes: 2 },

@@ -181,6 +181,8 @@ describe('watch activity', () => {
     expect((await viewer.query(api.profiles.publicProfile, profile))?.stats?.watchActivity).toEqual(
       watchActivity,
     );
+    await viewer.mutation(api.profiles.unfollow, profile);
+    expect((await viewer.query(api.profiles.publicProfile, profile))?.stats).toBeUndefined();
   });
 
   it('removes deleted episodes from activity while keeping other titles and users intact', async () => {

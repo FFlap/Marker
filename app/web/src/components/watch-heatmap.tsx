@@ -1,4 +1,10 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import {
   buildActivityHeatmap,
   formatActivityDate,
@@ -30,6 +36,7 @@ export function WatchHeatmap({
 }) {
   const container = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  const [selectedDate, setSelectedDate] = useState<string>();
   useLayoutEffect(() => {
     const node = container.current;
     if (!node) return () => undefined;
@@ -47,6 +54,41 @@ export function WatchHeatmap({
     () => buildActivityHeatmap(days, today, weekCount),
     [days, today, weekCount],
   );
+  const cells = heatmap.weeks.flat().filter((day) => day !== null);
+  const selected = cells.find((day) => day.date === selectedDate);
+  const caption = selected
+    ? `${episodesLabel(selected.episodes)} · ${formatActivityDate(selected.date)}`
+    : `${episodesLabel(heatmap.total)} in the last ${weekCount} ${weekCount === 1 ? "week" : "weeks"}`;
+  const navigate = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next: number;
+    switch (event.key) {
+      case "ArrowUp":
+        next = index - 1;
+        break;
+      case "ArrowDown":
+        next = index + 1;
+        break;
+      case "ArrowLeft":
+        next = index - 7;
+        break;
+      case "ArrowRight":
+        next = index + 7;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = cells.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const date = cells[Math.max(0, Math.min(cells.length - 1, next))]!.date;
+    container.current
+      ?.querySelector<HTMLButtonElement>(`[data-date="${date}"]`)
+      ?.focus();
+  };
 
   return (
     <figure className="border-b border-border pb-6">
@@ -74,38 +116,43 @@ export function WatchHeatmap({
                 </span>
               ))}
             </div>
-            <div
-              className="grid grid-flow-col"
+            <fieldset
+              className="grid min-w-0 grid-flow-col"
               style={{
                 gridTemplateRows: "repeat(7, auto)",
                 gridTemplateColumns: `repeat(${weekCount}, minmax(0, 1fr))`,
                 gap: GAP,
               }}
             >
-              {/* Only days after today are empty, and they always trail the grid. */}
-              {heatmap.weeks
-                .flat()
-                .map(
-                  (day) =>
-                    day && (
-                      <span
-                        key={day.date}
-                        title={`${episodesLabel(day.episodes)} on ${formatActivityDate(day.date)}`}
-                        className={cn(
-                          "aspect-square rounded-[3px]",
-                          LEVEL_CLASSES[day.level],
-                        )}
-                      />
-                    ),
-                )}
-            </div>
+              <legend className="sr-only">
+                Daily watch activity. Use arrow keys to navigate days and weeks.
+              </legend>
+              {/* One tab stop; arrow keys navigate days and weeks. Future days trail the grid. */}
+              {cells.map((day, index) => (
+                <button
+                  key={day.date}
+                  type="button"
+                  data-date={day.date}
+                  tabIndex={day.date === (selected?.date ?? today) ? 0 : -1}
+                  aria-label={`${episodesLabel(day.episodes)} on ${formatActivityDate(day.date)}`}
+                  title={`${episodesLabel(day.episodes)} on ${formatActivityDate(day.date)}`}
+                  onFocus={() => setSelectedDate(day.date)}
+                  onClick={() => setSelectedDate(day.date)}
+                  onKeyDown={(event) => navigate(event, index)}
+                  className={cn(
+                    "aspect-square min-w-0 rounded-[3px] p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-foreground",
+                    selected?.date === day.date &&
+                      "ring-1 ring-muted-foreground",
+                    LEVEL_CLASSES[day.level],
+                  )}
+                />
+              ))}
+            </fieldset>
           </>
         )}
       </div>
-      <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-        <figcaption className="truncate tabular-nums">
-          {episodesLabel(heatmap.total)} in the last {weekCount} weeks
-        </figcaption>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-muted-foreground">
+        <figcaption className="tabular-nums">{caption}</figcaption>
         <span aria-hidden className="flex shrink-0 items-center gap-[3px]">
           <span className="mr-1">Less</span>
           {LEVEL_CLASSES.map((level) => (
