@@ -1,7 +1,9 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalAction } from './_generated/server';
+import { internalAction, type ActionCtx } from './_generated/server';
 import { providerFetch } from './providerHttp';
+import { animeEpisodeValidator, animeGuideValidator } from './providerValidators';
+import { findSeries } from './tvdbSeriesLookup';
 import { isAnime } from './mergePolicy';
 import { releasedEpisodes } from './episodeAvailability';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
@@ -20,12 +22,9 @@ import {
   seasonDisplayName,
   seasonTranslationLimit,
   selectSeasonOrder,
-  selectSeriesMatch,
-  seriesId,
   text,
   validateOrder,
   validOrders,
-  verifiedTmdbRemoteSeries,
   type AnimeDetails,
   type AnimeEpisode,
   type AnimeResolution,
@@ -63,7 +62,9 @@ const SEASON_COUNT_DEADLINE_MS = 20_000;
 
 let credentials: { token: string; expiresAt: number } | undefined;
 
-async function login(ctx: { runMutation: Function }) {
+class TvdbNotFoundError extends Error {}
+
+async function login(ctx: Pick<ActionCtx, 'runMutation'>) {
   const apikey = process.env.TVDB_API_KEY;
   if (!apikey) throw new Error('TVDB_API_KEY is not configured');
   if (credentials && credentials.expiresAt > Date.now() + 60_000) return credentials.token;
@@ -92,7 +93,7 @@ async function login(ctx: { runMutation: Function }) {
 }
 
 async function request(
-  ctx: { runMutation: Function },
+  ctx: Pick<ActionCtx, 'runMutation'>,
   path: string,
   emptyOnNotFound = false,
   retryAuth = true,
@@ -116,12 +117,13 @@ async function request(
     return request(ctx, path, emptyOnNotFound, false);
   }
   if (response.status === 404 && emptyOnNotFound) return {};
+  if (response.status === 404) throw new TvdbNotFoundError('TVDB record not found');
   if (!response.ok) throw new Error(`TVDB request failed (${response.status})`);
   return record(await response.json());
 }
 
 async function fetchEpisodes(
-  ctx: { runMutation: Function },
+  ctx: Pick<ActionCtx, 'runMutation'>,
   tvdbId: number,
   order: SeasonOrder,
   season?: number,
@@ -137,7 +139,6 @@ async function fetchEpisodes(
     const payload = await request(
       ctx,
       `/series/${tvdbId}/episodes/${order}/eng?${query.toString()}`,
-      true,
     );
     const rawEpisodes = records(record(payload.data).episodes);
     const mapped = rawEpisodes.flatMap((entry) => {
@@ -159,37 +160,8 @@ async function fetchEpisodes(
   return episodesForSeason(episodes, season);
 }
 
-async function findSeries(ctx: { runMutation: Function }, tmdbId: number, titles: string[]) {
-  try {
-    const remote = await request(
-      ctx,
-      `/search/remoteid/${encodeURIComponent(String(tmdbId))}`,
-      true,
-    );
-    const remoteResults = records(remote.data);
-    const remoteId = remoteResults
-      .map((entry) => verifiedTmdbRemoteSeries(entry, titles))
-      .find((id) => id !== undefined);
-    if (remoteId) return remoteId;
-  } catch {
-    // Some numeric remote IDs are ambiguous across providers; title search verifies the fallback.
-  }
-
-  for (const title of titles) {
-    const search = await request(
-      ctx,
-      `/search?query=${encodeURIComponent(title)}&type=series&limit=20`,
-      true,
-    );
-    const exact = selectSeriesMatch(records(search.data), tmdbId, titles);
-    const id = seriesId(exact ?? {});
-    if (id) return id;
-  }
-  return undefined;
-}
-
 async function translatedSeasonName(
-  ctx: { runMutation: Function },
+  ctx: Pick<ActionCtx, 'runMutation'>,
   season: SeasonRecord,
   titles: string[],
 ) {
@@ -212,7 +184,7 @@ async function translatedSeasonName(
 }
 
 async function translateSeasonNames(
-  ctx: { runMutation: Function },
+  ctx: Pick<ActionCtx, 'runMutation'>,
   seasons: SeasonRecord[],
   titles: string[],
 ) {
@@ -246,21 +218,34 @@ async function translateSeasonNames(
 }
 
 async function resolveAnime(
-  ctx: { runMutation: Function },
+  ctx: Pick<ActionCtx, 'runMutation'>,
   tmdbId: number,
   titles: string[],
   pinned?: { tvdbId?: number; order?: SeasonOrder },
   requestedSeason?: number,
 ): Promise<AnimeResolution | null> {
-  const tvdbId = pinned?.tvdbId ?? (await findSeries(ctx, tmdbId, titles));
+  const lookup = (excluded: Set<number> = new Set()) =>
+    findSeries((path) => request(ctx, path, true), tmdbId, titles, excluded);
+  let tvdbId = pinned?.tvdbId ?? (await lookup());
   if (!tvdbId) return null;
-  const payload = await request(ctx, `/series/${tvdbId}/extended?meta=translations`);
+  let payload: Json;
+  try {
+    payload = await request(ctx, `/series/${tvdbId}/extended?meta=translations`);
+  } catch (error) {
+    // An order denotes a manual pin. Only automatic mappings may move.
+    if (!(error instanceof TvdbNotFoundError) || pinned?.order) throw error;
+    const replacement = await lookup(new Set([tvdbId]));
+    if (!replacement) throw new Error('No unambiguous replacement TVDB series found');
+    tvdbId = replacement;
+    payload = await request(ctx, `/series/${tvdbId}/extended?meta=translations`);
+  }
   const data = record(payload.data);
   const genreNames = records(data.genres).flatMap((genre) => {
     const name = text(genre.name);
     return name ? [name] : [];
   });
-  if (!isAnime(genreNames)) return null;
+  // A previously matched anime can lose its Anime tag when TVDB recreates it.
+  if (!isAnime(genreNames) && !(pinned?.tvdbId && genreNames.includes('Animation'))) return null;
   const seasonRecords = records(data.seasons).flatMap((entry) => {
     const season = mapSeason(entry);
     return season ? [season] : [];
@@ -312,7 +297,7 @@ async function resolveAnime(
 }
 
 /** Count available episodes, not announced totals, before exposing seasons in the picker. */
-async function resolveSeasonCounts(ctx: { runMutation: Function }, seasons: SeasonRecord[]) {
+async function resolveSeasonCounts(ctx: Pick<ActionCtx, 'runMutation'>, seasons: SeasonRecord[]) {
   const counts = new Map<number, number>();
   const candidates = seasons.slice(0, MAX_SEASON_COUNT_REQUESTS);
   const deadline = Date.now() + SEASON_COUNT_DEADLINE_MS;
@@ -343,10 +328,7 @@ async function resolveSeasonCounts(ctx: { runMutation: Function }, seasons: Seas
   return counts;
 }
 
-type SnapshotActionCtx = {
-  runQuery: Function;
-  runMutation: Function;
-};
+type SnapshotActionCtx = Pick<ActionCtx, 'runQuery' | 'runMutation'>;
 type StoredSnapshot = { value: unknown; refreshedAt: number } | null;
 const guideSnapshotFresh = (refreshedAt: number, guide: AnimeDetails) =>
   refreshedAt >
@@ -385,7 +367,7 @@ async function refreshAnimeSnapshot(
         value: resolution.details,
         metricKey: 'tvdb-guide',
       }),
-      ...(!pinned
+      ...(!pinned?.order
         ? [
             putNonFatal(ctx, {
               key: guideLookupKey(tmdbId),
@@ -431,7 +413,7 @@ async function animeSnapshot(
       )
         return value;
     }
-  } else if (!pinned) {
+  } else if (!pinned?.order) {
     const lookup: StoredSnapshot = await ctx.runQuery(internal.providerSnapshots.get, {
       key: guideLookupKey(tmdbId),
     });
@@ -445,6 +427,7 @@ async function animeSnapshot(
       lookup &&
       lookup.refreshedAt > Date.now() - GUIDE_SNAPSHOT_MS &&
       typeof identity?.tvdbId === 'number' &&
+      (pinned?.tvdbId === undefined || pinned.tvdbId === identity.tvdbId) &&
       typeof identity.order === 'string' &&
       validOrders.has(identity.order as SeasonOrder) &&
       cachedNames.some((value) => currentNames.has(value))
@@ -513,6 +496,7 @@ export const refreshAnime = internalAction({
     force: v.optional(v.boolean()),
     requestedSeason: v.optional(v.number()),
   },
+  returns: v.union(v.null(), animeGuideValidator),
   handler: async (ctx, args): Promise<AnimeDetails | null> =>
     args.force
       ? refreshAnimeSnapshot(
@@ -541,10 +525,14 @@ export const refreshAnimeWithMapping = internalAction({
     force: v.optional(v.boolean()),
     requestedSeason: v.optional(v.number()),
   },
+  returns: v.union(v.null(), animeGuideValidator),
   handler: async (ctx, args): Promise<AnimeDetails | null> => {
     const pinned =
-      args.tvdbId !== undefined && args.order !== undefined
-        ? { tvdbId: args.tvdbId, order: validateOrder(args.order) }
+      args.tvdbId !== undefined
+        ? {
+            tvdbId: args.tvdbId,
+            ...(args.order !== undefined && { order: validateOrder(args.order) }),
+          }
         : undefined;
     return args.force
       ? refreshAnimeSnapshot(
@@ -571,6 +559,7 @@ export const refreshSeason = internalAction({
     season: v.number(),
     force: v.optional(v.boolean()),
   },
+  returns: v.array(animeEpisodeValidator),
   handler: async (ctx, args): Promise<AnimeEpisode[]> =>
     args.force
       ? refreshSeasonSnapshot(ctx, args.tvdbId, validateOrder(args.order), args.season)

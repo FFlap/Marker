@@ -9,7 +9,7 @@ import {
 const castMember = castMemberValidator;
 const season = resolvedSeasonValidator;
 const episode = resolvedEpisodeValidator;
-const animeEpisode = v.object({ id: v.number(), ...episode.fields });
+export const animeEpisodeValidator = v.object({ id: v.number(), ...episode.fields });
 export const providerSearchResultsValidator = v.array(
   v.object({
     id: v.number(),
@@ -48,7 +48,7 @@ const tv = v.object({
   seasons: v.array(season),
   cast: v.array(castMember),
 });
-const animeGuide = v.object({
+export const animeGuideValidator = v.object({
   tvdbId: v.number(),
   title: v.string(),
   firstAirDate: v.optional(v.string()),
@@ -57,7 +57,7 @@ const animeGuide = v.object({
   order: v.string(),
   seasons: v.array(season),
   selectedSeason: v.optional(v.number()),
-  selectedEpisodes: v.optional(v.array(animeEpisode)),
+  selectedEpisodes: v.optional(v.array(animeEpisodeValidator)),
 });
 const lookup = v.object({
   tvdbId: v.number(),
@@ -84,9 +84,9 @@ export const providerSnapshotEntryValidator = v.union(
   v.object({ kind: v.literal('tmdbTv'), value: tv }),
   v.object({
     kind: v.literal('episodes'),
-    value: v.union(v.array(episode), v.array(animeEpisode)),
+    value: v.union(v.array(episode), v.array(animeEpisodeValidator)),
   }),
-  v.object({ kind: v.literal('tvdbGuide'), value: v.union(v.null(), animeGuide) }),
+  v.object({ kind: v.literal('tvdbGuide'), value: v.union(v.null(), animeGuideValidator) }),
   v.object({ kind: v.literal('tvdbLookup'), value: lookup }),
   v.object({ kind: v.literal('calendarMovie'), value: calendarMovie }),
   v.object({ kind: v.literal('calendarTv'), value: v.union(v.null(), calendarTv) }),

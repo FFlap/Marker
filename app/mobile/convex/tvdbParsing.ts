@@ -184,8 +184,11 @@ export function selectSeriesMatch(entries: Json[], tmdbId: number, titles: strin
     .sort((left, right) => right.score - left.score);
   if (
     !ranked.length ||
-    (ranked[1]?.score === ranked[0].score &&
-      seriesId(ranked[1].entry) !== seriesId(ranked[0].entry))
+    ranked.some(
+      (candidate) =>
+        candidate.score === ranked[0].score &&
+        seriesId(candidate.entry) !== seriesId(ranked[0].entry),
+    )
   )
     return undefined;
   return ranked[0].entry;
