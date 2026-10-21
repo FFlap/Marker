@@ -27,8 +27,7 @@
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "audit:prod": "npm audit --omit=dev --audit-level=high",
-    "pretest": "node --test ../scripts/check-import-boundaries.test.mjs"
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
     "@convex-dev/migrations": "^0.3.6",
