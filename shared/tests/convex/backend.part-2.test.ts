@@ -2,7 +2,7 @@ import { putSeason } from './metadata-fixtures';
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import schema from '../../convex/schema';
-import { api, internal } from '../../convex/_generated/api';
+import { api } from '../../convex/_generated/api';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 async function setup() {

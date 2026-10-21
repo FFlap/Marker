@@ -3,7 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useMutation, useQuery } from 'convex/react';
 import { Check, EllipsisVertical, Star } from 'lucide-react-native';
-import { api } from '../../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { EpisodePageSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
 import type { FunctionReturnType } from 'convex/server';

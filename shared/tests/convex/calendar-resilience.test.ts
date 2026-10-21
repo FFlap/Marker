@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from '../../convex/_generated/api';
 import schema from '../../convex/schema';
-import { loadCalendarPages } from '../../../shared/calendar';
+import { loadCalendarPages } from '../../lib/calendar';
 import * as providerRateLimits from '../../convex/providerRateLimits';
 
 const modules = import.meta.glob('../../convex/**/*.ts');

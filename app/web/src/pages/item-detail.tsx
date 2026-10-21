@@ -12,8 +12,8 @@ import {
   useMutation,
   useQuery,
 } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
+import { api } from "@marker/shared/api";
+import type { Id } from "@marker/shared/dataModel";
 import { EpisodeDialog } from "@/components/episode-dialog";
 import {
   LibraryEntryControls,

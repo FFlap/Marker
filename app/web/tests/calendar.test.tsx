@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CalendarFetch } from "../../shared/calendar";
+import type { CalendarFetch } from "@marker/shared/calendar";
 
 const upcoming = vi.fn<CalendarFetch>();
 let libraryRevision: number | undefined = 0;

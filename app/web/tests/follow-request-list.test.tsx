@@ -14,7 +14,7 @@ vi.mock("convex/react", () => ({
   useQuery: () => mocks.requests,
 }));
 
-vi.mock("../../mobile/convex/_generated/api", () => ({
+vi.mock("@marker/shared/api", () => ({
   api: {
     profiles: {
       followRequests: "profiles.followRequests",

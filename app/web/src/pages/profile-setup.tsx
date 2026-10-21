@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Camera, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { safeInternalPath } from "@/lib/utils";

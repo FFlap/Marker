@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { usePaginatedQuery, useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import type { SeasonPage, TitleDetail } from "@/lib/catalog";
 
 export function useSeasonGuide({ mediaType, tmdbId, title, refreshError = false }: {

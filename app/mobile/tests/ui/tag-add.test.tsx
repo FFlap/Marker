@@ -51,7 +51,7 @@ jest.mock('convex/react', () => ({
   useQuery: () => mockItems,
   useMutation: () => mockAddTagToItems,
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     library: {
       items: {

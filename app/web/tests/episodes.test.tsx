@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { FunctionReturnType } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { api } from "../../mobile/convex/_generated/api";
-import type { Id } from "../../mobile/convex/_generated/dataModel";
+import type { api } from "@marker/shared/api";
+import type { Id } from "@marker/shared/dataModel";
 
 type Overview = FunctionReturnType<typeof api.episodeHub.overview>;
 const mocks = vi.hoisted(() => ({

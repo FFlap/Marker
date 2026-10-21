@@ -4,7 +4,7 @@ import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { Check, Clock3, Eye, Star, X } from 'lucide-react-native';
 import { Image } from 'expo-image';
-import { api } from '../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { EmptyState } from '@/components/ui/primitives';

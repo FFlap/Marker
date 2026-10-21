@@ -12,8 +12,8 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { Pencil } from 'lucide-react-native';
-import { api } from '@convex/_generated/api';
-import type { Id } from '@convex/_generated/dataModel';
+import { api } from '@marker/shared/api';
+import type { Id } from '@marker/shared/dataModel';
 import { Button, EmptyState } from '@/components/ui/primitives';
 import { TagList } from '@/components/ui/TagList';
 import { PosterImage } from '@/components/ui/PosterImage';

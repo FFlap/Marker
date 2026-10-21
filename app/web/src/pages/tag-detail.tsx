@@ -7,7 +7,7 @@ import {
 import { Link, useParams } from "@tanstack/react-router";
 import { EllipsisVertical, Globe2, LockKeyhole, Plus } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { FilterDialog } from "@/components/filter-dialog";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import {

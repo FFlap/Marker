@@ -1,5 +1,5 @@
 import type { FunctionReturnType } from "convex/server";
-import type { api } from "../../../mobile/convex/_generated/api";
+import type { api } from "@marker/shared/api";
 
 type SearchResponse = FunctionReturnType<typeof api.tmdb.searchMulti>[number];
 export type SearchResult = Pick<SearchResponse, "id" | "title" | "mediaType"> &

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Id } from '@convex/_generated/dataModel';
+import type { Id } from '@marker/shared/dataModel';
 import {
   LIBRARY_STATUSES,
   matchesMediaType,

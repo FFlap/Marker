@@ -9,7 +9,7 @@ import {
   formatActivityDate,
   summarizeWatchActivity,
   type WatchActivityDay,
-} from '../../convex/watchActivityStats';
+} from '@marker/shared/watchActivityStats';
 
 export type ProfileStatsValue = {
   totalWatchMinutes: number;

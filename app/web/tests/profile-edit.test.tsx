@@ -14,7 +14,7 @@ vi.mock("convex/react", () => ({
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
 }));
-vi.mock("../../mobile/convex/_generated/api", () => ({
+vi.mock("@marker/shared/api", () => ({
   api: { profiles: { me: "me", save: "save" } },
 }));
 vi.mock("@/hooks/use-avatar-upload", () => ({

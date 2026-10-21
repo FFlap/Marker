@@ -1,7 +1,7 @@
 import { Bell, Clock3, Eye, Star } from "lucide-react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { FollowRequestList } from "@/components/follow-request-list";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { posterUrl } from "@/lib/utils";

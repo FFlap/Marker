@@ -12,7 +12,7 @@ vi.mock("convex/react", () => ({
   useMutation: () => mocks.save,
   useQuery: () => [],
 }));
-vi.mock("../../mobile/convex/_generated/api", () => ({
+vi.mock("@marker/shared/api", () => ({
   api: {
     library: {
       episodes: { setEpisodeState: "save" },

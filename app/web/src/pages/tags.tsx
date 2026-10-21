@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Tags as TagsIcon } from "lucide-react";
 import { usePaginatedQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { SearchField } from "@/components/ui/search-field";
 import { Button } from "@/components/ui/button";
 import { Page, PageHeader } from "@/components/page";

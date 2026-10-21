@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
 import { EPISODES_PER_CHUNK } from '../../convex/seasonStorage';
-import { activityDateFromDayNumber, activityDayNumber } from '../../convex/watchActivityStats';
+import { activityDateFromDayNumber, activityDayNumber } from '../../lib/watchActivityStats';
 import { putSeason } from './metadata-fixtures';
 
 const modules = import.meta.glob('../../convex/**/*.ts');

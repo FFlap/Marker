@@ -4,7 +4,7 @@ import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import { ChevronRight, Plus, Search, Tags as TagsIcon } from 'lucide-react-native';
-import { api } from '../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SearchResultsSkeleton } from '@/components/PageSkeletons';
 import { ProfileAvatar } from '@/components/ProfileAvatar';

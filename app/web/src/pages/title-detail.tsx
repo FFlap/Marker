@@ -5,7 +5,7 @@ import {
   useMutation,
   useQuery as useConvexQuery,
 } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { AddTitleDialog } from "@/components/title-dialog";
 import { titleRuntime, type SearchResult } from "@/lib/catalog";
 import { useSeasonGuide } from "@/hooks/use-season-guide";

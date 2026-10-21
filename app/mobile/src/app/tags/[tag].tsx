@@ -14,7 +14,7 @@ import {
   NestableDraggableFlatList,
   NestableScrollContainer,
 } from 'react-native-draggable-flatlist';
-import { api } from '@convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { PinchDensity } from '@/components/PinchDensity';
 import { useGridColumns } from '@/hooks/use-grid-columns';
 import { EmptyState } from '@/components/ui/primitives';

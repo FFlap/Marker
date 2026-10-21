@@ -1,0 +1,51 @@
+{
+  "name": "@marker/shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./api": {
+      "types": "./convex/_generated/api.d.ts",
+      "default": "./convex/_generated/api.js"
+    },
+    "./dataModel": {
+      "types": "./convex/_generated/dataModel.d.ts"
+    },
+    "./watchActivityStats": "./lib/watchActivityStats.ts",
+    "./calendar": "./lib/calendar.ts",
+    "./calendarCache": "./lib/calendarCache.ts"
+  },
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy",
+    "codegen": "convex codegen",
+    "check": "npm run architecture:check && npm run lint && npm run typecheck && npm run format:check && npm test",
+    "architecture:check": "node ../scripts/check-file-size.mjs",
+    "lint": "node ../scripts/check-import-boundaries.mjs && eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "pretest": "node --test ../scripts/check-import-boundaries.test.mjs"
+  },
+  "dependencies": {
+    "@convex-dev/migrations": "^0.3.6",
+    "convex": "1.42.1",
+    "convex-helpers": "0.1.118"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "@eslint/js": "9.39.5",
+    "@types/node": "^26.1.1",
+    "@typescript-eslint/eslint-plugin": "8.64.0",
+    "@typescript-eslint/parser": "8.64.0",
+    "convex-test": "^0.0.54",
+    "eslint": "^9.39.5",
+    "globals": "^14.0.0",
+    "prettier": "^3.9.5",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

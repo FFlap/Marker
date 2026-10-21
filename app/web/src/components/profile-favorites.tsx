@@ -2,8 +2,8 @@ import { useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
+import { api } from "@marker/shared/api";
+import type { Id } from "@marker/shared/dataModel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {

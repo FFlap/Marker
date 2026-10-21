@@ -458,7 +458,7 @@ describe('Marker backend', () => {
   it('upserts episodes idempotently and computes exact stats', async () => {
     vi.useFakeTimers();
     const { t, asUser } = await setup();
-    const movie = await asUser.mutation(
+    await asUser.mutation(
       api.library.items.addItem,
       add('Avengers: Endgame', 299534, 'movie', {
         status: 'watched',

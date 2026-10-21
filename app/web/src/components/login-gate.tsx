@@ -1,6 +1,6 @@
 import { Navigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { safeInternalPath } from "@/lib/utils";
 import { LoginPage } from "@/pages/login";
 import { useMarkerAccount } from "@/hooks/use-marker-account";

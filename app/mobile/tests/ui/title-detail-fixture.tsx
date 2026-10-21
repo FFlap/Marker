@@ -65,7 +65,7 @@ jest.mock('convex/react', () => ({
   useMutation: (ref: string) => (ref === 'touchTitle' ? mockTouchTitle : mockAddItem),
   useAction: () => mockAddItemAndMarkWatched,
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     library: {
       items: {

@@ -138,9 +138,7 @@ describe('public API authorization', () => {
     'prevents a second user from using library.%s on another user’s item',
     async (operation) => {
       const t = convexTest(schema, modules);
-      const ownerId = await t.run((ctx) =>
-        ctx.db.insert('users', { clerkId: 'user_authorization_owner' }),
-      );
+      await t.run((ctx) => ctx.db.insert('users', { clerkId: 'user_authorization_owner' }));
       await t.run((ctx) => ctx.db.insert('users', { clerkId: 'user_authorization_other' }));
       const owner = t.withIdentity({ subject: 'user_authorization_owner' });
       const other = t.withIdentity({ subject: 'user_authorization_other' });

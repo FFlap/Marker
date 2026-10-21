@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
-import type { Id } from "../../../mobile/convex/_generated/dataModel";
+import { api } from "@marker/shared/api";
+import type { Id } from "@marker/shared/dataModel";
 import { RatingControl, TagEditor } from "@/components/library-entry-controls";
 import { Button } from "@/components/ui/button";
 import {

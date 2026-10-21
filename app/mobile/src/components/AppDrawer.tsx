@@ -13,7 +13,7 @@ import { router, type Href } from 'expo-router';
 import { Bell, CalendarDays, Compass, Settings } from 'lucide-react-native';
 import { useQuery } from 'convex/react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api } from '../../convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';

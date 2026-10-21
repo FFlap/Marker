@@ -13,7 +13,7 @@ jest.mock('convex/react', () => ({
   useMutation: (ref: string) => (ref === 'touchTitle' ? mockTouchTitle : mockAddItem),
   useQuery: (ref: string) => (ref === 'getTitle' ? mockResolvedTitle : []),
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     tmdb: { searchMulti: 'search' },
     resolvedMetadata: {

@@ -44,7 +44,7 @@ jest.mock('convex/react', () => ({
         : [],
   useMutation: () => jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     tags: { publicByUser: 'tags.publicByUser', publicDetails: 'tags.publicDetails' },
     library: { items: { listItems: 'library/items:listItems' } },

@@ -11,7 +11,7 @@ jest.mock('convex/react', () => ({
   useQuery: () => ({ username: 'viewer', isPublic: false }),
   useMutation: (ref: string) => (ref === 'upload' ? async () => '/avatar/upload' : mockSetAvatar),
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: { profiles: { me: 'me', generateAvatarUploadUrl: 'upload', setAvatar: 'setAvatar' } },
 }));
 jest.mock('expo-image-picker', () => ({

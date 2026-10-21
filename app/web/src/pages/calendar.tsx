@@ -9,13 +9,13 @@ import {
 } from "react";
 import { ChevronLeft, ChevronRight, Film, Tv2 } from "lucide-react";
 import { useAction, useQuery } from "convex/react";
-import { api } from "../../../mobile/convex/_generated/api";
+import { api } from "@marker/shared/api";
 import { Page, PageHeader } from "@/components/page";
 import {
   currentCalendarMonth,
   type CalendarEvent,
-} from "../../../shared/calendar";
-import { CalendarCache } from "../../../shared/calendarCache";
+} from "@marker/shared/calendar";
+import { CalendarCache } from "@marker/shared/calendarCache";
 
 function CalendarDay({
   day,

@@ -1,4 +1,5 @@
 {
+  "installCommand": "npm ci --prefix ../../shared && npm ci",
   "rewrites": [
     { "source": "/((?!assets/|fonts/|favicon\\.png).*)", "destination": "/index.html" }
   ],

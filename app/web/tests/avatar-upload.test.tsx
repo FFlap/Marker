@@ -12,7 +12,7 @@ vi.mock("convex/react", () => ({
   useMutation: (ref: string) =>
     ref === "generate" ? mocks.generateUploadUrl : mocks.setAvatar,
 }));
-vi.mock("../../mobile/convex/_generated/api", () => ({
+vi.mock("@marker/shared/api", () => ({
   api: {
     profiles: {
       generateAvatarUploadUrl: "generate",

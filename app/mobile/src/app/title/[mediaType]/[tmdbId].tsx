@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { Plus } from 'lucide-react-native';
-import { api } from '@convex/_generated/api';
+import { api } from '@marker/shared/api';
 import { LibraryEntryDrawer, type LibraryEntryDraft } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SeasonPicker } from '@/components/SeasonPicker';

@@ -41,7 +41,7 @@ jest.mock('convex/react', () => ({
   useMutation: (ref: string) =>
     ref === 'episodeHub.refreshWatching' ? mockRefreshWatching : mockSetEpisode,
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     episodeHub: {
       overview: 'episodeHub.overview',

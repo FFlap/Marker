@@ -15,7 +15,7 @@ jest.mock('convex/react', () => ({
   useMutation: () => jest.fn().mockResolvedValue(undefined),
   useAction: () => mockUpcoming,
 }));
-jest.mock('../../convex/_generated/api', () => ({
+jest.mock('@marker/shared/api', () => ({
   api: {
     profiles: { followRequests: 'followRequests', respondToFollow: 'respondToFollow' },
     notifications: { feed: 'notificationsFeed' },

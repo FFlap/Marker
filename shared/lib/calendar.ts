@@ -1,7 +1,7 @@
 export type CalendarEvent = {
   id: string;
   date: string;
-  kind: "movie" | "episode";
+  kind: 'movie' | 'episode';
   title: string;
   season?: number;
   episode?: number;
@@ -12,7 +12,7 @@ export type CalendarCursor = {
   month: string;
   offset: number;
   version: string;
-  mediaType?: "movie" | "tv";
+  mediaType?: 'movie' | 'tv';
   releaseOffset?: number;
   releaseVersion?: string;
 };
@@ -38,7 +38,7 @@ export type CalendarFetch = (args: {
 
 export const currentCalendarMonth = () => {
   const now = new Date(Date.now());
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
 /** Fetch every date-index page, publishing releases before the whole library finishes. */
@@ -72,7 +72,7 @@ export async function loadCalendarPages(
       // Pending discovery has no replacement data to publish over a saved view.
       const delay = Math.min(Math.max(page.retryAfterMs ?? 1_000, 250), 60_000);
       if (refreshWaitMs + delay > 5 * 60_000)
-        throw new Error("Release dates are still updating. Please retry.");
+        throw new Error('Release dates are still updating. Please retry.');
       refreshWaitMs += delay;
       await new Promise((resolve) => setTimeout(resolve, delay));
       continue;
@@ -81,8 +81,7 @@ export async function loadCalendarPages(
     for (const event of page.events) merged.set(event.id, event);
     result = {
       events: [...merged.values()].sort(
-        (a, b) =>
-          a.date.localeCompare(b.date) || a.title.localeCompare(b.title),
+        (a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title),
       ),
       failedTitles: {
         count: count + page.failedTitles.count,
@@ -99,18 +98,15 @@ export async function loadCalendarPages(
       continue;
     }
     if (page.truncated && !page.nextCursor)
-      throw new Error(
-        "The calendar backend must be updated to load the full library",
-      );
+      throw new Error('The calendar backend must be updated to load the full library');
     retries = 0;
     needsRefresh ||= page.needsRefresh === true;
     for (const event of page.events) events.set(event.id, event);
     count += page.failedTitles.count;
-    for (const name of page.failedTitles.names)
-      if (names.size < 5) names.add(name);
+    for (const name of page.failedTitles.names) if (names.size < 5) names.add(name);
     const next = page.nextCursor ?? undefined;
     if (next && JSON.stringify(next) === JSON.stringify(cursor))
-      throw new Error("Calendar pagination did not advance");
+      throw new Error('Calendar pagination did not advance');
     cursor = next;
     if (!cursor) return result;
   }

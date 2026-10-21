@@ -1,14 +1,8 @@
 import { putSeason, setTitleMapping } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
-import { ConvexError } from 'convex/values';
 import { api, internal } from '../../convex/_generated/api';
 import schema from '../../convex/schema';
-import { isTruncatedSnapshot, putNonFatal } from '../../convex/providerSnapshots';
-import { MAX_METADATA_MUTATION_BYTES, serializedBytes } from '../../convex/seasonStorage';
-import { mapSeasonDetails } from '../../convex/tmdb';
-import { commitWatchWithOneRematch } from '../../convex/sync';
-import { titleWriteForCapturedTitle } from '../../convex/resolvedMetadata/seasonResolution';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 

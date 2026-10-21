@@ -35,7 +35,7 @@ vi.mock("convex/react", () => ({
   },
 }));
 
-vi.mock("../../mobile/convex/_generated/api", () => ({
+vi.mock("@marker/shared/api", () => ({
   api: {
     library: {
       items: { addItem: "library.addItem", listTagSuggestions: "library.listTagSuggestions" },
