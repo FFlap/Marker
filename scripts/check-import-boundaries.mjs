@@ -15,6 +15,34 @@ const inside = (directory, file) =>
   file === directory || file.startsWith(`${directory}${path.sep}`);
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 
+function aliasTargets(specifier, { directory, options }) {
+  const base = options.baseUrl ?? options.pathsBasePath ?? directory;
+  let matches = [];
+  let longestPrefix = -1;
+  for (const [alias, replacements] of Object.entries(options.paths ?? {})) {
+    const wildcard = alias.indexOf('*');
+    if (wildcard === -1) {
+      if (specifier === alias) return replacements.map((value) => path.resolve(base, value));
+      continue;
+    }
+    const prefix = alias.slice(0, wildcard);
+    const suffix = alias.slice(wildcard + 1);
+    if (
+      prefix.length > longestPrefix &&
+      specifier.length >= prefix.length + suffix.length &&
+      specifier.startsWith(prefix) &&
+      specifier.endsWith(suffix)
+    ) {
+      const matched = specifier.slice(prefix.length, specifier.length - suffix.length);
+      matches = replacements.map((value) =>
+        path.resolve(base, value.replace('*', () => matched)),
+      );
+      longestPrefix = prefix.length;
+    }
+  }
+  return matches;
+}
+
 function moduleSpecifiers(source) {
   const imports = [];
   const add = (node) => {
@@ -101,7 +129,10 @@ export function createBoundaryChecker(root = repositoryRoot) {
         ?.resolvedFileName;
     }
 
-    if (target) {
+    // TypeScript only resolves modules, so asset and glob aliases need their
+    // configured paths checked even when no module file can be resolved.
+    const targets = target ? [target] : aliasTargets(specifier, sourceProject);
+    for (const target of targets) {
       const targetProject = owner(target);
       if (sourceIsShared && targetProject && targetProject !== shared) {
         return 'Shared code must not depend on an app.';

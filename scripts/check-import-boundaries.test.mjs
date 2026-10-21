@@ -34,13 +34,18 @@ write(
       paths: {
         '@/*': ['./src/*'],
         '@mobile/*': ['../mobile/src/*'],
+        '@mobile/local-assets/*': ['./src/assets/*'],
+        '@mobile/logo.svg': ['./src/assets/logo.svg'],
         '@backend/*': ['../../shared/convex/*'],
+        '@fallback/*': ['./missing/*', '../mobile/src/*'],
       },
     },
   }),
 );
 write('app/web/src/local.ts', 'export const value = 1;');
 write('app/mobile/src/local.ts', 'export const value = 1;');
+write('app/mobile/src/poster.svg', '<svg />');
+write('app/mobile/src/styles.css', 'body {}');
 write('shared/convex/schema.ts', 'export default {};');
 const check = createBoundaryChecker(root);
 const errors = (file, source) => check(file, source).map((entry) => entry.message);
@@ -121,6 +126,50 @@ test('checks literal glob imports, including exclusions and template literals', 
       `,
     ).length,
     3,
+  );
+});
+
+test('rejects aliased glob imports across package boundaries', () => {
+  const messages = errors(
+    'app/web/src/view.ts',
+    `
+      import.meta.glob('@mobile/**/*.ts');
+      import.meta.glob(['./*.ts', '!@backend/**/*.ts']);
+      import.meta.globEager('@fallback/**/*.ts');
+    `,
+  );
+  assert.equal(messages.length, 3);
+  assert.match(messages[0], /^Apps must not import another app/u);
+  assert.match(messages[1], /^Import shared code through @marker\/shared exports/u);
+  assert.match(messages[2], /^Apps must not import another app/u);
+});
+
+test('rejects aliased asset imports even when TypeScript cannot resolve them', () => {
+  const messages = errors(
+    'app/web/src/view.ts',
+    `
+      import logo from '@mobile/poster.svg';
+      import '@mobile/styles.css';
+      import schema from '@backend/schema?raw';
+    `,
+  );
+  assert.equal(messages.length, 3);
+  assert.match(messages[0], /^Apps must not import another app/u);
+  assert.match(messages[1], /^Apps must not import another app/u);
+  assert.match(messages[2], /^Import shared code through @marker\/shared exports/u);
+});
+
+test('allows local globs and honors the most specific alias', () => {
+  assert.deepEqual(
+    errors(
+      'app/web/src/view.ts',
+      `
+        import.meta.glob('@/assets/*.svg');
+        import.meta.glob('@mobile/local-assets/*.svg');
+        import logo from '@mobile/logo.svg';
+      `,
+    ),
+    [],
   );
 });
 
