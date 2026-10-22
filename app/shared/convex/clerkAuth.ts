@@ -31,7 +31,6 @@ export const userIdForIdentity = internalQuery({
   handler: (ctx, args) => findUserId(ctx, args.subject),
 });
 
-/** Resolves the current Clerk subject to its Marker user document. */
 export async function getClerkUserId(ctx: AuthOnlyCtx): Promise<Id<'users'> | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;

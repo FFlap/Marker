@@ -6,7 +6,6 @@ import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { InlineAction } from './SectionHeader';
 
-/** Season picker with its action on one line, directly under the Episodes heading. */
 export function SeasonHeaderRow({ picker, action }: { picker: ReactNode; action: ReactNode }) {
   return (
     <View style={styles.headerRow}>
@@ -16,7 +15,6 @@ export function SeasonHeaderRow({ picker, action }: { picker: ReactNode; action:
   );
 }
 
-/** Season picker with its watched count, a progress bar, and the whole-season toggle below. */
 export function SeasonProgress({
   picker,
   loading,
@@ -30,7 +28,6 @@ export function SeasonProgress({
   loading: boolean;
   watched: number;
   total: number;
-  /** Whether every episode in the season is watched; decides what the toggle does. */
   complete: boolean;
   disabled: boolean;
   onToggle: () => void;

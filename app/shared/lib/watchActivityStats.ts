@@ -1,5 +1,4 @@
 /**
- * Pure watch-activity math shared by the Convex backend and both clients.
  * Dates are local calendar days in `YYYY-MM-DD` form.
  */
 export type WatchActivityDay = { date: string; episodes: number };

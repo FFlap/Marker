@@ -26,7 +26,6 @@ export function resolveActivityDate(localDate: string | undefined, now = Date.no
   return activityDateFromDayNumber(utcDay);
 }
 
-/** Adds (or removes) logged episodes on one calendar day, dropping empty days. */
 export async function recordWatchActivity(
   ctx: MutationCtx,
   userId: Id<'users'>,

@@ -7,7 +7,6 @@ import { currentSeasonPages } from '@/features/title/seasonPages';
 // season so users can jump to any episode without waiting for another batch.
 export const SEASON_EPISODE_RENDER_BATCH = 120;
 
-/** Subscribes to one bounded season chunk at a time and accumulates loaded pages. */
 export function useSeasonView(args: { tmdbId: number; season: number } | undefined) {
   const season = args?.season;
   const paginated = usePaginatedQuery(api.resolvedMetadata.reads.getSeasonView, args ?? 'skip', {

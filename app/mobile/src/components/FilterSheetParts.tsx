@@ -5,7 +5,6 @@ import { DrawerClose } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 
-/** Toolbar button that opens a filter sheet; a dot marks active filters. */
 export const FilterTrigger = forwardRef<
   View,
   PressableProps & { accessibilityLabel: string; active: boolean }

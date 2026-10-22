@@ -56,7 +56,6 @@ it('preserves a manual watch day through sync, metadata edits, and next-day retr
   for (let retry = 0; retry < 2; retry += 1)
     await user.mutation(api.library.episodes.setEpisodeState, { ...coordinate, watched: false });
   expect((await user.query(api.stats.profile, {})).watchActivity).toEqual([]);
-  // A later sync remains unlogged after the manual contribution has been undone.
   await t.mutation(internal.sync.recordWatchInternal, { ...coordinate, userId });
   expect((await user.query(api.stats.profile, {})).watchActivity).toEqual([]);
   expect(await t.run((ctx) => ctx.db.get(episodeId))).not.toHaveProperty('activityDate');

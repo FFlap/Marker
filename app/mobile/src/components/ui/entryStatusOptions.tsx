@@ -3,7 +3,6 @@ import type { Status } from '@/types';
 
 const ICON_SIZE = 17;
 
-/** Status choices for library entries, with a glyph that hints at each state. */
 export const ENTRY_STATUS_OPTIONS = [
   {
     label: 'Watched',

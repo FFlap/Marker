@@ -255,7 +255,6 @@ const tagDelta = (before: string[], after: string[]) => {
   return [...counts.values()].filter(({ count }) => count !== 0);
 };
 
-/** Accounts for an episode upsert in the matching season summary. */
 export async function updateSummaryForEpisodeUpsert(
   ctx: MutationCtx,
   userId: Id<'users'>,

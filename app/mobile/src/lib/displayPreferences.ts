@@ -13,7 +13,6 @@ export function stepGridColumns(columns: GridColumns, direction: 'in' | 'out'): 
   return Math.max(3, columns - 1) as GridColumns;
 }
 
-/** Space between grid cells, as a share of the grid's width. */
 const GRID_GAP_RATIO = 0.035;
 
 /**
@@ -27,7 +26,6 @@ export function gridMetrics(width: number, columns: number, pixelRatio: number) 
   return { gap, itemWidth: floorToPixel((width - gap * (columns - 1)) / columns) };
 }
 
-/** Two-column list cells leave slack between them instead of summing to 100%. */
 export function listItemWidth(columns: ListColumns) {
   return columns === 2 ? '48%' : '100%';
 }

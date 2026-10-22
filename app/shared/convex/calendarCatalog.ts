@@ -184,7 +184,6 @@ export const page = internalQuery({
       throw new Error('Release dates changed. Please retry the calendar.');
     const candidateCount = catalog.candidateCount ?? catalog.candidates.length;
     if (offset > candidateCount) throw new Error('Invalid calendar cursor');
-    // Bounded work independent of library size, with pagination for any number of candidates.
     const matches = [];
     let consumed = 0;
     const scanLimit = Math.min(1500, candidateCount - offset);

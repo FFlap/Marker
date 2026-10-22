@@ -39,7 +39,6 @@ export type PrechunkedSeason = {
 const truncate = (value: string | undefined, maximum: number) =>
   value === undefined ? undefined : value.slice(0, maximum);
 
-/** Keeps provider-controlled strings small before they enter an atomic season commit. */
 export const boundedEpisode = (episode: ResolvedEpisode): ResolvedEpisode => ({
   season: episode.season,
   episode: episode.episode,

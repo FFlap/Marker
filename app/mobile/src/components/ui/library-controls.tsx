@@ -162,7 +162,6 @@ export function RatingControl({
   );
 }
 
-/** Filter by rating: tapping a star keeps titles rated that high or higher. */
 export function MinimumRatingControl({
   value,
   onChange,
@@ -201,7 +200,6 @@ export function MinimumRatingControl({
   );
 }
 
-/** A compact, toggleable tag for filter lists; `exclusive` lists allow one choice. */
 export function SelectableTag({
   label,
   selected,
@@ -270,7 +268,6 @@ export function TagEditor({
         .filter((tag) => normalize(tag).includes(normalize(query)))
         .slice(0, MAX_TAG_MATCHES)
     : [];
-  // Only offer to create a tag that does not exist yet, under any casing.
   const canCreate =
     query.length > 0 &&
     !unusedSuggestions.some((tag) => normalize(tag) === normalize(query)) &&

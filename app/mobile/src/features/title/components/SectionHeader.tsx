@@ -11,7 +11,6 @@ type InlineActionProps = {
   onPress: () => void;
   disabled?: boolean;
   accessibilityLabel?: string;
-  /** Header actions match the heading's size; inline ones sit at body size. */
   size?: 'body' | 'heading';
 };
 
@@ -45,7 +44,6 @@ export function InlineAction({
   );
 }
 
-/** Detail-page section title on a hairline rule, with an optional inline action. */
 export function SectionHeader({ title, action }: { title: string; action?: InlineActionProps }) {
   return (
     <View style={styles.header}>

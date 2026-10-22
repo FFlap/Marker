@@ -294,8 +294,8 @@ export const listEpisodes = query({
           .eq('metadataProvider', provider)
           .eq('seasonOrder', provider === 'tvdb' ? mapping?.seasonOrder : undefined),
       )
-      // A canonical season is capped at 600 rows. Provider-id validation below
-      // preserves history while keeping stale identities from escaping this bound.
+      // Provider-id validation preserves history while keeping stale identities
+      // from escaping this bound.
       .take(MAX_SEASON_EPISODES);
     return episodeCandidates
       .filter((episode) =>

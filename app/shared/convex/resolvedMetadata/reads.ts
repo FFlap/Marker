@@ -73,7 +73,6 @@ export const readSeason = internalQuery({
   },
 });
 
-/** Reads one canonical episode chunk plus its season counts. */
 export const readSeasonChunk = internalQuery({
   args: { tmdbId: v.number(), season: v.number(), chunkIndex: v.optional(v.number()) },
   handler: async (ctx, args) => {

@@ -438,8 +438,6 @@ export async function requestRefresh(
     };
   }
 
-  // Round 2's title-in-flight collision path remains season-scoped, but its
-  // orchestrator now commits through the same atomic mutation as combined work.
   const attemptToken = `${now}:season:${crypto.randomUUID()}`;
   await writeRequest(keys[1], rows[1], attemptToken, expiresAt);
   await ctx.scheduler.runAfter(
