@@ -2,11 +2,11 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, type MutationCtx } from './_generated/server';
-import { updateSummaryForEpisodeUpsert } from './episodeSummaries';
+import { episodeMatchesCanonicalIdentity, updateSummaryForEpisodeUpsert } from './episodeSummaries';
 
 const MAX_TITLE_SEASONS = 1_000;
-export const EPISODE_PROJECTION_REPAIR_ROW_LIMIT = 100;
-export const EPISODE_PROJECTION_REPAIR_CHUNK_PAIR_LIMIT = 2;
+const EPISODE_PROJECTION_REPAIR_ROW_LIMIT = 100;
+const EPISODE_PROJECTION_REPAIR_CHUNK_PAIR_LIMIT = 2;
 
 type RepairCursor = { season: number; chunkIndex: number; afterEpisode?: number };
 type RepairResult = {
@@ -29,16 +29,6 @@ const repairResultValidator = v.object({
 });
 
 const seasonOrderValue = (season: number) => (season === 0 ? Number.MAX_SAFE_INTEGER : season);
-
-const savedMatchesCanonical = (
-  saved: Doc<'episodes'>,
-  provider: 'tmdb' | 'tvdb',
-  seasonOrder: string | undefined,
-  providerEpisodeId: number | undefined,
-) =>
-  saved.metadataProvider === provider &&
-  saved.seasonOrder === (provider === 'tvdb' ? seasonOrder : undefined) &&
-  (providerEpisodeId === undefined || saved.providerEpisodeId === providerEpisodeId);
 
 async function repairContext(ctx: MutationCtx, item: Doc<'items'>) {
   const [title, mapping] = await Promise.all([
@@ -174,7 +164,12 @@ async function continueRepairPage(
       const episode = canonicalByEpisode.get(row.episode);
       if (
         !episode ||
-        !savedMatchesCanonical(row, season.metadataProvider, seasonOrder, episode.providerEpisodeId)
+        !episodeMatchesCanonicalIdentity(
+          row,
+          season.metadataProvider,
+          seasonOrder,
+          episode.providerEpisodeId,
+        )
       )
         continue;
       const display = {

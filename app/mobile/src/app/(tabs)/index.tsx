@@ -30,6 +30,11 @@ import type { AppDrawerHandle } from '@/components/AppDrawer';
 import { MobileNav } from '@/components/MobileNav';
 import { NativePosterDragPreview } from '@/components/NativePosterDragPreview';
 import { NativeDraggableGrid } from '@/components/NativeDraggableGrid';
+import {
+  NativeDragMonitor,
+  nativeDragAnimation,
+  type NativeDragValues,
+} from '@/components/NativeDragMonitor';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Plus } from 'lucide-react-native';
 import { DEFAULT_DISPLAY_PREFERENCES, listItemWidth } from '@/lib/displayPreferences';
@@ -42,15 +47,8 @@ import {
 
 import { LibraryPosterCard, LibraryRow } from '@/features/library/components/LibraryItemCards';
 import { LibraryToolbar } from '@/features/library/components/LibraryToolbar';
-import {
-  type NativeDragValues,
-  useLibraryReordering,
-} from '@/features/library/hooks/useLibraryReordering';
-import {
-  createDrawerEdgeSwipe,
-  NativeDragMonitor,
-  nativeDragAnimation,
-} from '@/features/library/components/LibraryDragHelpers';
+import { useLibraryReordering } from '@/features/library/hooks/useLibraryReordering';
+import { createDrawerEdgeSwipe } from '@/features/library/components/LibraryDragHelpers';
 import {
   libraryScreenStyles as s,
   MOBILE_NAV_HEIGHT,

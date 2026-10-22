@@ -6,7 +6,7 @@ import {
   WEBSITE_URL,
 } from "../src/config";
 import { createMessageHandler } from "../src/domain/background";
-import { SYNC_RETRY_ALARM } from "../src/domain/sync";
+import { SYNC_RETRY_ALARM, type WatchPayload } from "../src/domain/sync";
 
 export default defineBackground(() => {
   const clerkPromise = createClerkClient({
@@ -33,18 +33,17 @@ export default defineBackground(() => {
     return { token, accountId: user.id, accountLabel };
   };
 
-  const authenticatedPost = async (
-    path: string,
+  const recordWatch = async (
     token: string,
-    body?: unknown,
+    payload: WatchPayload,
   ) => {
-    const response = await fetch(`${CONVEX_SITE_URL}${path}`, {
+    const response = await fetch(`${CONVEX_SITE_URL}/extension/watch`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        "Content-Type": "application/json",
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) {
@@ -75,8 +74,7 @@ export default defineBackground(() => {
         await browser.tabs.create({ url: url.toString() });
       },
       signOut: async () => (await clerkPromise).signOut(),
-      record: (token, payload) =>
-        authenticatedPost("/extension/watch", token, payload),
+      record: recordWatch,
     },
     {
       alarms: {

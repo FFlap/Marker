@@ -6,11 +6,9 @@ import {
   ScaleDecorator,
   ShadowDecorator,
 } from 'react-native-draggable-flatlist';
-import { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
-import type { NativePosterDragMotion } from '@/components/NativePosterDragPreview';
 import { listItemWidth, listTypography, type ListTextSize } from '@/lib/displayPreferences';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import type { LibraryItem, Status } from '@/types';
@@ -213,33 +211,4 @@ export function TagSkeleton() {
       ))}
     </View>
   );
-}
-
-export type NativeDragValues = NativePosterDragMotion & {
-  activeCellSize: { value: number };
-  hoverOffset: { value: number };
-};
-
-export function NativeDragMonitor({
-  listTop,
-  onHover,
-  status,
-  values,
-}: {
-  listTop: number;
-  onHover: (status: Status, contentY: number) => void;
-  status: Status;
-  values: NativeDragValues;
-}) {
-  useAnimatedReaction(
-    () => ({
-      active: values.isTouchActiveNative.value,
-      center: values.hoverOffset.value + values.activeCellSize.value / 2,
-    }),
-    (current) => {
-      if (current.active) runOnJS(onHover)(status, listTop + current.center);
-    },
-    [listTop, onHover, status, values],
-  );
-  return null;
 }

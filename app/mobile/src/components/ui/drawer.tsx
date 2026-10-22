@@ -312,15 +312,6 @@ function DrawerHeader({ className, children, ...props }: ViewProps) {
   );
 }
 
-function DrawerFooter({ className, ...props }: ViewProps) {
-  return (
-    <View
-      className={cn('flex flex-col-reverse gap-2 sm:flex-row sm:justify-end', className)}
-      {...props}
-    />
-  );
-}
-
 function DrawerTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
@@ -330,15 +321,7 @@ function DrawerTitle({ className, ...props }: React.ComponentProps<typeof Dialog
   );
 }
 
-export {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-};
+export { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger };
 
 const styles = StyleSheet.create({
   sheetPressGuard: { width: '100%' },

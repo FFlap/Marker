@@ -4,7 +4,7 @@
  */
 export type WatchActivityDay = { date: string; episodes: number };
 
-export type HeatmapCell = { date: string; episodes: number; level: 0 | 1 | 2 | 3 | 4 };
+type HeatmapCell = { date: string; episodes: number; level: 0 | 1 | 2 | 3 | 4 };
 
 const DAY_MS = 86_400_000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -17,11 +17,10 @@ import {
   type WatchPayload,
 } from "./sync";
 
-export type BackgroundMessage =
+type BackgroundMessage =
   | { type: "sync/connect" }
   | { type: "sync/signOut" }
   | { type: "sync/status" }
-  | { type: "sync/flushNow" }
   | { type: "bookmark/save"; bookmark: EpisodeBookmark }
   | { type: "bookmark/remove"; key: string }
   | { type: "bookmark/clear" };
@@ -30,13 +29,13 @@ type ErrorLike = {
   status?: unknown;
   name?: unknown;
 };
-export type DeliveryClassification = "retryable" | "auth" | "terminal";
+type DeliveryClassification = "retryable" | "auth" | "terminal";
 
 export interface AuthClient {
   getSession(): Promise<{ token: string; accountId: string; accountLabel: string } | null>;
   connect(): Promise<void>;
   signOut(): Promise<void>;
-  record(token: string, payload: Record<string, unknown>): Promise<unknown>;
+  record(token: string, payload: WatchPayload): Promise<unknown>;
 }
 
 export function classifyDeliveryError(error: unknown): DeliveryClassification {
@@ -57,7 +56,6 @@ function isBackgroundMessage(value: unknown): value is BackgroundMessage {
     case "sync/connect":
     case "sync/signOut":
     case "sync/status":
-    case "sync/flushNow":
     case "bookmark/clear":
       return true;
     case "bookmark/save":
@@ -87,7 +85,7 @@ export function createMessageHandler(
     if (stored[SYNC_ACCOUNT_KEY] && stored[SYNC_ACCOUNT_KEY] !== current.accountId)
       return { ok: false, reason: "not-signed-in", retryable: true };
     try {
-      const result = (await client.record(current.token, { ...payload })) as {
+      const result = (await client.record(current.token, payload)) as {
         ok?: unknown;
         reason?: unknown;
         unverified?: unknown;
@@ -187,9 +185,6 @@ export function createMessageHandler(
           ? { signedIn: true, accountLabel: current.accountLabel }
           : { signedIn: false };
       }
-      case "sync/flushNow":
-        await outbox.flush();
-        return { ok: true };
       case "bookmark/save": {
         const bookmark = validateBookmark(message.bookmark);
         if (!bookmark) {
@@ -234,6 +229,5 @@ export function createMessageHandler(
     handler,
     flush: outbox.flush,
     alarmFired: outbox.alarmFired,
-    deliver,
   };
 }

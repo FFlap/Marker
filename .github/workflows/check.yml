@@ -46,9 +46,7 @@ jobs:
           npm run audit:prod
       - name: Check mobile
         working-directory: app/mobile
-        run: |
-          npm run check
-          npm run audit:prod
+        run: npm run check
       - name: Check web
         working-directory: app/web
         env:

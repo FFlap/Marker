@@ -35,7 +35,7 @@ export const dateCursorValidator = v.object({
 });
 export type LibraryTitle = Infer<typeof libraryTitleValidator>;
 export type CalendarEvent = Infer<typeof eventValidator>;
-export type Candidate = Infer<typeof candidateValidator>;
+type Candidate = Infer<typeof candidateValidator>;
 export const scheduleKey = (
   month: string,
   region: string,

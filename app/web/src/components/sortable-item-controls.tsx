@@ -1,4 +1,4 @@
-import { useState, type KeyboardEventHandler, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, EllipsisVertical, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -6,12 +6,12 @@ import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/
 export function SortableHandle({
   disabled,
   label,
-  onKeyDown,
+  onMove,
   pointerProps,
 }: {
   disabled: boolean;
   label: string;
-  onKeyDown: KeyboardEventHandler<HTMLButtonElement>;
+  onMove: (direction: -1 | 1) => void;
   pointerProps: React.ButtonHTMLAttributes<HTMLButtonElement>;
 }) {
   return (
@@ -20,7 +20,14 @@ export function SortableHandle({
       aria-label={label}
       aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
       disabled={disabled}
-      onKeyDown={onKeyDown}
+      onKeyDown={(event) => {
+        if (!event.altKey) return;
+        const direction =
+          event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+        if (!direction) return;
+        event.preventDefault();
+        onMove(direction);
+      }}
       className="grid size-11 shrink-0 cursor-grab touch-none place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing disabled:cursor-default disabled:opacity-35 sm:size-9"
       {...pointerProps}
     >

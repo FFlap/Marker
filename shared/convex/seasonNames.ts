@@ -1,4 +1,4 @@
-export type SeasonSummary = {
+type SeasonSummary = {
   season: number;
   name: string;
   episodeCount: number;

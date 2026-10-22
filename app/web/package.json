@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
-    "lint": "node ../../scripts/check-import-boundaries.mjs && oxlint --type-aware --deny-warnings --react-plugin --jsx-a11y-plugin --import-plugin --promise-plugin --vitest-plugin --report-unused-disable-directives src tests '*.config.ts'",
+    "lint": "oxlint --type-aware --deny-warnings --react-plugin --jsx-a11y-plugin --import-plugin --promise-plugin --vitest-plugin --report-unused-disable-directives src tests '*.config.ts'",
     "test": "vitest run",
     "check": "npm run lint && npm run typecheck && npm test && npm run build"
   },

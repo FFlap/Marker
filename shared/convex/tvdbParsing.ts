@@ -60,7 +60,7 @@ export const record = (value: unknown): Json =>
 export const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 export const integer = (value: unknown) =>
   typeof value === 'number' && Number.isInteger(value) ? value : undefined;
-export const normalize = (value: string) =>
+const normalize = (value: string) =>
   value
     .normalize('NFKC')
     .trim()
@@ -68,7 +68,7 @@ export const normalize = (value: string) =>
     .replace(/\p{P}/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();
-export const imageUrl = (value: unknown) => {
+const imageUrl = (value: unknown) => {
   const path = text(value);
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path)) return path;
@@ -151,7 +151,7 @@ export const normalizedNames = (titles: string[]) => [
 ];
 export const seasonTranslationLimit = (seasonCount: number) =>
   Math.max(0, Math.min(MAX_SEASON_TRANSLATIONS, seasonCount));
-export const titleMatches = (entry: Json, titles: string[]) => {
+const titleMatches = (entry: Json, titles: string[]) => {
   const targets = new Set(normalizedNames(titles));
   const aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
   return [entry.name, entry.name_translated, entry.title, ...aliases]

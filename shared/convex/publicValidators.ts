@@ -31,7 +31,7 @@ export const resolvedSeasonValidator = v.object({
   // Older snapshots contain verified counts without an explicit marker.
   episodeCountVerified: v.optional(v.boolean()),
 });
-export const nextEpisodeValidator = v.object({
+const nextEpisodeValidator = v.object({
   season: v.number(),
   episode: v.number(),
   chunkIndex: v.optional(v.number()),
@@ -117,7 +117,7 @@ export const episodeValidator = v.object({
   seasonOrder: v.optional(v.string()),
   providerEpisodeId: v.optional(v.number()),
 });
-export const favoriteValidator = v.object({
+const favoriteValidator = v.object({
   _id: v.id('items'),
   title: v.string(),
   mediaType: mediaTypeValidator,

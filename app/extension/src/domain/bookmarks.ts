@@ -2,11 +2,6 @@ import type { BookmarkStore, EpisodeBookmark } from "./types";
 
 export const BOOKMARKS_STORAGE_KEY = 'markerBookmarks';
 
-const EMPTY_BOOKMARK_STORE: BookmarkStore = {
-  version: 1,
-  bookmarks: {},
-};
-
 const STORE_FIELDS = new Set(["version", "bookmarks"]);
 const BOOKMARK_FIELDS = new Set([
   "platform",
@@ -102,7 +97,6 @@ function isBookmark(value: unknown): value is EpisodeBookmark {
     boundedString(item.episodeId, STRING_LIMITS.episodeId) &&
     boundedString(item.watchUrl, STRING_LIMITS.watchUrl) &&
     typeof item.updatedAt === "number" &&
-    Number.isFinite(item.updatedAt) &&
     Number.isSafeInteger(item.updatedAt) &&
     item.updatedAt >= 0 &&
     validatedProviderUrl(item.seriesUrl, platform) !== null &&
@@ -116,7 +110,7 @@ export function validateBookmark(value: unknown): EpisodeBookmark | null {
 
 export function normalizeBookmarkStore(value: unknown): BookmarkStore {
   if (!value || typeof value !== "object")
-    return { ...EMPTY_BOOKMARK_STORE, bookmarks: {} };
+    return { version: 1, bookmarks: {} };
   const candidate = value as Record<string, unknown>;
   if (
     !exactFields(candidate, STORE_FIELDS) ||
@@ -125,7 +119,7 @@ export function normalizeBookmarkStore(value: unknown): BookmarkStore {
     typeof candidate.bookmarks !== "object" ||
     Array.isArray(candidate.bookmarks)
   ) {
-    return { ...EMPTY_BOOKMARK_STORE, bookmarks: {} };
+    return { version: 1, bookmarks: {} };
   }
 
   const bookmarks: Record<string, EpisodeBookmark> = {};

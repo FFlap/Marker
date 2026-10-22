@@ -3,6 +3,7 @@ import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import { isEpisodeReleased } from './episodeAvailability';
+import { episodeMatchesCanonicalIdentity, seasonSummaryIdentityKey } from './episodeSummaries';
 import { requestRefresh } from './resolvedMetadata/touch';
 import { EPISODES_PER_CHUNK } from './seasonStorage';
 
@@ -27,28 +28,7 @@ const refreshResultValidator = v.object({
   chunkPairsRead: v.number(),
 });
 
-const identityKey = (
-  value: Pick<Doc<'resolvedSeasons'>, 'metadataProvider' | 'orderEpoch'>,
-  seasonOrder?: string,
-) =>
-  JSON.stringify([
-    value.metadataProvider,
-    value.metadataProvider === 'tvdb' ? seasonOrder : undefined,
-    value.orderEpoch,
-  ]);
-
 const seasonOrderValue = (season: number) => (season === 0 ? Number.MAX_SAFE_INTEGER : season);
-
-const savedMatchesCanonical = (
-  saved: Doc<'episodes'> | undefined,
-  provider: 'tmdb' | 'tvdb',
-  seasonOrder: string | undefined,
-  providerEpisodeId: number | undefined,
-) =>
-  !!saved &&
-  saved.metadataProvider === provider &&
-  saved.seasonOrder === (provider === 'tvdb' ? seasonOrder : undefined) &&
-  (providerEpisodeId === undefined || saved.providerEpisodeId === providerEpisodeId);
 
 async function loadMissingMetadata(ctx: MutationCtx, item: Doc<'items'>, season?: number) {
   if (item.status !== 'watching') return;
@@ -118,7 +98,7 @@ function seasonNeedsCoordinate(context: RefreshContext, season: RefreshContext['
   if (season.episodeCount <= 0) return false;
   const summary = context.summaryBySeason.get(season.season);
   if (!summary) return true;
-  const key = identityKey(context.title, context.mapping?.seasonOrder);
+  const key = seasonSummaryIdentityKey(context.title, context.mapping?.seasonOrder);
   return (
     summary.currentIdentityKey !== key ||
     (summary.currentWatchedCount ?? 0) < Math.max(summary.currentTotal ?? 0, season.episodeCount)
@@ -320,7 +300,7 @@ async function continueRefreshPage(
       const savedByEpisode = new Map(saved.map((entry) => [entry.episode, entry]));
       for (const candidate of canonical) {
         const state = savedByEpisode.get(candidate.episode);
-        const matches = savedMatchesCanonical(
+        const matches = episodeMatchesCanonicalIdentity(
           state,
           season.metadataProvider,
           seasonOrder,

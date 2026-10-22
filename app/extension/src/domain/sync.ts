@@ -10,11 +10,12 @@ export interface WatchPayload {
   url?: string;
 }
 
-export type SyncResult = Record<string, unknown> & {
+export interface SyncResult {
   ok: boolean;
   retryable: boolean;
-  error?: string;
-};
+  reason?: string;
+  unverified?: boolean;
+}
 export const SYNC_ACCOUNT_KEY = "sync.accountId";
 export const SYNC_OUTBOX_KEY = "sync.outbox";
 export const SYNC_RETRY_KEY = "sync.outboxRetry";

@@ -16,6 +16,7 @@ import {
   type CalendarEvent,
 } from "@marker/shared/calendar";
 import { CalendarCache } from "@marker/shared/calendarCache";
+import { localDateKey as dateKey } from "@/hooks/use-local-today";
 
 function CalendarDay({
   day,
@@ -93,8 +94,6 @@ function CalendarDay({
   );
 }
 
-const dateKey = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const monthStart = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), 1);
 const addDays = (date: Date, days: number) =>

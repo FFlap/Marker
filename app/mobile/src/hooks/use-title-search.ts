@@ -46,7 +46,6 @@ export function useTitleSearch(
 
   const current = enabled && ready && response?.query === normalizedQuery;
   return {
-    normalizedQuery,
     debouncedQuery,
     ready,
     settled,

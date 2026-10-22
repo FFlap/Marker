@@ -11,14 +11,14 @@ export const MAX_SEASON_EPISODES = EPISODES_PER_CHUNK * MAX_SEASON_CHUNKS;
  * With 120 episodes per chunk these limits keep every metadata mutation far
  * below Convex's 16 MiB argument/return ceiling, even at the 6,000 episode cap.
  */
-export const EPISODE_FIELD_LIMITS = {
+const EPISODE_FIELD_LIMITS = {
   name: 300,
   overview: 400,
   imageUrl: 500,
   stillPath: 500,
   airDate: 50,
 } as const;
-export const MAX_METADATA_MUTATION_BYTES = 1024 * 1024;
+const MAX_METADATA_MUTATION_BYTES = 1024 * 1024;
 
 export type ResolvedEpisode = Doc<'resolvedSeasonChunks'>['episodes'][number];
 export type AssembledSeason = Doc<'resolvedSeasons'> & {
@@ -62,7 +62,7 @@ export const boundedEpisode = (episode: ResolvedEpisode): ResolvedEpisode => ({
   }),
 });
 
-export const serializedBytes = (value: unknown) =>
+const serializedBytes = (value: unknown) =>
   new TextEncoder().encode(JSON.stringify(value) ?? 'null').byteLength;
 
 export function assertMetadataMutationSize(value: unknown, label: string) {

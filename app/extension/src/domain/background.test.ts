@@ -70,14 +70,12 @@ describe("background delivery classification", () => {
     expect(classifyDeliveryError(error)).toBe(expected),
   );
 
-  it("serializes classified results before returning them across messaging", async () => {
+  it("records terminal delivery failures and removes them from the queue", async () => {
     const x = setup();
     x.client.record.mockRejectedValue({ status: 400 });
-    await expect(x.background.deliver(payload, "viewer")).resolves.toEqual({
-      ok: false,
-      reason: "rejected",
-      retryable: false,
-    });
+    x.values[SYNC_OUTBOX_KEY] = [payload];
+    await x.background.flush();
+    expect(x.values[SYNC_OUTBOX_KEY]).toEqual([]);
     expect(x.values["sync.lastResult"]).toMatchObject({
       ok: false,
       reason: "rejected",
@@ -89,9 +87,10 @@ describe("background delivery classification", () => {
       status: 503,
     });
     x.client.record.mockRejectedValue(error);
-    await expect(x.background.deliver(payload, "viewer")).resolves.toMatchObject({
-      retryable: true,
-    });
+    x.values[SYNC_OUTBOX_KEY] = [payload];
+    await x.background.flush();
+    expect(x.client.record).toHaveBeenCalledOnce();
+    expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
     expect(error.status).toBe(503);
   });
 });
@@ -205,7 +204,7 @@ describe("background queue behavior", () => {
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
     x.client.getSession.mockResolvedValue(null);
     x.client.record.mockClear();
-    await x.background.handler({ type: "sync/flushNow" });
+    await x.background.flush();
     expect(x.client.record).not.toHaveBeenCalled();
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
   });

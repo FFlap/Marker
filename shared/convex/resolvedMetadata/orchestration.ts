@@ -138,7 +138,7 @@ export const orchestrateRefresh = internalAction({
   },
 });
 
-export async function waitForTitleRequest(ctx: ActionCtx, tmdbId: number) {
+async function waitForTitleRequest(ctx: ActionCtx, tmdbId: number) {
   const deadline = Date.now() + 10_000;
   let waited = false;
   while (Date.now() < deadline) {

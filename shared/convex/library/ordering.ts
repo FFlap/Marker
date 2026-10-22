@@ -5,7 +5,8 @@ import { refreshTagCollectionSummary } from '../tagCollectionsModel';
 import { itemActivityBase, writeActivityEvents } from '../activityEvents';
 import { requestProfileStatsRefresh } from '../profileStatsRefresh';
 import { bumpCalendarRevision } from '../calendarLibrary';
-import { hasTag, normalizedTagKey, ownedItem, requireUser, status } from './shared';
+import { statusValidator as status } from '../publicValidators';
+import { hasTag, normalizedTagKey, ownedItem, requireUser } from './shared';
 
 type MoveItemArgs = {
   itemId: Id<'items'>;

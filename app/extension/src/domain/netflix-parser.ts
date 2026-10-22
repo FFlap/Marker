@@ -9,7 +9,6 @@ interface NetflixVideoSummary {
   seriesId?: number | string;
   episode?: number;
   season?: number;
-  stale?: boolean;
 }
 
 export function parseNetflixWatchPath(pathname: string) {
@@ -24,10 +23,6 @@ function slugify(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
-}
-
-function seriesIdFor(title: string, videoId: string) {
-  return slugify(title) || videoId;
 }
 
 function asSummary(value: unknown): NetflixVideoSummary | null {
@@ -62,12 +57,7 @@ function parseEmbeddedSummary(
     try {
       const summary = asSummary(JSON.parse(bridged));
       if (!summary) throw new Error('Unexpected summary shape');
-      if (String(summary.id) !== videoId) {
-        return summary.type === 'episode'
-          ? { type: 'episode', id: summary.id, season: summary.season, stale: true }
-          : null;
-      }
-      return summary;
+      return String(summary.id) === videoId ? summary : null;
     } catch {
       // Fall through to the server-rendered cache.
     }
@@ -111,7 +101,7 @@ export function parseNetflixPage(
   const watch = parseNetflixWatchPath(url.pathname);
   if (!watch) return null;
   const summary = parseEmbeddedSummary(document, watch.videoId);
-  if (!summary || summary.stale) return null;
+  if (!summary) return null;
 
   const titleContainer =
     document.querySelector<HTMLElement>('[data-uia="video-title"]');
@@ -125,54 +115,43 @@ export function parseNetflixPage(
     );
   if (!seriesTitle) return null;
 
-  const textParts = Array.from(titleContainer?.querySelectorAll('span,div') ?? []).flatMap(
-    (element) => {
-      if (element.children.length > 0) return [];
-      const text = element.textContent?.trim();
-      return text ? [text] : [];
-    },
-  );
-  const episodeLabel = textParts.find((text) => EPISODE_LABEL.test(text));
-  const episodeNumber = episodeLabel
-    ? EPISODE_LABEL.exec(episodeLabel)?.[1]
-    : undefined;
-  const episodeTitle = episodeLabel
-    ? textParts.find((text) => text !== episodeLabel && text !== seriesTitle)
-    : undefined;
-
+  let seasonNumber = 'Movie';
+  let episodeNumber = '1';
+  let episodeTitle = seriesTitle;
   if (summary.type === 'episode') {
+    const textParts = Array.from(titleContainer?.querySelectorAll('span,div') ?? []).flatMap(
+      (element) => {
+        if (element.children.length > 0) return [];
+        const text = element.textContent?.trim();
+        return text ? [text] : [];
+      },
+    );
+    const episodeLabel = textParts.find((text) => EPISODE_LABEL.test(text));
     const resolvedEpisodeNumber =
-      summary.episode !== undefined ? String(summary.episode) : episodeNumber;
-    const seasonNumber =
+      summary.episode !== undefined
+        ? String(summary.episode)
+        : episodeLabel ? EPISODE_LABEL.exec(episodeLabel)?.[1] : undefined;
+    const resolvedEpisodeTitle = episodeLabel
+      ? textParts.find((text) => text !== episodeLabel && text !== seriesTitle)
+      : undefined;
+    const resolvedSeasonNumber =
       summary.season !== undefined ? String(summary.season) : undefined;
-    if (!resolvedEpisodeNumber || !episodeTitle || !seasonNumber) return null;
-
-    return {
-      platform: 'netflix',
-      seriesId: summary.seriesId ? String(summary.seriesId) : seriesIdFor(seriesTitle, watch.videoId),
-      seriesTitle,
-      seriesUrl: summary.seriesId
-        ? `${url.origin}/title/${summary.seriesId}`
-        : `${url.origin}${url.pathname}`,
-      seasonNumber,
-      episodeNumber: resolvedEpisodeNumber,
-      episodeTitle,
-      episodeId: watch.videoId,
-      watchUrl: `${url.origin}${url.pathname}`,
-      updatedAt,
-    };
+    if (!resolvedEpisodeNumber || !resolvedEpisodeTitle || !resolvedSeasonNumber) return null;
+    seasonNumber = resolvedSeasonNumber;
+    episodeNumber = resolvedEpisodeNumber;
+    episodeTitle = resolvedEpisodeTitle;
   }
 
   return {
     platform: 'netflix',
-    seriesId: summary.seriesId ? String(summary.seriesId) : seriesIdFor(seriesTitle, watch.videoId),
+    seriesId: summary.seriesId ? String(summary.seriesId) : slugify(seriesTitle) || watch.videoId,
     seriesTitle,
     seriesUrl: summary.seriesId
       ? `${url.origin}/title/${summary.seriesId}`
       : `${url.origin}${url.pathname}`,
-    seasonNumber: 'Movie',
-    episodeNumber: '1',
-    episodeTitle: seriesTitle,
+    seasonNumber,
+    episodeNumber,
+    episodeTitle,
     episodeId: watch.videoId,
     watchUrl: `${url.origin}${url.pathname}`,
     updatedAt,

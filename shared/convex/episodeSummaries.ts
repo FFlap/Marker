@@ -17,7 +17,7 @@ type EpisodeSummaryDelta = {
   tagDeltas: { tag: string; count: number }[];
 };
 
-export type CurrentEpisodeIdentityDelta = {
+type CurrentEpisodeIdentityDelta = {
   key: string;
   seasonVersion: string;
   total: number;
@@ -168,7 +168,7 @@ async function beginEpisodeSummaryRebuild(
 }
 
 /** Applies one aggregate delta without reading any other episode rows. */
-export async function applyEpisodeSummaryDelta(ctx: MutationCtx, delta: EpisodeSummaryDelta) {
+async function applyEpisodeSummaryDelta(ctx: MutationCtx, delta: EpisodeSummaryDelta) {
   if (
     delta.total === 0 &&
     delta.watchedCount === 0 &&

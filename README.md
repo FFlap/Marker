@@ -10,11 +10,10 @@ Marker tracks movies, series, and watched episodes across a web app, an Expo mob
 | `app/mobile/src` | Expo/React Native client |
 | `shared` | Convex backend, reusable calendar and watch-activity helpers, and their tests |
 | `app/extension` | WXT browser extension and local playback bookmarks |
-| `scripts` | Source-size and import-boundary checks, plus production dependency audits |
 
 Web and mobile depend on the local `@marker/shared` package. They import the generated API from `@marker/shared/api`, document types from `@marker/shared/dataModel`, and pure helpers from `@marker/shared/calendar`, `@marker/shared/calendarCache`, and `@marker/shared/watchActivityStats`. Schema, server functions, authentication, HTTP handlers, and migrations live in `shared/convex`; portable helpers live in `shared/lib`. Backend tests and package tooling live alongside them in `shared`.
 
-Each package's lint command checks import boundaries. Apps may consume shared code only through its explicit package exports and must not import another app. Shared code must not depend on an app. Helpers in `shared/lib` may be used by both the backend and clients, so they must not import Convex functions, Node built-ins, or native dependencies. The check covers static imports, re-exports, import types, literal dynamic imports, CommonJS, test mocks, and literal glob imports.
+Apps may consume shared code only through its explicit package exports and must not import another app. Shared code must not depend on an app. Helpers in `shared/lib` may be used by both the backend and clients, so they must not import Convex functions, Node built-ins, or native dependencies.
 
 All three apps use the same backend. The extension connects through the authenticated `/extension/watch` HTTP endpoint and does not need the Convex client SDK. TMDB supplies search and base title metadata; TVDB supplies matched anime season ordering and episode identities. Provider calls stay in the backend.
 
@@ -55,6 +54,6 @@ npm run check --prefix app/web
 npm run check --prefix app/extension
 ```
 
-Web builds require the `VITE_CONVEX_URL` and `VITE_CLERK_PUBLISHABLE_KEY` settings from the web environment example. CI also exports the iOS and Android bundles and audits production dependencies; see [the workflow](.github/workflows/check.yml).
+Web builds require the `VITE_CONVEX_URL` and `VITE_CLERK_PUBLISHABLE_KEY` settings from the web environment example. CI also exports the iOS and Android bundles and audits production dependencies for the shared and web packages; see [the workflow](.github/workflows/check.yml).
 
 Commit regenerated Convex API types alongside backend changes (`npm run codegen --prefix shared`). A pull request does not deploy a backend schema change; deploy the reviewed backend with `npm run deploy --prefix shared` before relying on newly added response fields in clients.

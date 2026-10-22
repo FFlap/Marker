@@ -21,7 +21,7 @@ import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { EpisodeSkeletonRows } from '@/components/EpisodeSkeletonRows';
-import { LibraryEntryDrawer } from '@/components/LibraryEntryDrawer';
+import { LibraryEntryDrawer, type LibraryEntryDraft } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
 import { DetailPageSkeleton } from '@/components/PageSkeletons';
 import { SeasonPicker } from '@/components/SeasonPicker';
@@ -33,15 +33,14 @@ import { useRefreshControl } from '@/hooks/use-refresh-control';
 import { localDateKey } from '@/hooks/use-local-today';
 import { SEASON_EPISODE_RENDER_BATCH, useSeasonView } from '@/hooks/use-season-view';
 import { libraryItemScreenStyles as s } from '@/features/title/screens/LibraryItemScreen.styles';
+import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import { EpisodeCard } from '@/features/title/components/EpisodeCard';
 import {
   type Episode,
   type EpisodeDraft,
   isStaleSeasonError,
-  type ItemDraft,
   sameValue,
   type SeasonRow,
-  statusOptions,
 } from '@/features/title/libraryItemTypes';
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -126,16 +125,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const returnedSeasonRow = seasonView.season;
   const seasonRow = returnedSeasonRow?.season === season ? returnedSeasonRow : undefined;
   const episodes = seasonRow ? seasonView.episodes : [];
-  const loadedSeason = seasonRow?.season;
   const titleUpdateFailed = titleRequestState?.state === 'failed' || touchError !== undefined;
   const detailsLoading = !title && !titleUpdateFailed;
   const detailsError = !title && titleUpdateFailed;
-  const seasonLoading =
-    !seasonRow &&
-    seasonView.status === 'LoadingFirstPage' &&
-    seasonRequestState?.state !== 'failed' &&
-    seasonRequestState?.state !== 'notFound' &&
-    !touchError;
   const seasonError =
     !seasonRow &&
     (seasonRequestState?.state === 'failed' ||
@@ -251,7 +243,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       metadataProvider: identity.metadataProvider,
     });
   };
-  const saveEntry = async (entryForm: ItemDraft) => {
+  const saveEntry = async (entryForm: LibraryEntryDraft) => {
     if (entrySaving) return;
     setEntrySaving(true);
     try {
@@ -274,7 +266,6 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     }
     setEntrySaving(false);
   };
-  const visibleEpisodes = loadedSeason === season ? episodes : [];
   const watchedSeasonCount =
     episodeProgress?.find((summary) => summary.season === season)?.currentWatchedCount ?? 0;
   const seasonFullyWatched =
@@ -335,7 +326,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       <SecondaryHeader title="Details" maxWidth={760} />
       <FlatList
         testID="episode-list"
-        data={item.mediaType === 'tv' ? visibleEpisodes : []}
+        data={item.mediaType === 'tv' ? episodes : []}
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
         maxToRenderPerBatch={SEASON_EPISODE_RENDER_BATCH}
@@ -394,7 +385,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                   <View>
                     <Text style={s.entryLabel}>Status</Text>
                     <Text style={s.entryValue}>
-                      {statusOptions.find((option) => option.value === draft.status)?.label}
+                      {LIBRARY_STATUSES.find(([status]) => status === draft.status)?.[1]}
                     </Text>
                   </View>
                   <View>
@@ -482,17 +473,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                           onChange={setSeason}
                         />
                       }
-                      loading={loadedSeason !== season}
+                      loading={!seasonRow}
                       watched={watchedSeasonCount}
                       total={seasonRow?.totalCount ?? 0}
                       complete={seasonFullyWatched}
-                      disabled={
-                        seasonPending ||
-                        seasonLoading ||
-                        seasonError ||
-                        loadedSeason !== season ||
-                        visibleEpisodes.length === 0
-                      }
+                      disabled={seasonPending || seasonError || !seasonRow || episodes.length === 0}
                       onToggle={() => {
                         const watched = !seasonFullyWatched;
                         setSeasonPending(true);
@@ -511,9 +496,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                           .finally(() => setSeasonPending(false));
                       }}
                     />
-                    {(seasonLoading || loadedSeason !== season) && !seasonError && (
-                      <EpisodeSkeletonRows />
-                    )}
+                    {!seasonRow && !seasonError && <EpisodeSkeletonRows />}
                     {seasonError && !seasonRow && (
                       <View style={s.inlineError}>
                         <Text style={s.errorText}>Episodes couldn’t be loaded.</Text>

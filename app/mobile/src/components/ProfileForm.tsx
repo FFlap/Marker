@@ -94,24 +94,16 @@ function ProfileFormFields({
         aspect: [1, 1],
         quality: 0.82,
       });
-      if (result.canceled) {
-        setPhotoPending(false);
-        return;
-      }
+      if (result.canceled) return;
       const asset = result.assets[0];
-      if (!asset) {
-        setPhotoPending(false);
-        return;
-      }
+      if (!asset) return;
       if (asset.fileSize && asset.fileSize > MAX_AVATAR_BYTES) {
         toast.show('Choose an image under 5 MB');
-        setPhotoPending(false);
         return;
       }
       const blob = asset.file ?? (await fetchImageBlob(asset.uri));
       if (blob.size > MAX_AVATAR_BYTES) {
         toast.show('Choose an image under 5 MB');
-        setPhotoPending(false);
         return;
       }
       const uploadPath = await generateUploadUrl();
@@ -128,21 +120,20 @@ function ProfileFormFields({
       });
       if (!response.ok) {
         toast.show('Couldn’t update your profile photo');
-        setPhotoPending(false);
         return;
       }
       const payload = (await response.json()) as { storageId?: string };
       if (!payload.storageId) {
         toast.show('Couldn’t update your profile photo');
-        setPhotoPending(false);
         return;
       }
       await setAvatar({ storageId: payload.storageId as Id<'_storage'> });
       toast.show('Profile photo updated');
     } catch {
       toast.show('Couldn’t update your profile photo');
+    } finally {
+      setPhotoPending(false);
     }
-    setPhotoPending(false);
   };
 
   const clearAvatar = async () => {

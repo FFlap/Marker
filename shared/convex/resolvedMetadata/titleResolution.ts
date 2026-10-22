@@ -4,6 +4,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getClerkUserId } from '../clerkAuth';
 import { releasedEpisodes } from '../episodeAvailability';
+import { validateTmdbId } from '../providerValidation';
 import { refreshLeaseKey, requestKey } from './requests';
 import { resolveAndCommitCanonical } from './seasonResolution';
 import {
@@ -51,18 +52,13 @@ export const errorCode = (error: unknown) => {
   return error instanceof Error ? error.name || 'error' : 'unknown';
 };
 
-export const titleIsFresh = (title: Doc<'resolvedTitles'> | null) =>
+const titleIsFresh = (title: Doc<'resolvedTitles'> | null) =>
   !!title && Date.now() < title.refreshAfter;
 
 export const seasonIsFresh = (season: AssembledSeason | null) =>
   !!season && Date.now() < season.refreshAfter;
 
-export const validateId = (name: string, value: number, max = 2 ** 31) => {
-  if (!Number.isInteger(value) || value < 0 || value > max)
-    throw new Error(`${name} must be a non-negative integer no greater than ${max}`);
-};
-
-export const animeFromCurrent = (current: Doc<'resolvedTitles'> | null): ProviderAnime | null =>
+const animeFromCurrent = (current: Doc<'resolvedTitles'> | null): ProviderAnime | null =>
   current?.metadataProvider === 'tvdb' && current.tvdbId && current.seasonOrder
     ? {
         tvdbId: current.tvdbId,
@@ -170,7 +166,7 @@ export async function resolveFreshTitle(
   };
 }
 
-export async function waitForTitle(
+async function waitForTitle(
   ctx: ActionCtx,
   args: { mediaType: MediaType; tmdbId: number },
   previous: Doc<'resolvedTitles'> | null,
@@ -193,12 +189,12 @@ export async function waitForTitle(
   return null;
 }
 
-export async function getOrRefreshTitle(
+async function getOrRefreshTitle(
   ctx: ActionCtx & Parameters<typeof getClerkUserId>[0],
   args: { mediaType: MediaType; tmdbId: number; title: string },
   userIdOverride?: Id<'users'>,
 ) {
-  validateId('tmdbId', args.tmdbId);
+  validateTmdbId(args.tmdbId);
   if (args.title.length > 500) throw new Error('Title must be no longer than 500 characters');
   const userId = userIdOverride ?? (await requireUser(ctx));
   const current: Doc<'resolvedTitles'> | null = await ctx.runQuery(
