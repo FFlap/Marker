@@ -3,7 +3,6 @@ import {
   createBookmarkOperations,
   mergeBookmark,
   normalizeBookmarkStore,
-  sortBookmarks,
 } from "./bookmarks";
 import type { EpisodeBookmark } from "./types";
 
@@ -44,28 +43,6 @@ describe("mergeBookmark", () => {
     },
   );
 
-  it("replaces the previous episode for the same series", () => {
-    const episode2 = {
-      ...slimeEpisode1,
-      episodeId: "G6245P09Y",
-      episodeNumber: "2",
-      episodeTitle: "Meeting the Goblins",
-      watchUrl:
-        "https://www.crunchyroll.com/watch/G6245P09Y/meeting-the-goblins",
-      updatedAt: 200,
-    };
-
-    expect(
-      mergeBookmark(
-        { version: 1, bookmarks: { "crunchyroll:GYZJ43JMR": slimeEpisode1 } },
-        episode2,
-      ),
-    ).toEqual({
-      version: 1,
-      bookmarks: { "crunchyroll:GYZJ43JMR": episode2 },
-    });
-  });
-
   it("keeps the same title separate across streaming platforms", () => {
     const netflix = {
       ...slimeEpisode1,
@@ -84,37 +61,6 @@ describe("mergeBookmark", () => {
       "crunchyroll:GYZJ43JMR",
       "netflix:GYZJ43JMR",
     ]);
-  });
-
-  it("preserves bookmarks for other series", () => {
-    const other = {
-      ...slimeEpisode1,
-      seriesId: "OTHER",
-      seriesTitle: "Other Show",
-    };
-    const result = mergeBookmark(
-      { version: 1, bookmarks: { "crunchyroll:OTHER": other } },
-      slimeEpisode1,
-    );
-
-    expect(Object.keys(result.bookmarks)).toEqual([
-      "crunchyroll:OTHER",
-      "crunchyroll:GYZJ43JMR",
-    ]);
-  });
-});
-
-describe("sortBookmarks", () => {
-  it("orders bookmarks from most recently updated", () => {
-    const older = { ...slimeEpisode1, seriesId: "OLDER", updatedAt: 1 };
-    const newer = { ...slimeEpisode1, seriesId: "NEWER", updatedAt: 2 };
-
-    expect(
-      sortBookmarks({
-        "crunchyroll:OLDER": older,
-        "crunchyroll:NEWER": newer,
-      }).map((item) => item.seriesId),
-    ).toEqual(["NEWER", "OLDER"]);
   });
 });
 

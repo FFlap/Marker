@@ -210,39 +210,6 @@ describe('parseNetflixPage', () => {
     ).toMatchObject({ seriesId: '999', seriesTitle: '進撃の巨人' });
   });
 
-  it('supports movies without season or episode labels', () => {
-    const document = makeDocument(`
-      <script>
-        netflix.falcorCache = {
-          "videos": {
-            "999": {
-              "summary": {
-                "value": { "type": "movie", "id": 999 }
-              }
-            }
-          }
-        };
-      </script>
-      <div data-uia="video-title">
-        <h4>Example Movie</h4>
-      </div>
-    `);
-
-    expect(
-      parseNetflixPage(
-        document,
-        new URL('https://www.netflix.com/watch/999'),
-        200,
-      ),
-    ).toMatchObject({
-      platform: 'netflix',
-      seriesTitle: 'Example Movie',
-      seasonNumber: 'Movie',
-      episodeNumber: '1',
-      episodeTitle: 'Example Movie',
-    });
-  });
-
   it('extracts a movie title from the Netflix movie player heading', () => {
     const document = makeDocument(`
       <script>

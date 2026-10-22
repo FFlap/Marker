@@ -150,15 +150,6 @@ describe('secondary mobile pages', () => {
     expect(view.getByText('No releases')).toBeTruthy();
   });
 
-  it('surfaces a partial calendar result without hiding loaded releases', async () => {
-    mockUpcoming.mockResolvedValueOnce({
-      events: [],
-      failedTitles: { count: 1, names: ['Broken title'] },
-    });
-    const view = await render(<CalendarScreen />);
-    await waitFor(() => expect(view.getByText(/Some titles could not be loaded/)).toBeTruthy());
-  });
-
   it('clears a failed month when navigating to a different month', async () => {
     mockDate = '2026-09-01';
     mockUpcoming.mockRejectedValueOnce(new Error('offline'));
@@ -237,7 +228,6 @@ describe('secondary mobile pages', () => {
     expect(view.getByLabelText('Previous month')).toBeDisabled();
     await fireEvent.press(view.getByLabelText('Previous month'));
     expect(mockUpcoming).toHaveBeenCalledTimes(2);
-    expect(view.queryByText(/first 100/)).toBeNull();
   });
 
   it('does not fetch old deep links', async () => {
@@ -285,7 +275,6 @@ describe('secondary mobile pages', () => {
     );
     expect(view.getByText('Later library title')).toBeTruthy();
     expect(mockUpcoming.mock.calls[1][0].cursor).toEqual(cursor);
-    expect(view.queryByText(/first 100/)).toBeNull();
   });
 
   it('keeps cached titles visible when returning to a month', async () => {

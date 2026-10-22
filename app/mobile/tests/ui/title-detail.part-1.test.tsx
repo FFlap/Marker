@@ -27,13 +27,6 @@ describe('Explore title metadata subscriptions', () => {
     expect(mockAddItem).not.toHaveBeenCalled();
   });
 
-  it('shows cached data with a subtle failed update note', async () => {
-    mockState.titleView.requestState = { state: 'failed' };
-    const view = await screen();
-    expect(view.getByText('couldn’t update — pull to retry')).toBeTruthy();
-    expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
-  });
-
   it('latches preview hero fields after an initially undefined cold query', async () => {
     const canonical = mockState.titleView.title;
     mockState.titleView = undefined;
@@ -120,20 +113,7 @@ describe('Explore title metadata subscriptions', () => {
     );
   });
 
-  it('ignores a route preview when canonical metadata is warm', async () => {
-    mockState.mockParams.preview = JSON.stringify({
-      id: 209867,
-      mediaType: 'tv',
-      title: 'Stale preview title',
-      releaseDate: '1999-01-01',
-    });
-    const view = await screen();
-    expect(view.getByTestId('title-detail-name').props.children).toBe('Canonical Frieren');
-    expect(view.queryByText('Stale preview title')).toBeNull();
-    expect(view.queryByText('1999')).toBeNull();
-  });
-
-  it('updates warm canonical fields in place when a refresh commits', async () => {
+  it('updates warm canonical fields and falls back to specials when regular seasons disappear', async () => {
     mockState.mockParams.preview = JSON.stringify({
       id: 209867,
       mediaType: 'tv',
@@ -141,9 +121,23 @@ describe('Explore title metadata subscriptions', () => {
     });
     const view = await screen();
     expect(view.getByTestId('title-detail-name').props.children).toBe('Canonical Frieren');
+    mockTouchTitle.mockClear();
     mockState.titleView = {
       ...mockState.titleView,
-      title: { ...mockState.titleView.title, title: 'Frieren: Beyond Journey’s End' },
+      title: {
+        ...mockState.titleView.title,
+        title: 'Frieren: Beyond Journey’s End',
+        seasons: [{ season: 0, name: 'Specials', episodeCount: 1 }],
+      },
+    };
+    mockState.mockSeasonView[0] = {
+      season: {
+        season: 0,
+        metadataProvider: 'tvdb',
+        orderEpoch: 4,
+        episodes: [{ season: 0, episode: 1, name: 'Special episode' }],
+      },
+      requestState: { state: 'succeeded' },
     };
     await act(async () =>
       view.rerender(
@@ -156,6 +150,33 @@ describe('Explore title metadata subscriptions', () => {
       'Frieren: Beyond Journey’s End',
     );
     expect(view.queryByText('Stale preview title')).toBeNull();
+    expect(view.getByText('Special episode')).toBeTruthy();
+    expect(mockTouchTitle).toHaveBeenCalledWith(expect.objectContaining({ season: 0 }));
+    expect(mockTouchTitle).not.toHaveBeenCalledWith(expect.objectContaining({ season: 1 }));
+  });
+
+  it('hides the previous season while the selected season is still loading', async () => {
+    const view = await screen();
+    const nextSeason = mockState.mockSeasonView[2];
+    mockState.mockSeasonView[2] = mockState.mockSeasonView[1];
+
+    await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
+    await fireEvent.press(view.getByLabelText('Select Season 2'));
+    expect(view.queryByText('The Journey')).toBeNull();
+    expect(view.queryByText('A New Journey')).toBeNull();
+    expect(view.getByLabelText('Loading')).toBeTruthy();
+
+    mockState.mockSeasonView[2] = nextSeason;
+    await act(async () =>
+      view.rerender(
+        <ToastProvider>
+          <TitleDetail />
+        </ToastProvider>,
+      ),
+    );
+    expect(view.getByText('A New Journey')).toBeTruthy();
+    expect(view.queryByText('The Journey')).toBeNull();
+    expect(view.queryByLabelText('Loading')).toBeNull();
   });
 
   it('uses a server-relative delay even when the client clock is fast', async () => {
@@ -276,7 +297,10 @@ describe('Explore title metadata subscriptions', () => {
       const retryAt = Date.now() + 5_000;
       mockState.titleView.requestState = { state: 'failed', retryAt, delayMs: 5_000 };
       mockState.mockSeasonView[1].requestState = { state: 'failed', retryAt, delayMs: 5_000 };
-      await screen();
+      const view = await screen();
+      expect(view.getByTestId('title-detail-name').props.children).toBe('Canonical Frieren');
+      expect(view.getAllByText('couldn’t update — pull to retry')).toHaveLength(2);
+      expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
       expect(mockTouchTitle).toHaveBeenCalledTimes(1);
       await act(async () => jest.advanceTimersByTime(5_000));
       expect(mockTouchTitle).toHaveBeenCalledTimes(2);
@@ -355,16 +379,9 @@ describe('Explore title metadata subscriptions', () => {
     }
   });
 
-  it('surfaces a failed cold touch as a retryable error', async () => {
-    mockState.titleView = { title: null, requestState: undefined };
-    mockTouchTitle.mockRejectedValueOnce(new Error('network unavailable'));
-    const view = await screen();
-    await waitFor(() => expect(view.getByText('Title details couldn’t be loaded.')).toBeTruthy());
-    expect(view.getByText('Retry')).toBeTruthy();
-  });
-
   it('ignores a late season-A touch rejection after season B owns the request', async () => {
     let rejectSeasonOne!: (error: unknown) => void;
+    mockState.mockSeasonView = {};
     mockTouchTitle
       .mockImplementationOnce(
         () =>
@@ -372,15 +389,22 @@ describe('Explore title metadata subscriptions', () => {
             rejectSeasonOne = reject;
           }),
       )
+      .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValue({ scheduled: true });
     const view = await screen();
     await waitFor(() => expect(mockTouchTitle).toHaveBeenCalledTimes(1));
     await act(async () => fireEvent.press(view.getByLabelText('Choose season, current Season 1')));
     await act(async () => fireEvent.press(view.getByLabelText('Select Season 2')));
     await waitFor(() => expect(mockTouchTitle).toHaveBeenCalledTimes(2));
+    expect(view.getByText('Episodes couldn’t be loaded.')).toBeTruthy();
+    await act(async () => fireEvent.press(view.getByText('Retry')));
+    expect(mockTouchTitle).toHaveBeenLastCalledWith(
+      expect.objectContaining({ season: 2, force: true }),
+    );
     await act(async () => rejectSeasonOne(new Error('late season one failure')));
     expect(view.queryByText('couldn’t update — pull to retry')).toBeNull();
     expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
+    expect(view.queryByText('Episodes couldn’t be loaded.')).toBeNull();
   });
 
   it('shows a working retry state for a failed cold route without a preview', async () => {
@@ -425,8 +449,10 @@ describe('Explore title metadata subscriptions', () => {
     expect(view.queryByText('Frieren')).toBeNull();
   });
 
-  it('resets expanded episodes and the entry drawer when routeKey changes', async () => {
+  it('resets the selected season, expanded episodes and entry drawer when routeKey changes', async () => {
     const view = await screen();
+    await act(async () => fireEvent.press(view.getByLabelText('Choose season, current Season 1')));
+    await act(async () => fireEvent.press(view.getByLabelText('Select Season 2')));
     await act(async () => fireEvent.press(view.getByLabelText('View episode 1')));
     await act(async () => fireEvent.press(view.getAllByText('Add Entry')[0]));
     expect(view.getByLabelText('View episode 1').props.accessibilityState.expanded).toBe(true);
@@ -449,6 +475,11 @@ describe('Explore title metadata subscriptions', () => {
       ),
     );
 
+    expect(mockTouchTitle).toHaveBeenLastCalledWith({
+      mediaType: 'tv',
+      tmdbId: 300000,
+      season: 1,
+    });
     expect(view.getByLabelText('View episode 1').props.accessibilityState.expanded).toBe(false);
     expect(view.queryByText('Add to library')).toBeNull();
   });

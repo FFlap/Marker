@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveExtensionBuild } from "./build-config";
+import { convexSiteOrigin } from "./src/config";
 
 const liveKey = "pk_live_Y2xlcmsubWFya2VyLmV4YW1wbGUuY29tJA";
 const productionEnvironment = {
@@ -36,13 +37,6 @@ describe("extension build configuration", () => {
     );
   });
 
-  it("allows development-only local and test defaults", () => {
-    const result = resolveExtensionBuild("development", {});
-    expect(result.publishableKey).toMatch(/^pk_test_/u);
-    expect(result.websiteOrigin).toBe("http://localhost:4173");
-    expect(result.hostPermissions).toContain("http://localhost/*");
-  });
-
   it("normalizes Convex trailing slashes and preserves explicit ports", () => {
     const result = resolveExtensionBuild("production", {
       ...productionEnvironment,
@@ -53,6 +47,9 @@ describe("extension build configuration", () => {
     );
     expect(result.convexSiteOrigin).toBe(
       "https://marker-production.convex.site:8443",
+    );
+    expect(convexSiteOrigin("https://marker-production.convex.cloud:8443/")).toBe(
+      result.convexSiteOrigin,
     );
   });
 

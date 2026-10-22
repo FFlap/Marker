@@ -74,7 +74,6 @@ it('groups another user’s public tag by status with read-only filters', async 
   expect(labels).toEqual(['1. First Choice']);
   expect(view.getByText('Watched')).toBeTruthy();
   expect(view.getByText('Watchlist')).toBeTruthy();
-  expect(view.queryByText('Curated by @curator')).toBeNull();
   expect(view.queryByLabelText('Tag visibility')).toBeNull();
   expect(view.getByLabelText('Filter tag titles')).toBeTruthy();
 

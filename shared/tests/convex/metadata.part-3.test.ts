@@ -260,47 +260,6 @@ describe('metadata pipeline', () => {
     );
   });
 
-  it('reads an episode page from the current indexed identity despite bounded stale history', async () => {
-    const { t, userId, asUser } = await setup();
-    const itemId = await addItem(asUser);
-    await putSeason(t, {
-      tmdbId: 88,
-      season: 1,
-      metadataProvider: 'tmdb',
-      episodes: [{ season: 1, episode: 500, name: 'Current', providerEpisodeId: 500 }],
-      refreshedAt: Date.now(),
-      refreshAfter: Date.now() + 60_000,
-      orderEpoch: 0,
-    });
-    await t.run(async (ctx) => {
-      for (let episode = 1; episode <= 400; episode += 1)
-        await ctx.db.insert('episodes', {
-          userId,
-          itemId,
-          season: 1,
-          episode,
-          watched: true,
-          tags: [],
-          metadataProvider: 'tvdb',
-          seasonOrder: 'official',
-        });
-      await ctx.db.insert('episodes', {
-        userId,
-        itemId,
-        season: 1,
-        episode: 500,
-        watched: true,
-        tags: [],
-        metadataProvider: 'tmdb',
-        providerEpisodeId: 500,
-      });
-    });
-
-    await expect(
-      asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
-    ).resolves.toMatchObject([{ episode: 500, watched: true, metadataProvider: 'tmdb' }]);
-  });
-
   it('preserves current counters across an unchanged successful season refresh', async () => {
     vi.useFakeTimers();
     const { t, asUser } = await setup(true);

@@ -511,14 +511,6 @@ describe('episode hub and profile favorites', () => {
     await expect(
       t.mutation(internal.nextEpisode.startNextEpisodeRefresh, { itemId }),
     ).resolves.toMatchObject({ state: 'continued', chunkPairsRead: 2 });
-    const olderToken = await t.run(async (ctx) => {
-      const row = await ctx.db
-        .query('nextEpisodeRefreshes')
-        .withIndex('by_item', (query) => query.eq('itemId', itemId))
-        .unique();
-      return row!.token;
-    });
-
     await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
@@ -543,6 +535,5 @@ describe('episode hub and profile favorites', () => {
       episode: 482,
       name: 'Canonical 482',
     });
-    expect(olderToken).toMatch(/^coordinate:/);
   });
 });

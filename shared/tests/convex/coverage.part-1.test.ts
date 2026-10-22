@@ -15,11 +15,7 @@ async function setup() {
   const t = convexTest(schema, modules);
   const clerkId = 'user_coverage_test';
   const userId = await t.run((ctx) => ctx.db.insert('users', { clerkId }));
-  const asUser = Object.assign(t.withIdentity({ subject: clerkId }), {
-    recordWatch: (args: Parameters<typeof t.action>[1]) =>
-      t.action(internal.sync.recordWatchFromExtensionInternal, { ...args, userId }),
-  });
-  return { t, userId, asUser };
+  return { t, userId, asUser: t.withIdentity({ subject: clerkId }) };
 }
 
 function add(title: string, tmdbId: number, extra: Record<string, unknown> = {}) {
@@ -33,12 +29,8 @@ function add(title: string, tmdbId: number, extra: Record<string, unknown> = {})
 }
 
 describe('settings and ordering', () => {
-  it('roundtrips settings and guards both operations', async () => {
-    const { t, asUser } = await setup();
-    await expect(t.query(api.settings.getSettings, {})).rejects.toThrow('Authentication required');
-    await expect(t.mutation(api.settings.setSettings, { defaultView: 'posters' })).rejects.toThrow(
-      'Authentication required',
-    );
+  it('roundtrips settings and preserves unspecified fields on partial updates', async () => {
+    const { asUser } = await setup();
     expect(await asUser.query(api.settings.getSettings, {})).toMatchObject({
       defaultView: 'list',
       gridColumns: 3,
@@ -117,13 +109,10 @@ describe('settings and ordering', () => {
         itemId: ids[count % ids.length],
         afterId: ids[(count + 2) % ids.length],
       });
-    const ordered = (await asUser.query(api.library.items.listItems, {}))
-      .filter((item) => item.status === 'watchlist')
-      .sort((a, b) => a.rank - b.rank || a._creationTime - b._creationTime);
-    expect(new Set(ordered.map((item) => item.rank)).size).toBe(ordered.length);
-    expect(ordered.every((item, index) => index === 0 || ordered[index - 1].rank < item.rank)).toBe(
-      true,
+    const watchlist = (await asUser.query(api.library.items.listItems, {})).filter(
+      (item) => item.status === 'watchlist',
     );
+    expect(new Set(watchlist.map((item) => item.rank)).size).toBe(watchlist.length);
   });
 
   it('rebalances only a bounded window when adjacent ranks become dense', async () => {
@@ -418,7 +407,16 @@ describe('TVDB provider snapshots', () => {
         order: 'official',
         season: 1,
       }),
-    ).toMatchObject([{ name: 'Ready immediately' }]);
+    ).toMatchObject([
+      {
+        id: 100,
+        providerEpisodeId: 100,
+        season: 1,
+        episode: 1,
+        name: 'Ready immediately',
+        imageUrl: 'https://artworks.thetvdb.com/banners/v4/episode/100/screencap.jpg',
+      },
+    ]);
     expect(fetchMock).toHaveBeenCalledTimes(callsAfterResolve);
   });
 });

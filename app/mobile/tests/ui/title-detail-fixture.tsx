@@ -13,11 +13,6 @@ const mockTouchTitle = jest.fn().mockResolvedValue(undefined);
 const mockAddItem = jest.fn().mockResolvedValue('new-item');
 const mockAddItemAndMarkWatched = jest.fn().mockResolvedValue('new-item');
 const mockLoadMore = jest.fn();
-const episodeData = (view: ReturnType<typeof render>) => {
-  let node: any = view.getByTestId('episode-list');
-  while (node && !Array.isArray(node.props?.data)) node = node.parent;
-  return node?.props.data as unknown[] | undefined;
-};
 
 const mockUseQuery = jest.fn((ref: string, args?: any) => {
   if (ref === 'getOwnedItemByTmdb')
@@ -216,8 +211,6 @@ export {
   mockTouchTitle,
   mockAddItem,
   mockAddItemAndMarkWatched,
-  mockLoadMore,
-  episodeData,
   screen,
   TitleDetail,
   ToastProvider,

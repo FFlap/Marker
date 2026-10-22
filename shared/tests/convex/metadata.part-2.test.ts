@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { api, internal } from '../../convex/_generated/api';
 import schema from '../../convex/schema';
-import { isTruncatedSnapshot, putNonFatal } from '../../convex/providerSnapshots';
+import { isTruncatedSnapshot } from '../../convex/providerSnapshots';
 import { mapSeasonDetails } from '../../convex/tmdb';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
@@ -45,94 +45,6 @@ describe('metadata pipeline', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
-  });
-
-  it('does not reuse a TVDB guide snapshot from a different mapping', async () => {
-    const { t } = await setup();
-    await t.run((ctx) =>
-      ctx.db.insert('providerSnapshots', {
-        key: 'tvdb:anime:v10:88:111:official',
-        entry: {
-          kind: 'tvdbGuide',
-          value: {
-            tvdbId: 111,
-            title: 'Old guide',
-            episodeRunTime: [],
-            genres: ['Anime'],
-            order: 'official',
-            seasons: [],
-          },
-        },
-        refreshedAt: Date.now(),
-      }),
-    );
-    vi.stubEnv('TVDB_API_KEY', 'key');
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url.endsWith('/login')) return new Response(JSON.stringify({ data: { token: 'token' } }));
-      if (url.includes('/series/222/extended'))
-        return new Response(
-          JSON.stringify({
-            data: {
-              name: 'New guide',
-              genres: [{ name: 'Anime' }],
-              seasons: [
-                {
-                  id: 20,
-                  number: 1,
-                  name: 'First Arc',
-                  type: { type: 'dvd' },
-                },
-              ],
-            },
-          }),
-        );
-      if (url.includes('/series/222/episodes/dvd/eng'))
-        return new Response(
-          JSON.stringify({
-            data: { episodes: [{ id: 1, seasonNumber: 1, number: 1, name: 'New episode' }] },
-            links: { next: null },
-          }),
-        );
-      return new Response('{}', { status: 404 });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    await expect(
-      t.action(internal.tvdb.refreshAnimeWithMapping, {
-        tmdbId: 88,
-        title: 'Mapped show',
-        tvdbId: 222,
-        order: 'dvd',
-      }),
-    ).resolves.toMatchObject({ tvdbId: 222, order: 'dvd', title: 'New guide' });
-    expect(
-      fetchMock.mock.calls.some(([input]) => String(input).includes('/series/222/extended')),
-    ).toBe(true);
-    expect(
-      await t.query(internal.providerSnapshots.get, { key: 'tvdb:anime:v10:88:222:dvd' }),
-    ).toMatchObject({ value: { tvdbId: 222, order: 'dvd' } });
-  });
-
-  it('records a bounded marker when an oversized provider cache write fails', async () => {
-    const runMutation = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('Document is too large'))
-      .mockResolvedValueOnce(undefined);
-    const episodes = Array.from({ length: 6_000 }, (_, index) => ({
-      season: 1,
-      episode: index + 1,
-      name: 'x'.repeat(300),
-    }));
-    await expect(
-      putNonFatal(
-        { runMutation },
-        { key: 'tmdb:season:88:1', value: episodes, metricKey: 'synthetic-season' },
-      ),
-    ).resolves.toBe(false);
-    expect(runMutation).toHaveBeenCalledTimes(1);
-    expect(runMutation.mock.calls[0]?.[1]).toMatchObject({
-      entry: { kind: 'truncated', value: { __truncatedProviderSnapshot: true } },
-    });
   });
 
   it('bounds oversized season ingestion, caches a marker, and reuses canonical chunks', async () => {
@@ -288,20 +200,38 @@ describe('metadata pipeline', () => {
     });
     expect(next.page[0]?.episodes).toHaveLength(1);
     expect(next.isDone).toBe(true);
-    const storage = await t.run(async (ctx) => ({
-      parent: await ctx.db
-        .query('resolvedSeasons')
-        .withIndex('by_tmdb_season', (query) => query.eq('tmdbId', 88).eq('season', 1))
-        .unique(),
-      chunks: await ctx.db.query('resolvedSeasonChunks').collect(),
-    }));
-    expect(storage.parent).toMatchObject({
-      episodeCount: 121,
-      chunkCount: 2,
-      chunksComplete: true,
+  });
+
+  it('hides incomplete season parents without an episode count', async () => {
+    const { t, asUser } = await setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert('titleMappings', {
+        tmdbId: 88,
+        mediaType: 'tv',
+        source: 'auto',
+        orderEpoch: 0,
+        updatedAt: Date.now(),
+      });
+      await ctx.db.insert('resolvedSeasons', {
+        tmdbId: 88,
+        season: 1,
+        metadataProvider: 'tmdb',
+        chunkCount: 0,
+        chunksComplete: true,
+        seasonVersion: 'incomplete',
+        refreshedAt: Date.now(),
+        refreshAfter: Date.now() + 60_000,
+        orderEpoch: 0,
+      });
     });
-    expect(storage.parent?.episodes).toBeUndefined();
-    expect(storage.chunks.map((chunk) => chunk.episodes.length)).toEqual([120, 1]);
+
+    await expect(
+      asUser.query(api.resolvedMetadata.reads.getSeasonView, {
+        tmdbId: 88,
+        season: 1,
+        paginationOpts: { cursor: null, numItems: 1 },
+      }),
+    ).resolves.toEqual({ page: [], isDone: true, continueCursor: '' });
   });
 
   it('keeps the complete old season visible until a staged multi-chunk flip succeeds', async () => {

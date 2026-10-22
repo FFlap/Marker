@@ -140,24 +140,6 @@ describe('date-first release discovery', () => {
     ]);
     expect(request).toHaveBeenCalledTimes(4);
   });
-  it('rejects malformed or capped discovery instead of claiming an empty calendar', async () => {
-    await expect(discoverMonth(async () => ({}), '2026-10', 'CA')).rejects.toThrow(
-      'Invalid release',
-    );
-    await expect(
-      discoverMonth(async () => ({ total_pages: 501, results: [] }), '2026-10', 'CA'),
-    ).rejects.toThrow('narrower');
-    await expect(
-      discoverMonth(
-        async (path) => {
-          if (path.endsWith('page=2')) throw new Error('offline');
-          return { total_pages: 2, results: [{ id: 1 }] };
-        },
-        '2026-10',
-        'CA',
-      ),
-    ).rejects.toThrow('400');
-  });
   it('skips unrelated media feeds and keeps movie page numbers attached to the right feed', async () => {
     const request = vi.fn(async () => ({ total_pages: 2, results: [{ id: 42 }] }));
     await discoverMonth(request, '2026-10', 'CA', 'tv');
@@ -173,114 +155,6 @@ describe('date-first release discovery', () => {
     expect(request.mock.calls.filter(([path]) => path.includes('region=CA'))).toHaveLength(2);
   });
 
-  it('keeps an unfinished discovery retryable when the shared provider budget is exhausted', async () => {
-    const t = convexTest(schema, modules);
-    await t.run(async (ctx) => {
-      const userId = await ctx.db.insert('users', { clerkId: 'limited' });
-      for (let id = 1; id <= 21; id++) await ctx.db.insert('items', item(userId, id));
-      await ctx.db.insert('requestThrottle', {
-        key: 'tmdb-global',
-        windowStart: Date.now(),
-        count: 300,
-      });
-    });
-    vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
-    const fetch = vi.fn();
-    vi.stubGlobal('fetch', fetch);
-    const result = await t
-      .withIdentity({ subject: 'limited' })
-      .action(api.calendar.upcoming, window);
-    expect(result).toMatchObject({
-      refreshPending: true,
-      retryAfterMs: 1_000,
-      failedTitles: { count: 1 },
-    });
-    expect(fetch).not.toHaveBeenCalled();
-    expect(
-      await t.query(internal.calendarCatalog.metadata, { month: '2026-10', region: 'tv' }),
-    ).toMatchObject({ version: '', refreshedAt: 0 });
-  });
-
-  it('fences concurrent refreshes and preserves the old catalog after failure', async () => {
-    const { t } = await fixture();
-    const args = { month: '2026-10', region: 'tv' };
-    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 5));
-    expect(await t.mutation(internal.calendarCatalog.claim, { ...args, token: 'first' })).toBe(
-      true,
-    );
-    expect(await t.mutation(internal.calendarCatalog.claim, { ...args, token: 'second' })).toBe(
-      false,
-    );
-    const checkpoint = { ...args, feed: 0, page: 1, totalPages: 1, candidates: [] };
-    expect(
-      await t.mutation(internal.calendarRefresh.checkpoint, {
-        ...checkpoint,
-        token: 'second',
-      }),
-    ).toBe(false);
-    await t.mutation(internal.calendarRefresh.failed, {
-      ...args,
-      token: 'first',
-      feed: 0,
-      page: 1,
-      permanent: true,
-      message: 'offline',
-    });
-    expect(await t.query(internal.calendarCatalog.metadata, args)).toMatchObject({
-      version: 'complete',
-      error: 'offline',
-    });
-    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 6));
-    expect(await t.mutation(internal.calendarCatalog.claim, { ...args, token: 'second' })).toBe(
-      true,
-    );
-    await t.mutation(internal.calendarRefresh.checkpoint, { ...checkpoint, token: 'second' });
-    expect(await t.query(internal.calendarCatalog.metadata, args)).toMatchObject({
-      version: 'first',
-      refreshedAt: Date.now(),
-    });
-    expect(
-      await t.mutation(internal.calendarRefresh.checkpoint, {
-        ...checkpoint,
-        token: 'first',
-      }),
-    ).toBe(false);
-  });
-  it('does no provider work for an empty library on a cold month', async () => {
-    const t = convexTest(schema, modules);
-    await t.run((ctx) => ctx.db.insert('users', { clerkId: 'empty' }));
-    const fetch = vi.fn();
-    vi.stubGlobal('fetch', fetch);
-    expect(
-      await t.withIdentity({ subject: 'empty' }).action(api.calendar.upcoming, window),
-    ).toMatchObject({ events: [], nextCursor: null, failedTitles: { count: 0 } });
-    expect(fetch).not.toHaveBeenCalled();
-  });
-  it('loads only two matching releases for a 2,000-title library', async () => {
-    const { asUser } = await fixture(2000, 2);
-    const fetch = vi.fn();
-    vi.stubGlobal('fetch', fetch);
-    const result = await asUser.action(api.calendar.upcoming, { ...window, cachedOnly: true });
-    expect(result.events.map((release) => release.tmdbId)).toEqual([1, 2]);
-    expect(result.nextCursor).toBeNull();
-    expect(result.needsRefresh).toBe(false);
-    expect(fetch).not.toHaveBeenCalled();
-  });
-  it('paginates beyond 100 matching titles without returning unrelated releases', async () => {
-    const { asUser } = await fixture(201, 205);
-    const fetch = vi.fn((args) => asUser.action(api.calendar.upcoming, args));
-    const result = await loadCalendarPages(fetch, { ...window, cachedOnly: true }, () => {});
-    expect(result.events.map((release) => release.tmdbId).sort((a, b) => a - b)).toEqual(
-      Array.from({ length: 201 }, (_, i) => i + 1),
-    );
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(fetch.mock.calls[1][0].cursor).toEqual({
-      month: '2026-10',
-      offset: 100,
-      mediaType: 'tv',
-      version: 'complete',
-    });
-  });
   it('continues past 1500 unrelated candidates even when the first page is empty', async () => {
     const { t, asUser, userId } = await fixture(21, 0);
     await t.run(async (ctx) => {

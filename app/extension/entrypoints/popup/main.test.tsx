@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { openPersistedWatchUrl, Popup } from "./main";
 
@@ -55,7 +55,7 @@ describe("popup entrypoint sync integration", () => {
     expect(browser.tabs.create).not.toHaveBeenCalled();
   });
 
-  it("shows bookmark failures without requiring the Sync panel", async () => {
+  it("keeps same-series providers distinct and reports remove failures outside Sync", async () => {
     const bookmark = {
       platform: "netflix",
       seriesId: "dark",
@@ -68,9 +68,17 @@ describe("popup entrypoint sync integration", () => {
       watchUrl: "https://www.netflix.com/watch/dark-2",
       updatedAt: 1,
     };
+    const crunchyroll = {
+      ...bookmark,
+      platform: "crunchyroll",
+      seriesTitle: "Dark on Crunchyroll",
+      seriesUrl: "https://www.crunchyroll.com/series/dark/dark",
+      watchUrl: "https://www.crunchyroll.com/watch/dark-2/lies",
+      updatedAt: 2,
+    };
     vi.mocked(browser.storage.local.get).mockImplementation(async (key) =>
-      typeof key === "string"
-        ? { [key]: { version: 1, bookmarks: { "netflix:dark": bookmark } } }
+      key === "markerBookmarks"
+        ? { markerBookmarks: { version: 1, bookmarks: { "netflix:dark": bookmark, "crunchyroll:dark": crunchyroll } } }
         : {},
     );
     sendMessage.mockImplementation(async (message: { type: string }) => {
@@ -82,6 +90,10 @@ describe("popup entrypoint sync integration", () => {
 
     render(<Popup />);
     fireEvent.click(await screen.findByRole("button", { name: "Remove Dark" }));
+    expect(screen.getAllByRole("listitem").map((item) =>
+      within(item).getByRole("button", { name: /^Remove / }).getAttribute("aria-label"),
+    )).toEqual(["Remove Dark on Crunchyroll", "Remove Dark"]);
+    expect(sendMessage).toHaveBeenCalledWith({ type: "bookmark/remove", key: "netflix:dark" });
 
     expect(
       await screen.findByText("Couldn’t remove the saved episode"),

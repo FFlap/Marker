@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { classifyDeliveryError, createMessageHandler } from "./background";
 import { SYNC_OUTBOX_KEY } from "./sync";
 import { BOOKMARKS_STORAGE_KEY, normalizeBookmarkStore } from "./bookmarks";
+import { persistDetectedEpisode } from "./tracking";
 
 const payload = {
   service: "netflix" as const,
@@ -291,12 +292,23 @@ it('durably queues an unchanged bookmark after its first enqueue failed', async 
     }
     Object.assign(x.values, items);
   });
-  const message = { type: 'bookmark/save', bookmark: trackedBookmark };
-  await expect(x.background.handler(message)).rejects.toThrow('Storage unavailable');
-  expect(normalizeBookmarkStore(x.values[BOOKMARKS_STORAGE_KEY]).bookmarks['netflix:dark']).toBeDefined();
-  await expect(x.background.handler(message)).resolves.toEqual({ changed: false });
-  expect(x.values[SYNC_OUTBOX_KEY]).toMatchObject([{ seriesTitle: 'Dark', episodeNumber: 2 }]);
-  expect(x.values['sync.outboxRetry']).toBeDefined();
+  const runtime = {
+    sendMessage: vi.fn(function (this: unknown, message: unknown) {
+      expect(this).toBe(runtime);
+      return x.background.handler(message).catch(() => ({ ok: false, reason: 'background-error' }));
+    }),
+  };
+  vi.stubGlobal('browser', { runtime });
+  try {
+    await expect(persistDetectedEpisode(trackedBookmark)).rejects.toThrow('The background could not save the episode');
+    expect(normalizeBookmarkStore(x.values[BOOKMARKS_STORAGE_KEY]).bookmarks['netflix:dark']).toBeDefined();
+    expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
+    await expect(persistDetectedEpisode(trackedBookmark)).resolves.toBe(false);
+    expect(x.values[SYNC_OUTBOX_KEY]).toMatchObject([{ seriesTitle: 'Dark', episodeNumber: 2 }]);
+    expect(x.values['sync.outboxRetry']).toBeDefined();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 it('acknowledges and preserves new saves while a previous delivery is in flight', async () => {

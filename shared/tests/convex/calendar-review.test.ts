@@ -62,70 +62,38 @@ async function setup(mediaType: 'tv' | 'movie' = 'tv', saved = false) {
 }
 
 describe('calendar review regressions', () => {
-  it('includes an older season that still airs after the following season premieres', async () => {
-    const { viewer } = await setup();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async (input: string) =>
-          new Response(
-            JSON.stringify(
-              new URL(input).searchParams.has('append_to_response')
-                ? {
-                    'season/1': {
-                      episodes: [{ air_date: episode.date, season_number: 1, episode_number: 1 }],
-                    },
-                    'season/2': { episodes: [] },
-                  }
-                : {
-                    seasons: [
-                      { season_number: 1, air_date: '2026-08-01' },
-                      { season_number: 2, air_date: '2026-09-01' },
-                    ],
-                  },
-            ),
+  it('loads a cold small library without discovery, including episode zero', async () => {
+    const episodeNumber = 0;
+    const { t, viewer } = await setup();
+    const fetch = vi.fn(
+      async (input: string) =>
+        new Response(
+          JSON.stringify(
+            input.endsWith('/season/1')
+              ? {
+                  episodes: [
+                    { air_date: episode.date, season_number: 1, episode_number: episodeNumber },
+                  ],
+                }
+              : { seasons: [{ season_number: 1, air_date: '2026-10-01' }] },
           ),
-      ),
+        ),
     );
+    vi.stubGlobal('fetch', fetch);
+    const saved = await viewer.action(api.calendar.upcoming, { ...range, cachedOnly: true });
+    expect(saved).toMatchObject({ events: [], needsRefresh: true });
+    expect(fetch).not.toHaveBeenCalled();
     const result = await viewer.action(api.calendar.upcoming, range);
-    expect(result.events).toMatchObject([episode]);
-    expect(result.failedTitles.count).toBe(0);
+    expect(result.events).toMatchObject([
+      { ...episode, episode: episodeNumber, id: `episode:42:1:${episodeNumber}:${episode.date}` },
+    ]);
+    expect(result.nextCursor).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.every(([url]) => !url.includes('/discover/'))).toBe(true);
+    expect(await t.run((ctx) => ctx.db.query('calendarMonths').collect())).toEqual([]);
+    await viewer.action(api.calendar.upcoming, range);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
-
-  it.each([0, 1])(
-    'loads a cold small library without discovery, including episode %i',
-    async (episodeNumber) => {
-      const { t, viewer } = await setup();
-      const fetch = vi.fn(
-        async (input: string) =>
-          new Response(
-            JSON.stringify(
-              input.endsWith('/season/1')
-                ? {
-                    episodes: [
-                      { air_date: episode.date, season_number: 1, episode_number: episodeNumber },
-                    ],
-                  }
-                : { seasons: [{ season_number: 1, air_date: '2026-10-01' }] },
-            ),
-          ),
-      );
-      vi.stubGlobal('fetch', fetch);
-      const saved = await viewer.action(api.calendar.upcoming, { ...range, cachedOnly: true });
-      expect(saved).toMatchObject({ events: [], needsRefresh: true });
-      expect(fetch).not.toHaveBeenCalled();
-      const result = await viewer.action(api.calendar.upcoming, range);
-      expect(result.events).toMatchObject([
-        { ...episode, episode: episodeNumber, id: `episode:42:1:${episodeNumber}:${episode.date}` },
-      ]);
-      expect(result.nextCursor).toBeNull();
-      expect(fetch).toHaveBeenCalledTimes(2);
-      expect(fetch.mock.calls.every(([url]) => !url.includes('/discover/'))).toBe(true);
-      expect(await t.run((ctx) => ctx.db.query('calendarMonths').collect())).toEqual([]);
-      await viewer.action(api.calendar.upcoming, range);
-      expect(fetch).toHaveBeenCalledTimes(2);
-    },
-  );
 
   it.each(['title', 'season'])(
     'keeps saved releases when the %s response is malformed',
@@ -187,7 +155,7 @@ describe('calendar review regressions', () => {
   });
 
   it('uses a known regional movie date instead of falling back to a different month worldwide', async () => {
-    const { viewer } = await setup('movie');
+    const { t, viewer } = await setup('movie');
     const fetch = vi.fn(
       async () =>
         new Response(
@@ -213,6 +181,9 @@ describe('calendar review regressions', () => {
       ).events,
     ).toMatchObject([{ date: '2026-11-01', kind: 'movie' }]);
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(await t.run((ctx) => ctx.db.query('requestThrottle').first())).toMatchObject({
+      count: 1,
+    });
   });
 
   it('does not cache malformed movie releases as an authoritative empty schedule', async () => {

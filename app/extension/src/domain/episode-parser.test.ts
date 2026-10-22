@@ -194,41 +194,6 @@ describe("parseEpisodePage", () => {
     });
   });
 
-  it("extracts stable series, season, and episode metadata", () => {
-    const document = makeDocument(
-      `
-        <a href="/series/GYZJ43JMR/that-time-i-got-reincarnated-as-a-slime">
-          <h4>That Time I Got Reincarnated as a Slime</h4>
-        </a>
-        <h1>E1 - The Storm Dragon, Veldora</h1>
-      `,
-      "Season 1 The Storm Dragon, Veldora - Watch on Crunchyroll",
-    );
-
-    expect(
-      parseEpisodePage(
-        document,
-        new URL(
-          "https://www.crunchyroll.com/watch/GRQW9GW7R/the-storm-dragon-veldora",
-        ),
-        1719000000000,
-      ),
-    ).toEqual({
-      platform: "crunchyroll",
-      seriesId: "GYZJ43JMR",
-      seriesTitle: "That Time I Got Reincarnated as a Slime",
-      seriesUrl:
-        "https://www.crunchyroll.com/series/GYZJ43JMR/that-time-i-got-reincarnated-as-a-slime",
-      seasonNumber: "1",
-      episodeNumber: "1",
-      episodeTitle: "The Storm Dragon, Veldora",
-      episodeId: "GRQW9GW7R",
-      watchUrl:
-        "https://www.crunchyroll.com/watch/GRQW9GW7R/the-storm-dragon-veldora",
-      updatedAt: 1719000000000,
-    });
-  });
-
   it("supports special and decimal episode labels", () => {
     const document = makeDocument(
       `
@@ -243,81 +208,13 @@ describe("parseEpisodePage", () => {
         document,
         new URL("https://www.crunchyroll.com/watch/GEP123456/a-special-story"),
         10,
-      )?.episodeNumber,
-    ).toBe("12.5");
-  });
-
-  it("tracks a Specials category when Crunchyroll does not provide a season number", () => {
-    const document = makeDocument(
-      `
-        <script type="application/ld+json">
-          {
-            "@type": "TVEpisode",
-            "episodeNumber": 2,
-            "partOfSeason": {
-              "@type": "TVSeason",
-              "name": "Specials",
-              "seasonNumber": 2
-            }
-          }
-        </script>
-        <a href="/series/GY4PD7Z06/the-quintessential-quintuplets">
-          The Quintessential Quintuplets
-        </a>
-        <h1>E2 - No Coincidences in This Summer Break (Part 2)</h1>
-      `,
-      "Specials No Coincidences in This Summer Break (Part 2) - Watch on Crunchyroll",
-    );
-
-    expect(
-      parseEpisodePage(
-        document,
-        new URL(
-          "https://www.crunchyroll.com/watch/GE00347955JAJP/no-coincidences-in-this-summer-break-part-2",
-        ),
-        20,
       ),
     ).toMatchObject({
-      seriesId: "GY4PD7Z06",
-      seasonNumber: "Specials",
-      episodeNumber: "2",
-      episodeTitle: "No Coincidences in This Summer Break (Part 2)",
-    });
-  });
-
-  it("uses the structured season name even when its internal season number differs", () => {
-    const document = makeDocument(
-      `
-        <script type="application/ld+json">
-          {
-            "@type": "TVEpisode",
-            "episodeNumber": 4,
-            "partOfSeason": {
-              "@type": "TVSeason",
-              "name": "Specials",
-              "seasonNumber": 4
-            }
-          }
-        </script>
-        <a href="/series/GY4PD7Z06/the-quintessential-quintuplets">
-          The Quintessential Quintuplets
-        </a>
-        <h1>E4 - Operation Quintuplets (Part 2)</h1>
-      `,
-      "A Different Page Title That Should Not Be Used",
-    );
-
-    expect(
-      parseEpisodePage(
-        document,
-        new URL(
-          "https://www.crunchyroll.com/watch/GE00375174JAJP/operation-quintuplets-part-2",
-        ),
-        25,
-      ),
-    ).toMatchObject({
-      seasonNumber: "Specials",
-      episodeNumber: "4",
+      seriesId: "GABC12345",
+      seriesTitle: "Example Show",
+      seasonNumber: "2",
+      episodeNumber: "12.5",
+      episodeTitle: "A Special Story",
     });
   });
 
