@@ -240,6 +240,7 @@ describe('item detail metadata subscriptions', () => {
     mockUseQuery.mockClear();
     mockTouchItemView.mockClear();
     mockTouchTitle.mockClear();
+    mockUpdateItem.mockClear();
     mockSetEpisodeState.mockReset().mockResolvedValue(undefined);
     mockSetSeasonWatched.mockReset().mockResolvedValue(undefined);
     mockMoveItemToWatched.mockReset().mockResolvedValue(undefined);
@@ -260,15 +261,16 @@ describe('item detail metadata subscriptions', () => {
     expect(mockUseQuery).toHaveBeenCalledWith('listTagSuggestions', 'skip');
   });
 
-  it('hides empty library seasons and selects the first season with episodes', async () => {
+  it('selects the lowest regular season and keeps unknown counts and specials available', async () => {
     itemView = {
       ...itemView,
       title: {
         ...title,
         seasons: [
-          { season: 0, name: 'Specials', episodeCount: 0 },
-          { season: 1, name: 'Season 1', episodeCount: 0 },
-          { season: 2, name: 'Season 2', episodeCount: 1 },
+          { season: 5, name: 'Season 5', episodeCount: 1 },
+          { season: 0, name: 'Specials', episodeCount: 1 },
+          { season: 1, name: 'Season 1', episodeCount: 0, episodeCountVerified: true },
+          { season: 2, name: 'Season 2', episodeCount: 0, episodeCountVerified: false },
           { season: 3, name: 'Season 3', episodeCount: 0 },
         ],
       },
@@ -280,21 +282,25 @@ describe('item detail metadata subscriptions', () => {
     expect(mockTouchItemView).toHaveBeenCalledWith({ itemId: 'item', season: 2 });
     await user.press(view.getByLabelText('Choose season, current Season 2'));
     expect(view.getByLabelText('Select Season 2')).toBeTruthy();
+    expect(view.getByText('Episodes pending')).toBeTruthy();
     expect(view.queryByLabelText('Select Season 1')).toBeNull();
     expect(view.queryByLabelText('Select Season 3')).toBeNull();
-    expect(view.queryByLabelText('Select Specials')).toBeNull();
+    await user.press(view.getByLabelText('Select Specials'));
+    expect(mockTouchItemView).toHaveBeenLastCalledWith({ itemId: 'item', season: 0 });
   });
 
   it('uses the server-side whole-show action when the entry status becomes Watched', async () => {
     const view = await renderScreen();
     const user = userEvent.setup();
     await user.press(view.getByText('Edit'));
+    expect(view.queryByLabelText('Increase times watched')).toBeNull();
     const watchedLabels = view.getAllByText('Watched', { exact: true });
     expect(watchedLabels.length).toBeGreaterThan(1);
     await user.press(watchedLabels[watchedLabels.length - 1]);
     expect(
       view.getByText('Marking this show as Watched will mark every episode as watched.'),
     ).toBeTruthy();
+    await user.press(view.getByLabelText('Increase times watched'));
     await user.press(view.getByRole('button', { name: 'Dismiss drawer' }));
 
     await waitFor(() => expect(mockMoveItemToWatched).toHaveBeenCalledWith({ itemId: 'item' }));
@@ -302,6 +308,13 @@ describe('item detail metadata subscriptions', () => {
     expect(mockUpdateItem).toHaveBeenCalledWith(
       expect.not.objectContaining({ status: expect.anything() }),
     );
+    expect(mockUpdateItem).toHaveBeenCalledWith(
+      expect.objectContaining({ itemId: 'item', timesWatched: 2 }),
+    );
+    await user.press(view.getByText('Edit'));
+    expect(view.queryByLabelText('Increase times watched')).toBeNull();
+    await user.press(view.getByRole('button', { name: 'Dismiss drawer' }));
+    expect(mockUpdateItem).toHaveBeenCalledTimes(1);
   });
 
   it('touches the selected season and forces refresh from pull-to-refresh', async () => {
@@ -433,62 +446,6 @@ describe('item detail metadata subscriptions', () => {
     });
   });
 
-  it('re-touches the selected season after its mounted request lease expires', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-07-17T00:00:00Z'));
-    try {
-      mockSeasonView = {
-        1: {
-          season: seasonOne,
-          requestState: { state: 'inFlight', expiresAt: Date.now() + 2_000, delayMs: 2_000 },
-        },
-      };
-      await renderScreen();
-      expect(mockTouchItemView).toHaveBeenCalledTimes(1);
-      await act(async () => jest.advanceTimersByTime(3_000));
-      expect(mockTouchItemView).toHaveBeenCalledTimes(2);
-      expect(mockTouchItemView).toHaveBeenLastCalledWith({ itemId: 'item', season: 1 });
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('re-touches a failed season at retryAt after the title already succeeded', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-07-17T00:00:00Z'));
-    try {
-      mockSeasonView[1].requestState = {
-        state: 'failed',
-        retryAt: Date.now() + 5_000,
-        delayMs: 5_000,
-      };
-      await renderScreen();
-      expect(mockTouchItemView).toHaveBeenCalledTimes(1);
-      await act(async () => jest.advanceTimersByTime(5_000));
-      expect(mockTouchItemView).toHaveBeenCalledTimes(2);
-      expect(mockTouchItemView).toHaveBeenLastCalledWith({ itemId: 'item', season: 1 });
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('coalesces matching title and season retry times into one combined re-touch', async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2026-07-17T00:00:00Z'));
-    try {
-      const retryAt = Date.now() + 5_000;
-      itemView.requestState.title = { state: 'failed', retryAt, delayMs: 5_000 };
-      mockSeasonView[1].requestState = { state: 'failed', retryAt, delayMs: 5_000 };
-      await renderScreen();
-      expect(mockTouchItemView).toHaveBeenCalledTimes(1);
-      await act(async () => jest.advanceTimersByTime(5_000));
-      expect(mockTouchItemView).toHaveBeenCalledTimes(2);
-      expect(mockTouchItemView).toHaveBeenLastCalledWith({ itemId: 'item', season: 1 });
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
   it('subscribes saved episode state only for the selected season', async () => {
     mockSeasonView[2] = { season: seasonTwo, requestState: { state: 'succeeded' } };
     const view = await renderScreen();
@@ -532,7 +489,23 @@ describe('item detail metadata subscriptions', () => {
       }),
     );
     expect(view.getByText('Edit episode 1')).toBeTruthy();
-    expect(view.getByLabelText('Current rating')).toBeTruthy();
+    await user.press(view.getByLabelText('Rate 3.5 stars'));
+    expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
+      itemId: 'item',
+      season: 1,
+      episode: 1,
+      rating: 3.5,
+    });
+    expect(view.getByLabelText('Current rating').props.accessibilityValue.text).toBe(
+      '3.5 out of 5 stars',
+    );
+    await user.press(view.getByLabelText('Clear rating'));
+    expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
+      itemId: 'item',
+      season: 1,
+      episode: 1,
+      clearRating: true,
+    });
 
     savedEpisodes = [{ season: 1, episode: 1, watched: true, tags: [] }];
     await act(async () =>

@@ -44,20 +44,14 @@ describe("calendar partial failures", () => {
     );
   });
 
-  it("surfaces a partial result notice", async () => {
-    render(<CalendarPage />);
-    await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(
-        "Some titles could not be loaded: Broken title",
-      ),
-    );
-  });
-
   it("lets a partial calendar retry missing titles", async () => {
     render(<CalendarPage />);
     const retry = await screen.findByRole("button", {
       name: "Retry missing release dates",
     });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Some titles could not be loaded: Broken title",
+    );
     upcoming.mockResolvedValue({
       events: [],
       failedTitles: { count: 0, names: [] },

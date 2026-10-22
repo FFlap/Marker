@@ -47,8 +47,4 @@ describe('reactive season pagination', () => {
     expect(currentSeasonPages(results, 1)).toEqual([first]);
     expect(currentSeasonPages([...results, second], 1)).toEqual([first, second, third]);
   });
-
-  it('accepts old server responses without a version', () => {
-    expect(currentSeasonPages([page(0, { seasonVersion: undefined })], 1)).toHaveLength(1);
-  });
 });

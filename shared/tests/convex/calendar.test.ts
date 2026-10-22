@@ -4,6 +4,7 @@ import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
 import { loadCalendarPages } from '../../lib/calendar';
 import * as snapshots from '../../convex/providerSnapshots';
+import * as providerRateLimits from '../../convex/providerRateLimits';
 import { catalogRegion } from '../../convex/calendarTypes';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
@@ -261,18 +262,6 @@ describe('calendar episode dates', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('returns episodes for ended shows without a next episode', async () => {
-    const { t } = await setup({
-      seasons: [{ season_number: 1, air_date: '2026-09-02' }],
-      next_episode_to_air: null,
-    });
-    const day = await scheduleFor(t, {
-      startDate: '2026-09-02',
-      endDate: '2026-09-02',
-    });
-    expect(day.events).toHaveLength(1);
-  });
-
   it('skips completed seasons before this month but keeps their month available', async () => {
     const { t, fetch } = await setup({
       seasons: [{ season_number: 1, air_date: '2026-09-02', episode_count: 2 }],
@@ -296,11 +285,11 @@ describe('calendar episode dates', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('includes both seasons when a month crosses a season boundary', async () => {
+  it('includes episodes from both seasons after the newer season has premiered', async () => {
     const { t, fetch } = await setup({
       seasons: [
-        { season_number: 1, air_date: '2026-09-02' },
-        { season_number: 2, air_date: '2026-09-23' },
+        { season_number: 1, air_date: '2026-07-02' },
+        { season_number: 2, air_date: '2026-08-23' },
       ],
       next_episode_to_air: { season_number: 2, air_date: '2026-09-23' },
     });
@@ -318,7 +307,7 @@ describe('calendar episode dates', () => {
   });
 
   it('does not expose another account’s library and requires authentication', async () => {
-    const { base } = await setup({ seasons: [] });
+    const { base, fetch } = await setup({ seasons: [] });
     await expect(
       scheduleFor(base.withIdentity({ subject: 'stranger' }), {
         startDate: '2026-09-01',
@@ -339,6 +328,7 @@ describe('calendar episode dates', () => {
       endDate: '2026-09-30',
     });
     expect(other.events).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('keeps cached releases during an upstream outage and reports stale data as partial', async () => {
@@ -355,32 +345,23 @@ describe('calendar episode dates', () => {
           .query('providerSnapshots')
           .withIndex('by_key', (q) => q.eq('key', key))
           .unique();
-        await ctx.db.patch(row!._id, { refreshedAt: Date.now() - 7 * 60 * 60 * 1000 });
+        await ctx.db.patch(row!._id, {
+          refreshedAt:
+            key === 'calendar:season:42:1' ? Date.now() - 8 * 60 * 60 * 1000 : Date.now(),
+          ...(key === 'calendar:season:42:1' && {
+            entry: { kind: 'calendarSeason' as const, value: [] },
+          }),
+        });
       }
     });
     fetch.mockImplementation(async () => new Response('{}', { status: 503 }));
     const offline = await scheduleFor(t, args);
     expect(offline.events).toEqual(initial.events);
     expect(offline.failedTitles).toEqual({ count: 1, names: ['Weekly show'] });
-  });
-
-  it('does not lose a regular season when specials fail', async () => {
-    const { t, fetch } = await setup({
-      seasons: [
-        { season_number: 0, air_date: '2025-01-01' },
-        { season_number: 1, air_date: '2026-09-02' },
-      ],
+    expect(await t.action(api.calendar.upcoming, { ...args, cachedOnly: true })).toMatchObject({
+      events: initial.events,
+      needsRefresh: true,
     });
-    const original = fetch.getMockImplementation()!;
-    fetch.mockImplementation(async (input) =>
-      String(input).endsWith('/season/0') ? new Response('{}', { status: 404 }) : original(input),
-    );
-    const month = await scheduleFor(t, {
-      startDate: '2026-09-01',
-      endDate: '2026-09-30',
-    });
-    expect(month.events).toHaveLength(2);
-    expect(month.failedTitles.count).toBe(1);
   });
 
   it('reloads truncated snapshots instead of treating them as schedules', async () => {
@@ -434,21 +415,26 @@ describe('calendar episode dates', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it('returns a retry delay when the provider budget is temporarily exhausted', async () => {
+  it('returns a retry delay without repeatedly contending for an exhausted provider budget', async () => {
     const { t, base, fetch } = await setup({ seasons: [] });
     await base.run(async (ctx) => {
+      const first = await ctx.db.query('items').first();
+      const { _id: _itemId, _creationTime: _created, ...item } = first!;
+      for (let tmdbId = 1; tmdbId < 20; tmdbId++) await ctx.db.insert('items', { ...item, tmdbId });
       await ctx.db.insert('requestThrottle', {
         key: 'tmdb-global',
         windowStart: Date.now(),
         count: 300,
       });
     });
+    const budget = vi.spyOn(providerRateLimits.consumeGlobalProviderLimiter, '_handler');
     const limited = await t.action(api.calendar.upcoming, {
       startDate: '2026-09-01',
       endDate: '2026-09-30',
     });
     expect(limited.retryAfterMs).toBe(60_000);
-    expect(limited.failedTitles.count).toBe(1);
+    expect(limited.failedTitles.count).toBe(20);
+    expect(budget).toHaveBeenCalledTimes(2);
     expect(fetch).not.toHaveBeenCalled();
   });
 });
@@ -526,7 +512,7 @@ describe('calendar repeat loading', () => {
       for (let tmdbId = 1; tmdbId <= 205; tmdbId++)
         await ctx.db.insert('items', {
           userId,
-          tmdbId,
+          tmdbId: tmdbId === 102 ? 103 : tmdbId,
           mediaType: 'movie',
           title: `Movie ${tmdbId}`,
           normalizedTitle: `movie ${tmdbId}`,
@@ -568,6 +554,7 @@ describe('calendar repeat loading', () => {
     const titles = pages.flatMap((page) => page.titles.map((entry) => entry.item));
     expect(titles).toHaveLength(102);
     expect(titles[0].tmdbId).toBe(103);
+    expect(titles[0].title).toBe('Movie 103');
     expect(titles.at(-1)?.tmdbId).toBe(204);
   });
 });

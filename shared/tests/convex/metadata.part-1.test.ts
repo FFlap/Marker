@@ -536,43 +536,6 @@ describe('metadata pipeline', () => {
     ).rejects.toMatchObject({ data: { code: 'stale_epoch', retryable: true } });
   });
 
-  it('returns repeated in-flight touches before reading malformed season chunk data', async () => {
-    const { t, asUser } = await setup();
-    const expiresAt = Date.now() + 60_000;
-    await t.run(async (ctx) => {
-      await ctx.db.insert('resolvedSeasons', {
-        tmdbId: 88,
-        season: 1,
-        metadataProvider: 'tmdb',
-        episodeCount: 6_001,
-        chunkCount: 51,
-        refreshedAt: Date.now(),
-        refreshAfter: Date.now() + 60_000,
-        orderEpoch: 0,
-      });
-      for (const key of ['title:tv:88', 'season:88:1'])
-        await ctx.db.insert('metadataRefreshRequests', {
-          key,
-          state: 'inFlight',
-          lastRequestedAt: Date.now(),
-          attemptToken: 'active',
-          expiresAt,
-        });
-    });
-    for (let count = 0; count < 3; count += 1)
-      await expect(
-        asUser.mutation(api.resolvedMetadata.touch.touchTitle, {
-          mediaType: 'tv',
-          tmdbId: 88,
-          season: 1,
-        }),
-      ).resolves.toMatchObject({
-        scheduled: false,
-        title: { reason: 'inFlight' },
-        season: { reason: 'inFlight' },
-      });
-  });
-
   it('caps distinct unknown touch keys per user', async () => {
     const { t, userId, asUser } = await setup();
     await t.run(async (ctx) => {

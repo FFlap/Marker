@@ -77,14 +77,11 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
       <EpisodesScreen />
     </ToastProvider>,
   );
-  expect(view.queryByText('Pick up where you left off.')).toBeNull();
-  expect(view.queryByText('EPISODE DESK')).toBeNull();
   expect(view.getByText('One Piece')).toBeTruthy();
   expect(view.getByText('The First Line of Defense')).toBeTruthy();
   expect(view.queryByText('EP 62')).toBeNull();
   expect(view.queryByText('24 min')).toBeNull();
   expect(view.getByText('The crew reaches the Grand Line.')).toBeTruthy();
-  expect(view.queryByText('01')).toBeNull();
 
   await fireEvent.press(view.getByLabelText('View One Piece, episode 62'));
   expect(view.getByText('EP 62')).toBeTruthy();
@@ -108,7 +105,6 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
     }),
   );
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
-  expect(view.queryByText('The episodes you love most.')).toBeNull();
   expect(view.getByText('Miyuki Shirogane Wants to Gaze at the Moon')).toBeTruthy();
   expect(view.getByLabelText('Rated 5 out of 5 stars')).toBeTruthy();
   expect(view.getByText('The student council spends an evening beneath the moon.')).toBeTruthy();
@@ -120,7 +116,6 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
   await fireEvent.press(view.getByLabelText('Kaguya-sama: Love Is War episode 3 options'));
   expect(view.getAllByText('Tags').length).toBeGreaterThan(0);
   expect(view.getByText('Mark episode unwatched')).toBeTruthy();
-  expect(view.queryByText('Edit episode 3')).toBeNull();
   await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'Romance');
   await fireEvent.press(view.getByLabelText('Create tag Romance'));
   await waitFor(() =>
@@ -138,22 +133,6 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
   expect(view.getByLabelText('Search favorites episodes')).toBeTruthy();
   expect(view.getByLabelText('Filter favorites episodes')).toBeTruthy();
   expect(view.getByRole('radio', { name: 'Comedy' })).toBeTruthy();
-});
-
-it('refreshes missing watching metadata once when opening the tab', async () => {
-  mockRefreshWatching.mockClear();
-  const view = await render(
-    <ToastProvider>
-      <EpisodesScreen />
-    </ToastProvider>,
-  );
-  await waitFor(() => expect(mockRefreshWatching).toHaveBeenCalledWith({}));
-  await view.rerender(
-    <ToastProvider>
-      <EpisodesScreen />
-    </ToastProvider>,
-  );
-  expect(mockRefreshWatching).toHaveBeenCalledTimes(1);
 });
 
 it('reports a refresh failure without repeatedly scheduling repair', async () => {

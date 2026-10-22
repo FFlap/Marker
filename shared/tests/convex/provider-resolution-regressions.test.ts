@@ -250,13 +250,23 @@ it('keeps unknown totals selectable while hiding confirmed empty seasons', async
     refreshedAt: 10,
     refreshAfter: 30,
   });
-  const view = await t
-    .withIdentity({ subject: 'unknown-counts' })
-    .query(api.resolvedMetadata.reads.getTitle, { mediaType: 'tv', tmdbId: 88 });
-  expect(view?.seasons).toEqual([
-    { season: 1, name: 'Unknown', episodeCount: 0, episodeCountVerified: false },
-    { season: 3, name: 'Previously loaded', episodeCount: 1, episodeCountVerified: true },
-  ]);
+  const viewer = t.withIdentity({ subject: 'unknown-counts' });
+  const identity = { mediaType: 'tv' as const, tmdbId: 88 };
+  const itemId = await viewer.mutation(api.library.items.addItem, {
+    ...identity,
+    title: 'Unknown counts',
+    status: 'watching',
+  });
+  const views = [
+    await viewer.query(api.resolvedMetadata.reads.getTitle, identity),
+    (await viewer.query(api.resolvedMetadata.reads.getTitleView, identity)).title,
+    (await viewer.query(api.resolvedMetadata.reads.getItemView, { itemId })).title,
+  ];
+  for (const view of views)
+    expect(view?.seasons).toEqual([
+      { season: 1, name: 'Unknown', episodeCount: 0, episodeCountVerified: false },
+      { season: 3, name: 'Previously loaded', episodeCount: 1, episodeCountVerified: true },
+    ]);
 });
 
 it('uses the short retry interval when any TVDB season total remains unknown', async () => {
@@ -453,7 +463,10 @@ it('returns a stable season version and restarts stale cursors at the new first 
       tmdbId: 88,
       season: 1,
       metadataProvider: 'tmdb',
-      episodes,
+      episodes: episodes.map((episode) => ({
+        ...episode,
+        name: `${episode.name} v${refreshedAt}`,
+      })),
       orderEpoch: 0,
       refreshedAt,
       refreshAfter: refreshedAt + 60_000,
@@ -472,7 +485,8 @@ it('returns a stable season version and restarts stale cursors at the new first 
   expect(second.page[0]?.chunkIndex).toBe(1);
   await put(2);
   const restarted = await page(first.continueCursor);
-  expect(restarted.page[0]?.chunkIndex).toBe(0);
+  expect(restarted.page[0]).toMatchObject({ chunkIndex: 0, totalCount: 201 });
+  expect(restarted.page[0]?.episodes[0]).toMatchObject({ name: 'Episode 1 v2' });
   expect(restarted.page[0]?.seasonVersion).not.toBe(first.page[0]?.seasonVersion);
 });
 

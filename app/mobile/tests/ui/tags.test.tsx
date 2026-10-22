@@ -176,7 +176,6 @@ jest.mock('@/components/ui/drawer', () => {
     Drawer: passthrough,
     DrawerClose: passthrough,
     DrawerContent: container,
-    DrawerFooter: container,
     DrawerHeader: container,
     DrawerTitle: label,
     DrawerTrigger: passthrough,
@@ -203,13 +202,11 @@ describe('Tags screens', () => {
     mockSetVisibility.mockClear();
   });
 
-  it('shows searchable tag collections without redundant counts', async () => {
+  it('searches tag collections and opens the selected tag', async () => {
     const user = userEvent.setup();
     const view = await render(<TagsScreen />);
-    expect(view.getByLabelText('Open account menu')).toBeTruthy();
     expect(view.getByLabelText('Open Favorites tag')).toBeTruthy();
     expect(view.getByLabelText('Open Weekend tag')).toBeTruthy();
-    expect(view.queryByText('2 titles')).toBeNull();
     await user.type(view.getByLabelText('Search your tags'), 'fav');
     expect(view.getByLabelText('Open Favorites tag')).toBeTruthy();
     expect(view.queryByLabelText('Open Weekend tag')).toBeNull();

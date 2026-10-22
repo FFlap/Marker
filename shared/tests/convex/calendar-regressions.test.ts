@@ -197,6 +197,9 @@ describe('resumable calendar discovery', () => {
   it('takes over an expired lease at its checkpoint and fences the abandoned worker', async () => {
     const { t } = await fixture();
     await t.mutation(internal.calendarCatalog.claim, job);
+    expect(await t.mutation(internal.calendarCatalog.claim, { ...job, token: 'contender' })).toBe(
+      false,
+    );
     await t.mutation(internal.calendarRefresh.checkpoint, {
       ...job,
       feed: 0,
@@ -244,9 +247,19 @@ describe('resumable calendar discovery', () => {
     },
   );
   it('bounds consecutive transient failures while keeping the last complete catalog', async () => {
-    const { t } = await fixture();
+    const { t, asUser, userId } = await fixture(21);
     await seedCatalog(t);
     vi.setSystemTime(now + 7 * 60 * 60_000);
+    await write(t, [release(1)]);
+    await t.run(async (ctx) => {
+      await ctx.db.insert('items', { ...item(userId, 99), mediaType: 'movie' });
+      await ctx.db.insert('calendarSchedules', {
+        key: 'CA:2026-10:movie:99:',
+        month: job.month,
+        events: [{ id: 'movie:99', date: '2026-10-12', kind: 'movie' }],
+        refreshedAt: Date.now(),
+      });
+    });
     await t.mutation(internal.calendarCatalog.claim, job);
     for (let attempt = 0; attempt < 5; attempt++)
       await t.mutation(internal.calendarRefresh.failed, {
@@ -267,6 +280,19 @@ describe('resumable calendar discovery', () => {
     expect(
       scheduled.filter((fn) => fn.name === 'calendarDiscovery:continueDiscovery'),
     ).toHaveLength(5);
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const saved = await loadCalendarPages(
+      (args) => asUser.action(api.calendar.upcoming, args),
+      window,
+      () => {},
+    );
+    expect(saved.events.map((event) => event.id).sort()).toEqual(
+      [release(1).id, 'movie:99'].sort(),
+    );
+    expect(saved.needsRefresh).toBe(true);
+    expect(saved.failedTitles.count).toBe(0);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -344,10 +370,11 @@ describe('bounded release storage and responses', () => {
   it('keeps old releases until atomic publication and fences superseded partial writes', async () => {
     const { t } = await fixture();
     await write(t, [release(1)]);
+    vi.setSystemTime(now + 7 * 60 * 60_000);
     const args = {
       key: 'CA:2026-10:tv:1:',
       month: job.month,
-      refreshedAt: now,
+      refreshedAt: Date.now(),
       token: 'abandoned',
     };
     await t.mutation(internal.calendarScheduleStore.begin, args);
@@ -360,7 +387,10 @@ describe('bounded release storage and responses', () => {
     expect(
       (await t.query(internal.calendarScheduleStore.readPage, { key: args.key, offset: 0 })).events,
     ).toEqual([release(1)]);
-    await t.mutation(internal.calendarScheduleStore.begin, { ...args, token: 'winner' });
+    const winner = { ...args, token: 'winner', refreshedAt: Date.now() - 6 * 60 * 60_000 };
+    expect(await t.mutation(internal.calendarScheduleStore.begin, winner)).toBe(false);
+    vi.setSystemTime(Date.now() + 120_001);
+    expect(await t.mutation(internal.calendarScheduleStore.begin, winner)).toBe(true);
     expect(
       await t.mutation(internal.calendarScheduleStore.writeChunk, {
         ...args,
@@ -376,6 +406,15 @@ describe('bounded release storage and responses', () => {
     expect(
       (await t.query(internal.calendarScheduleStore.readPage, { key: args.key, offset: 0 })).events,
     ).toEqual([release(1)]);
+    await t.mutation(internal.calendarScheduleStore.writeChunk, {
+      ...winner,
+      chunk: 0,
+      done: true,
+      events: [release(2)],
+    });
+    expect(
+      (await t.query(internal.calendarScheduleStore.readPage, { key: args.key, offset: 0 })).events,
+    ).toEqual([release(2)]);
   });
 });
 

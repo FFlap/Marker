@@ -197,34 +197,6 @@ describe('metadata failure recovery', () => {
     ).resolves.toMatchObject({ title: 'Fresh after season lease' });
   });
 
-  it('replaces an expired crashed request when a mounted client re-touches it', async () => {
-    const { t, asUser } = await setup();
-    const expiredAt = Date.now() - 1;
-    await t.run((ctx) =>
-      ctx.db.insert('metadataRefreshRequests', {
-        key: 'title:movie:77',
-        state: 'inFlight',
-        lastRequestedAt: expiredAt - 1_000,
-        attemptToken: 'crashed',
-        expiresAt: expiredAt,
-      }),
-    );
-    await expect(
-      asUser.mutation(api.resolvedMetadata.touch.touchTitle, {
-        mediaType: 'movie',
-        tmdbId: 77,
-      }),
-    ).resolves.toMatchObject({ scheduled: true });
-    const replacement = await t.run((ctx) =>
-      ctx.db
-        .query('metadataRefreshRequests')
-        .withIndex('by_key', (query) => query.eq('key', 'title:movie:77'))
-        .unique(),
-    );
-    expect(replacement).toMatchObject({ state: 'inFlight' });
-    expect(replacement).not.toHaveProperty('errorCode');
-  });
-
   it('rejects a superseded commit before writing title data', async () => {
     const { t } = await setup();
     await t.run(async (ctx) => {

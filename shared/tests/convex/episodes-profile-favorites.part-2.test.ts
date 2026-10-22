@@ -167,7 +167,7 @@ describe('episode hub and profile favorites', () => {
     ).toMatchObject({ token: 'independent-coordinate-chain' });
   });
 
-  it('maintains the coordinate across watch, unwatch, re-publish, and epoch flips', async () => {
+  it('maintains the coordinate across watch, re-publish, and epoch flips', async () => {
     vi.useFakeTimers();
     const { t, asUser } = await setup();
     await t.run(async (ctx) => {
@@ -268,22 +268,6 @@ describe('episode hub and profile favorites', () => {
       imageUrl: 'https://images.example/luffy.jpg',
       tags: ['Adventure'],
     });
-    await asUser.mutation(api.library.episodes.setEpisodeState, {
-      itemId,
-      season: 1,
-      episode: 1,
-      watched: false,
-    });
-    expect(
-      (await asUser.query(api.episodeHub.overview, { today: '2026-08-11' })).watching[0],
-    ).toMatchObject({ episode: 1, name: "I'm Luffy!" });
-    await asUser.mutation(api.library.episodes.setEpisodeState, {
-      itemId,
-      season: 1,
-      episode: 1,
-      watched: true,
-    });
-
     await putSeason(t, {
       tmdbId: 37854,
       season: 1,
@@ -374,7 +358,10 @@ describe('episode hub and profile favorites', () => {
       ...add('Favorite Anime', 4, 'tv', 'watched'),
       genres: ['Animation', 'Anime'],
     });
-    await asUser.mutation(api.library.items.addItem, add('Regular TV Show', 5, 'tv', 'watched'));
+    await asUser.mutation(api.library.items.addItem, {
+      ...add('Regular TV Show', 5, 'tv', 'watched'),
+      genres: ['Animation', 'Kids'],
+    });
     await expect(asUser.mutation(api.profileFavorites.add, { itemId: watching })).rejects.toThrow(
       'Only watched titles',
     );

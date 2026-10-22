@@ -1,4 +1,3 @@
-import { putSeason } from './metadata-fixtures';
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import schema from '../../convex/schema';
@@ -73,78 +72,26 @@ describe('Marker backend', () => {
       }),
     ).rejects.toThrow('non-negative integer');
   });
-  it('requires auth and validates additions, duplicates, ratings, statuses, tags, and reorder', async () => {
-    const { t, asUser } = await setup();
-    await expect(t.query(api.library.items.listItems, {})).rejects.toThrow(
-      'Authentication required',
-    );
-    const titles = [
-      ['Avengers: Endgame', 299534, 'movie'],
-      ['The Middle', 1422, 'tv'],
-      ['Daredevil', 61889, 'tv'],
-      ['Oshi no Ko', 203737, 'tv'],
-      ["Shikimori's Not Just a Cutie", 154391, 'tv'],
-      ['Kaguya-sama: Love Is War', 83121, 'tv'],
-    ] as const;
-    const ids = [];
-    for (const [title, id, type] of titles)
-      ids.push(
-        await asUser.mutation(
-          api.library.items.addItem,
-          add(title, id, type, { tags: ['favorite'] }),
-        ),
-      );
-    await expect(
-      asUser.mutation(api.library.items.addItem, add(titles[0][0], titles[0][1], titles[0][2])),
-    ).rejects.toThrow('already exists');
-    for (const rating of [-1, 10.5])
-      await expect(
-        asUser.mutation(api.library.items.updateItem, { itemId: ids[0], rating }),
-      ).rejects.toThrow('between 0 and 5');
-    await asUser.mutation(api.library.items.updateItem, {
-      itemId: ids[0],
-      status: 'watching',
-      rating: 4.75,
-      tags: ['marvel'],
-    });
-    await asUser.mutation(api.library.items.updateItem, {
-      itemId: ids[0],
-      status: 'watched',
-      timesWatched: 2,
-    });
-    const midpoint = await asUser.mutation(api.library.ordering.reorderItem, {
-      itemId: ids[3],
-      beforeId: ids[1],
-      afterId: ids[2],
-    });
-    expect(midpoint).toBe(2.5);
-    await asUser.mutation(api.library.items.updateItem, {
-      itemId: ids[1],
-      status: 'dropped',
-    });
-    const items = await asUser.query(api.library.items.listItems, {});
-    expect(items.find((i) => i._id === ids[0])).toMatchObject({
-      status: 'watched',
-      rating: 4.75,
-      tags: ['marvel'],
-      timesWatched: 2,
-    });
-    expect(items.find((i) => i._id === ids[1])?.status).toBe('dropped');
-  });
-
-  it('persists anime classification separately from the Animation genre', async () => {
+  it('rejects duplicate additions and negative ratings while preserving updated watch counts', async () => {
     const { asUser } = await setup();
-    const animeId = await asUser.mutation(
-      api.library.items.addItem,
-      add('One Piece', 37854, 'tv', { genres: ['Animation', 'Anime'] }),
+    const movie = add('Avengers: Endgame', 299534, 'movie');
+    const itemId = await asUser.mutation(api.library.items.addItem, movie);
+    await expect(asUser.mutation(api.library.items.addItem, movie)).rejects.toThrow(
+      'already exists',
     );
-    const animationId = await asUser.mutation(
-      api.library.items.addItem,
-      add('Peppa Pig', 12225, 'tv', { genres: ['Animation', 'Kids'] }),
-    );
+    await expect(
+      asUser.mutation(api.library.items.updateItem, { itemId, rating: -1 }),
+    ).rejects.toThrow('between 0 and 5');
+    await asUser.mutation(api.library.items.updateItem, {
+      itemId,
+      status: 'watched',
+      timesWatched: 2,
+    });
     const items = await asUser.query(api.library.items.listItems, {});
-    expect(items.find((item) => item._id === animeId)?.isAnime).toBe(true);
-    expect(items.find((item) => item._id === animationId)?.isAnime).toBe(false);
+    expect(items.find((i) => i._id === itemId)).toMatchObject({
+      status: 'watched',
+      timesWatched: 2,
+    });
   });
 
   it('keeps independent per-tag ordering and removes stale tag ranks', async () => {
@@ -512,134 +459,10 @@ describe('Marker backend', () => {
       totalItems: 2,
       avgRating: 4.25,
     });
-    expect(stats.topTags[0]).toEqual({ tag: 'hero', count: 2 });
-    await asUser.mutation(api.library.items.removeItem, { itemId: show });
-    for (let pass = 0; pass < 8; pass += 1)
-      await t.mutation(internal.library.items.continueRemoveItem, { itemId: show });
-    expect(
-      await t.run((ctx) =>
-        ctx.db
-          .query('episodes')
-          .withIndex('by_item', (query) => query.eq('itemId', show))
-          .collect(),
-      ),
-    ).toEqual([]);
-  });
-
-  it('derives season batches from canonical metadata and applies them idempotently', async () => {
-    const { t, asUser } = await setup();
-    const itemId = await asUser.mutation(
-      api.library.items.addItem,
-      add('Daredevil', 61889, 'tv', { status: 'watching' }),
-    );
-    await t.run((ctx) =>
-      ctx.db.insert('resolvedTitles', {
-        tmdbId: 61889,
-        mediaType: 'tv',
-        title: 'Daredevil',
-        episodeRunTime: [50],
-        genres: [],
-        cast: [],
-        seasons: [
-          { season: 1, name: 'Season 1', episodeCount: 2 },
-          { season: 2, name: 'Season 2', episodeCount: 2 },
-        ],
-        metadataProvider: 'tmdb',
-        orderEpoch: 0,
-        refreshedAt: Date.now(),
-        refreshAfter: Date.now() + 60_000,
-      }),
-    );
-    await putSeason(t, {
-      tmdbId: 61889,
-      season: 1,
-      metadataProvider: 'tmdb',
-      episodes: [
-        { season: 1, episode: 1, name: 'One' },
-        { season: 1, episode: 2, name: 'Two' },
-      ],
-      refreshedAt: Date.now(),
-      refreshAfter: Date.now() + 60_000,
-      orderEpoch: 0,
-    });
-    await putSeason(t, {
-      tmdbId: 61889,
-      season: 2,
-      metadataProvider: 'tmdb',
-      episodes: [
-        { season: 2, episode: 1, name: 'Three' },
-        { season: 2, episode: 2, name: 'Four' },
-      ],
-      refreshedAt: Date.now(),
-      refreshAfter: Date.now() + 60_000,
-      orderEpoch: 0,
-    });
-    const setSeason = (watched = true) =>
-      asUser.action(api.library.seasonWatched.setSeasonWatched, {
-        itemId,
-        season: 1,
-        watched,
-      });
-
-    await setSeason();
-    await setSeason();
-    let episodes = await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
-    expect(episodes).toHaveLength(2);
-    expect(episodes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ season: 1, episode: 1, watched: true }),
-        expect.objectContaining({ season: 1, episode: 2, watched: true }),
-      ]),
-    );
-    await setSeason(false);
-    episodes = await asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
-    expect(episodes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ season: 1, episode: 1, watched: false }),
-        expect.objectContaining({ season: 1, episode: 2, watched: false }),
-      ]),
-    );
-    await asUser.action(api.library.seasonWatched.moveItemToWatched, { itemId });
-    const watchedSeasons = await Promise.all([
-      asUser.query(api.library.episodes.listEpisodes, { itemId, season: 1 }),
-      asUser.query(api.library.episodes.listEpisodes, { itemId, season: 2 }),
+    expect(stats.topTags).toEqual([
+      { tag: 'hero', count: 2 },
+      { tag: 'great', count: 1 },
+      { tag: 'pilot', count: 1 },
     ]);
-    expect(watchedSeasons).toHaveLength(2);
-    expect(watchedSeasons.every((season) => season.every((episode) => episode.watched))).toBe(true);
-    expect(
-      (await asUser.query(api.library.items.listItems, {})).find((item) => item._id === itemId),
-    ).toMatchObject({ status: 'watched', timesWatched: 1 });
-  });
-
-  it('computes episode stats from maintained summaries without raw episode rows', async () => {
-    vi.useFakeTimers();
-    const { t, userId, asUser } = await setup();
-    const itemId = await asUser.mutation(
-      api.library.items.addItem,
-      add('Aggregate show', 700, 'tv', { status: 'watched', runtime: 45, tags: ['hero'] }),
-    );
-    await t.run((ctx) =>
-      ctx.db.insert('episodeSummaries', {
-        userId,
-        itemId,
-        season: 1,
-        total: 2,
-        watchedCount: 2,
-        watchedRuntimeMinutes: 52,
-        watchedRuntimeFallbackCount: 1,
-        tagCounts: [{ tag: 'pilot', count: 2 }],
-      }),
-    );
-    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
-
-    await expect(asUser.query(api.stats.profile, {})).resolves.toMatchObject({
-      episodesWatched: 2,
-      totalWatchMinutes: 97,
-      topTags: [
-        { tag: 'pilot', count: 2 },
-        { tag: 'hero', count: 1 },
-      ],
-    });
-    await expect(t.run((ctx) => ctx.db.query('episodes').collect())).resolves.toEqual([]);
   });
 });

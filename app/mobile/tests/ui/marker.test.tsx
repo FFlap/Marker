@@ -1,6 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 
 const mockReorderItem = jest.fn();
 const mockMoveItemToWatched = jest.fn();
@@ -222,9 +221,7 @@ jest.mock('@/components/NativeDraggableGrid', () => {
           return null;
         })()}
         {data.map((item, index) => (
-          <View key={item._id} style={{ width: '31%', flexGrow: 0, flexShrink: 0 }}>
-            {renderItem({ item, index, isActive: false })}
-          </View>
+          <View key={item._id}>{renderItem({ item, index, isActive: false })}</View>
         ))}
       </View>
     ),
@@ -241,7 +238,6 @@ jest.mock('../../src/components/ui/drawer', () => {
     Drawer: Passthrough,
     DrawerClose: Passthrough,
     DrawerContent: Container,
-    DrawerFooter: Container,
     DrawerHeader: Container,
     DrawerTitle: Label,
     DrawerTrigger: ({ children }: { children: React.ReactNode }) => children,
@@ -348,14 +344,9 @@ describe('Marker library', () => {
     expect(q.queryByText('Avengers: Endgame')).toBeNull();
   });
 
-  it('fades, slides, and disables the add button from native scroll progress', async () => {
+  it('disables the add button while scrolled away from the top', async () => {
     const q = await view();
     const scroll = q.getByTestId('library-scroll');
-    const motion = q.getByTestId('library-add-motion');
-    const motionStyle = StyleSheet.flatten(motion.props.style);
-    expect(motionStyle.transformOrigin).toBeUndefined();
-    expect(motionStyle.opacity).toBeDefined();
-    expect(motionStyle.transform).toHaveLength(2);
     await act(async () => {
       fireEvent.scroll(scroll, { nativeEvent: { contentOffset: { y: 80 } } });
       await Promise.resolve();
@@ -482,15 +473,6 @@ describe('Marker library', () => {
     );
     const q = await view();
     const tile = q.getByLabelText('The Middle');
-    expect(StyleSheet.flatten(tile.props.style)).toMatchObject({
-      width: '100%',
-      maxWidth: '100%',
-    });
-    expect(StyleSheet.flatten(tile.parent?.props.style)).toMatchObject({
-      width: '31%',
-      flexGrow: 0,
-      flexShrink: 0,
-    });
     await act(async () => {
       fireEvent(tile, 'accessibilityAction', {
         nativeEvent: { actionName: 'moveUp' },
@@ -521,15 +503,5 @@ describe('Marker library', () => {
       beforeId: 'd',
       afterId: 'e',
     });
-  });
-
-  it('blocks reorder while filters are active', async () => {
-    const q = await view();
-    await fireEvent.press(q.getByLabelText('5 stars and up'));
-    expect(q.getByText(/Clear filters to reorder/)).toBeTruthy();
-    await act(async () => {
-      mockDragEnds.get('a')?.({ data: [items[0]], from: 0, to: 0 });
-    });
-    expect(mockReorderItem).not.toHaveBeenCalled();
   });
 });

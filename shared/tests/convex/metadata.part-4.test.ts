@@ -2,10 +2,11 @@ import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { api, internal } from '../../convex/_generated/api';
+import type { ActionCtx } from '../../convex/_generated/server';
 import schema from '../../convex/schema';
 import {
+  resolveAndCommitCanonical,
   resolveFreshSeason,
-  titleWriteForCapturedTitle,
 } from '../../convex/resolvedMetadata/seasonResolution';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
@@ -120,52 +121,15 @@ describe('metadata pipeline', () => {
     ).resolves.toMatchObject({ source: 'auto', orderEpoch: 0 });
   });
 
-  it('publishes shared title metadata into item projections before list reads', async () => {
-    const { t, asUser } = await setup();
-    await t.run((ctx) => ctx.db.insert('users', { clerkId: 'user_shared_metadata_other' }));
-    const other = t.withIdentity({ subject: 'user_shared_metadata_other' });
-    const firstId = await asUser.mutation(api.library.items.addItem, {
-      tmdbId: 77,
-      mediaType: 'movie',
-      title: 'Old fallback',
-      status: 'watchlist',
-    });
-    const secondId = await other.mutation(api.library.items.addItem, {
-      tmdbId: 77,
-      mediaType: 'movie',
-      title: 'Another fallback',
-      status: 'watchlist',
-    });
-    await t.run((ctx) => ctx.db.insert('resolvedTitles', movieTitle({ title: 'Fresh shared' })));
-    await t.mutation(internal.resolvedMetadata.publication.refreshItemProjections, {
-      mediaType: 'movie',
-      tmdbId: 77,
-    });
-
-    expect(await asUser.query(api.library.items.listItems, {})).toMatchObject([
-      { _id: firstId, title: 'Fresh shared' },
-    ]);
-    expect(await other.query(api.library.items.listItems, {})).toMatchObject([
-      { _id: secondId, title: 'Fresh shared' },
-    ]);
-    expect(await t.run((ctx) => ctx.db.get(firstId))).toMatchObject({ title: 'Fresh shared' });
-    expect(await t.run((ctx) => ctx.db.get(secondId))).toMatchObject({
-      title: 'Fresh shared',
-    });
-  });
-
-  it('publishes the current-epoch title when a season-only refresh sees a mid-flight mapping change', async () => {
+  it('publishes a replacement title when a season refresh captured an older mapping epoch', async () => {
     const { t, asUser } = await setup();
     const now = Date.now();
-    await t.run(async (ctx) => {
-      await ctx.db.insert('resolvedTitles', {
-        ...movieTitle({
-          tmdbId: 88,
-          mediaType: 'tv',
-          title: 'Captured old title',
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
-          orderEpoch: 0,
-        }),
+    const seasons = [{ season: 1, name: 'Season 1', episodeCount: 1 }];
+    const attemptToken = 'season-mapping-change';
+    const leaseKey = 'metadata:tv:88';
+    const currentTitle = await t.run(async (ctx) => {
+      const titleId = await ctx.db.insert('resolvedTitles', {
+        ...movieTitle({ tmdbId: 88, title: 'Captured old title', seasons }),
         mediaType: 'tv',
       });
       await ctx.db.insert('titleMappings', {
@@ -181,70 +145,50 @@ describe('metadata pipeline', () => {
         key: 'season:88:1',
         state: 'inFlight',
         lastRequestedAt: now,
-        attemptToken: 'season-mapping-change',
+        attemptToken,
         expiresAt: now + 60_000,
       });
-      await ctx.db.insert('metadataRefreshLeases', {
-        key: 'metadata:tv:88',
-        token: 'season-mapping-lease',
-        expiresAt: now + 60_000,
-      });
+      return (await ctx.db.get(titleId))!;
     });
-    const titleWrite = titleWriteForCapturedTitle(true, false);
-    expect(titleWrite).toBe('replace');
+    await t.mutation(internal.resolvedMetadata.requests.claimRefresh, {
+      key: leaseKey,
+      token: attemptToken,
+      leaseMs: 60_000,
+    });
+    const runAction = vi
+      .fn()
+      .mockResolvedValueOnce({ title: 'Current epoch title', genres: [], seasons })
+      .mockResolvedValueOnce({
+        tvdbId: 900,
+        title: 'Current epoch title',
+        order: 'official',
+        genres: ['Anime'],
+        episodeRunTime: [],
+        seasons,
+        selectedSeason: 1,
+        selectedEpisodes: [{ season: 1, episode: 1, name: 'Current episode' }],
+      })
+      .mockResolvedValueOnce([]);
 
     await expect(
-      t.mutation(internal.resolvedMetadata.publication.commitRefresh, {
-        title: {
-          ...movieTitle({
-            tmdbId: 88,
-            mediaType: 'tv',
-            title: 'Current epoch title',
-            seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
-            metadataProvider: 'tvdb',
-            tvdbId: 900,
-            seasonOrder: 'official',
-            orderEpoch: 1,
-            refreshedAt: now + 1,
-          }),
+      resolveAndCommitCanonical(
+        { runQuery: t.query, runMutation: t.mutation, runAction } as unknown as ActionCtx,
+        {
           mediaType: 'tv',
-        },
-        titleWrite,
-        season: {
           tmdbId: 88,
-          season: 1,
-          metadataProvider: 'tvdb',
-          chunks: [[{ season: 1, episode: 1, name: 'Current episode' }]],
-          episodeCount: 1,
-          chunkCount: 1,
-          refreshedAt: now + 1,
-          refreshAfter: now + 1 + 60_000,
-          orderEpoch: 1,
+          requestedSeason: 1,
+          force: false,
+          keys: ['season:88:1'],
+          attemptToken,
+          leaseKey,
+          leaseToken: attemptToken,
+          currentTitle,
         },
-        mapping: {
-          tmdbId: 88,
-          mediaType: 'tv',
-          tvdbId: 900,
-          seasonOrder: 'official',
-          source: 'auto',
-          orderEpoch: 1,
-          updatedAt: now + 1,
-        },
-        expectedMapping: {
-          tvdbId: 900,
-          seasonOrder: 'official',
-          source: 'auto',
-          orderEpoch: 1,
-        },
-        outcomes: [{ key: 'season:88:1', state: 'succeeded' }],
-        attemptToken: 'season-mapping-change',
-        leaseKey: 'metadata:tv:88',
-        leaseToken: 'season-mapping-lease',
-      }),
-    ).resolves.toBe(true);
+      ),
+    ).resolves.toMatchObject({ committed: true });
     await expect(
       t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 88 }),
-    ).resolves.toMatchObject({ title: 'Current epoch title', orderEpoch: 1 });
+    ).resolves.toMatchObject({ title: 'Current epoch title', orderEpoch: 1, tvdbId: 900 });
     await expect(
       asUser.query(api.resolvedMetadata.reads.getSeasonView, {
         tmdbId: 88,

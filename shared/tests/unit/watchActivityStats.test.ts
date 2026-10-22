@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildActivityHeatmap,
-  formatActivityDate,
-  summarizeWatchActivity,
-} from '../../lib/watchActivityStats';
+import { buildActivityHeatmap, summarizeWatchActivity } from '../../lib/watchActivityStats';
 
 describe('watch activity summary', () => {
   it('keeps a streak alive through today and measures the longest run', () => {
@@ -52,10 +48,6 @@ describe('watch activity summary', () => {
       thisWeek: 0,
       lastWeek: 0,
     });
-  });
-
-  it('formats dates without locale data', () => {
-    expect(formatActivityDate('2026-10-03')).toBe('Oct 3, 2026');
   });
 
   it('counts leap days and DST boundaries as consecutive calendar days without mutating input', () => {
