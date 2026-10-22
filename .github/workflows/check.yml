@@ -29,18 +29,18 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: |
-            shared/package-lock.json
+            app/shared/package-lock.json
             app/mobile/package-lock.json
             app/web/package-lock.json
             app/extension/package-lock.json
       - name: Install dependencies
         run: |
-          npm ci --prefix shared
+          npm ci --prefix app/shared
           npm ci --prefix app/mobile
           npm ci --prefix app/web
           npm ci --prefix app/extension
       - name: Check shared code
-        working-directory: shared
+        working-directory: app/shared
         run: |
           npm run check
           npm run audit:prod
