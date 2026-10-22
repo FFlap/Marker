@@ -14,10 +14,6 @@ type InlineActionProps = {
   size?: 'body' | 'heading';
 };
 
-/**
- * Borderless icon-and-label action used across the detail pages, so page-level
- * actions read as part of the text rather than as boxed buttons.
- */
 export function InlineAction({
   label,
   icon: Icon,

@@ -167,7 +167,6 @@ async function beginEpisodeSummaryRebuild(
   return true;
 }
 
-/** Applies one aggregate delta without reading any other episode rows. */
 async function applyEpisodeSummaryDelta(ctx: MutationCtx, delta: EpisodeSummaryDelta) {
   if (
     delta.total === 0 &&
@@ -430,7 +429,6 @@ export const rebuildEpisodeSummary = internalMutation({
   },
 });
 
-/** Fans a published canonical season out to affected personal summaries in bounded pages. */
 export const reconcileSeasonSummaries = internalMutation({
   args: { tmdbId: v.number(), season: v.number(), cursor: v.optional(v.string()) },
   returns: v.object({ work: v.number(), isDone: v.boolean() }),

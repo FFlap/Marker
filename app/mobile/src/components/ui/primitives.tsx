@@ -92,7 +92,6 @@ export function Segmented<T extends string>({
     label: string;
     value: T;
     accessibilityLabel?: string;
-    /** Optional glyph stacked above the label; receives the state-aware colour. */
     icon?: (color: string) => ReactNode;
   }[];
   value: T;

@@ -119,7 +119,6 @@ it('keeps mixed logged and historical episodes correct across season batches and
     season: 1,
     watched: false,
     offset: EPISODES_PER_CHUNK,
-    // Simulate a metadata refresh that makes this continuation restart at zero.
     expectedRefreshedAt: Date.now() - 1,
     expectedOrderEpoch: 0,
     expectedMetadataProvider: 'tmdb' as const,

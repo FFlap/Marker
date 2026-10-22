@@ -2,7 +2,6 @@ import type { Id } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { activityDayNumber, activityDateFromDayNumber } from '../lib/watchActivityStats';
 
-// Bound profile reads to the latest 3,660 active days (at least ten years).
 const MAX_ACTIVITY_DAYS = 3_660;
 const DAY_MS = 86_400_000;
 
@@ -13,10 +12,6 @@ const validDate = (value: string) => {
   return date.toISOString().slice(0, 10) === value;
 };
 
-/**
- * Resolves the viewer's local calendar day for an activity write. Local dates
- * can only differ from UTC by one day, so anything else falls back to UTC.
- */
 export function resolveActivityDate(localDate: string | undefined, now = Date.now()) {
   const utcDay = Math.floor(now / DAY_MS);
   if (localDate !== undefined && validDate(localDate)) {

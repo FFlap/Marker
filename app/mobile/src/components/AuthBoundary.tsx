@@ -19,9 +19,8 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
   const publicRoute = segments[0] === 'sign-in' || segments[0] === 'u';
   const setupRoute = segments[0] === 'profile-setup';
   if (!clerkLoaded) return <AuthLoadingScreen />;
-  // Clerk owns the session lifecycle. In particular, it can publish an expired session as signed
-  // out before Convex has finished clearing its cached auth state. Handle that state first so a
-  // protected screen can never get stuck behind Convex's loading state.
+  // Clerk can publish an expired session as signed out before Convex clears its cached
+  // auth state; checking Convex loading first can leave protected screens stuck.
   if (!isSignedIn) {
     if (!publicRoute) return <Redirect href="/sign-in" />;
     return children;

@@ -161,7 +161,6 @@ const titleMatches = (entry: Json, titles: string[]) => {
 const tmdbRemoteSources = new Set(['tmdb', 'the movie database', 'themoviedb', 'themoviedb com']);
 
 // Search relevance can put a spinoff first whose aliases include the parent title.
-// Provider identity outranks names; primary/translatable names outrank aliases.
 export function selectSeriesMatch(entries: Json[], tmdbId: number, titles: string[]) {
   const targets = new Set(normalizedNames(titles));
   const ranked = entries

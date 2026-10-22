@@ -172,7 +172,6 @@ async function refreshWatchingPage(ctx: MutationCtx, userId: Id<'users'>, cursor
     });
 }
 
-/** Repairs existing watching entries without requiring a visit to each title. */
 export const refreshWatching = mutation({
   args: {},
   returns: v.null(),

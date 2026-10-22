@@ -18,7 +18,6 @@ export const progress = internalQuery({
   },
 });
 
-/** Persist one provider page and its successor atomically. A replacement worker keeps this checkpoint. */
 export const checkpoint = internalMutation({
   args: {
     ...args,
@@ -108,7 +107,6 @@ export const checkpoint = internalMutation({
   },
 });
 
-/** Retry the same page at most five consecutive times; successful checkpoints reset the count. */
 export const failed = internalMutation({
   args: {
     ...args,
@@ -155,7 +153,6 @@ export const failed = internalMutation({
   },
 });
 
-/** Action crashes cannot strand a claimed catalog even if no client returns to poll. */
 export const recover = internalMutation({
   args,
   returns: v.null(),

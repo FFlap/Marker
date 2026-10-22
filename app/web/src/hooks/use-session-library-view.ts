@@ -20,7 +20,6 @@ export function useSessionLibraryView(defaultView: LibraryView) {
       try {
         window.sessionStorage.setItem(storageKey, view);
       } catch {
-        // Keep the selected view in memory when browser storage is unavailable.
       }
     }
     setOverride(view);

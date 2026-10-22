@@ -7,9 +7,6 @@ const fonts = {
   bold: 'AlbertSans_700Bold',
 } as const;
 
-// Albert Sans reads slightly smaller than the previous system face at the same
-// numeric size. Compensate for its visual metrics without scaling controls or
-// layout spacing along with the text.
 const FONT_SIZE_COMPENSATION = 1.08;
 
 function compensate(value: TextStyle['fontSize']) {

@@ -94,7 +94,6 @@ export async function resolveFreshSeason(
     title.metadataProvider === 'tvdb'
       ? mergeEpisodes(tvdbEpisodes, tmdbEpisodes)
       : releasedEpisodes(tmdbEpisodes).map(cleanEpisode);
-  // Preserve the last known season during a partial upstream outage.
   if (episodes.length === 0 && !tmdbResult.ok && current)
     return {
       episodes: current.episodes,
@@ -115,7 +114,6 @@ export function titleWriteForCapturedTitle(
     : ('replace' as const);
 }
 
-/** Builds the epoch-stamped title/season pair and commits it through one mutation. */
 export async function resolveAndCommitCanonical(
   ctx: ActionCtx,
   args: {
@@ -300,11 +298,8 @@ export async function resolveAndCommitCanonical(
     requestKey(args.mediaType, args.tmdbId),
     ...(requestedSeason !== undefined ? [seasonRequestKey(args.tmdbId, requestedSeason)] : []),
   ];
-  // A synchronous season read may reuse a captured title. In that case it can
-  // still adopt a season touch that arrived during provider work,
-  // but it must leave a late title touch with its scheduled title orchestrator.
-  // If it adopted the title before provider work, currentTitle is deliberately
-  // omitted by the caller and the title was actually refreshed above.
+  // Reusing a captured title does not satisfy a title touch arriving during
+  // provider work; leave that touch with its scheduled title orchestrator.
   const adoptableCandidateKeys =
     args.attemptToken.startsWith('synchronous:') && args.currentTitle !== undefined
       ? candidateKeys.filter((key) => key.startsWith('season:'))
@@ -333,11 +328,8 @@ export async function resolveAndCommitCanonical(
       };
     return { key, state: 'succeeded' as const };
   });
-  // Provider calls can outlive the ingress deadline. Renew both the ownership
-  // lease and every currently attached row immediately before the first commit.
-  // Adoptable candidate keys are used instead of the earlier adoption snapshot
-  // so eligible touches that arrived during provider work receive the same
-  // healthy deadline.
+  // Provider calls can outlive the ingress deadline. Include candidate keys so
+  // touches arriving during provider work also receive the renewed deadline.
   await ctx.runMutation(internal.resolvedMetadata.requests.renewRefreshAttempt, {
     key: args.leaseKey,
     token: args.leaseToken,
@@ -361,9 +353,6 @@ export async function resolveAndCommitCanonical(
     : undefined;
   const coreArgs = {
     title,
-    // A season orchestrator can discover that its captured title was invalidated
-    // by a mapping change. In that case resolveFreshTitle produced a replacement
-    // title and publication must replace the old-epoch document with it.
     titleWrite: titleWriteForCapturedTitle(args.currentTitle !== undefined, reusedCapturedTitle),
     season: commitSeason,
     mapping: mappingPayload,
@@ -533,8 +522,6 @@ async function getOrRefreshSeason(
       attemptToken: token,
       leaseKey: key,
       leaseToken: token,
-      // An already-pending title touch is safe to adopt only if this season
-      // action performs the requested title refresh as well.
       ...(!adoptedTitle && { currentTitle: title }),
     });
     if (!result.committed) {

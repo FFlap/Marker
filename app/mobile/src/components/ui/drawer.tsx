@@ -283,7 +283,6 @@ function DrawerContent({
                 </>
               }
             >
-              {/* The iOS overlay fills the window; Android stays inside the root safe area. */}
               <KeyboardScrollView
                 testID="drawer-scroll-view"
                 mode="layout"

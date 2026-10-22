@@ -24,7 +24,6 @@ export const FilterTrigger = forwardRef<
   );
 });
 
-/** Filters apply as they change; the footer resets them or dismisses the sheet. */
 export function FilterSheetFooter({ active, onClear }: { active: boolean; onClear: () => void }) {
   return (
     <View style={styles.footer}>

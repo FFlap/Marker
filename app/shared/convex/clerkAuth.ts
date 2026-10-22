@@ -53,9 +53,8 @@ function usernameCandidate(identity: UserIdentity, requestedUsername?: string) {
   if (claimed) {
     try {
       return validateUsername(claimed).username;
-    } catch {
-      // Fall through to a deterministic, valid username.
-    }
+      // eslint-disable-next-line no-empty
+    } catch {}
   }
   const emailPrefix = normalizeEmail(identity.email)
     ?.split('@')[0]
@@ -88,7 +87,6 @@ async function availableUsername(
   throw new Error('Could not reserve a username for this account');
 }
 
-/** Ensures each Clerk identity is linked to exactly one existing Marker profile. */
 export const ensureCurrentUser = mutation({
   args: { username: v.optional(v.string()) },
   returns: v.id('users'),

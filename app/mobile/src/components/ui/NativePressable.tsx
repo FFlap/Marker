@@ -13,8 +13,8 @@ export type NativePressableProps = Omit<PressableProps, 'style'> & {
 };
 
 /**
- * Keeps the style prop concrete for NativeWind's Fabric interop. Function-based
- * Pressable styles can lose registered layout and surface styles on native.
+ * Function-based Pressable styles can lose registered layout and surface styles
+ * in NativeWind's Fabric interop.
  */
 export function NativePressable({
   style,

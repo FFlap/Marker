@@ -98,7 +98,6 @@ function parseStructuredEpisode(document: Document): StructuredEpisode | null {
         };
       }
     } catch {
-      // Ignore unrelated or temporarily incomplete structured-data scripts.
     }
   }
   return null;

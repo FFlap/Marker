@@ -83,8 +83,6 @@ export function SeasonProgress({
 const styles = createAppStyles(
   {
     root: { paddingBottom: 6 },
-    // The 44pt picker target adds space above the heading text; pull it up so the
-    // gap under the section rule matches the other sections.
     headerRow: {
       marginTop: -10,
       flexDirection: 'row',
@@ -101,7 +99,6 @@ const styles = createAppStyles(
       backgroundColor: colors.border,
     },
     fill: { height: '100%', borderRadius: 2, backgroundColor: colors.text },
-    // Sits under the bar on the left, with its 44pt target reaching into the gap.
     toggleRow: { flexDirection: 'row', marginTop: 14 },
     count: { color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
     countStrong: { color: colors.text, fontWeight: '600' },

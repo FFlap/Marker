@@ -42,7 +42,6 @@ export const claimRefresh = internalMutation({
   },
 });
 
-/** Renews one still-owned provider attempt and every request row attached to it. */
 export const renewRefreshAttempt = internalMutation({
   args: {
     key: v.string(),
@@ -71,7 +70,6 @@ export const renewRefreshAttempt = internalMutation({
   },
 });
 
-/** Keeps a queued season request alive while it waits for the shared title lease. */
 export const renewRefreshRequests = internalMutation({
   args: { keys: v.array(v.string()), attemptToken: v.string(), requestMs: v.number() },
   handler: async (ctx, args) => {
@@ -174,7 +172,6 @@ export const admitSynchronousRefresh = internalMutation({
   },
 });
 
-/** Transfers pending touch rows to the synchronous lease holder. */
 export const adoptRefreshRequests = internalMutation({
   args: {
     keys: v.array(v.string()),
@@ -209,7 +206,6 @@ export const adoptRefreshRequests = internalMutation({
   },
 });
 
-/** Converts a lost scheduled lease into success when another writer already made its keys fresh. */
 export const settleScheduledRefresh = internalMutation({
   args: {
     mediaType,
@@ -264,9 +260,6 @@ export const settleScheduledRefresh = internalMutation({
     ]);
     if (lease && lease.expiresAt > now) {
       if (lease.token !== `scheduled:${args.attemptToken}`) return 'superseded' as const;
-      // Release our own failed attempt inside the same transaction that decides
-      // whether its request rows may fail. A synchronous claimant can therefore
-      // never slip between the lease check and the row transition.
       await ctx.db.delete(lease._id);
     }
     const titleVisible =

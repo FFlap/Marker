@@ -283,7 +283,6 @@ export const orchestrateSeasonRefresh = internalAction({
   },
 });
 
-/** Atomically fails every row adopted by a synchronous attempt and releases its lease. */
 export const failSynchronousRefresh = internalMutation({
   args: {
     leaseKey: v.string(),

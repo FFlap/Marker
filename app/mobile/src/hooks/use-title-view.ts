@@ -113,7 +113,6 @@ function useMetadataExpiryTimer(
   }, [key, state, delayMs, serverArm]);
 }
 
-/** Coalesces the matching backoff produced by one combined title/season attempt. */
 function useMetadataRecoveryTimers(args: {
   titleKey: string | undefined;
   titleState: MetadataRequestState | null | undefined;

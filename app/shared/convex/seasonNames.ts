@@ -17,11 +17,6 @@ const genericSeasonLabel = (name: string) => {
 const usableEnglishLabel = (name: string) =>
   name.trim().length > 0 && !genericSeasonLabel(name) && /\p{Script=Latin}/u.test(name);
 
-/**
- * TVDB remains authoritative for season coordinates and counts. When its
- * English label is missing, generic, or only available in another script,
- * reuse the matching TMDB display name without changing the selected order.
- */
 export const mergeSeasonDisplayNames = (
   tvdbSeasons: SeasonSummary[],
   tmdbSeasons: SeasonSummary[],

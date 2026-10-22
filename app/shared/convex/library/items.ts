@@ -44,7 +44,6 @@ export const listItems = query({
       .query('items')
       .withIndex('by_user', (q) => q.eq('userId', userId))
       .filter((q) => q.eq(q.field('deletingAt'), undefined))
-      // Bounded for Convex read limits; Marker targets personal-library scale.
       .take(2000);
     return items;
   },
@@ -274,7 +273,6 @@ export const removeItem = mutation({
   handler: async (ctx, { itemId }) => {
     const userId = await requireUser(ctx);
     const item = await ctx.db.get(itemId);
-    // A completed continuation is also a successful idempotent rerun.
     if (!item) return;
     if (item.userId !== userId) throw new Error('Item not found');
     if (item.deletingAt === undefined) {

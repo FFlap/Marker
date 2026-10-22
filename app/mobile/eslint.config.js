@@ -6,8 +6,7 @@ module.exports = defineConfig([
   globalIgnores(['.expo/**', 'dist/**']),
   {
     rules: {
-      // These rules reject React Native Animated values and the intentionally
-      // imperative DOM drag layer. React Compiler safely skips those scopes.
+      // These rules reject React Native Animated values and the imperative DOM drag layer.
       'react-hooks/immutability': 'off',
       'react-hooks/refs': 'off',
       'react-hooks/set-state-in-effect': 'error',

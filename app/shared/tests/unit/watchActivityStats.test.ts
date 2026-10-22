@@ -17,11 +17,9 @@ describe('watch activity summary', () => {
       totalEpisodes: 16,
       activeDays: 5,
       firstDate: '2026-09-01',
-      // 2026-10-10 is a Saturday; its week began Sunday, Oct 4.
       thisWeek: 8,
       lastWeek: 0,
     });
-    // 16 episodes across Sep 1 – Oct 10 inclusive (40 days).
     expect(summarizeWatchActivity(days, '2026-10-10').dailyAverage).toBeCloseTo(0.4);
     expect(summarizeWatchActivity(days, '2026-10-11')).toMatchObject({
       currentStreak: 0,
@@ -87,7 +85,6 @@ describe('watch activity summary', () => {
     const days = [
       { date: '2026-10-09', episodes: 2 },
       { date: '2026-10-10', episodes: 3 },
-      // A public profile or a timezone change can put a recorded day ahead of today.
       { date: '2026-10-11', episodes: 8 },
     ];
     expect(summarizeWatchActivity(days, '2026-10-10')).toMatchObject({
@@ -108,7 +105,6 @@ describe('watch activity summary', () => {
 
 describe('activity heatmap', () => {
   it('ends on the current Sunday-first week and scales levels to the busiest day', () => {
-    // 2026-10-10 is a Saturday, so the final column is complete.
     const heatmap = buildActivityHeatmap(
       [
         { date: '2026-10-10', episodes: 8 },
@@ -130,7 +126,6 @@ describe('activity heatmap', () => {
   });
 
   it('leaves days after today empty', () => {
-    // 2026-10-07 is a Wednesday.
     const { weeks } = buildActivityHeatmap([], '2026-10-07', 1);
     expect(weeks[0]!.slice(0, 4).every((cell) => cell?.level === 0)).toBe(true);
     expect(weeks[0]!.slice(4)).toEqual([null, null, null]);

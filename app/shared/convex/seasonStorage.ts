@@ -7,7 +7,6 @@ export const EPISODES_PER_CHUNK = 120;
 const MAX_SEASON_CHUNKS = 50;
 export const MAX_SEASON_EPISODES = EPISODES_PER_CHUNK * MAX_SEASON_CHUNKS;
 /**
- * Provider-controlled episode strings are bounded before storage or transport.
  * With 120 episodes per chunk these limits keep every metadata mutation far
  * below Convex's 16 MiB argument/return ceiling, even at the 6,000 episode cap.
  */
@@ -114,7 +113,6 @@ async function chunksForVersion(
     .take(args.limit);
 }
 
-/** Starts a write under an invisible version without disturbing the visible parent version. */
 export async function beginPrechunkedSeasonWrite(
   ctx: Pick<MutationCtx, 'db'>,
   value: PrechunkedSeason,
@@ -174,7 +172,6 @@ export async function beginPrechunkedSeasonWrite(
     });
 }
 
-/** Appends one bounded chunk to the invisible staging version. */
 export async function appendPrechunkedSeasonChunk(
   ctx: Pick<MutationCtx, 'db'>,
   args: {
@@ -230,7 +227,6 @@ export async function appendPrechunkedSeasonChunk(
   return true;
 }
 
-/** Atomically publishes a complete staged version and removes the previous visible chunks. */
 export async function finalizePrechunkedSeasonWrite(
   ctx: Pick<MutationCtx, 'db'>,
   args: { tmdbId: number; season: number; attemptToken: string },

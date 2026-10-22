@@ -26,7 +26,6 @@ const seasonLabel = (choice: SeasonChoice) =>
   choice.name || (choice.season === 0 ? 'Specials' : `Season ${choice.season}`);
 
 const SEASON_ROW_HEIGHT = 64;
-// Drawer content is inset by 24pt; the season rows cancel it so they span the sheet.
 const SHEET_INSET = 24;
 
 const episodeCountLabel = (count: number) => `${count} ${count === 1 ? 'episode' : 'episodes'}`;
@@ -143,7 +142,6 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
 const s = createAppStyles(
   {
     root: { position: 'relative' },
-    // A heading you can tap, rather than a boxed field, so it sits with the section titles.
     trigger: {
       minHeight: 44,
       maxWidth: '100%',

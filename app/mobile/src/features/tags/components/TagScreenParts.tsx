@@ -83,7 +83,6 @@ export function NativeTagItem({
 }) {
   const index = getIndex() ?? 0;
   return (
-    // Multi-column lists render items straight into the row, so each needs a width.
     <View style={{ width: listItemWidth(listColumns) }}>
       <ScaleDecorator activeScale={reduceMotion ? 1 : 1.015}>
         <ShadowDecorator color="#000" opacity={0.4} radius={14} elevation={8}>

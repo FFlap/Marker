@@ -93,7 +93,6 @@ async function loadRefreshContext(ctx: MutationCtx, item: Doc<'items'>) {
 type RefreshContext = NonNullable<Awaited<ReturnType<typeof loadRefreshContext>>>;
 
 function seasonNeedsCoordinate(context: RefreshContext, season: RefreshContext['seasons'][number]) {
-  // Unknown provider totals cannot rule out already-published canonical episodes.
   if (season.episodeCountVerified === false) return true;
   if (season.episodeCount <= 0) return false;
   const summary = context.summaryBySeason.get(season.season);
@@ -116,9 +115,7 @@ async function currentCoordinateCursor(
   if (coordinate.chunkIndex !== undefined)
     return { season: coordinate.season, chunkIndex: coordinate.chunkIndex };
 
-  // Coordinates written before chunkIndex was introduced are located with a
-  // six-read binary search (50 chunks maximum), then gain chunkIndex when the
-  // new coordinate is atomically published.
+  // Legacy coordinates lack chunkIndex; 50 chunks require at most six binary-search reads.
   const season = await ctx.db
     .query('resolvedSeasons')
     .withIndex('by_tmdb_season', (query) =>
@@ -240,7 +237,6 @@ async function continueRefreshPage(
       }
       if (seasonInfo.episodeCountVerified !== false)
         return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
-      // Unknown totals may have no current canonical data; inspect later loaded seasons.
       current = nextSeasonCursor(context, current.season);
       continue;
     }
@@ -249,7 +245,6 @@ async function continueRefreshPage(
     if (season.metadataProvider === 'tvdb' && seasonOrder === undefined)
       return finishRefresh(ctx, item, refresh, undefined, chunkPairsRead);
 
-    // A newer title can announce releases beyond this season's cached chunks.
     if (
       !requestedMissingSeason &&
       seasonInfo.episodeCount > (season.episodeCount ?? 0) &&
@@ -341,10 +336,6 @@ async function continueRefreshPage(
   return { state: 'continued', chunkPairsRead };
 }
 
-/**
- * Starts a fresh per-item chain. A watch of the persisted coordinate resumes at
- * that coordinate's chunk; all other triggers begin at the first relevant season.
- */
 export async function refreshNextEpisode(
   ctx: MutationCtx,
   itemOrId: Doc<'items'> | Id<'items'>,
@@ -355,7 +346,6 @@ export async function refreshNextEpisode(
   if (!item || item.mediaType !== 'tv' || item.deletingAt !== undefined)
     return { state: 'skipped', chunkPairsRead: 0 };
   const context = await loadRefreshContext(ctx, item);
-  // Exhausted cached seasons cannot reveal a new season until the title is refreshed.
   if (!context || context.title.refreshAfter <= Date.now()) await loadMissingMetadata(ctx, item);
   const cursor = context ? await firstCursor(ctx, context, item, watchedEpisode) : undefined;
   const existing = await activeRefresh(ctx, item._id);
