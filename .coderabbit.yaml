@@ -6,9 +6,9 @@ reviews:
     # files are generated, binary, dependency snapshots, or covered by the
     # runtime code they exercise and made the initial mobile review too large.
     - "!app/mobile/assets/**"
-    - "!shared/convex/_generated/**"
-    - "!shared/package-lock.json"
-    - "!shared/tests/**"
+    - "!app/shared/convex/_generated/**"
+    - "!app/shared/package-lock.json"
+    - "!app/shared/tests/**"
     - "!app/mobile/package-lock.json"
     - "!app/mobile/patches/**"
     - "!app/mobile/tests/**"
@@ -19,7 +19,7 @@ reviews:
     - "!app/mobile/.prettierrc"
     - "!app/mobile/babel.config.js"
     - "!app/mobile/components.json"
-    - "!shared/convex/tsconfig.json"
+    - "!app/shared/convex/tsconfig.json"
     - "!app/mobile/eslint.config.js"
     - "!app/mobile/knip.json"
     - "!app/mobile/metro.config.js"
