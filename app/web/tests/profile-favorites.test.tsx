@@ -139,4 +139,38 @@ describe("profile favorites", () => {
     fireEvent.click(screen.getByRole("button", { name: "Severance" }));
     await waitFor(() => expect(mocks.add).toHaveBeenCalledWith({ itemId: "eligible-tv" }));
   });
+
+  it("reorders with Alt+Arrow shortcuts and restores the order after a failed save", async () => {
+    mocks.reorder.mockRejectedValueOnce(new Error("offline"));
+    render(<ProfileFavorites favorites={[
+      ...favorites,
+      { _id: "favorite-movie-2", title: "Arrival", mediaType: "movie", isAnime: false, rank: 4 },
+    ]} />);
+    const movies = screen.getByRole("region", { name: "Movies" });
+    const heat = within(movies).getByRole("button", { name: "Drag Heat" });
+    fireEvent.keyDown(heat, { key: "ArrowDown" });
+    fireEvent.keyDown(heat, { key: "ArrowRight", altKey: true });
+    expect(mocks.reorder).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(heat, { key: "ArrowDown", altKey: true });
+    expect(mocks.reorder).toHaveBeenCalledWith({
+      itemId: "favorite-movie",
+      beforeId: "favorite-movie-2",
+    });
+    expect(within(movies).getAllByRole("button", { name: /^Drag / }).map((button) => button.getAttribute("aria-label")))
+      .toEqual(["Drag Arrival", "Drag Heat"]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t save the movie order.");
+    expect(within(movies).getAllByRole("button", { name: /^Drag / }).map((button) => button.getAttribute("aria-label")))
+      .toEqual(["Drag Heat", "Drag Arrival"]);
+    expect(heat).toBeEnabled();
+
+    fireEvent.keyDown(within(movies).getByRole("button", { name: "Drag Arrival" }), {
+      key: "ArrowUp",
+      altKey: true,
+    });
+    await waitFor(() => expect(mocks.reorder).toHaveBeenLastCalledWith({
+      itemId: "favorite-movie-2",
+      afterId: "favorite-movie",
+    }));
+  });
 });

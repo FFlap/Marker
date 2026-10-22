@@ -9,14 +9,9 @@ import {
 } from "@/components/ui/dialog";
 
 import { normalizeTag, type LibraryFilters } from "@/lib/library-filters";
+import { libraryStatusOptions } from "@/lib/library-status";
 
-const statuses = [
-  "all",
-  "watched",
-  "watching",
-  "watchlist",
-  "dropped",
-] as const;
+const statusOptions = [{ value: "all" as const, label: "All" }, ...libraryStatusOptions];
 const noTags: string[] = [];
 export function FilterDialog({
   value,
@@ -58,13 +53,7 @@ export function FilterDialog({
         <DialogTitle>Filter library</DialogTitle>
         <ChipGroup
           label="Status"
-          options={statuses.map((status) => ({
-            value: status,
-            label:
-              status === "all"
-                ? "All"
-                : status[0].toUpperCase() + status.slice(1),
-          }))}
+          options={statusOptions}
           value={value.status}
           onChange={(status) => onChange({ ...value, status })}
         />

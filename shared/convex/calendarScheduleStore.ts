@@ -13,7 +13,7 @@ import {
   scheduleKey,
 } from './calendarTypes';
 
-export const RELEASE_PAGE_SIZE = 500;
+const RELEASE_PAGE_SIZE = 500;
 const CHUNK_SIZE = 250;
 const writeArgs = {
   key: v.string(),

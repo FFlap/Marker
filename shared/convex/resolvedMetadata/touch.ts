@@ -13,7 +13,7 @@ import {
   requireUser,
   type MediaType,
 } from './shared';
-import { validateId } from './titleResolution';
+import { validateInteger, validateTmdbId } from '../providerValidation';
 
 export async function requestRefresh(
   ctx: MutationCtx,
@@ -479,7 +479,7 @@ export const touchItemView = mutation({
     const item = await ctx.db.get(args.itemId);
     if (!item || item.userId !== userId || item.deletingAt !== undefined)
       throw new Error('Item not found');
-    if (args.season !== undefined) validateId('season', args.season, 10_000);
+    if (args.season !== undefined) validateInteger('season', args.season, 10_000);
     return requestRefresh(ctx, {
       userId,
       mediaType: item.mediaType,
@@ -502,11 +502,11 @@ export const touchTitle = mutation({
   returns: refreshResultValidator,
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    validateId('tmdbId', args.tmdbId);
+    validateTmdbId(args.tmdbId);
     const title = args.title?.trim();
     if (title !== undefined && (!title || title.length > 500))
       throw new Error('Title must be between 1 and 500 characters');
-    if (args.season !== undefined) validateId('season', args.season, 10_000);
+    if (args.season !== undefined) validateInteger('season', args.season, 10_000);
     if (args.mediaType === 'movie' && args.season !== undefined)
       throw new Error('Movies do not have seasons');
     return requestRefresh(ctx, { userId, ...args, ...(title !== undefined && { title }) });

@@ -18,13 +18,6 @@ async function readBookmarks(): Promise<EpisodeBookmark[]> {
   );
 }
 
-function subscribeToStorageChanges(
-  listener: Parameters<typeof browser.storage.onChanged.addListener>[0],
-) {
-  browser.storage.onChanged.addListener(listener);
-  return () => browser.storage.onChanged.removeListener(listener);
-}
-
 export function openPersistedWatchUrl(url: string) {
   const validated = validatedProviderUrl(url);
   if (!validated) return false;
@@ -92,11 +85,11 @@ export function Popup() {
         setSync((current) => ({ ...current, lastResult: lastResultChange.newValue as LastSyncResult }));
       }
     };
-    const unsubscribe = subscribeToStorageChanges(onStorageChanged);
+    browser.storage.onChanged.addListener(onStorageChanged);
     return () => {
       active = false;
       hydrationRevision.current += 1;
-      unsubscribe();
+      browser.storage.onChanged.removeListener(onStorageChanged);
     };
   }, []);
 

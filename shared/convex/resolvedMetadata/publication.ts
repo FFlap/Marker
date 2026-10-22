@@ -170,7 +170,7 @@ export const refreshItemProjections = internalMutation({
   },
 });
 
-export type RefreshOutcome = {
+type RefreshOutcome = {
   key: string;
   state: 'succeeded' | 'failed' | 'notFound';
   errorCode?: string;
@@ -180,7 +180,7 @@ export type RefreshOutcome = {
  * Resolves the explicit attempt outcome plus late request rows that attached to
  * the same lease token before this publication transaction began.
  */
-export async function requestsForPublication(
+async function requestsForPublication(
   ctx: MutationCtx,
   explicitOutcomes: RefreshOutcome[],
   publicationKeys: string[],
@@ -219,7 +219,7 @@ export async function requestsForPublication(
   return attached;
 }
 
-export async function visiblePublicationOutcomes(
+async function visiblePublicationOutcomes(
   ctx: MutationCtx,
   attached: { row: Doc<'metadataRefreshRequests'>; outcome: RefreshOutcome }[],
   args: { mediaType: MediaType; tmdbId: number; season?: number },
@@ -561,7 +561,7 @@ export const finalizeRefreshSeason = internalMutation({
   },
 });
 
-export function sameMappingIdentity(
+function sameMappingIdentity(
   expected: MappingIdentity | null,
   current: Doc<'titleMappings'> | null,
 ) {

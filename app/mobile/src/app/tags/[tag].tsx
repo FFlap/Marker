@@ -27,6 +27,11 @@ import {
   NativePosterDragPreview,
   type NativePosterDragLayout,
 } from '@/components/NativePosterDragPreview';
+import {
+  NativeDragMonitor,
+  nativeDragAnimation,
+  type NativeDragValues,
+} from '@/components/NativeDragMonitor';
 import { useToast } from '@/components/ui/Toast';
 import { DEFAULT_DISPLAY_PREFERENCES } from '@/lib/displayPreferences';
 import type { Status } from '@/types';
@@ -39,14 +44,8 @@ import {
 } from '@/features/tags/components/TagScreenActions';
 import { useTagCollection } from '@/features/tags/hooks/useTagCollection';
 import { useTagVisibility } from '@/features/tags/hooks/useTagVisibility';
+import { TAG_HEADER_HEIGHT, type OptimisticTagOrders } from '@/features/tags/tagDragConfig';
 import {
-  TAG_HEADER_HEIGHT,
-  tagDragAnimation,
-  type OptimisticTagOrders,
-} from '@/features/tags/tagDragConfig';
-import {
-  NativeDragMonitor,
-  type NativeDragValues,
   NativeTagItem,
   type RankedItem,
   TagPoster,
@@ -486,7 +485,7 @@ export default function TagDetailScreen() {
                         autoscrollThreshold={80}
                         autoscrollSpeed={140}
                         dragItemOverflow
-                        animationConfig={tagDragAnimation}
+                        animationConfig={nativeDragAnimation}
                         onAnimValInit={(values) =>
                           setNativeDragMotion((current) => ({
                             ...current,

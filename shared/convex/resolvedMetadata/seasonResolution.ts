@@ -4,6 +4,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getClerkUserId } from '../clerkAuth';
 import { releasedEpisodes } from '../episodeAvailability';
+import { validateInteger, validateTmdbId } from '../providerValidation';
 import { mappingIdentity } from './publication';
 import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
@@ -24,7 +25,6 @@ import {
   resolveFreshTitle,
   seasonIsFresh,
   settle,
-  validateId,
   type ProviderOutcome,
 } from './titleResolution';
 import {
@@ -432,7 +432,7 @@ export async function resolveAndCommitCanonical(
   };
 }
 
-export async function waitForSeason(
+async function waitForSeason(
   ctx: ActionCtx,
   args: { tmdbId: number; season: number },
   previous: AssembledSeason | null,
@@ -455,13 +455,13 @@ export async function waitForSeason(
   return null;
 }
 
-export async function getOrRefreshSeason(
+async function getOrRefreshSeason(
   ctx: ActionCtx & Parameters<typeof getClerkUserId>[0],
   args: { tmdbId: number; season: number },
   userIdOverride?: Id<'users'>,
 ) {
-  validateId('tmdbId', args.tmdbId);
-  validateId('season', args.season, 10_000);
+  validateTmdbId(args.tmdbId);
+  validateInteger('season', args.season, 10_000);
   const userId = userIdOverride ?? (await requireUser(ctx));
   const current: AssembledSeason | null = await ctx.runQuery(
     internal.resolvedMetadata.reads.readSeason,

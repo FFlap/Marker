@@ -6,7 +6,7 @@ import { runOnJS } from 'react-native-reanimated';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { SecondaryHeader } from '@/components/BackButton';
 import { colors } from '@/constants/colors';
-import { type CalendarEvent } from '@/lib/calendar';
+import { type CalendarEvent } from '@marker/shared/calendar';
 import { useCalendar } from '@/hooks/useCalendar';
 import { createAppStyles } from '@/lib/typography';
 const keyFor = (date: Date) =>

@@ -1,20 +1,11 @@
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@marker/shared/api';
-import type { LibraryEntryDraft } from '@/components/LibraryEntryDrawer';
-
-export const statusOptions = [
-  { label: 'Watched', value: 'watched' },
-  { label: 'Watching', value: 'watching' },
-  { label: 'Watchlist', value: 'watchlist' },
-  { label: 'Dropped', value: 'dropped' },
-] as const;
 
 type SeasonPage = FunctionReturnType<
   typeof api.resolvedMetadata.reads.getSeasonView
 >['page'][number];
 export type Episode = SeasonPage['episodes'][number];
 export type SeasonRow = Omit<SeasonPage, 'episodes' | 'chunkIndex'>;
-export type ItemDraft = LibraryEntryDraft;
 export type EpisodeDraft = { rating?: number; tags: string[] };
 
 export const sameValue = (left: unknown, right: unknown) =>

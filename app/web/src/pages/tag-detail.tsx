@@ -1,9 +1,4 @@
-import {
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { EllipsisVertical, Globe2, LockKeyhole, Plus } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -35,18 +30,11 @@ import {
   type SortableLocation,
 } from "@/hooks/use-pointer-sortable";
 import { useSessionLibraryView } from "@/hooks/use-session-library-view";
-
-const statuses = ["watched", "watching", "watchlist", "dropped"] as const;
-const labels = {
-  watched: "Watched",
-  watching: "Watching",
-  watchlist: "Watchlist",
-  dropped: "Dropped",
-};
-const statusOptions = statuses.map((value) => ({
-  value,
-  label: labels[value],
-}));
+import {
+  libraryStatuses as statuses,
+  libraryStatusLabels as labels,
+  libraryStatusOptions as statusOptions,
+} from "@/lib/library-status";
 
 type RankedItem = WebLibraryItem & { tagRank?: number };
 
@@ -224,11 +212,10 @@ function TagDetail({ tag }: { tag: string }) {
           afterId: next[to + 1]._id,
         }),
       });
-      setOrders((current) => ({ ...current, [status]: undefined }));
     } catch {
-      setOrders((current) => ({ ...current, [status]: undefined }));
       setError("Couldn’t save the tag order.");
     } finally {
+      setOrders((current) => ({ ...current, [status]: undefined }));
       movePending.current = false;
       setMoving(undefined);
     }
@@ -287,19 +274,6 @@ function TagDetail({ tag }: { tag: string }) {
     },
   });
 
-  const keyboardMove = (
-    event: KeyboardEvent<HTMLButtonElement>,
-    status: (typeof statuses)[number],
-    items: RankedItem[],
-    index: number,
-  ) => {
-    if (!event.altKey) return;
-    const direction =
-      event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-    if (!direction) return;
-    event.preventDefault();
-    void move(status, items, index, index + direction);
-  };
   return (
     <Page width="wide" className="max-w-4xl">
       <PageHeader
@@ -393,8 +367,8 @@ function TagDetail({ tag }: { tag: string }) {
                                   },
                                   filtersActive || Boolean(moving),
                                 )}
-                                onKeyDown={(event) =>
-                                  keyboardMove(event, status, items, index)
+                                onMove={(direction) =>
+                                  void move(status, items, index, index + direction)
                                 }
                               />
                               <SortableItemActions
@@ -426,8 +400,8 @@ function TagDetail({ tag }: { tag: string }) {
                                 { group: status, id: String(item._id), index },
                                 filtersActive || Boolean(moving),
                               )}
-                              onKeyDown={(event) =>
-                                keyboardMove(event, status, items, index)
+                              onMove={(direction) =>
+                                void move(status, items, index, index + direction)
                               }
                             />
                           )}

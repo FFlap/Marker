@@ -3,11 +3,11 @@ import { Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { normalizeTag } from "@/lib/library-filters";
-
-export type EntryStatus = "watched" | "watching" | "watchlist" | "dropped";
+import { libraryStatusOptions } from "@/lib/library-status";
+import type { WebLibraryItem } from "@/types";
 
 export type EntryDraft = {
-  status: EntryStatus;
+  status: WebLibraryItem["status"];
   rating?: number;
   timesWatched: number;
   tags: string[];
@@ -163,13 +163,6 @@ export function TagEditor({
   );
 }
 
-const statusOptions: Array<{ label: string; value: EntryStatus }> = [
-  { label: "Watched", value: "watched" },
-  { label: "Watching", value: "watching" },
-  { label: "Watchlist", value: "watchlist" },
-  { label: "Dropped", value: "dropped" },
-];
-
 export function LibraryEntryControls({
   value,
   suggestions = emptySuggestions,
@@ -180,7 +173,7 @@ export function LibraryEntryControls({
   onChange: (value: EntryDraft) => void;
 }) {
   const statusGroupName = useId();
-  const updateStatus = (status: EntryStatus) =>
+  const updateStatus = (status: EntryDraft["status"]) =>
     onChange({
       ...value,
       status,
@@ -203,7 +196,7 @@ export function LibraryEntryControls({
           role="radiogroup"
           aria-label="Status"
         >
-          {statusOptions.map((option) => (
+          {libraryStatusOptions.map((option) => (
             <label key={option.value} className="relative cursor-pointer">
               <input
                 type="radio"

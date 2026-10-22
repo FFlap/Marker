@@ -10,13 +10,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { gridWidth } from "@/lib/display-preferences";
 import { filterLibraryItems, type LibraryFilters } from "@/lib/library-filters";
 import { posterUrl } from "@/lib/utils";
-
-const labels = {
-  watched: "Watched",
-  watching: "Watching",
-  watchlist: "Watchlist",
-  dropped: "Dropped",
-};
+import { libraryStatuses, libraryStatusLabels } from "@/lib/library-status";
 
 export function PublicUserTagPage() {
   const { username, tag } = useParams({ from: "/u/$username/tags/$tag" });
@@ -97,7 +91,7 @@ export function PublicUserTagPage() {
         </div>
       ) : (
         <div className="mt-8 grid gap-12">
-          {(["watched", "watching", "watchlist", "dropped"] as const).map(
+          {libraryStatuses.map(
             (status) => {
               if (filters.status !== "all" && filters.status !== status)
                 return null;
@@ -107,7 +101,7 @@ export function PublicUserTagPage() {
               return (
                 <section key={status}>
                   <SectionHeader
-                    title={labels[status]}
+                    title={libraryStatusLabels[status]}
                     count={entries.length}
                   />
                   {entries.length ? (

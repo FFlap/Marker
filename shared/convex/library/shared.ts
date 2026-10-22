@@ -1,16 +1,10 @@
 export { requireUser } from '../clerkAuth';
 import { type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { v } from 'convex/values';
+import { type ObjectType, v } from 'convex/values';
 import { seasonSummaryIdentityKey } from '../episodeSummaries';
+import { mediaTypeValidator as mediaType, statusValidator as status } from '../publicValidators';
 
-export const status = v.union(
-  v.literal('watched'),
-  v.literal('watching'),
-  v.literal('watchlist'),
-  v.literal('dropped'),
-);
-export const mediaType = v.union(v.literal('movie'), v.literal('tv'));
 export const rating = v.optional(v.number());
 export const addItemFields = {
   tmdbId: v.number(),
@@ -26,20 +20,7 @@ export const addItemFields = {
   timesWatched: v.optional(v.number()),
   tags: v.optional(v.array(v.string())),
 };
-export type AddItemArgs = {
-  tmdbId: number;
-  mediaType: 'movie' | 'tv';
-  title: string;
-  posterPath?: string;
-  overview?: string;
-  releaseDate?: string;
-  runtime?: number;
-  genres?: string[];
-  status: 'watched' | 'watching' | 'watchlist' | 'dropped';
-  rating?: number;
-  timesWatched?: number;
-  tags?: string[];
-};
+export type AddItemArgs = ObjectType<typeof addItemFields>;
 export const requireRating = (value: number | undefined) => {
   if (value !== undefined && (!Number.isFinite(value) || value < 0 || value > 5))
     throw new Error('Rating must be between 0 and 5');

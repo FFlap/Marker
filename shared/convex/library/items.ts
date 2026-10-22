@@ -9,7 +9,11 @@ import {
   type TagCollectionDeltas,
 } from '../tagCollectionsModel';
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
-import { itemValidator } from '../publicValidators';
+import {
+  itemValidator,
+  mediaTypeValidator as mediaType,
+  statusValidator as status,
+} from '../publicValidators';
 import { refreshNextEpisode } from '../nextEpisode';
 import { requestProfileStatsRefresh } from '../profileStatsRefresh';
 import { recordWatchActivity } from '../watchActivity';
@@ -28,9 +32,7 @@ import {
   requireReleaseDate,
   requireRuntime,
   requireUser,
-  mediaType,
   rating,
-  status,
 } from './shared';
 
 export const listItems = query({
@@ -105,7 +107,7 @@ export const listTagRanks = query({
   },
 });
 
-export async function insertItem(ctx: MutationCtx, userId: Id<'users'>, args: AddItemArgs) {
+async function insertItem(ctx: MutationCtx, userId: Id<'users'>, args: AddItemArgs) {
   validateTmdbId(args.tmdbId);
   requireRating(args.rating);
   requireRuntime(args.runtime);

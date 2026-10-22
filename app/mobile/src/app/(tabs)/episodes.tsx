@@ -7,7 +7,6 @@ import { api } from '@marker/shared/api';
 import { EpisodePageSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
 import type { FunctionReturnType } from 'convex/server';
-import type { AppDrawerHandle } from '@/components/AppDrawer';
 import { Button, EmptyState } from '@/components/ui/primitives';
 import { RatingControl, TagEditor } from '@/components/ui/library-controls';
 import { useToast } from '@/components/ui/Toast';
@@ -51,7 +50,6 @@ function Episodes() {
   useEffect(() => {
     void refreshWatching({}).catch(() => toast.show('Couldn’t refresh your episodes'));
   }, [refreshWatching, toast]);
-  const drawerRef = useRef<AppDrawerHandle>(null);
   const [tab, setTab] = useState<EpisodeTab>('watching');
   const [search, setSearch] = useState('');
   const [showFilter, setShowFilter] = useState<ShowFilter>('all');
@@ -144,7 +142,6 @@ function Episodes() {
     <View style={s.root}>
       <View style={s.toolbar}>
         <TabHeader
-          ref={drawerRef}
           current="episodes"
           maxWidth={940}
           accessibilityLabel={`Search ${tab} episodes`}

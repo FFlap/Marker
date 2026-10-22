@@ -5,8 +5,8 @@ import { internalMutation } from '../_generated/server';
 import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import { REFRESH_LEASE_MS, type MediaType } from './shared';
 
-export const CANONICAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-export const canonicalGcPhase = v.union(
+const CANONICAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const canonicalGcPhase = v.union(
   v.literal('titles'),
   v.literal('seasons'),
   v.literal('chunks'),

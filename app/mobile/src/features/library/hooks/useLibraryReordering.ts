@@ -3,19 +3,12 @@ import { ScrollView, View } from 'react-native';
 import { useAction, useMutation } from 'convex/react';
 import { api } from '@marker/shared/api';
 import type { NativeGridAutoScroll, NativeGridDragMotion } from '@/components/NativeDraggableGrid';
-import type {
-  NativePosterDragLayout,
-  NativePosterDragMotion,
-} from '@/components/NativePosterDragPreview';
+import type { NativePosterDragLayout } from '@/components/NativePosterDragPreview';
+import type { NativeDragValues } from '@/components/NativeDragMonitor';
 import { useToast } from '@/components/ui/Toast';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import type { LibraryItem, Status } from '@/types';
 import { MOBILE_NAV_HEIGHT, TOOLBAR_HEIGHT } from '../screens/LibraryScreen.styles';
-
-export type NativeDragValues = NativePosterDragMotion & {
-  activeCellSize: { value: number };
-  hoverOffset: { value: number };
-};
 
 export function useLibraryReordering(items: LibraryItem[], filtersActive: boolean) {
   const reorderItem = useMutation(api.library.ordering.reorderItem);

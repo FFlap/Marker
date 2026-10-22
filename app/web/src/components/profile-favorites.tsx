@@ -109,11 +109,10 @@ export function ProfileFavorites({
         ...(next[to - 1] && { beforeId: next[to - 1]._id as Id<"items"> }),
         ...(next[to + 1] && { afterId: next[to + 1]._id as Id<"items"> }),
       });
-      setOrders((current) => ({ ...current, [section]: undefined }));
     } catch {
-      setOrders((current) => ({ ...current, [section]: undefined }));
       setError(`Couldn’t save the ${sectionLabel(section)} order.`);
     } finally {
+      setOrders((current) => ({ ...current, [section]: undefined }));
       reorderPending.current = false;
       setPending(undefined);
     }
@@ -238,18 +237,7 @@ export function ProfileFavorites({
                               { group: section, id: favorite._id, index },
                               Boolean(pending),
                             )}
-                            onKeyDown={(event) => {
-                              if (!event.altKey) return;
-                              const direction =
-                                event.key === "ArrowUp"
-                                  ? -1
-                                  : event.key === "ArrowDown"
-                                    ? 1
-                                    : 0;
-                              if (!direction) return;
-                              event.preventDefault();
-                              void move(section, index, index + direction);
-                            }}
+                            onMove={(direction) => void move(section, index, index + direction)}
                           />
                           <SortableItemActions
                             title={favorite.title}

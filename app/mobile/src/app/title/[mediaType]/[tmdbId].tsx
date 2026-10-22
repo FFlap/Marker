@@ -130,13 +130,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const returnedSeasonRow = canonicalSeason.season;
   const seasonRow = returnedSeasonRow?.season === season ? returnedSeasonRow : undefined;
   const episodes = seasonRow ? canonicalSeason.episodes : [];
-  const loadedSeason = seasonRow?.season;
-  const seasonLoading =
-    !seasonRow &&
-    canonicalSeason.status === 'LoadingFirstPage' &&
-    seasonRequestState?.state !== 'failed' &&
-    seasonRequestState?.state !== 'notFound' &&
-    touchError === undefined;
   const seasonError =
     !seasonRow &&
     (seasonRequestState?.state === 'failed' ||
@@ -166,7 +159,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   };
   const overview = meta.overview?.trim();
   const availableSeasons = getAvailableSeasons(meta.seasons);
-  const visibleEpisodes = loadedSeason === season ? episodes : [];
   const averageRuntime =
     detail?.runtime ??
     (detail?.episodeRunTime?.length
@@ -332,7 +324,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
       />
       <FlatList
         testID="episode-list"
-        data={mediaType === 'tv' ? visibleEpisodes : []}
+        data={mediaType === 'tv' ? episodes : []}
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
         maxToRenderPerBatch={SEASON_EPISODE_RENDER_BATCH}
@@ -482,9 +474,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                         }
                       />
                     </View>
-                    {(seasonLoading || loadedSeason !== season) && !seasonError && (
-                      <EpisodeSkeletonRows />
-                    )}
+                    {!seasonRow && !seasonError && <EpisodeSkeletonRows />}
                     {seasonError && (
                       <View style={s.inlineError}>
                         <Text style={s.errorText}>Episodes couldn’t be loaded.</Text>

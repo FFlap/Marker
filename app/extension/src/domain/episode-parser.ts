@@ -124,7 +124,7 @@ function safeUrl(value: string, base: string): URL | null {
 export function parseWatchPath(pathname: string) {
   const match = WATCH_PATH.exec(pathname);
   if (!match?.[1] || !match[2]) return null;
-  return { episodeId: match[1], slug: match[2] };
+  return { episodeId: match[1] };
 }
 
 export function parseEpisodePage(
@@ -136,9 +136,9 @@ export function parseEpisodePage(
   const watch = parseWatchPath(url.pathname);
   if (!watch) return null;
 
-  const parsedStructured = parseStructuredEpisode(document);
-  const structuredWatchUrl = parsedStructured?.watchUrl
-    ? safeUrl(parsedStructured.watchUrl, url.origin)
+  const structured = parseStructuredEpisode(document);
+  const structuredWatchUrl = structured?.watchUrl
+    ? safeUrl(structured.watchUrl, url.origin)
     : null;
   if (
     structuredWatchUrl &&
@@ -147,7 +147,6 @@ export function parseEpisodePage(
   ) {
     return null;
   }
-  const structured = parsedStructured;
   const seriesLink = Array.from(
     document.querySelectorAll<HTMLAnchorElement>("a[href]"),
   ).find((link) => {

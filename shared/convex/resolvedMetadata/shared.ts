@@ -92,7 +92,7 @@ export const mergeEpisodes = (structure: ResolvedEpisode[], artwork: ResolvedEpi
         ? (episode as unknown as { id: number }).id
         : undefined);
     return cleanEpisode({
-      ...cleanEpisode(episode),
+      ...episode,
       ...(!episode.imageUrl &&
         image?.imageUrl &&
         sameEpisodeContent(episode, image) && {

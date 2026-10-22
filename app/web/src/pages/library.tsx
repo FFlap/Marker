@@ -15,18 +15,12 @@ import { filterLibraryItems, uniqueTags, type LibraryFilters } from "@/lib/libra
 import { gridWidth, listType, listWidth } from "@/lib/display-preferences";
 import { usePointerSortable, type SortableLocation } from "@/hooks/use-pointer-sortable";
 import { useSessionLibraryView } from "@/hooks/use-session-library-view";
+import {
+  libraryStatuses as statuses,
+  libraryStatusLabels as statusLabels,
+  libraryStatusOptions as statusOptions,
+} from "@/lib/library-status";
 
-const statusLabels: Record<WebLibraryItem["status"], string> = {
-  watched: "Watched",
-  watching: "Watching",
-  watchlist: "Watchlist",
-  dropped: "Dropped",
-};
-const statuses = ["watched", "watching", "watchlist", "dropped"] as const;
-const statusOptions = statuses.map((value) => ({
-  value,
-  label: statusLabels[value],
-}));
 function ListItem({
   item,
   index,
@@ -173,11 +167,10 @@ export function LibraryPage() {
         ...(next[to - 1] && { beforeId: next[to - 1]._id }),
         ...(next[to + 1] && { afterId: next[to + 1]._id }),
       });
-      setOrders((current) => ({ ...current, [status]: undefined }));
     } catch {
-      setOrders((current) => ({ ...current, [status]: undefined }));
       setError("Couldn’t save the new order.");
     } finally {
+      setOrders((current) => ({ ...current, [status]: undefined }));
       movePending.current = false;
       setMoving(undefined);
     }
@@ -230,20 +223,6 @@ export function LibraryPage() {
       if (sourceItem) void moveStatus(sourceItem, targetStatus, target.index);
     },
   });
-
-  const keyboardMove = (
-    event: React.KeyboardEvent<HTMLButtonElement>,
-    status: WebLibraryItem["status"],
-    section: WebLibraryItem[],
-    index: number,
-  ) => {
-    if (!event.altKey) return;
-    const direction =
-      event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
-    if (!direction) return;
-    event.preventDefault();
-    void move(status, section, index, index + direction);
-  };
 
   return (
     <Page width="wide" className="max-w-4xl">
@@ -322,7 +301,7 @@ export function LibraryPage() {
                             { group: status, id: String(item._id), index },
                             filtersActive || Boolean(moving),
                           )}
-                          onKeyDown={(event) => keyboardMove(event, status, section, index)}
+                          onMove={(direction) => void move(status, section, index, index + direction)}
                         />
                         <ListItem
                           item={item}
@@ -362,7 +341,7 @@ export function LibraryPage() {
                               { group: status, id: String(item._id), index },
                               filtersActive || Boolean(moving),
                             )}
-                            onKeyDown={(event) => keyboardMove(event, status, section, index)}
+                            onMove={(direction) => void move(status, section, index, index + direction)}
                           />
                           <SortableItemActions
                             title={item.title}

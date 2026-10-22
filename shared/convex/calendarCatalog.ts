@@ -17,7 +17,7 @@ const metadataValidator = v.object({
   retryAt: v.optional(v.number()),
 });
 const savedValidator = v.object({ refreshedAt: v.number() });
-export const DIRECT_LIBRARY_LIMIT = 20;
+const DIRECT_LIBRARY_LIMIT = 20;
 
 async function savedTitle(ctx: QueryCtx, item: Doc<'items'>, month: string, region: string) {
   if (item.deletingAt !== undefined || item.status === 'dropped') return null;
