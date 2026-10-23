@@ -46,8 +46,6 @@ export async function providerFetch(url: string, init: RequestInit, options: Pro
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      // A transient failure while reserving budget (including an OCC conflict)
-      // must use the same bounded retry path as a failed GET request.
       if (options.beforeRequest && !(await options.beforeRequest()))
         throw new ConvexError({
           code: 'provider_global_limiter',

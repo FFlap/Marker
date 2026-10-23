@@ -108,7 +108,6 @@ export const claim = internalMutation({
   },
 });
 
-/** Small libraries skip discovery; larger libraries intersect the shared date index. */
 export const page = internalQuery({
   args: {
     ...monthArgs,
@@ -184,14 +183,11 @@ export const page = internalQuery({
       throw new Error('Release dates changed. Please retry the calendar.');
     const candidateCount = catalog.candidateCount ?? catalog.candidates.length;
     if (offset > candidateCount) throw new Error('Invalid calendar cursor');
-    // Bounded work independent of library size, with pagination for any number of candidates.
     const matches = [];
     let consumed = 0;
     const scanLimit = Math.min(1500, candidateCount - offset);
     while (consumed < scanLimit && matches.length < 100) {
       const size = Math.min(100 - matches.length, scanLimit - consumed);
-      // Stop reading as soon as this response is full. Eagerly reading 1,500
-      // candidates re-read most of the same rows on each densely matched page.
       const batch =
         catalog.candidateCount !== undefined
           ? await ctx.db

@@ -7,7 +7,6 @@ import type { SearchResult } from '@/types';
 type SearchResponse = { query: string; results: SearchResult[]; failed?: boolean };
 const EMPTY_RESULTS: SearchResult[] = [];
 
-/** Shares one query lifecycle across title search screens and local media filters. */
 export function useTitleSearch(
   query: string,
   { enabled = true, delayMs = 300 }: { enabled?: boolean; delayMs?: number } = {},

@@ -1,8 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Animated,
-  AccessibilityInfo,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   ScrollView,
@@ -11,10 +10,6 @@ import {
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import {
-  NestableDraggableFlatList,
-  NestableScrollContainer,
-} from 'react-native-draggable-flatlist';
 import { api } from '@marker/shared/api';
 import { PinchDensity } from '@/components/PinchDensity';
 import { useGridColumns } from '@/hooks/use-grid-columns';
@@ -28,11 +23,6 @@ import {
   NativePosterDragPreview,
   type NativePosterDragLayout,
 } from '@/components/NativePosterDragPreview';
-import {
-  NativeDragMonitor,
-  nativeDragAnimation,
-  type NativeDragValues,
-} from '@/components/NativeDragMonitor';
 import { useToast } from '@/components/ui/Toast';
 import { DEFAULT_DISPLAY_PREFERENCES } from '@/lib/displayPreferences';
 import type { Status } from '@/types';
@@ -47,7 +37,7 @@ import { useTagCollection } from '@/features/tags/hooks/useTagCollection';
 import { useTagVisibility } from '@/features/tags/hooks/useTagVisibility';
 import { TAG_HEADER_HEIGHT, type OptimisticTagOrders } from '@/features/tags/tagDragConfig';
 import {
-  NativeTagItem,
+  TagRow,
   type RankedItem,
   TagPoster,
   TagSkeleton,
@@ -66,17 +56,10 @@ export default function TagDetailScreen() {
   const toast = useToast();
   const tagVisibility = useTagVisibility(tag);
   const [statusMovePending, setStatusMovePending] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => subscription.remove();
-  }, []);
   const statusMovePendingRef = useRef(false);
   const [pendingWatchedMove, setPendingWatchedMove] = useState<RankedItem>();
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});
   const [nativeTargetStatus, setNativeTargetStatus] = useState<Status>();
-  const [nativeListTops, setNativeListTops] = useState<Partial<Record<Status, number>>>({});
   const [sectionLayouts, setSectionLayouts] = useState<
     Partial<Record<Status, { height: number; top: number }>>
   >({});
@@ -85,9 +68,6 @@ export default function TagDetailScreen() {
     layout: NativePosterDragLayout;
     status: Status;
   }>();
-  const [nativeDragMotion, setNativeDragMotion] = useState<
-    Partial<Record<Status, NativeDragValues>>
-  >({});
   const [nativePosterMotion, setNativePosterMotion] = useState<
     Partial<Record<Status, NativeGridDragMotion>>
   >({});
@@ -345,10 +325,6 @@ export default function TagDetailScreen() {
     }),
     [rootHeight],
   );
-  const TagScrollComponent = (view === 'posters'
-    ? Animated.ScrollView
-    : NestableScrollContainer) as unknown as typeof ScrollView;
-
   return (
     <ScreenView
       ref={rootRef}
@@ -381,8 +357,8 @@ export default function TagDetailScreen() {
       {library === undefined || (tagKey && ranks === undefined) ? (
         <TagSkeleton />
       ) : (
-        <TagScrollComponent
-          ref={view === 'posters' ? nativePosterScrollRef : undefined}
+        <Animated.ScrollView
+          ref={nativePosterScrollRef}
           testID="tag-scroll"
           contentContainerStyle={s.content}
           keyboardShouldPersistTaps="handled"
@@ -395,7 +371,7 @@ export default function TagDetailScreen() {
           onScroll={captureScrollOffset}
           onScrollEndDrag={captureScrollOffset}
           onMomentumScrollEnd={captureScrollOffset}
-          scrollEnabled={view !== 'posters' || !nativePosterDragActive}
+          scrollEnabled={!nativePosterDragActive}
           scrollEventThrottle={16}
         >
           <PinchDensity
@@ -436,14 +412,16 @@ export default function TagDetailScreen() {
                           : 'Add a tagged title when you’re ready.'
                       }
                     />
-                  ) : view === 'posters' ? (
+                  ) : (
                     <NativeDraggableGrid
-                      key={`poster-grid-${gridColumns}`}
+                      key={`${view}-${view === 'posters' ? gridColumns : listColumns}`}
                       autoScroll={nativePosterAutoScroll}
-                      contentContainerStyle={s.grid}
+                      contentContainerStyle={
+                        view === 'posters' ? s.grid : { rowGap: listColumns === 2 ? 12 : 0 }
+                      }
                       data={items}
                       disabled={filtersActive || statusMovePending}
-                      columns={gridColumns}
+                      columns={view === 'posters' ? gridColumns : listColumns}
                       keyExtractor={(item) => String(item._id)}
                       onMotionInit={(motion) =>
                         setNativePosterMotion((current) => ({ ...current, [status]: motion }))
@@ -460,80 +438,29 @@ export default function TagDetailScreen() {
                       }
                       onDragCancel={cancelNativePosterDrag}
                       onDragEnd={({ data, from, to }) => finishNativeDrag(status, data, from, to)}
-                      renderItem={({ item, index }) => (
-                        <TagPoster
-                          item={item}
-                          index={index}
-                          ranked={status === 'watched'}
-                          disabled={filtersActive || statusMovePending}
-                          onCategoryMove={(target) => requestCategoryMove(String(item._id), target)}
-                        />
-                      )}
-                    />
-                  ) : (
-                    <View
-                      onLayout={(event) => {
-                        const { y } = event.nativeEvent.layout;
-                        setNativeListTops((current) => ({ ...current, [status]: y }));
-                      }}
-                    >
-                      <NestableDraggableFlatList
-                        key={`list-${listColumns}`}
-                        data={items}
-                        scrollEnabled={false}
-                        numColumns={listColumns}
-                        keyExtractor={(item) => String(item._id)}
-                        columnWrapperStyle={listColumns === 2 ? s.gridRow : undefined}
-                        activationDistance={8}
-                        autoscrollThreshold={80}
-                        autoscrollSpeed={140}
-                        dragItemOverflow
-                        animationConfig={nativeDragAnimation}
-                        onAnimValInit={(values) =>
-                          setNativeDragMotion((current) => ({
-                            ...current,
-                            [status]: values as NativeDragValues,
-                          }))
-                        }
-                        onDragBegin={(index) => {
-                          const item = items[index];
-                          if (!item) return;
-                          nativeDragRef.current = { item, status };
-                          nativeTargetRef.current = status;
-                          setNativeTargetStatus(status);
-                        }}
-                        onDragEnd={({ data, from, to }) => finishNativeDrag(status, data, from, to)}
-                        renderItem={(params) => (
-                          <NativeTagItem
-                            {...params}
+                      renderItem={({ item, index }) => {
+                        const Card = view === 'posters' ? TagPoster : TagRow;
+                        return (
+                          <Card
+                            textSize={listTextSize}
+                            contained={listColumns === 2}
+                            item={item}
+                            index={index}
                             ranked={status === 'watched'}
                             disabled={filtersActive || statusMovePending}
-                            listTextSize={listTextSize}
-                            listColumns={listColumns}
-                            reduceMotion={reduceMotion}
                             onCategoryMove={(target) =>
-                              requestCategoryMove(String(params.item._id), target)
+                              requestCategoryMove(String(item._id), target)
                             }
                           />
-                        )}
-                      />
-                      {nativeDragMotion[status] && (
-                        <NativeDragMonitor
-                          values={nativeDragMotion[status]!}
-                          status={status}
-                          listTop={
-                            (sectionLayouts[status]?.top ?? 0) + (nativeListTops[status] ?? 0)
-                          }
-                          onHover={updateNativeDragTarget}
-                        />
-                      )}
-                    </View>
+                        );
+                      }}
+                    />
                   )}
                 </View>
               );
             })}
           </PinchDensity>
-        </TagScrollComponent>
+        </Animated.ScrollView>
       )}
       <ConfirmWatchedMove
         item={pendingWatchedMove}
@@ -548,7 +475,19 @@ export default function TagDetailScreen() {
           motion={nativePosterMotion[nativeDragPreview.status]!}
           posterPath={nativeDragPreview.item.posterPath}
           title={nativeDragPreview.item.title}
-        />
+        >
+          {view === 'list' && (
+            <TagRow
+              item={nativeDragPreview.item}
+              index={(nativeDragPreview.layout.rank ?? 1) - 1}
+              ranked={nativeDragPreview.status === 'watched'}
+              disabled
+              textSize={listTextSize}
+              contained={listColumns === 2}
+              onCategoryMove={() => undefined}
+            />
+          )}
+        </NativePosterDragPreview>
       )}
       <AddTagTitlesButton tag={tag} />
     </ScreenView>

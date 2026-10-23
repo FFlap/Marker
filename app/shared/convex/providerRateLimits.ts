@@ -28,14 +28,12 @@ export async function consumeWindowBudget(
   return true;
 }
 
-/** User-facing provider actions share a bounded per-key request window. */
 export const consumeThrottle = internalMutation({
   args: { key: v.string() },
   returns: v.boolean(),
   handler: (ctx, { key }) => consumeWindowBudget(ctx, key, 60, 60_000),
 });
 
-/** Each provider shares one budget across search, title, season, and calendar requests. */
 export const consumeGlobalProviderLimiter = internalMutation({
   args: { provider: v.union(v.literal('tmdb'), v.literal('tvdb')), amount: v.optional(v.number()) },
   returns: v.boolean(),

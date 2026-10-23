@@ -5,7 +5,6 @@ import {
   Animated,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  ScrollView,
   Text,
   View,
 } from 'react-native';
@@ -13,13 +12,6 @@ import { useQuery } from 'convex/react';
 import { useAccountLoading } from '@/hooks/useAccountLoading';
 import { api } from '@marker/shared/api';
 import { router } from 'expo-router';
-import {
-  NestableDraggableFlatList,
-  NestableScrollContainer,
-  RenderItemParams,
-  ScaleDecorator,
-  ShadowDecorator,
-} from 'react-native-draggable-flatlist';
 import { Button, EmptyState } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
@@ -32,14 +24,9 @@ import type { AppDrawerHandle } from '@/components/AppDrawer';
 import { MobileNav } from '@/components/MobileNav';
 import { NativePosterDragPreview } from '@/components/NativePosterDragPreview';
 import { NativeDraggableGrid } from '@/components/NativeDraggableGrid';
-import {
-  NativeDragMonitor,
-  nativeDragAnimation,
-  type NativeDragValues,
-} from '@/components/NativeDragMonitor';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Plus } from 'lucide-react-native';
-import { DEFAULT_DISPLAY_PREFERENCES, listItemWidth } from '@/lib/displayPreferences';
+import { DEFAULT_DISPLAY_PREFERENCES } from '@/lib/displayPreferences';
 import {
   LIBRARY_STATUSES,
   matchesMediaType,
@@ -150,26 +137,20 @@ function Library() {
   const {
     autoScroll: nativePosterAutoScroll,
     begin: beginNativePosterDrag,
-    beginList: beginNativeListDrag,
     cancel: cancelNativePosterDrag,
     contentYFromWindow,
     draggedItem: nativeDrag,
     dragPreviewLayout: nativeDragPreviewLayout,
-    dragValues: nativeDragValues,
     finish: finishNativeDrag,
-    listTops: nativeListTops,
     posterMotion: nativePosterMotion,
     position: positionNativePosterDrag,
     posterScrollRef: nativePosterScrollRef,
     posterTouchActive: nativePosterTouch,
     rootHeight,
     rootRef,
-    sectionLayouts,
     scrollContentHeight: nativeScrollContentHeight,
     scrollOffset: lastScrollY,
     scrollViewportHeight: nativeScrollViewportHeight,
-    setDragValues: setNativeDragValues,
-    setListTops: setNativeListTops,
     setPosterMotion: setNativePosterMotion,
     setRootHeight,
     setSectionLayouts,
@@ -209,9 +190,6 @@ function Library() {
     () => createDrawerEdgeSwipe(drawerHandle, () => nativePosterTouch.current || !!nativeDrag),
     [drawerHandle, nativeDrag, nativePosterTouch],
   );
-  const LibraryScrollComponent = (view === 'posters'
-    ? Animated.ScrollView
-    : NestableScrollContainer) as unknown as typeof ScrollView;
   return (
     <ScreenView
       ref={rootRef}
@@ -257,8 +235,8 @@ function Library() {
           onDrawerChange={setDrawerHandle}
         />
       </Animated.View>
-      <LibraryScrollComponent
-        ref={view === 'posters' ? nativePosterScrollRef : undefined}
+      <Animated.ScrollView
+        ref={nativePosterScrollRef}
         testID="library-scroll"
         contentContainerStyle={s.content}
         onContentSizeChange={(_width, height) => {
@@ -268,7 +246,7 @@ function Library() {
           nativeScrollViewportHeight.current = event.nativeEvent.layout.height;
         }}
         onScroll={handleScroll}
-        scrollEnabled={view !== 'posters' || !nativeDrag}
+        scrollEnabled={!nativeDrag}
         scrollEventThrottle={16}
       >
         {active && (
@@ -318,14 +296,14 @@ function Library() {
                       title={active ? 'No matches' : 'Nothing here yet'}
                       detail={active ? 'Try a broader filter.' : 'Add a title when you’re ready.'}
                     />
-                  ) : view === 'posters' ? (
+                  ) : (
                     <NativeDraggableGrid
-                      key={`poster-grid-${gridColumns}`}
+                      key={`${view}-${view === 'posters' ? gridColumns : listColumns}`}
                       autoScroll={nativePosterAutoScroll}
-                      contentContainerStyle={s.grid}
+                      contentContainerStyle={view === 'posters' ? s.grid : { rowGap: 0 }}
                       data={data}
                       disabled={active || statusMovePending}
-                      columns={gridColumns}
+                      columns={view === 'posters' ? gridColumns : listColumns}
                       keyExtractor={(item) => item._id}
                       onMotionInit={(motion) =>
                         setNativePosterMotion((current) => ({ ...current, [status]: motion }))
@@ -344,113 +322,36 @@ function Library() {
                       onDragEnd={({ data: next, from, to }) =>
                         finishNativeDrag(status, next, from, to)
                       }
-                      renderItem={({ item, index }) => (
-                        <LibraryPosterCard
-                          item={item}
-                          rank={index + 1}
-                          ranked={status === 'watched'}
-                          disabled={active || statusMovePending}
-                          onCategoryMove={(target) => requestCategoryMove(item._id, target)}
-                          onMove={(direction) => {
-                            const to = index + direction;
-                            if (to < 0 || to >= data.length) return;
-                            const next = [...data];
-                            const [moved] = next.splice(index, 1);
-                            next.splice(to, 0, moved);
-                            void drop(next, index, to);
-                          }}
-                        />
-                      )}
-                    />
-                  ) : (
-                    <View
-                      onLayout={(event) => {
-                        const { y } = event.nativeEvent.layout;
-                        setNativeListTops((current) => ({
-                          ...current,
-                          [status]: y,
-                        }));
+                      renderItem={({ item, index }) => {
+                        const Card = view === 'posters' ? LibraryPosterCard : LibraryRow;
+                        return (
+                          <Card
+                            textSize={listTextSize}
+                            contained={listColumns === 2}
+                            item={item}
+                            rank={index + 1}
+                            ranked={status === 'watched'}
+                            disabled={active || statusMovePending}
+                            onCategoryMove={(target) => requestCategoryMove(item._id, target)}
+                            onMove={(direction) => {
+                              const to = index + direction;
+                              if (to < 0 || to >= data.length) return;
+                              const next = [...data];
+                              const [moved] = next.splice(index, 1);
+                              next.splice(to, 0, moved);
+                              void drop(next, index, to);
+                            }}
+                          />
+                        );
                       }}
-                    >
-                      <NestableDraggableFlatList
-                        key={`list-${listColumns}`}
-                        scrollEnabled={false}
-                        numColumns={listColumns}
-                        columnWrapperStyle={listColumns === 2 ? s.listGridRow : undefined}
-                        data={data}
-                        keyExtractor={(i) => i._id}
-                        dragItemOverflow
-                        autoscrollThreshold={80}
-                        autoscrollSpeed={140}
-                        animationConfig={nativeDragAnimation}
-                        onAnimValInit={(values) =>
-                          setNativeDragValues((current) => ({
-                            ...current,
-                            [status]: values as NativeDragValues,
-                          }))
-                        }
-                        onDragBegin={(index) => {
-                          const item = data[index];
-                          if (!item) return;
-                          beginNativeListDrag(item, status);
-                        }}
-                        onDragEnd={({ data: next, from, to }) =>
-                          finishNativeDrag(status, next, from, to)
-                        }
-                        renderItem={(p: RenderItemParams<LibraryItem>) => (
-                          // Multi-column lists render items straight into the row, so
-                          // each needs its own width.
-                          <View style={{ width: listItemWidth(listColumns) }}>
-                            <ScaleDecorator activeScale={motionReduced ? 1 : 1.012}>
-                              <ShadowDecorator
-                                color="#000"
-                                opacity={0.34}
-                                radius={12}
-                                elevation={7}
-                              >
-                                <LibraryRow
-                                  {...p}
-                                  rank={(p.getIndex() ?? 0) + 1}
-                                  ranked={status === 'watched'}
-                                  disabled={active || statusMovePending}
-                                  textSize={listTextSize}
-                                  contained={listColumns === 2}
-                                  onCategoryMove={(target) =>
-                                    requestCategoryMove(p.item._id, target)
-                                  }
-                                  onMove={(direction) => {
-                                    const index = p.getIndex() ?? 0;
-                                    const to = index + direction;
-                                    if (to < 0 || to >= data.length) return;
-                                    const next = [...data];
-                                    const [moved] = next.splice(index, 1);
-                                    next.splice(to, 0, moved);
-                                    void drop(next, index, to);
-                                  }}
-                                />
-                              </ShadowDecorator>
-                            </ScaleDecorator>
-                          </View>
-                        )}
-                      />
-                      {nativeDragValues[status] && (
-                        <NativeDragMonitor
-                          values={nativeDragValues[status]}
-                          status={status}
-                          listTop={
-                            (sectionLayouts[status]?.top ?? 0) + (nativeListTops[status] ?? 0)
-                          }
-                          onHover={updateNativeDragTarget}
-                        />
-                      )}
-                    </View>
+                    />
                   )}
                 </View>
               );
             })}
           </PinchDensity>
         )}
-      </LibraryScrollComponent>
+      </Animated.ScrollView>
       <Drawer
         open={!!pendingWatchedMove}
         onOpenChange={(nextOpen) => {
@@ -486,7 +387,19 @@ function Library() {
           motion={nativePosterMotion[nativeDrag.status]!}
           posterPath={nativeDrag.item.posterPath}
           title={nativeDrag.item.title}
-        />
+        >
+          {view === 'list' && (
+            <LibraryRow
+              item={nativeDrag.item}
+              rank={nativeDrag.rank ?? 0}
+              ranked={nativeDrag.status === 'watched'}
+              disabled
+              textSize={listTextSize}
+              contained={listColumns === 2}
+              onMove={() => undefined}
+            />
+          )}
+        </NativePosterDragPreview>
       )}
       <Animated.View
         testID="library-add-motion"

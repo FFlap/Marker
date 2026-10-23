@@ -5,7 +5,6 @@ import {
   resolvedSeasonValidator,
 } from './publicValidators';
 
-// Shared by persisted snapshots and their write boundary.
 const castMember = castMemberValidator;
 const season = resolvedSeasonValidator;
 const episode = resolvedEpisodeValidator;

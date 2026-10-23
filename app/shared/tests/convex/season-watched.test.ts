@@ -18,7 +18,6 @@ async function setup(change: 'order' | 'grow' | 'missing') {
         returns: v.array(v.object({ season: v.number(), episode: v.number(), name: v.string() })),
         handler: async (_ctx, { tmdbId, season }) => {
           resolved.push(season);
-          // Simulate metadata publication between the action's separate transactions.
           await t.run(async (ctx) => {
             const title = (await ctx.db.query('resolvedTitles').first())!;
             if (change === 'missing') {

@@ -139,11 +139,6 @@ export async function requestRefresh(
     const seasonDecision =
       args.season === undefined ? undefined : (seasonRowDecision ?? leaseDecision);
     if (activeLease.token.startsWith('synchronous:')) {
-      // A synchronous title action can adopt its title and whichever selected
-      // season provider discovery chooses. A season-only action
-      // gives a newly arriving title touch its own orchestrator instead.
-      // Admission happens before any row is written, so a rejected touch leaves
-      // no request row behind.
       const admittedRows = [
         ...(!titleRowDecision ? [{ index: 0, key: keys[0] }] : []),
         ...(args.season !== undefined && !seasonRowDecision ? [{ index: 1, key: keys[1] }] : []),
@@ -223,9 +218,8 @@ export async function requestRefresh(
         };
       }
     } else if (!titleRowDecision && scheduledSeasonOnlyLease) {
-      // A season-only scheduled holder can only season-patch. Give a colliding
-      // title touch its own durable request and orchestrator so it waits for the
-      // shared lease and eventually performs the title refresh.
+      // A season-only scheduled holder can only season-patch, so it cannot
+      // satisfy a colliding title touch.
       await consumeRefreshAdmission(
         ctx,
         args.userId,
@@ -289,9 +283,7 @@ export async function requestRefresh(
         delayMs: Math.max(scheduledTitle.delayMs, seasonDecision!.delayMs),
       };
     } else if (args.season !== undefined && !seasonRowDecision) {
-      // A scheduled title/season holder cannot adopt a newly requested sibling
-      // season. Persist and orchestrate it independently so it survives this
-      // mutation and waits for the shared title lease instead of being stranded.
+      // A scheduled title/season holder cannot adopt a newly requested sibling season.
       await consumeRefreshAdmission(ctx, args.userId, rows[1] ? 0 : 1);
       const attemptToken = `${now}:season:${crypto.randomUUID()}`;
       const expiresAt = now + REQUEST_LEASE_MS;
@@ -325,8 +317,6 @@ export async function requestRefresh(
     return combineRejectedDecisions(titleDecision, seasonDecision);
   }
 
-  // Successful debounce visibility only needs canonical parent rows. In
-  // particular, touch admission never assembles or reads season chunks.
   const [mapping, storedTitle, storedSeasonParent] = await Promise.all([
     ctx.db
       .query('titleMappings')
@@ -388,8 +378,6 @@ export async function requestRefresh(
     };
   }
 
-  // The state/debounce ingress guard above is intentionally read-only. Only work
-  // that can schedule an orchestrator consumes the shared throttle budgets.
   const newKeyCount =
     Number(!rows[0] && !titleVisible) +
     Number(args.season !== undefined && !rows[1] && !seasonVisible);
@@ -397,9 +385,6 @@ export async function requestRefresh(
 
   const expiresAt = now + REQUEST_LEASE_MS;
 
-  // A title refresh owns the selected season as part of the same attempt, even
-  // when that season was otherwise fresh. Both request rows and all canonical
-  // documents are completed by the one commitRefresh transaction.
   if (titleDecision.scheduled) {
     const attemptToken = `${now}:title:${crypto.randomUUID()}`;
     const combinedSeason =
@@ -438,8 +423,6 @@ export async function requestRefresh(
     };
   }
 
-  // Round 2's title-in-flight collision path remains season-scoped, but its
-  // orchestrator now commits through the same atomic mutation as combined work.
   const attemptToken = `${now}:season:${crypto.randomUUID()}`;
   await writeRequest(keys[1], rows[1], attemptToken, expiresAt);
   await ctx.scheduler.runAfter(

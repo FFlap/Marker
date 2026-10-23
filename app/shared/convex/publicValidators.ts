@@ -111,7 +111,6 @@ export const episodeValidator = v.object({
   ratingScale: v.optional(v.literal(5)),
   tags: v.array(v.string()),
   watchedAt: v.optional(v.number()),
-  /** Local day an in-app mark was logged to watch activity; cleared on unmark. */
   activityDate: v.optional(v.string()),
   metadataProvider: metadataProviderValidator,
   seasonOrder: v.optional(v.string()),

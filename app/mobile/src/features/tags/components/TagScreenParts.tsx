@@ -1,21 +1,15 @@
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import { router } from 'expo-router';
-import {
-  type RenderItemParams,
-  ScaleDecorator,
-  ShadowDecorator,
-} from 'react-native-draggable-flatlist';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
-import { listItemWidth, listTypography, type ListTextSize } from '@/lib/displayPreferences';
+import { listTypography, type ListTextSize } from '@/lib/displayPreferences';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import type { LibraryItem, Status } from '@/types';
 import { tagDetailStyles as s } from '../screens/TagDetailScreen.styles';
 
 export type RankedItem = LibraryItem & { tagRank?: number };
-const TAG_DRAG_LONG_PRESS_MS = 220;
 const categoryAccessibilityActions = LIBRARY_STATUSES.map(([status, label]) => ({
   name: `moveTo:${status}`,
   label: `Move to ${label}`,
@@ -63,46 +57,6 @@ export function VisibilityOption({
   );
 }
 
-export function NativeTagItem({
-  item,
-  drag,
-  getIndex,
-  ranked,
-  disabled,
-  listTextSize,
-  listColumns,
-  reduceMotion,
-  onCategoryMove,
-}: RenderItemParams<RankedItem> & {
-  ranked: boolean;
-  disabled: boolean;
-  listTextSize: ListTextSize;
-  listColumns: 1 | 2;
-  reduceMotion: boolean;
-  onCategoryMove: (status: Status) => void;
-}) {
-  const index = getIndex() ?? 0;
-  return (
-    // Multi-column lists render items straight into the row, so each needs a width.
-    <View style={{ width: listItemWidth(listColumns) }}>
-      <ScaleDecorator activeScale={reduceMotion ? 1 : 1.015}>
-        <ShadowDecorator color="#000" opacity={0.4} radius={14} elevation={8}>
-          <TagRow
-            item={item}
-            index={index}
-            ranked={ranked}
-            drag={drag}
-            disabled={disabled}
-            textSize={listTextSize}
-            contained={listColumns === 2}
-            onCategoryMove={onCategoryMove}
-          />
-        </ShadowDecorator>
-      </ScaleDecorator>
-    </View>
-  );
-}
-
 export function TagPoster({
   item,
   index,
@@ -139,11 +93,10 @@ export function TagPoster({
   );
 }
 
-function TagRow({
+export function TagRow({
   item,
   index,
   ranked,
-  drag,
   disabled,
   textSize,
   contained = false,
@@ -152,7 +105,6 @@ function TagRow({
   item: RankedItem;
   index: number;
   ranked: boolean;
-  drag?: () => void;
   disabled: boolean;
   textSize: ListTextSize;
   contained?: boolean;
@@ -170,8 +122,6 @@ function TagRow({
         if (target && target !== item.status) onCategoryMove(target);
       }}
       onPress={() => router.push(`/item/${item._id}`)}
-      onLongPress={disabled ? undefined : drag}
-      delayLongPress={TAG_DRAG_LONG_PRESS_MS}
       style={[s.row, { minHeight: typography.minHeight }, contained && s.rowContained]}
       pressedStyle={s.pressed}
     >

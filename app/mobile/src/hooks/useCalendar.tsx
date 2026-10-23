@@ -65,7 +65,6 @@ export function useCalendar(date: string, prefetch = false) {
         )
           return;
         const [year, number] = month.split('-').map(Number);
-        // Warm only the next month after the visible month is complete.
         if (!active || AppState.currentState === 'background') return;
         const neighbor = new Date(year, number, 1);
         const key = `${neighbor.getFullYear()}-${String(neighbor.getMonth() + 1).padStart(2, '0')}`;

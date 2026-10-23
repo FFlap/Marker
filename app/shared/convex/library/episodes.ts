@@ -34,7 +34,6 @@ const episodeArgs = {
   runtime: v.optional(v.number()),
   imageUrl: v.optional(v.string()),
   airDate: v.optional(v.string()),
-  /** The viewer's local `YYYY-MM-DD`; marks from the app count toward watch activity. */
   activityDate: v.optional(v.string()),
 };
 export async function setEpisode(
@@ -92,7 +91,6 @@ export async function setEpisode(
       ? args.rating
       : existing?.rating;
   const stamp = args.stamp ?? (await episodeMetadataStamp(ctx, item, args.season, args.episode));
-  // Only individual marks carry an activity date; bulk season writes do not.
   const { activityDate } = args;
   const materializeDisplay = watched || nextRating !== undefined;
   const display = {
@@ -203,7 +201,6 @@ export const setEpisodeState = mutation({
   handler: async (ctx, { activityDate, ...args }) =>
     setEpisode(ctx, await requireUser(ctx), {
       ...args,
-      // Older clients omit the local day; their marks still count, on the UTC day.
       activityDate: resolveActivityDate(activityDate),
     }),
 });
@@ -294,8 +291,6 @@ export const listEpisodes = query({
           .eq('metadataProvider', provider)
           .eq('seasonOrder', provider === 'tvdb' ? mapping?.seasonOrder : undefined),
       )
-      // A canonical season is capped at 600 rows. Provider-id validation below
-      // preserves history while keeping stale identities from escaping this bound.
       .take(MAX_SEASON_EPISODES);
     return episodeCandidates
       .filter((episode) =>
@@ -312,7 +307,6 @@ export const listEpisodes = query({
   },
 });
 
-/** Compact whole-item progress; full episode documents stay season/page scoped. */
 export const listEpisodeProgress = query({
   args: { itemId: v.id('items') },
   returns: v.array(
@@ -373,4 +367,3 @@ export const listEpisodeProgress = query({
     });
   },
 });
-/** Derives the batch from the server's epoch-checked canonical season. */

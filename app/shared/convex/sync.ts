@@ -158,7 +158,6 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
     ? {
         metadataProvider: activeResolvedSeason.metadataProvider,
         seasonOrder: activeResolvedSeason.metadataProvider === 'tvdb' ? seasonOrder : undefined,
-        // A verified tuple replaces every field, including clearing a missing id.
         providerEpisodeId: canonicalEpisode.providerEpisodeId,
       }
     : {
@@ -435,8 +434,6 @@ async function recordWatchForUser(
       title: item.title,
     });
   } catch (error) {
-    // A known library item with explicit coordinates remains recordable during
-    // a provider outage; existing verified stamps remain intact.
     if (!matchedExistingItem || !hasNumbers) throw error;
     canonicalTitle = { seasons: [] };
   }

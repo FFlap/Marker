@@ -63,7 +63,6 @@ export function createRequest(ctx: ActionCtx, reservationSize = 5) {
         reserved = reservationSize - 1;
         return true;
       }
-      // Use the tail of a nearly exhausted window without exceeding it.
       if (
         reservationSize > 1 &&
         (await ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
@@ -189,7 +188,6 @@ const normalizedMovieReleases = (payload: Json, region: string) => {
   });
 };
 
-// Next-episode pointers move after airing and disappear between seasons.
 const normalizedTvSchedule = (payload: Json) => {
   const seasons = new Map<number, { season: number; airDate?: string; lastAirDate?: string }>();
   const last = records([payload.last_episode_to_air])[0];
@@ -215,7 +213,6 @@ const normalizedTvSchedule = (payload: Json) => {
   }
   for (const entry of records([payload.last_episode_to_air, payload.next_episode_to_air])) {
     const season = number(entry.season_number);
-    // An episode date must not be used as a season's start date.
     if (season !== undefined && !seasons.has(season)) seasons.set(season, { season });
   }
   return [...seasons.values()].sort((a, b) => a.season - b.season);
@@ -361,7 +358,6 @@ async function titleEvents(
       );
       seasonEpisodes.push(...episodes);
     } catch (error) {
-      // Only this season needs saved-release fallback.
       missingSeasons.push(season.season);
       onFailure(error);
     }
@@ -382,7 +378,6 @@ async function titleEvents(
   });
 }
 
-/** Resolve only the titles selected by the date index, preserving batched provider cache reads. */
 export async function loadTitleSchedules(
   ctx: ActionCtx,
   items: { item: LibraryTitle; hasSavedSchedule: boolean }[],

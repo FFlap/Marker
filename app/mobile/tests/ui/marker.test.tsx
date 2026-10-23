@@ -164,40 +164,6 @@ jest.mock('@marker/shared/api', () => ({
   },
 }));
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
-jest.mock('react-native-draggable-flatlist', () => {
-  const React = require('react');
-  const { ScrollView, View } = require('react-native');
-  const Decorator = ({ children }: { children: React.ReactNode }) => <>{children}</>;
-  const MockDraggableList = ({
-    data,
-    renderItem,
-    onDragEnd,
-  }: {
-    data: typeof items;
-    renderItem: (p: unknown) => React.ReactNode;
-    onDragEnd: (event: { data: typeof items; from: number; to: number }) => void;
-  }) => (
-    <View>
-      {(() => {
-        mockDragEnds.set(data.map((item) => item._id).join(','), onDragEnd);
-        return null;
-      })()}
-      {data.map((item, index) => (
-        <React.Fragment key={item._id}>
-          {renderItem({ item, index, drag: jest.fn(), isActive: false, getIndex: () => index })}
-        </React.Fragment>
-      ))}
-    </View>
-  );
-  return {
-    __esModule: true,
-    NestableDraggableFlatList: MockDraggableList,
-    NestableScrollContainer: ScrollView,
-    ScaleDecorator: Decorator,
-    ShadowDecorator: Decorator,
-    default: MockDraggableList,
-  };
-});
 jest.mock('@/components/NativeDraggableGrid', () => {
   const React = require('react');
   const { View } = require('react-native');

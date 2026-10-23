@@ -232,7 +232,6 @@ async function resolveAnime(
   try {
     payload = await request(ctx, `/series/${tvdbId}/extended?meta=translations`);
   } catch (error) {
-    // An order denotes a manual pin. Only automatic mappings may move.
     if (!(error instanceof TvdbNotFoundError) || pinned?.order) throw error;
     const replacement = await lookup(new Set([tvdbId]));
     if (!replacement) throw new Error('No unambiguous replacement TVDB series found');
@@ -296,7 +295,6 @@ async function resolveAnime(
   return { details, episodes: selectedEpisodes };
 }
 
-/** Count available episodes, not announced totals, before exposing seasons in the picker. */
 async function resolveSeasonCounts(ctx: Pick<ActionCtx, 'runMutation'>, seasons: SeasonRecord[]) {
   const counts = new Map<number, number>();
   const candidates = seasons.slice(0, MAX_SEASON_COUNT_REQUESTS);
@@ -319,9 +317,8 @@ async function resolveSeasonCounts(ctx: Pick<ActionCtx, 'runMutation'>, seasons:
             season.number,
             new Set(releasedEpisodes(episodes).map((episode) => episode.id)).size,
           );
-        } catch {
-          // A missing count must not prevent the rest of the title from loading.
-        }
+          // eslint-disable-next-line no-empty
+        } catch {}
       }),
     );
   }
@@ -482,8 +479,6 @@ async function seasonSnapshot(
       season,
     });
     if (durable) return durable.episodes as AnimeEpisode[];
-    // A marker is only a cache hit when its oversized value has already been
-    // committed to durable canonical chunks. Cold/title-only flows must refetch.
   }
   return refreshSeasonSnapshot(ctx, tvdbId, order, season);
 }

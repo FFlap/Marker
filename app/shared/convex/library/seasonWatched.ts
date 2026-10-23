@@ -32,7 +32,6 @@ const seasonWatchIdentity = {
   metadataProvider: v.optional(v.union(v.literal('tmdb'), v.literal('tvdb'))),
 };
 
-// Seasons can appear once more while a new title finishes resolving; bound the follow-up.
 const MAX_WATCHED_SEASON_PASSES = 3;
 const watchedSeasonKey = (
   title: Pick<Doc<'resolvedTitles'>, 'orderEpoch' | 'metadataProvider'>,
@@ -217,7 +216,6 @@ export const setSeasonWatchedBatch = internalMutation({
         },
         { item, existing: existing[index] ?? null, activityEvents, watchActivityDeltas },
       );
-    // Several episodes can share a day; update each counter just once per batch.
     for (const [date, delta] of watchActivityDeltas)
       await recordWatchActivity(ctx, args.userId, date, delta);
     await writeActivityEvents(ctx, activityEvents);
@@ -360,11 +358,8 @@ async function moveItemToWatchedForUser(
       },
     );
     if (!initialTitle?.seasons.length) throw new Error('Season information is unavailable');
-    // A title seen for the first time is often still being resolved: its first
-    // season list can come from TMDB while the anime mapping to TVDB is in
-    // flight, so seasons may gain or lose episodes, or appear, as loading
-    // continues. Judge each season by the title's latest counts, and pick up
-    // seasons that only appear after the switch.
+    // The initial TMDB season list can gain or lose episodes or seasons while
+    // the anime mapping to TVDB is still in flight.
     const done = new Set<string>();
     let pending: number[] = initialTitle.seasons
       .map((entry: { season: number }) => entry.season)
@@ -384,7 +379,6 @@ async function moveItemToWatchedForUser(
           currentTitle.seasons.find((entry: { season: number }) => entry.season === season)
             ?.episodeCount ?? 0;
         if (episodes.length === 0) {
-          // Only a season that still claims episodes is missing data.
           if (expected > 0) throw new Error('Episode information is unavailable');
           done.add(watchedSeasonKey(currentTitle, season));
           continue;

@@ -256,25 +256,20 @@ export default function SignIn() {
         }
       }
     } catch (cause) {
-      // Clerk's native client can persist the newly created session before finalize() finishes
-      // publishing it to the React hooks. In that race, finalize() throws even though the code
-      // was accepted. Confirm against the reloaded client so a consumed, successful code exits
-      // this screen, while a genuinely invalid code still shows the verification error.
+      // Clerk's native client can persist a session before finalize() publishes it to
+      // React hooks, causing finalize() to throw even though the code was accepted.
       if (verification) {
         try {
           const currentClient = await client.reload();
           const persistedSession = currentClient.signedInSessions[0];
           if (persistedSession) {
-            // Pass the resource itself: the hook's previous client snapshot may not know this ID
-            // yet, which is the native race we are recovering from.
+            // Pass the resource itself: the hook's previous client snapshot may not know this ID yet.
             await setActive({ session: persistedSession });
             openSignedInApp();
             setBusy(false);
             return;
           }
-        } catch {
-          // Preserve the original Clerk error when the client itself cannot be reloaded.
-        }
+        } catch {}
       }
       const context: AuthErrorContext = verification
         ? 'verification'

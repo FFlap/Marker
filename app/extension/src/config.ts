@@ -2,7 +2,6 @@ const CHECKED_IN_CONVEX_URL = "https://valuable-minnow-297.convex.cloud";
 const CHECKED_IN_CLERK_PUBLISHABLE_KEY =
   "pk_test_d2FybS10ZXJtaXRlLTE2LmNsZXJrLmFjY291bnRzLmRldiQ";
 
-/** Pinned when the extension bundle is built; never sourced from runtime storage. */
 const requiredBuildValue = (
   name: string,
   value: string | undefined,

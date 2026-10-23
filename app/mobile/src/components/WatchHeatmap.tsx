@@ -137,7 +137,6 @@ const s = createAppStyles(
     months: { position: 'relative', marginBottom: 4 },
     month: { position: 'absolute', top: 0, color: colors.muted, fontSize: 9, fontWeight: '600' },
     grid: { flexDirection: 'row', gap: GAP },
-    // Touches land on the grid itself so locations are grid-relative.
     column: { gap: GAP, pointerEvents: 'none' },
     selected: { borderWidth: 1, borderColor: colors.muted },
     footer: {

@@ -303,8 +303,6 @@ export default defineSchema({
     episodeCount: v.optional(v.number()),
     chunkCount: v.optional(v.number()),
     chunksComplete: v.optional(v.boolean()),
-    // The visible chunk version. Staged writes use separate fields so readers
-    // continue to see this complete version until the final atomic flip.
     seasonVersion: v.optional(v.string()),
     writeAttemptToken: v.optional(v.string()),
     nextChunkIndex: v.optional(v.number()),
@@ -315,9 +313,6 @@ export default defineSchema({
     stagingRefreshedAt: v.optional(v.number()),
     stagingRefreshAfter: v.optional(v.number()),
     stagingOrderEpoch: v.optional(v.number()),
-    // Multi-chunk refreshes keep the entire replacement commit here until every
-    // season chunk is durable. These values are validated by commitRefresh
-    // before being staged and are cleared by the single atomic publish.
     stagingTitle: v.optional(resolvedTitle),
     stagingTitleWrite: v.optional(v.union(v.literal('replace'), v.literal('seasonPatch'))),
     stagingMapping: v.optional(v.union(v.null(), mappingWrite)),

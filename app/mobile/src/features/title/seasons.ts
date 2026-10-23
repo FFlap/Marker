@@ -5,7 +5,6 @@ export type SeasonChoice = {
   episodeCountVerified?: boolean;
 };
 
-/** Keep picker choices and the metadata requests they produce in the same order. */
 export function availableSeasons<T extends SeasonChoice>(seasons: readonly T[] | undefined): T[] {
   return (seasons ?? [])
     .filter(

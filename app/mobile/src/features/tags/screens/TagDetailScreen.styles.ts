@@ -90,9 +90,6 @@ export const tagDetailStyles = createAppStyles(
     sectionTitle: { color: colors.muted, fontSize: 12, letterSpacing: 0.2, fontWeight: '600' },
     count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
     grid: { paddingTop: 16, paddingBottom: 4 },
-    // Cells carry their own width (see NativeTagItem); widths that fill the row exactly
-    // could round past it, so the row spreads them apart instead.
-    gridRow: { justifyContent: 'space-between', marginBottom: 12 },
     card: {
       flex: 1,
       width: '100%',
@@ -120,8 +117,6 @@ export const tagDetailStyles = createAppStyles(
       gap: 8,
       overflow: 'hidden',
     },
-    // Two-column rows can wrap to two lines: give them breathing room and align
-    // the rank and rating with the first line.
     rowContained: { flex: 1, width: '100%', paddingVertical: 8, alignItems: 'flex-start' },
     rowRank: {
       color: colors.muted,

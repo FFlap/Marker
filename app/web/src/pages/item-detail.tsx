@@ -216,7 +216,6 @@ export function ItemDetailPage() {
     }).catch(() => {
       if (generation === refreshGeneration.current) setTouchError(true);
     });
-    // Invalidate automatic and manual refreshes when this item/season leaves.
     return () => { refreshGeneration.current += 1; };
   }, [itemId, season, touchItemId, touchItemView, touchMediaType]);
 

@@ -69,7 +69,6 @@ async function fixture(count = 1, candidateCount = count) {
   return { t, userId, asUser: t.withIdentity({ subject: 'calendar-index' }) };
 }
 
-/** Exercise the same durable worker that production schedules, including both movie feeds. */
 async function discoverMonth(
   request: (path: string) => Promise<Record<string, unknown>>,
   month: string,

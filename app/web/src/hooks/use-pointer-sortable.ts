@@ -142,7 +142,6 @@ export function usePointerSortable({
         event.currentTarget.setPointerCapture?.(event.pointerId);
       } catch {
         // Synthetic pointers and some embedded browsers can reject capture.
-        // The window listeners below still keep the drag functional.
       }
       drag.current = {
         pointerId: event.pointerId,
