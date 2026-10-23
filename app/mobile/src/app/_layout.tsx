@@ -91,12 +91,13 @@ export function StartupSplashBoundary({ children }: { children: ReactNode }) {
 }
 
 export default function RootLayout() {
-  useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     AlbertSans_400Regular,
     AlbertSans_500Medium,
     AlbertSans_600SemiBold,
     AlbertSans_700Bold,
   });
+  if (!fontsLoaded && !fontError) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardProvider>

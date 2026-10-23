@@ -45,6 +45,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const pendingClose = useRef<(() => void) | undefined>(undefined);
   const { profileReady } = useAccountLoading();
   const profile = useQuery(api.profiles.me, profileReady ? {} : 'skip');
+  const canOpen = !!profile;
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -57,6 +58,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   }, []);
 
   const openDrawer = useCallback(() => {
+    if (!canOpen) return;
     if (pendingClose.current) {
       progress.stopAnimation();
       setVisible(false);
@@ -78,7 +80,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
         }).start();
       });
     }
-  }, [motionReduced, progress]);
+  }, [canOpen, motionReduced, progress]);
 
   const closeDrawer = useCallback(
     (onClosed?: () => void) => {
@@ -117,8 +119,8 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       <NativePressable
         accessibilityRole="button"
         accessibilityLabel="Open account menu"
-        accessibilityState={{ expanded: visible, disabled: !profile }}
-        disabled={!profile}
+        accessibilityState={{ expanded: visible, disabled: !canOpen }}
+        disabled={!canOpen}
         hitSlop={4}
         onPress={openDrawer}
         style={s.trigger}
