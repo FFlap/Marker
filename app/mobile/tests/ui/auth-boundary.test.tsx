@@ -3,6 +3,7 @@ import { render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
 const mockRedirect = jest.fn(({ href }: { href: string }) => <Text>{href}</Text>);
+let mockProfile: { username: string } | undefined;
 let mockClerkLoaded = true;
 let mockClerkSignedIn = false;
 let mockConvexAuthenticated = false;
@@ -23,7 +24,7 @@ jest.mock('convex/react', () => ({
     isAuthenticated: mockConvexAuthenticated,
     isLoading: mockConvexLoading,
   }),
-  useQuery: () => undefined,
+  useQuery: () => mockProfile,
   useMutation: () => mockEnsureAccount,
 }));
 jest.mock('@marker/shared/api', () => ({
@@ -37,10 +38,28 @@ jest.mock('expo-router', () => ({
   useSegments: () => mockSegments,
 }));
 
-import { AuthBoundary } from '../../src/components/AuthBoundary';
+jest.mock('../../src/app/(tabs)/index', () => {
+  const { Text } = require('react-native');
+  return { __esModule: true, default: () => <Text>Library shell</Text> };
+});
+
+import { AuthBoundary as ScreenAuthBoundary } from '../../src/components/AuthBoundary';
+import { AccountProvider } from '../../src/hooks/useAccount';
+function AuthBoundary({ children }: { children: React.ReactNode }) {
+  return (
+    <AccountProvider>
+      <ScreenAuthBoundary
+        routeName={mockSegments[0] === '(tabs)' ? 'index' : mockSegments.join('/')}
+      >
+        {children}
+      </ScreenAuthBoundary>
+    </AccountProvider>
+  );
+}
 
 beforeEach(() => {
   mockRedirect.mockClear();
+  mockProfile = undefined;
   mockClerkLoaded = true;
   mockClerkSignedIn = false;
   mockConvexAuthenticated = false;
@@ -75,7 +94,7 @@ it('keeps the sign-in route available after a session expires', async () => {
   expect(view.getByText('Sign in form')).toBeTruthy();
 });
 
-it('shows visible progress while Clerk restores the cached session', async () => {
+it('shows the startup skeleton while Clerk restores the cached session', async () => {
   mockClerkLoaded = false;
 
   const view = await render(
@@ -84,11 +103,12 @@ it('shows visible progress while Clerk restores the cached session', async () =>
     </AuthBoundary>,
   );
 
-  expect(view.getByLabelText('Loading your account')).toBeTruthy();
+  expect(view.getByText('Library shell')).toBeTruthy();
+  expect(view.queryByText('Protected screen')).toBeNull();
   expect(mockRedirect).not.toHaveBeenCalled();
 });
 
-it('shows visible progress while Convex authenticates a valid Clerk session', async () => {
+it('shows the startup skeleton while Convex authenticates a valid Clerk session', async () => {
   mockClerkSignedIn = true;
   mockConvexLoading = true;
 
@@ -98,11 +118,12 @@ it('shows visible progress while Convex authenticates a valid Clerk session', as
     </AuthBoundary>,
   );
 
-  expect(view.getByLabelText('Loading your account')).toBeTruthy();
+  expect(view.getByText('Library shell')).toBeTruthy();
+  expect(view.queryByText('Protected screen')).toBeNull();
   expect(mockRedirect).not.toHaveBeenCalled();
 });
 
-it('keeps progress visible while the authenticated profile loads', async () => {
+it('keeps the startup skeleton visible while the authenticated profile loads', async () => {
   mockClerkSignedIn = true;
   mockConvexAuthenticated = true;
   const view = await render(
@@ -110,6 +131,93 @@ it('keeps progress visible while the authenticated profile loads', async () => {
       <Text>Protected screen</Text>
     </AuthBoundary>,
   );
-  expect(view.getByLabelText('Loading your account')).toBeTruthy();
+  expect(view.getByText('Library shell')).toBeTruthy();
   expect(view.queryByText('Protected screen')).toBeNull();
+});
+
+it('keeps the library route mounted as authentication resolves', async () => {
+  mockSegments = ['(tabs)'];
+  mockClerkLoaded = false;
+  let mounts = 0;
+  function LibraryRoute() {
+    React.useEffect(() => {
+      mounts += 1;
+    }, []);
+    return <Text>Library route</Text>;
+  }
+  const view = await render(
+    <AuthBoundary>
+      <LibraryRoute />
+    </AuthBoundary>,
+  );
+  expect(view.getByText('Library route')).toBeTruthy();
+  mockClerkLoaded = true;
+  mockClerkSignedIn = true;
+  mockConvexLoading = true;
+  await view.rerender(
+    <AuthBoundary>
+      <LibraryRoute />
+    </AuthBoundary>,
+  );
+  mockConvexLoading = false;
+  mockConvexAuthenticated = true;
+  await view.rerender(
+    <AuthBoundary>
+      <LibraryRoute />
+    </AuthBoundary>,
+  );
+  mockProfile = { username: 'marker' };
+  await view.rerender(
+    <AuthBoundary>
+      <LibraryRoute />
+    </AuthBoundary>,
+  );
+  expect(mounts).toBe(1);
+  expect(mockRedirect).not.toHaveBeenCalled();
+});
+
+it('shares account initialization across routes and preserves navigation while auth resolves', async () => {
+  mockClerkLoaded = false;
+  let navigatorMounts = 0;
+  let protectedMounts = 0;
+  function ProtectedScreen() {
+    React.useEffect(() => {
+      protectedMounts += 1;
+    }, []);
+    return <Text>Deep-linked item</Text>;
+  }
+  function Navigator() {
+    React.useEffect(() => {
+      navigatorMounts += 1;
+    }, []);
+    return (
+      <>
+        <ScreenAuthBoundary routeName="index">
+          <Text>Library route</Text>
+        </ScreenAuthBoundary>
+        <ScreenAuthBoundary routeName="item/[id]">
+          <ProtectedScreen />
+        </ScreenAuthBoundary>
+      </>
+    );
+  }
+  const tree = () => (
+    <AccountProvider>
+      <Navigator />
+    </AccountProvider>
+  );
+  mockEnsureAccount.mockClear();
+  const view = await render(tree());
+  expect(protectedMounts).toBe(0);
+  expect(view.getByText('Library route')).toBeTruthy();
+  mockClerkLoaded = true;
+  mockClerkSignedIn = true;
+  mockConvexAuthenticated = true;
+  mockProfile = { username: 'marker' };
+  await view.rerender(tree());
+  expect(navigatorMounts).toBe(1);
+  expect(protectedMounts).toBe(1);
+  expect(mockEnsureAccount).toHaveBeenCalledTimes(1);
+  expect(view.getByText('Deep-linked item')).toBeTruthy();
+  expect(mockRedirect).not.toHaveBeenCalled();
 });

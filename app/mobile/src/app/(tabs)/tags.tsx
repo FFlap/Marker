@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
@@ -45,7 +46,7 @@ export default function TagsScreen() {
   }, [collections, search]);
 
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <View style={s.toolbar}>
         <TabHeader
           current="tags"
@@ -103,7 +104,7 @@ export default function TagsScreen() {
         )}
       </ScrollView>
       <MobileNav current="tags" />
-    </View>
+    </ScreenView>
   );
 }
 

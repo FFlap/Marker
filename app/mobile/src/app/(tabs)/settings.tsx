@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useClerk } from '@clerk/expo';
@@ -75,7 +76,7 @@ export default function Settings() {
   };
 
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title="Settings" maxWidth={680} />
       <ScrollView contentContainerStyle={s.content}>
         <View style={[s.group, s.firstGroup]}>
@@ -204,7 +205,7 @@ export default function Settings() {
           />
         </View>
       </ScrollView>
-    </View>
+    </ScreenView>
   );
 }
 

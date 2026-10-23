@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
@@ -128,7 +129,7 @@ export default function Add() {
     }
   };
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title="Add Title" maxWidth={680} />
       <KeyboardScrollView contentContainerStyle={s.content}>
         <Input
@@ -234,7 +235,7 @@ export default function Add() {
           </View>
         )}
       </KeyboardScrollView>
-    </View>
+    </ScreenView>
   );
 }
 const s = createAppStyles(

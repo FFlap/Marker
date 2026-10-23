@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -151,19 +152,19 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   );
   if (itemViewLoading)
     return (
-      <View style={s.root}>
+      <ScreenView style={s.root}>
         <SecondaryHeader title="Details" maxWidth={760} />
         <DetailPageSkeleton />
-      </View>
+      </ScreenView>
     );
   if (!item)
     return (
-      <View style={s.root}>
+      <ScreenView style={s.root}>
         <SecondaryHeader title="Details" maxWidth={760} />
         <View style={s.state}>
           <EmptyState title="Title not found" />
         </View>
-      </View>
+      </ScreenView>
     );
   const performRemoval = async () => {
     if (removePending) return;
@@ -322,7 +323,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     );
   };
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title="Details" maxWidth={760} />
       <FlatList
         testID="episode-list"
@@ -542,6 +543,6 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
           </>
         }
       />
-    </View>
+    </ScreenView>
   );
 }

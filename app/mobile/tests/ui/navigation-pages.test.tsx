@@ -32,6 +32,9 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('expo-image', () => ({ Image: require('react-native').Image }));
 
+import { ScreenReadinessContext } from '../../src/components/ScreenLayout';
+const mockReady = jest.fn();
+
 import { CalendarProvider } from '../../src/hooks/useCalendar';
 const render = (ui: React.ReactElement) => renderNative(ui, { wrapper: CalendarProvider });
 
@@ -48,6 +51,22 @@ describe('secondary mobile pages', () => {
     mockLibraryRevision = 0;
   });
   afterEach(() => jest.spyOn(Date, 'now').mockRestore());
+
+  it('releases the splash on a directly opened calendar day before network data arrives', async () => {
+    mockDate = '2026-09-02';
+    mockLibraryRevision = undefined;
+    mockReady.mockClear();
+    const view = await render(
+      <ScreenReadinessContext value={mockReady}>
+        <CalendarDayScreen />
+      </ScreenReadinessContext>,
+    );
+    expect(mockReady).not.toHaveBeenCalled();
+    await fireEvent(view.getByLabelText('Loading releases'), 'layout', {
+      nativeEvent: { layout: { width: 400, height: 800 } },
+    });
+    expect(mockReady).toHaveBeenCalledTimes(1);
+  });
 
   it('refreshes a cached day immediately after a library revision changes', async () => {
     mockDate = '2026-09-02';

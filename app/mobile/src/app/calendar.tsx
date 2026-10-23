@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useMemo, useState } from 'react';
 import { AppState, Pressable, Text, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
@@ -70,7 +71,7 @@ export default function CalendarScreen() {
   }, [events]);
   const rowCapacity = Math.max(2, Math.floor((cellHeight - 31) / 17));
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title="Calendar" fallback="/(tabs)" maxWidth={720} />
       <View style={s.content}>
         <View style={s.monthHead}>
@@ -185,7 +186,7 @@ export default function CalendarScreen() {
           )}
         </View>
       </View>
-    </View>
+    </ScreenView>
   );
 }
 

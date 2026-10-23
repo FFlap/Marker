@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { useGridMetrics } from '@/hooks/use-grid-metrics';
@@ -151,7 +152,7 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
   };
 
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader
         title={collection?.tag ?? tag}
         backLabel={`Back to @${username}`}
@@ -239,7 +240,7 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
           </PinchDensity>
         )}
       </KeyboardScrollView>
-    </View>
+    </ScreenView>
   );
 }
 

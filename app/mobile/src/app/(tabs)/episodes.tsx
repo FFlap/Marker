@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -139,7 +140,7 @@ function Episodes() {
   };
 
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <View style={s.toolbar}>
         <TabHeader
           current="episodes"
@@ -355,7 +356,7 @@ function Episodes() {
         )}
       </Drawer>
       <MobileNav current="episodes" />
-    </View>
+    </ScreenView>
   );
 }
 

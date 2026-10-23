@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import type { Episode } from '@/features/title/libraryItemTypes';
 import { useMemo, useState } from 'react';
 import { FlatList, Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
@@ -274,7 +275,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
 
   if (!mediaType || !validId)
     return (
-      <View style={s.root}>
+      <ScreenView style={s.root}>
         <SecondaryHeader
           title="Details"
           maxWidth={760}
@@ -284,12 +285,12 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         <View style={s.state}>
           <EmptyState title="Title not found" detail="This title link is invalid." />
         </View>
-      </View>
+      </ScreenView>
     );
 
   if (failed && !hero)
     return (
-      <View style={s.root}>
+      <ScreenView style={s.root}>
         <SecondaryHeader
           title="Details"
           maxWidth={760}
@@ -302,20 +303,20 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
             <Button title="Retry" variant="ghost" onPress={() => refresh({ force: true })} />
           </View>
         </View>
-      </View>
+      </ScreenView>
     );
 
   if (titleViewLoading || heroOwner === undefined)
     return (
-      <View testID="title-detail-initial-placeholder" style={s.root}>
+      <ScreenView testID="title-detail-initial-placeholder" style={s.root}>
         <View style={s.initialPlaceholder}>
           <SkeletonShimmer />
         </View>
-      </View>
+      </ScreenView>
     );
 
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader
         title="Details"
         maxWidth={760}
@@ -534,6 +535,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         saving={entrySaving}
         onSubmit={saveEntry}
       />
-    </View>
+    </ScreenView>
   );
 }

@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -26,19 +27,19 @@ export default function PublicProfile() {
   const [tab, setTab] = useState<ProfileTab>('collection');
   if (result === undefined)
     return (
-      <View style={s.root}>
+      <ScreenView style={s.root}>
         <SecondaryHeader title="Profile" maxWidth={880} />
         <ProfilePageSkeleton />
-      </View>
+      </ScreenView>
     );
   if (result === null)
     return (
-      <View style={s.root}>
+      <ScreenView style={s.root}>
         <SecondaryHeader title="Profile" maxWidth={880} />
         <View style={s.state}>
           <EmptyState title="Profile not found" />
         </View>
-      </View>
+      </ScreenView>
     );
   const relationship = result.relationship;
   const followLabel =
@@ -61,7 +62,7 @@ export default function PublicProfile() {
     setPending(false);
   };
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title={`@${result.profile.username}`} maxWidth={880} />
       <ScrollView contentContainerStyle={s.content}>
         <View style={s.hero}>
@@ -134,7 +135,7 @@ export default function PublicProfile() {
           </View>
         )}
       </ScrollView>
-    </View>
+    </ScreenView>
   );
 }
 

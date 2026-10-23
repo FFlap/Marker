@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
@@ -9,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useQuery } from 'convex/react';
+import { useAccountLoading } from '@/hooks/useAccountLoading';
 import { api } from '@marker/shared/api';
 import { router } from 'expo-router';
 import {
@@ -63,9 +65,10 @@ export default function LibraryScreen() {
   );
 }
 function Library() {
-  const itemQuery = useQuery(api.library.items.listItems);
+  const { libraryReady } = useAccountLoading();
+  const itemQuery = useQuery(api.library.items.listItems, libraryReady ? {} : 'skip');
   const items = itemQuery ?? EMPTY_ITEMS;
-  const settings = useQuery(api.settings.getSettings);
+  const settings = useQuery(api.settings.getSettings, libraryReady ? {} : 'skip');
   const view = settings?.defaultView ?? 'list';
   const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const listColumns = settings?.listColumns ?? DEFAULT_DISPLAY_PREFERENCES.listColumns;
@@ -210,9 +213,11 @@ function Library() {
     ? Animated.ScrollView
     : NestableScrollContainer) as unknown as typeof ScrollView;
   return (
-    <View
+    <ScreenView
       ref={rootRef}
-      onLayout={(event) => setRootHeight(event.nativeEvent.layout.height)}
+      onLayout={(event) => {
+        setRootHeight(event.nativeEvent.layout.height);
+      }}
       style={s.root}
       {...(view === 'posters' ? {} : edgeSwipe.panHandlers)}
     >
@@ -522,6 +527,7 @@ function Library() {
         <NativePressable
           accessibilityRole="button"
           accessibilityLabel="Add title"
+          disabled={!libraryReady}
           accessibilityHint="Opens title search"
           onPress={() => router.push('/add')}
           style={s.addButton}
@@ -531,6 +537,6 @@ function Library() {
         </NativePressable>
       </Animated.View>
       <MobileNav current="library" />
-    </View>
+    </ScreenView>
   );
 }

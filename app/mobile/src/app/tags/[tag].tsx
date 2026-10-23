@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -349,9 +350,11 @@ export default function TagDetailScreen() {
     : NestableScrollContainer) as unknown as typeof ScrollView;
 
   return (
-    <View
+    <ScreenView
       ref={rootRef}
-      onLayout={(event) => setRootHeight(event.nativeEvent.layout.height)}
+      onLayout={(event) => {
+        setRootHeight(event.nativeEvent.layout.height);
+      }}
       style={s.root}
     >
       <TagHeader
@@ -548,6 +551,6 @@ export default function TagDetailScreen() {
         />
       )}
       <AddTagTitlesButton tag={tag} />
-    </View>
+    </ScreenView>
   );
 }

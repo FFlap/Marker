@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
@@ -78,7 +79,7 @@ export default function AddTitlesToTagScreen() {
 
   const selectedCount = selected.size;
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader
         title={`Add to ${tag}`}
         backLabel={`Back to ${tag}`}
@@ -185,7 +186,7 @@ export default function AddTitlesToTagScreen() {
           </View>
         </View>
       </View>
-    </View>
+    </ScreenView>
   );
 }
 

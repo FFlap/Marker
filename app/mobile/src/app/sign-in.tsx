@@ -1,6 +1,6 @@
+import { ScreenKeyboardScrollView } from '@/components/ScreenLayout';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { useClerk, useSignIn, useSignUp } from '@clerk/expo';
 import { useSSO } from '@clerk/expo/experimental';
 import { useRouter } from 'expo-router';
@@ -353,7 +353,7 @@ export default function SignIn() {
   };
 
   return (
-    <KeyboardScrollView style={s.root} contentContainerStyle={s.content}>
+    <ScreenKeyboardScrollView style={s.root} contentContainerStyle={s.content}>
       <View>
         <Text style={s.logo}>{heading}</Text>
         <Text style={s.lede}>{lede}</Text>
@@ -553,7 +553,7 @@ export default function SignIn() {
           </>
         )}
       </View>
-    </KeyboardScrollView>
+    </ScreenKeyboardScrollView>
   );
 }
 
