@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery } from 'convex/react';
@@ -56,7 +57,7 @@ export default function NotificationsScreen() {
     });
   };
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title="Notifications" fallback="/(tabs)" maxWidth={760} />
       <ScrollView contentContainerStyle={s.content}>
         {!!requests?.length && (
@@ -153,7 +154,7 @@ export default function NotificationsScreen() {
           />
         )}
       </ScrollView>
-    </View>
+    </ScreenView>
   );
 }
 

@@ -1,5 +1,6 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 
@@ -32,13 +33,13 @@ class ErrorBoundaryContent extends React.Component<
   render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <View style={styles.root}>
+      <ScreenView style={styles.root}>
         <Text style={styles.title}>{this.props.message}</Text>
         <Text style={styles.detail}>Please try again.</Text>
         <Pressable accessibilityRole="button" onPress={this.props.onRetry} style={styles.button}>
           <Text style={styles.buttonText}>Retry</Text>
         </Pressable>
-      </View>
+      </ScreenView>
     );
   }
 }

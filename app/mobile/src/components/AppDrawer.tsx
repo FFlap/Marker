@@ -12,6 +12,8 @@ import {
 import { router, type Href } from 'expo-router';
 import { Bell, CalendarDays, Compass, Settings } from 'lucide-react-native';
 import { useQuery } from 'convex/react';
+import { useAccountLoading } from '@/hooks/useAccountLoading';
+import { SkeletonShimmer } from './SkeletonShimmer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@marker/shared/api';
 import { NativePressable } from '@/components/ui/NativePressable';
@@ -41,7 +43,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const [motionReduced, setMotionReduced] = useState(false);
   const [progress] = useState(() => new Animated.Value(0));
   const pendingClose = useRef<(() => void) | undefined>(undefined);
-  const profile = useQuery(api.profiles.me);
+  const { profileReady } = useAccountLoading();
+  const profile = useQuery(api.profiles.me, profileReady ? {} : 'skip');
+  const canOpen = !!profile;
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -54,6 +58,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   }, []);
 
   const openDrawer = useCallback(() => {
+    if (!canOpen) return;
     if (pendingClose.current) {
       progress.stopAnimation();
       setVisible(false);
@@ -75,7 +80,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
         }).start();
       });
     }
-  }, [motionReduced, progress]);
+  }, [canOpen, motionReduced, progress]);
 
   const closeDrawer = useCallback(
     (onClosed?: () => void) => {
@@ -114,13 +119,29 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       <NativePressable
         accessibilityRole="button"
         accessibilityLabel="Open account menu"
-        accessibilityState={{ expanded: visible }}
+        accessibilityState={{ expanded: visible, disabled: !canOpen }}
+        disabled={!canOpen}
         hitSlop={4}
         onPress={openDrawer}
         style={s.trigger}
         pressedStyle={s.pressed}
       >
-        <ProfileAvatar username={profile?.username} avatarUrl={profile?.avatarUrl} size={36} />
+        {profile === undefined ? (
+          <View
+            accessibilityLabel="Loading profile"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              overflow: 'hidden',
+              backgroundColor: colors.surface,
+            }}
+          >
+            <SkeletonShimmer />
+          </View>
+        ) : (
+          <ProfileAvatar username={profile?.username} avatarUrl={profile?.avatarUrl} size={36} />
+        )}
       </NativePressable>
 
       <Modal

@@ -209,6 +209,7 @@ jest.mock('../../src/components/ui/drawer', () => {
     DrawerTrigger: ({ children }: { children: React.ReactNode }) => children,
   };
 });
+import { AccountLoadingContext } from '../../src/hooks/useAccountLoading';
 import Library from '../../src/app/(tabs)/index';
 import { ToastProvider } from '../../src/components/ui/Toast';
 
@@ -470,4 +471,31 @@ describe('Marker library', () => {
       afterId: 'e',
     });
   });
+});
+
+it('loads navigation, profile, and library in place without querying before auth is ready', async () => {
+  mockUseQuery.mockImplementation((ref: unknown, args: unknown) => {
+    if (args === 'skip') return undefined;
+    if (String(ref).includes('getSettings')) return { defaultView: 'list' };
+    if (String(ref).includes('profiles.me')) return { username: 'markerfan' };
+    return items;
+  });
+  const screen = (profileReady: boolean, libraryReady: boolean) => (
+    <AccountLoadingContext.Provider value={{ profileReady, libraryReady }}>
+      <ToastProvider>
+        <Library />
+      </ToastProvider>
+    </AccountLoadingContext.Provider>
+  );
+  const q = await render(screen(false, false));
+  expect(q.getByRole('tab', { name: 'Library' })).toBeTruthy();
+  expect(q.getByLabelText('Loading profile')).toBeTruthy();
+  expect(q.getByTestId('library-loading')).toBeTruthy();
+  expect(q.queryByText('Avengers: Endgame')).toBeNull();
+  await q.rerender(screen(true, false));
+  expect(q.queryByLabelText('Loading profile')).toBeNull();
+  expect(q.getByTestId('library-loading')).toBeTruthy();
+  await q.rerender(screen(true, true));
+  expect(q.queryByTestId('library-loading')).toBeNull();
+  expect(q.getByText('Avengers: Endgame')).toBeTruthy();
 });

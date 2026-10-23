@@ -1,4 +1,5 @@
 import { Text, View } from 'react-native';
+import { useAccountLoading } from '@/hooks/useAccountLoading';
 import { router, type Href } from 'expo-router';
 import { BookOpen, ListVideo, Tags } from 'lucide-react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
@@ -14,6 +15,7 @@ const destinations = [
 ] as const;
 
 export function MobileNav({ current }: { current: Destination }) {
+  const { libraryReady } = useAccountLoading();
   return (
     <View accessibilityRole="tablist" style={s.shell}>
       <View style={s.navigation}>
@@ -24,7 +26,8 @@ export function MobileNav({ current }: { current: Destination }) {
               key={key}
               accessibilityRole="tab"
               accessibilityLabel={label}
-              accessibilityState={{ selected }}
+              accessibilityState={{ selected, disabled: !libraryReady }}
+              disabled={!libraryReady}
               onPress={() => {
                 if (!selected) router.replace(href as Href);
               }}

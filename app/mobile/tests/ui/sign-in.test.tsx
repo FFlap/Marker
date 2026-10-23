@@ -67,6 +67,8 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('expo-image', () => ({ Image: require('react-native').Image }));
 
+import { ScreenReadinessContext } from '../../src/components/ScreenLayout';
+const mockReady = jest.fn();
 import SignIn from '../../src/app/sign-in';
 
 describe('sign-in screen', () => {
@@ -80,6 +82,19 @@ describe('sign-in screen', () => {
     mockSignUpFinalize.mockResolvedValue({ error: null });
     mockClientReload.mockResolvedValue({ signedInSessions: [] });
     mockSetActive.mockResolvedValue(undefined);
+  });
+
+  it('releases the splash when the signed-out form lays out', async () => {
+    const view = await render(
+      <ScreenReadinessContext value={mockReady}>
+        <SignIn />
+      </ScreenReadinessContext>,
+    );
+    expect(mockReady).not.toHaveBeenCalled();
+    await fireEvent(view.getByText('Welcome to Marker'), 'layout', {
+      nativeEvent: { layout: { width: 400, height: 800 } },
+    });
+    expect(mockReady).toHaveBeenCalledTimes(1);
   });
 
   it('shows friendly text for Clerk failures and toggles modes', async () => {

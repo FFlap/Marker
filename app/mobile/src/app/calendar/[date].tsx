@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Film, Tv2 } from 'lucide-react-native';
@@ -23,7 +24,7 @@ function CalendarDay({ date }: { date: string }) {
     : 'Schedule';
 
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title={title} fallback="/calendar" maxWidth={720} />
       <ScrollView contentContainerStyle={s.content}>
         {(error || partialFailure) && isValid && (
@@ -89,7 +90,7 @@ function CalendarDay({ date }: { date: string }) {
           />
         )}
       </ScrollView>
-    </View>
+    </ScreenView>
   );
 }
 

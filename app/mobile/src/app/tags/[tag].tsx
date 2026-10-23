@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Animated,
@@ -325,9 +326,11 @@ export default function TagDetailScreen() {
     [rootHeight],
   );
   return (
-    <View
+    <ScreenView
       ref={rootRef}
-      onLayout={(event) => setRootHeight(event.nativeEvent.layout.height)}
+      onLayout={(event) => {
+        setRootHeight(event.nativeEvent.layout.height);
+      }}
       style={s.root}
     >
       <TagHeader
@@ -487,6 +490,6 @@ export default function TagDetailScreen() {
         </NativePosterDragPreview>
       )}
       <AddTagTitlesButton tag={tag} />
-    </View>
+    </ScreenView>
   );
 }

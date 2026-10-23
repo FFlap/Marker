@@ -1,4 +1,4 @@
-import { View } from 'react-native';
+import { ScreenView } from '@/components/ScreenLayout';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router } from 'expo-router';
 import { ProfileForm } from '@/components/ProfileForm';
@@ -12,12 +12,12 @@ export default function ProfileEdit() {
     else router.replace('/(tabs)/profile');
   };
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title="Edit profile" maxWidth={620} />
       <KeyboardScrollView contentContainerStyle={s.content}>
         <ProfileForm onSaved={finish} />
       </KeyboardScrollView>
-    </View>
+    </ScreenView>
   );
 }
 

@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router } from 'expo-router';
@@ -7,7 +8,7 @@ import { createAppStyles } from '@/lib/typography';
 
 export default function ProfileSetup() {
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <KeyboardScrollView contentContainerStyle={s.content}>
         <View>
           <Text style={s.kicker}>MARKER</Text>
@@ -16,7 +17,7 @@ export default function ProfileSetup() {
         </View>
         <ProfileForm setup onSaved={() => router.replace('/(tabs)/profile')} />
       </KeyboardScrollView>
-    </View>
+    </ScreenView>
   );
 }
 

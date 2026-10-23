@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
@@ -126,7 +127,7 @@ export default function Explore() {
   const searchLabel = 'Search movies, TV shows, people, and tags';
 
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title="Explore" maxWidth={760} />
       <KeyboardScrollView contentContainerStyle={s.content}>
         <View style={s.searchField}>
@@ -222,7 +223,7 @@ export default function Explore() {
           )}
         </View>
       </KeyboardScrollView>
-    </View>
+    </ScreenView>
   );
 }
 

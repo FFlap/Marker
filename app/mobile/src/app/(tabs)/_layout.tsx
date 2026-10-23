@@ -1,7 +1,14 @@
+import type { ReactNode } from 'react';
+import { AuthBoundary } from '@/components/AuthBoundary';
 import { Tabs } from 'expo-router';
+function renderScreen({ children, route }: { children: ReactNode; route: { name: string } }) {
+  return <AuthBoundary routeName={route.name}>{children}</AuthBoundary>;
+}
+
 export default function TabsLayout() {
   return (
     <Tabs
+      screenLayout={renderScreen}
       screenOptions={{
         headerShown: false,
         tabBarStyle: { display: 'none' },

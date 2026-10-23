@@ -1,3 +1,4 @@
+import { ScreenView } from '@/components/ScreenLayout';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
@@ -35,10 +36,10 @@ function ProfileContent() {
   const [tab, setTab] = useState<ProfileTab>('collection');
   if (profile === undefined || stats === undefined) {
     return (
-      <View style={s.root}>
+      <ScreenView style={s.root}>
         <SecondaryHeader title="Profile" maxWidth={880} />
         <ProfilePageSkeleton />
-      </View>
+      </ScreenView>
     );
   }
   const VisibilityIcon = profile.isPublic ? Globe2 : LockKeyhole;
@@ -56,7 +57,7 @@ function ProfileContent() {
     });
   };
   return (
-    <View style={s.root}>
+    <ScreenView style={s.root}>
       <SecondaryHeader title="Profile" maxWidth={880} />
       <ScrollView contentContainerStyle={s.content}>
         <View style={s.hero}>
@@ -148,7 +149,7 @@ function ProfileContent() {
           <ProfileMetrics stats={stats} />
         )}
       </ScrollView>
-    </View>
+    </ScreenView>
   );
 }
 
