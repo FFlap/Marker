@@ -1,6 +1,7 @@
 import {
   createContext,
   useCallback,
+  useEffect,
   useContext,
   useState,
   useSyncExternalStore,
@@ -18,13 +19,18 @@ const CalendarContext = createContext<CalendarCache | null>(null);
 
 export function CalendarProvider({ children }: { children: ReactNode }) {
   const [cache] = useState(() => new CalendarCache());
+  useEffect(() => () => cache.dispose(), [cache]);
   return <CalendarContext.Provider value={cache}>{children}</CalendarContext.Provider>;
 }
 
 export function useCalendar(date: string, prefetch = false) {
   const cache = useContext(CalendarContext);
   if (!cache) throw new Error('CalendarProvider is required');
-  const upcoming = useAction(api.calendar.upcoming);
+  const upcomingAction = useAction(api.calendar.upcoming);
+  const upcoming = useCallback(
+    (args: Parameters<typeof upcomingAction>[0]) => upcomingAction(args),
+    [upcomingAction],
+  );
   const libraryRevision = useQuery(api.calendarLibrary.revision);
   const [currentMonth, setCurrentMonth] = useState(currentCalendarMonth);
   const month = date.slice(0, 7);

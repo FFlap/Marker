@@ -1,3 +1,7 @@
+import { Effect } from "effect";
+import { saveProfile } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
+import { useAuth } from "@clerk/react";
 import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { ChartNoAxesColumn, Library } from "lucide-react";
@@ -12,7 +16,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { posterUrl } from "@/lib/utils";
 
 export function PublicProfilePage() {
+  const { sessionId } = useAuth();
   const { username } = useParams({ from: "/u/$username" });
+  return (
+    <PublicProfile
+      key={`${sessionId ?? "anonymous"}:${username}`}
+      username={username}
+    />
+  );
+}
+
+function PublicProfile({ username }: { username: string }) {
+  const runOperation = useOperation();
   const result = useQuery(api.profiles.publicProfile, { username });
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
@@ -51,15 +66,26 @@ export function PublicProfilePage() {
     if (!relationship || relationship === "self" || pending) return;
     setPending(true);
     setError("");
-    try {
-      if (relationship === "none")
-        await follow({ username: result.profile.username });
-      else await unfollow({ username: result.profile.username });
-    } catch {
-      setError("Couldn’t update this follow right now.");
-    } finally {
-      setPending(false);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        if (relationship === "none")
+          yield* saveProfile(() =>
+            follow({ username: result.profile.username }),
+          );
+        else
+          yield* saveProfile(() =>
+            unfollow({ username: result.profile.username }),
+          );
+      }),
+      {
+        failure: () => {
+          setError("Couldn’t update this follow right now.");
+        },
+        settled: () => {
+          setPending(false);
+        },
+      },
+    );
   };
 
   return (
@@ -121,64 +147,69 @@ export function PublicProfilePage() {
             <ChartNoAxesColumn className="size-4" /> Stats
           </TabsTrigger>
         </TabsList>
-      {stats ? (
-        tab === "collection" ? (
-          <TabsContent value="collection" className="mt-10 grid gap-12">
-            <ProfileFavorites favorites={stats.favorites} interactive={false} />
-            <section>
-              <SectionHeader title="Top tags" />
-              <div className="mt-4 flex flex-wrap gap-2">
-                {stats.topTags.length ? (
-                  stats.topTags.map((tag) => (
-                    <span
-                      key={tag.tag}
-                      className="rounded-full border border-border px-3 py-2 text-xs text-muted-foreground"
-                    >
-                      {tag.tag} · {tag.count}
+        {stats ? (
+          tab === "collection" ? (
+            <TabsContent value="collection" className="mt-10 grid gap-12">
+              <ProfileFavorites
+                favorites={stats.favorites}
+                interactive={false}
+              />
+              <section>
+                <SectionHeader title="Top tags" />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {stats.topTags.length ? (
+                    stats.topTags.map((tag) => (
+                      <span
+                        key={tag.tag}
+                        className="rounded-full border border-border px-3 py-2 text-xs text-muted-foreground"
+                      >
+                        {tag.tag} · {tag.count}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      No tags yet.
                     </span>
-                  ))
-                ) : (
-                  <span className="text-sm text-muted-foreground">
-                    No tags yet.
-                  </span>
-                )}
-              </div>
-            </section>
+                  )}
+                </div>
+              </section>
+              <PublicTags
+                username={result.profile.username}
+                tags={result.publicTags}
+              />
+            </TabsContent>
+          ) : (
+            <TabsContent value="stats" className="mt-8">
+              <ProfileStatsPanel stats={stats} />
+            </TabsContent>
+          )
+        ) : tab === "collection" && result.publicTags.length ? (
+          <div className="mt-10">
+            <p className="mb-8 text-xs text-muted-foreground">
+              Other profile activity is private.
+            </p>
             <PublicTags
               username={result.profile.username}
               tags={result.publicTags}
             />
-          </TabsContent>
+          </div>
         ) : (
-          <TabsContent value="stats" className="mt-8">
-            <ProfileStatsPanel stats={stats} />
-          </TabsContent>
-        )
-      ) : tab === "collection" && result.publicTags.length ? (
-        <div className="mt-10">
-          <p className="mb-8 text-xs text-muted-foreground">
-            Other profile activity is private.
-          </p>
-          <PublicTags
-            username={result.profile.username}
-            tags={result.publicTags}
-          />
-        </div>
-      ) : (
-        <div className="mt-20 text-center">
-          <LockKeyhole className="mx-auto size-5 text-muted-foreground" />
-          <p className="mt-4 text-sm font-semibold">
-            {tab === "stats" ? "Stats are private" : "This profile is private"}
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {tab === "stats"
-              ? "Follow this person to request access to their activity."
-              : relationship === "pending"
-                ? "Your follow request is waiting for approval."
-                : "Follow this person to request access to their activity."}
-          </p>
-        </div>
-      )}
+          <div className="mt-20 text-center">
+            <LockKeyhole className="mx-auto size-5 text-muted-foreground" />
+            <p className="mt-4 text-sm font-semibold">
+              {tab === "stats"
+                ? "Stats are private"
+                : "This profile is private"}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {tab === "stats"
+                ? "Follow this person to request access to their activity."
+                : relationship === "pending"
+                  ? "Your follow request is waiting for approval."
+                  : "Follow this person to request access to their activity."}
+            </p>
+          </div>
+        )}
       </Tabs>
     </Page>
   );

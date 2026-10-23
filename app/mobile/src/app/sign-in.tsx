@@ -1,4 +1,7 @@
 import { ScreenKeyboardScrollView } from '@/components/ScreenLayout';
+import { Effect, Option, Schema } from 'effect';
+import { sessionStep, sessionResult, SessionError } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { useClerk, useSignIn, useSignUp } from '@clerk/expo';
@@ -13,18 +16,19 @@ import { usernameError } from '@/lib/profile';
 
 type AuthErrorContext = 'signIn' | 'signUp' | 'recovery' | 'verification' | 'session' | 'oauth';
 
+const AuthErrorDetail = Schema.Struct({
+  code: Schema.optional(Schema.String),
+  message: Schema.optional(Schema.String),
+  longMessage: Schema.optional(Schema.String),
+  meta: Schema.optional(Schema.Struct({ paramName: Schema.optional(Schema.String) })),
+});
+const AuthFailure = Schema.Struct({
+  ...AuthErrorDetail.fields,
+  errors: Schema.optional(Schema.Array(AuthErrorDetail)),
+});
+
 const friendly = (e: unknown, context: AuthErrorContext) => {
-  const value = e as {
-    code?: string;
-    message?: string;
-    longMessage?: string;
-    errors?: {
-      code?: string;
-      longMessage?: string;
-      message?: string;
-      meta?: { paramName?: string };
-    }[];
-  };
+  const value = Option.getOrUndefined(Schema.decodeUnknownOption(AuthFailure)(e));
   const clerkError = value?.errors?.[0];
   const code = clerkError?.code ?? value?.code ?? '';
   const parameter = clerkError?.meta?.paramName ?? '';
@@ -91,10 +95,6 @@ const friendly = (e: unknown, context: AuthErrorContext) => {
   return 'We couldn’t complete that request. Try again.';
 };
 
-const throwIfError = (result: { error: unknown | null }) => {
-  if (result.error) throw result.error;
-};
-
 type RecoveryStage = 'identifier' | 'code' | 'password';
 
 function GoogleIcon() {
@@ -118,6 +118,7 @@ function GoogleIcon() {
 }
 
 export default function SignIn() {
+  const runOperation = useOperation();
   const router = useRouter();
   const { client, setActive } = useClerk();
   const { signIn } = useSignIn();
@@ -173,114 +174,156 @@ export default function SignIn() {
         return;
       }
     }
-    try {
-      if (recovery === 'identifier') {
-        throwIfError(await signIn.create({ identifier: identifier.trim() }));
-        throwIfError(await signIn.resetPasswordEmailCode.sendCode());
-        setCode('');
-        setRecovery('code');
-      } else if (recovery === 'code') {
-        throwIfError(await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() }));
-        if (signIn.status !== 'needs_new_password') {
-          throw new Error('Password reset verification is incomplete');
-        }
-        setCode('');
-        setPassword('');
-        setConfirmPassword('');
-        setRecovery('password');
-      } else if (recovery === 'password') {
-        if (password !== confirmPassword) throw new Error('Passwords do not match');
-        throwIfError(
-          await signIn.resetPasswordEmailCode.submitPassword({
-            password,
-            signOutOfOtherSessions: true,
-          }),
-        );
-        if (signIn.status === 'complete') {
-          throwIfError(await signIn.finalize());
-          openSignedInApp();
-        } else if (signIn.status === 'needs_client_trust') {
-          throwIfError(await signIn.mfa.sendEmailCode());
-          setRecovery(null);
-          setVerification('clientTrust');
-        } else {
-          throw new Error('Additional sign-in verification is required');
-        }
-      } else if (verification === 'signUp') {
-        const result = await signUp.verifications.verifyEmailCode({ code: code.trim() });
-        // Clerk can complete verification before the hook publishes its next snapshot. Reloading
-        // the authoritative resource prevents a successful code from being reported as invalid.
-        const currentSignUp = (await client.signUp.reload()).__internal_future;
-        if (currentSignUp.status === 'complete') {
-          const finalized = await currentSignUp.finalize();
-          if (finalized.error) {
-            console.warn('[Marker auth] Could not activate verified sign-up');
-            setError(friendly(finalized.error, 'session'));
+    await runOperation(
+      Effect.gen(function* () {
+        if (recovery === 'identifier') {
+          yield* sessionResult(
+            yield* sessionStep(() => signIn.create({ identifier: identifier.trim() })),
+          );
+          yield* sessionResult(yield* sessionStep(() => signIn.resetPasswordEmailCode.sendCode()));
+          setCode('');
+          setRecovery('code');
+        } else if (recovery === 'code') {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() }),
+            ),
+          );
+          if (signIn.status !== 'needs_new_password') {
+            return yield* Effect.fail(
+              new SessionError({ cause: new Error('Password reset verification is incomplete') }),
+            );
+          }
+          setCode('');
+          setPassword('');
+          setConfirmPassword('');
+          setRecovery('password');
+        } else if (recovery === 'password') {
+          if (password !== confirmPassword)
+            return yield* Effect.fail(
+              new SessionError({ cause: new Error('Passwords do not match') }),
+            );
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signIn.resetPasswordEmailCode.submitPassword({
+                password,
+                signOutOfOtherSessions: true,
+              }),
+            ),
+          );
+          if (signIn.status === 'complete') {
+            yield* sessionResult(yield* sessionStep(() => signIn.finalize()));
+            openSignedInApp();
+          } else if (signIn.status === 'needs_client_trust') {
+            yield* sessionResult(yield* sessionStep(() => signIn.mfa.sendEmailCode()));
+            setRecovery(null);
+            setVerification('clientTrust');
           } else {
+            return yield* Effect.fail(
+              new SessionError({ cause: new Error('Additional sign-in verification is required') }),
+            );
+          }
+        } else if (verification === 'signUp') {
+          const result = yield* sessionStep(() =>
+            signUp.verifications.verifyEmailCode({ code: code.trim() }),
+          );
+          // Clerk can complete verification before the hook publishes its next snapshot. Reloading
+          // the authoritative resource prevents a successful code from being reported as invalid.
+          const currentSignUp = (yield* sessionStep(() => client.signUp.reload()))
+            .__internal_future;
+          if (currentSignUp.status === 'complete') {
+            const finalized = yield* sessionStep(() => currentSignUp.finalize());
+            if (finalized.error) {
+              console.warn('[Marker auth] Could not activate verified sign-up');
+              setError(friendly(finalized.error, 'session'));
+            } else {
+              openSignedInApp();
+            }
+          } else {
+            yield* sessionResult(result);
+            return yield* Effect.fail(
+              new SessionError({ cause: new Error('Verification is incomplete') }),
+            );
+          }
+        } else if (verification === 'clientTrust') {
+          yield* sessionResult(
+            yield* sessionStep(() => signIn.mfa.verifyEmailCode({ code: code.trim() })),
+          );
+          if (signIn.status !== 'complete')
+            return yield* Effect.fail(
+              new SessionError({ cause: new Error('Verification is incomplete') }),
+            );
+          yield* sessionResult(yield* sessionStep(() => signIn.finalize()));
+          openSignedInApp();
+        } else if (flow === 'signUp') {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signUp.password({
+                emailAddress: identifier.trim(),
+                username: username.trim(),
+                password,
+              }),
+            ),
+          );
+          if (signUp.status === 'complete') {
+            yield* sessionResult(yield* sessionStep(() => signUp.finalize()));
             openSignedInApp();
+          } else {
+            yield* sessionResult(yield* sessionStep(() => signUp.verifications.sendEmailCode()));
+            setVerification('signUp');
           }
         } else {
-          throwIfError(result);
-          throw new Error('Verification is incomplete');
+          yield* sessionResult(
+            yield* sessionStep(() => signIn.password({ identifier: identifier.trim(), password })),
+          );
+          if (signIn.status === 'complete') {
+            yield* sessionResult(yield* sessionStep(() => signIn.finalize()));
+            openSignedInApp();
+          } else if (signIn.status === 'needs_client_trust') {
+            yield* sessionResult(yield* sessionStep(() => signIn.mfa.sendEmailCode()));
+            setVerification('clientTrust');
+          } else {
+            return yield* Effect.fail(
+              new SessionError({ cause: new Error('Additional sign-in verification is required') }),
+            );
+          }
         }
-      } else if (verification === 'clientTrust') {
-        throwIfError(await signIn.mfa.verifyEmailCode({ code: code.trim() }));
-        if (signIn.status !== 'complete') throw new Error('Verification is incomplete');
-        throwIfError(await signIn.finalize());
-        openSignedInApp();
-      } else if (flow === 'signUp') {
-        throwIfError(
-          await signUp.password({
-            emailAddress: identifier.trim(),
-            username: username.trim(),
-            password,
+        return undefined;
+      }).pipe(
+        Effect.catch(({ cause }) =>
+          Effect.gen(function* () {
+            // Clerk's native client can persist a session before finalize() publishes it to
+            // React hooks, causing finalize() to throw even though the code was accepted.
+            if (verification) {
+              const recovered = yield* Effect.gen(function* () {
+                const currentClient = yield* sessionStep(() => client.reload());
+                const persistedSession = currentClient.signedInSessions[0];
+                if (!persistedSession) return false;
+                yield* sessionStep(() => setActive({ session: persistedSession }));
+                return true;
+              }).pipe(Effect.catch(() => Effect.succeed(false)));
+              if (recovered) {
+                openSignedInApp();
+                return;
+              }
+            }
+            const context: AuthErrorContext = verification
+              ? 'verification'
+              : recovery
+                ? 'recovery'
+                : flow === 'signUp'
+                  ? 'signUp'
+                  : 'signIn';
+            setError(friendly(cause, context));
           }),
-        );
-        if (signUp.status === 'complete') {
-          throwIfError(await signUp.finalize());
-          openSignedInApp();
-        } else {
-          throwIfError(await signUp.verifications.sendEmailCode());
-          setVerification('signUp');
-        }
-      } else {
-        throwIfError(await signIn.password({ identifier: identifier.trim(), password }));
-        if (signIn.status === 'complete') {
-          throwIfError(await signIn.finalize());
-          openSignedInApp();
-        } else if (signIn.status === 'needs_client_trust') {
-          throwIfError(await signIn.mfa.sendEmailCode());
-          setVerification('clientTrust');
-        } else {
-          throw new Error('Additional sign-in verification is required');
-        }
-      }
-    } catch (cause) {
-      // Clerk's native client can persist a session before finalize() publishes it to
-      // React hooks, causing finalize() to throw even though the code was accepted.
-      if (verification) {
-        try {
-          const currentClient = await client.reload();
-          const persistedSession = currentClient.signedInSessions[0];
-          if (persistedSession) {
-            // Pass the resource itself: the hook's previous client snapshot may not know this ID yet.
-            await setActive({ session: persistedSession });
-            openSignedInApp();
-            setBusy(false);
-            return;
-          }
-        } catch {}
-      }
-      const context: AuthErrorContext = verification
-        ? 'verification'
-        : recovery
-          ? 'recovery'
-          : flow === 'signUp'
-            ? 'signUp'
-            : 'signIn';
-      setError(friendly(cause, context));
-    }
-    setBusy(false);
+        ),
+      ),
+      {
+        settled: () => {
+          setBusy(false);
+        },
+      },
+    );
   };
 
   const resetToSignIn = () => {
@@ -325,26 +368,41 @@ export default function SignIn() {
   const signInWithGoogle = async () => {
     setBusy(true);
     setError('');
-    try {
-      const result = await startSSOFlow({ strategy: 'oauth_google' });
-      if (result.signUp?.missingFields.includes('username')) {
-        const prefix =
-          result.signUp.emailAddress
-            ?.split('@')[0]
-            ?.replace(/[^A-Za-z0-9_]/g, '')
-            .slice(0, 16) || 'marker';
-        const generated = `${prefix}_${Math.random().toString(36).slice(2, 6)}`.slice(0, 24);
-        throwIfError(await result.signUp.update({ username: generated }));
-        const currentSignUp = (await client.signUp.reload()).__internal_future;
-        if (currentSignUp.status === 'complete') {
-          throwIfError(await currentSignUp.finalize());
-          openSignedInApp();
+    await runOperation(
+      Effect.gen(function* () {
+        const result = yield* sessionStep(() => startSSOFlow({ strategy: 'oauth_google' }));
+        const oauthSignUp = result.signUp;
+        if (oauthSignUp?.missingFields.includes('username')) {
+          const prefix =
+            oauthSignUp.emailAddress
+              ?.split('@')[0]
+              ?.replace(/[^A-Za-z0-9_]/g, '')
+              .slice(0, 16) || 'marker';
+          const generated = `${prefix}_${Math.random().toString(36).slice(2, 6)}`.slice(0, 24);
+          yield* sessionResult(
+            yield* sessionStep(() => oauthSignUp.update({ username: generated })),
+          );
+          const currentSignUp = (yield* sessionStep(() => client.signUp.reload()))
+            .__internal_future;
+          if (currentSignUp.status === 'complete') {
+            yield* sessionResult(yield* sessionStep(() => currentSignUp.finalize()));
+            openSignedInApp();
+          }
         }
-      }
-    } catch (cause) {
-      setError(friendly(cause, 'oauth'));
-    }
-    setBusy(false);
+        return undefined;
+      }).pipe(
+        Effect.catch(({ cause }) =>
+          Effect.sync(() => {
+            setError(friendly(cause, 'oauth'));
+          }),
+        ),
+      ),
+      {
+        settled: () => {
+          setBusy(false);
+        },
+      },
+    );
   };
 
   return (
@@ -529,6 +587,7 @@ export default function SignIn() {
                       : 'Already have an account? Sign in'
               }
               variant="ghost"
+              disabled={busy}
               onPress={() => {
                 if (recovery) {
                   resetToSignIn();

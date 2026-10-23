@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { saveProfile } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Check, X } from "lucide-react";
@@ -7,6 +10,7 @@ import { SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 
 export function FollowRequestList({ compact = false }: { compact?: boolean }) {
+  const runOperation = useOperation();
   const requests = useQuery(api.profiles.followRequests, {});
   const respond = useMutation(api.profiles.respondToFollow);
   const activeRequests = useRef(new Set<string>());
@@ -18,18 +22,24 @@ export function FollowRequestList({ compact = false }: { compact?: boolean }) {
     activeRequests.current.add(username);
     setPending((current) => new Set(current).add(username));
     setError("");
-    try {
-      await respond({ username, accept });
-    } catch {
-      setError("Couldn’t update that follow request.");
-    } finally {
-      activeRequests.current.delete(username);
-      setPending((current) => {
-        const next = new Set(current);
-        next.delete(username);
-        return next;
-      });
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveProfile(() => respond({ username, accept }));
+      }),
+      {
+        failure: () => {
+          setError("Couldn’t update that follow request.");
+        },
+        settled: () => {
+          activeRequests.current.delete(username);
+          setPending((current) => {
+            const next = new Set(current);
+            next.delete(username);
+            return next;
+          });
+        },
+      },
+    );
   };
 
   if (requests === undefined)
@@ -37,7 +47,9 @@ export function FollowRequestList({ compact = false }: { compact?: boolean }) {
   if (!requests.length) return null;
 
   return (
-    <section className={`${compact ? "mt-6" : "mt-9"} border-b border-border pb-8`}>
+    <section
+      className={`${compact ? "mt-6" : "mt-9"} border-b border-border pb-8`}
+    >
       <SectionHeader title="Follow requests" />
       <div className="mt-2 divide-y divide-border">
         {requests.map((request) => (
@@ -52,13 +64,19 @@ export function FollowRequestList({ compact = false }: { compact?: boolean }) {
             >
               <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-card text-xs font-bold">
                 {request.avatarUrl ? (
-                  <img src={request.avatarUrl} alt="" className="size-full object-cover" />
+                  <img
+                    src={request.avatarUrl}
+                    alt=""
+                    className="size-full object-cover"
+                  />
                 ) : (
                   request.username[0]?.toUpperCase()
                 )}
               </div>
               <span className="min-w-0">
-                <strong className="block truncate text-sm">@{request.username}</strong>
+                <strong className="block truncate text-sm">
+                  @{request.username}
+                </strong>
                 <span className="text-xs text-muted-foreground">
                   {request.followerCount.toLocaleString()} follower
                   {request.followerCount === 1 ? "" : "s"}

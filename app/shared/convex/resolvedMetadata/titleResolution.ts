@@ -1,3 +1,5 @@
+import { Effect } from 'effect';
+import { actionFailureCause, attempt, providerOutcome, runActionEffect } from '../actionEffects';
 import { ConvexError, v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -33,18 +35,10 @@ export async function authorizeRefresh(ctx: { runMutation: Function }, userId: s
 
 export type ProviderOutcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
-export const settle = async <T>(promise: Promise<T>): Promise<ProviderOutcome<T>> => {
-  try {
-    return { ok: true, value: await promise };
-  } catch (error) {
-    return { ok: false, error };
-  }
-};
-
-export const pause = (milliseconds: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+export const pause = (milliseconds: number) => runActionEffect(Effect.sleep(milliseconds));
 
 export const errorCode = (error: unknown) => {
+  error = actionFailureCause(error);
   if (error instanceof ConvexError && typeof error.data === 'object' && error.data !== null) {
     const code = Reflect.get(error.data, 'code');
     if (typeof code === 'string') return code;
@@ -87,83 +81,91 @@ export async function resolveFreshTitle(
       : null;
   const knownTvdbId = mapping?.tvdbId;
   const manualWithoutTvdbIdentity = mapping?.source === 'manual' && !manuallyPinnedMapping;
-  const tmdbPromise = ctx.runAction(
-    args.mediaType === 'movie' ? internal.tmdb.refreshMovieDetails : internal.tmdb.refreshTvDetails,
-    { tmdbId: args.tmdbId, force },
-  ) as Promise<ProviderTitle>;
-  const animePromise: Promise<ProviderOutcome<ProviderAnime | null>> =
-    args.mediaType === 'tv'
-      ? manualWithoutTvdbIdentity
-        ? Promise.resolve({ ok: true, value: null })
-        : tmdbPromise.then((tmdb) =>
-            settle(
-              ctx.runAction(
-                knownTvdbId ? internal.tvdb.refreshAnimeWithMapping : internal.tvdb.refreshAnime,
-                {
-                  tmdbId: args.tmdbId,
-                  title: tmdb.title,
-                  ...(tmdb.originalTitle && { originalTitle: tmdb.originalTitle }),
-                  force,
-                  ...(requestedSeason !== undefined && { requestedSeason }),
-                  ...(knownTvdbId && {
-                    tvdbId: knownTvdbId,
-                    ...(manuallyPinnedMapping && {
-                      order: manuallyPinnedMapping.seasonOrder,
+  return runActionEffect(
+    Effect.gen(function* () {
+      const tmdb = yield* attempt(
+        () =>
+          ctx.runAction(
+            args.mediaType === 'movie'
+              ? internal.tmdb.refreshMovieDetails
+              : internal.tmdb.refreshTvDetails,
+            { tmdbId: args.tmdbId, force },
+          ) as Promise<ProviderTitle>,
+      );
+      const animeResult = yield* providerOutcome(
+        args.mediaType === 'tv' && !manualWithoutTvdbIdentity
+          ? attempt(
+              () =>
+                ctx.runAction(
+                  knownTvdbId ? internal.tvdb.refreshAnimeWithMapping : internal.tvdb.refreshAnime,
+                  {
+                    tmdbId: args.tmdbId,
+                    title: tmdb.title,
+                    ...(tmdb.originalTitle && { originalTitle: tmdb.originalTitle }),
+                    force,
+                    ...(requestedSeason !== undefined && { requestedSeason }),
+                    ...(knownTvdbId && {
+                      tvdbId: knownTvdbId,
+                      ...(manuallyPinnedMapping && { order: manuallyPinnedMapping.seasonOrder }),
                     }),
-                  }),
-                },
-              ) as Promise<ProviderAnime | null>,
-            ),
-          )
-      : Promise.resolve({ ok: true, value: null });
-  const [tmdb, animeResult] = await Promise.all([tmdbPromise, animePromise]);
-  let partial = !animeResult.ok;
-  let partialError = animeResult.ok ? undefined : animeResult.error;
-  let anime = animeResult.ok ? animeResult.value : animeFromCurrent(current);
-  if (animeResult.ok && animeResult.value === null && current?.metadataProvider === 'tvdb') {
-    anime = animeFromCurrent(current);
-    partial = true;
-    partialError = new Error('TVDB mapping disappeared during refresh');
-  }
-  if (anime?.seasons.some((season) => season.episodeCountVerified === false)) {
-    partial = true;
-    partialError ??= new Error('TVDB season counts are incomplete');
-  }
-  const seasons = anime ? anime.seasons : (tmdb.seasons ?? []);
-  const selectedSeason = anime?.selectedSeason ?? seasons.find((entry) => entry.season > 0)?.season;
-  const tmdbSeasonResult: ProviderOutcome<ResolvedEpisode[]> =
-    loadSelectedSeason && args.mediaType === 'tv' && selectedSeason !== undefined
-      ? await settle(
-          ctx.runAction(internal.tmdb.refreshSeasonDetails, {
-            tmdbId: args.tmdbId,
-            season: selectedSeason,
-            force,
-          }) as Promise<ResolvedEpisode[]>,
-        )
-      : { ok: true, value: [] };
-  if (!tmdbSeasonResult.ok) {
-    partial = true;
-    partialError ??= tmdbSeasonResult.error;
-  }
-  const tmdbEpisodes = tmdbSeasonResult.ok ? tmdbSeasonResult.value : [];
-  const refreshedAt = Date.now();
-  const value = mergeTitle(
-    args.tmdbId,
-    args.mediaType,
-    tmdb,
-    anime,
-    refreshedAt,
-    refreshedAt + (partial ? PARTIAL_RETRY_MS : TITLE_FRESH_MS),
+                  },
+                ) as Promise<ProviderAnime | null>,
+            )
+          : Effect.succeed(null),
+      );
+      let partial = !animeResult.ok;
+      let partialError: unknown = animeResult.ok ? undefined : animeResult.error;
+      let anime = animeResult.ok ? animeResult.value : animeFromCurrent(current);
+      if (animeResult.ok && animeResult.value === null && current?.metadataProvider === 'tvdb') {
+        anime = animeFromCurrent(current);
+        partial = true;
+        partialError = new Error('TVDB mapping disappeared during refresh');
+      }
+      if (anime?.seasons.some((season) => season.episodeCountVerified === false)) {
+        partial = true;
+        partialError ??= new Error('TVDB season counts are incomplete');
+      }
+      const seasons = anime ? anime.seasons : (tmdb.seasons ?? []);
+      const selectedSeason =
+        anime?.selectedSeason ?? seasons.find((entry) => entry.season > 0)?.season;
+      const tmdbSeasonResult: ProviderOutcome<ResolvedEpisode[]> =
+        loadSelectedSeason && args.mediaType === 'tv' && selectedSeason !== undefined
+          ? yield* providerOutcome(
+              attempt(
+                () =>
+                  ctx.runAction(internal.tmdb.refreshSeasonDetails, {
+                    tmdbId: args.tmdbId,
+                    season: selectedSeason,
+                    force,
+                  }) as Promise<ResolvedEpisode[]>,
+              ),
+            )
+          : { ok: true, value: [] };
+      if (!tmdbSeasonResult.ok) {
+        partial = true;
+        partialError ??= tmdbSeasonResult.error;
+      }
+      const tmdbEpisodes = tmdbSeasonResult.ok ? tmdbSeasonResult.value : [];
+      const refreshedAt = Date.now();
+      const value = mergeTitle(
+        args.tmdbId,
+        args.mediaType,
+        tmdb,
+        anime,
+        refreshedAt,
+        refreshedAt + (partial ? PARTIAL_RETRY_MS : TITLE_FRESH_MS),
+      );
+      return {
+        value,
+        partial,
+        partialError: actionFailureCause(partialError),
+        selectedSeason,
+        selectedEpisodes: anime
+          ? mergeEpisodes(anime.selectedEpisodes ?? [], tmdbEpisodes)
+          : releasedEpisodes(tmdbEpisodes).map(cleanEpisode),
+      };
+    }),
   );
-  return {
-    value,
-    partial,
-    partialError,
-    selectedSeason,
-    selectedEpisodes: anime
-      ? mergeEpisodes(anime.selectedEpisodes ?? [], tmdbEpisodes)
-      : releasedEpisodes(tmdbEpisodes).map(cleanEpisode),
-  };
 }
 
 async function waitForTitle(

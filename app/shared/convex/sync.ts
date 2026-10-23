@@ -1,3 +1,5 @@
+import { Effect } from 'effect';
+import { actionFailureCause, attempt, runActionEffect } from './actionEffects';
 import {
   internalAction,
   internalMutation,
@@ -335,16 +337,25 @@ export async function commitWatchWithOneRematch<T>(
   rematch: () => Promise<T | undefined>,
   refreshEpoch: () => Promise<void>,
 ) {
-  try {
-    return { resolved: initial, recorded: await commit(initial) };
-  } catch (error) {
-    const staleCode = convexErrorCode(error);
-    if (staleCode !== 'stale_season_version' && staleCode !== 'stale_epoch') throw error;
-    if (staleCode === 'stale_epoch') await refreshEpoch();
-    const rematched = await rematch();
-    if (!rematched) throw new ConvexError({ code: staleCode, retryable: true });
-    return { resolved: rematched, recorded: await commit(rematched) };
-  }
+  return runActionEffect(
+    attempt(() => commit(initial)).pipe(
+      Effect.map((recorded) => ({ resolved: initial, recorded })),
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          const staleCode = convexErrorCode(actionFailureCause(error));
+          if (staleCode !== 'stale_season_version' && staleCode !== 'stale_epoch')
+            return yield* Effect.fail(error);
+          if (staleCode === 'stale_epoch') yield* attempt(refreshEpoch);
+          const rematched = yield* attempt(rematch);
+          if (!rematched)
+            return yield* Effect.fail(new ConvexError({ code: staleCode, retryable: true }));
+          // Exactly one rematch, never a blanket retry of the write workflow.
+          const recorded = yield* attempt(() => commit(rematched));
+          return { resolved: rematched, recorded };
+        }),
+      ),
+    ),
+  );
 }
 
 async function recordWatchForUser(

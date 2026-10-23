@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { touchMetadata, saveLibrary } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
@@ -29,6 +32,7 @@ const mediaLabel = (mediaType: SearchResult['mediaType'], genres?: string[]) => 
   return mediaType === 'movie' ? 'Movie' : 'TV Show';
 };
 export default function Add() {
+  const runOperation = useOperation();
   const { prefill } = useLocalSearchParams<{ prefill?: string }>();
   const initialResult = useMemo(() => parseTitlePreview(prefill), [prefill]);
   const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
@@ -61,24 +65,34 @@ export default function Add() {
   const selectResult = useCallback(
     (result: SearchResult) => {
       setPicked(result);
-      void touchTitle({
-        mediaType: result.mediaType,
-        tmdbId: result.id,
-        title: result.title,
-      }).catch(() => undefined);
+      void runOperation(
+        touchMetadata(() =>
+          touchTitle({
+            mediaType: result.mediaType,
+            tmdbId: result.id,
+            title: result.title,
+          }),
+        ),
+        { failure: () => undefined },
+      );
     },
-    [touchTitle],
+    [touchTitle, runOperation],
   );
   const prefillStarted = useRef(false);
   useEffect(() => {
     if (!initialResult || prefillStarted.current) return;
     prefillStarted.current = true;
-    void touchTitle({
-      mediaType: initialResult.mediaType,
-      tmdbId: initialResult.id,
-      title: initialResult.title,
-    }).catch(() => undefined);
-  }, [initialResult, touchTitle]);
+    void runOperation(
+      touchMetadata(() =>
+        touchTitle({
+          mediaType: initialResult.mediaType,
+          tmdbId: initialResult.id,
+          title: initialResult.title,
+        }),
+      ),
+      { failure: () => undefined },
+    );
+  }, [initialResult, touchTitle, runOperation]);
   const [tagPrefix, setTagPrefix] = useState('');
   const suggestions =
     useQuery(
@@ -96,37 +110,46 @@ export default function Add() {
   const submit = async () => {
     if (!picked || resolvedTitle === undefined || submitting) return;
     setSubmitting(true);
-    try {
-      const addArgs = {
-        tmdbId: picked.id,
-        mediaType: picked.mediaType,
-        title: picked.title,
-        posterPath: picked.posterPath,
-        overview: picked.overview,
-        releaseDate: picked.releaseDate,
-        runtime: resolvedRuntime,
-        genres: resolvedTitle?.genres,
-        status,
-        rating,
-        timesWatched: times,
-        tags,
-      };
-      if (picked.mediaType === 'tv' && status === 'watched') {
-        await addItemAndMarkWatched(addArgs);
-      } else {
-        await add(addArgs);
-      }
-      toast.show(`${picked.title} added`);
-      router.back();
-    } catch (e) {
-      toast.show(
-        e instanceof Error && /already exists/i.test(e.message)
-          ? 'Already in your library'
-          : 'Couldn’t add this title',
-      );
-    } finally {
-      setSubmitting(false);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        const addArgs = {
+          tmdbId: picked.id,
+          mediaType: picked.mediaType,
+          title: picked.title,
+          posterPath: picked.posterPath,
+          overview: picked.overview,
+          releaseDate: picked.releaseDate,
+          runtime: resolvedRuntime,
+          genres: resolvedTitle?.genres,
+          status,
+          rating,
+          timesWatched: times,
+          tags,
+        };
+        if (picked.mediaType === 'tv' && status === 'watched') {
+          yield* saveLibrary(() => addItemAndMarkWatched(addArgs));
+        } else {
+          yield* saveLibrary(() => add(addArgs));
+        }
+      }),
+      {
+        success: () => {
+          toast.show(`${picked.title} added`);
+          router.back();
+        },
+
+        failure: ({ cause: e }) => {
+          toast.show(
+            e instanceof Error && /already exists/i.test(e.message)
+              ? 'Already in your library'
+              : 'Couldn’t add this title',
+          );
+        },
+        settled: () => {
+          setSubmitting(false);
+        },
+      },
+    );
   };
   return (
     <ScreenView style={s.root}>

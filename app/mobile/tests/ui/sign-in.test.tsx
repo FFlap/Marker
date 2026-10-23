@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, userEvent, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, userEvent, waitFor } from '@testing-library/react-native';
 
 const mockRouterReplace = jest.fn();
 
@@ -76,8 +76,8 @@ describe('sign-in screen', () => {
     jest.clearAllMocks();
     mockSignInResource.status = 'complete';
     mockSignUpResource.status = 'missing_requirements';
-    mockSignInPassword.mockResolvedValue({ error: null });
-    mockSignUpPassword.mockResolvedValue({ error: null });
+    mockSignInPassword.mockReset().mockResolvedValue({ error: null });
+    mockSignUpPassword.mockReset().mockResolvedValue({ error: null });
     mockSignInFinalize.mockResolvedValue({ error: null });
     mockSignUpFinalize.mockResolvedValue({ error: null });
     mockClientReload.mockResolvedValue({ signedInSessions: [] });
@@ -135,6 +135,43 @@ describe('sign-in screen', () => {
     );
     expect(mockSignInFinalize).toHaveBeenCalled();
     expect(mockRouterReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('keeps an in-flight sign-in from being applied to a different auth flow', async () => {
+    const user = userEvent.setup();
+    let finishSignIn!: (value: { error: null }) => void;
+    mockSignInPassword.mockImplementationOnce(
+      () => new Promise((resolve) => (finishSignIn = resolve)),
+    );
+    const view = await render(<SignIn />);
+    await fireEvent.press(view.getByText('Log in'));
+    await fireEvent.changeText(view.getByPlaceholderText('Username or email'), 'viewer_name');
+    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await user.press(view.getByText('Sign in'));
+
+    expect(view.getByText('New here? Create an account')).toBeDisabled();
+    await fireEvent.press(view.getByText('New here? Create an account'));
+    expect(view.getByText('Welcome back')).toBeTruthy();
+    await act(async () => finishSignIn({ error: null }));
+    expect(mockSignInFinalize).toHaveBeenCalledTimes(1);
+    expect(mockRouterReplace).toHaveBeenCalledWith('/');
+  });
+
+  it('shows a fallback instead of rendering a malformed SDK error message', async () => {
+    mockSignUpPassword.mockResolvedValueOnce({ error: { message: { detail: 'unavailable' } } });
+    const view = await render(<SignIn />);
+    await fireEvent.press(view.getByText('Sign up'));
+    await fireEvent.changeText(view.getByLabelText('Username'), 'Flappy_7');
+    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@marker.local');
+    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await fireEvent.press(view.getByText('Create account'));
+
+    await waitFor(() =>
+      expect(
+        view.getByText('We couldn’t create that account. Check your details and try again.'),
+      ).toBeTruthy(),
+    );
+    expect(view.getByText('Create account')).toBeEnabled();
   });
 
   it('starts Clerk email verification during sign-up', async () => {

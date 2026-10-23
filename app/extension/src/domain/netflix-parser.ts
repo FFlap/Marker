@@ -1,15 +1,29 @@
+import { DateTime, Exit, Schema } from 'effect';
 import type { EpisodeBookmark } from './types';
 
 const WATCH_PATH = /^\/watch\/(\d+)/;
 const EPISODE_LABEL = /^E(\d+(?:\.\d+)?)$/i;
 
-interface NetflixVideoSummary {
-  type: 'episode' | 'movie';
-  id: number | string;
-  seriesId?: number | string;
-  episode?: number;
-  season?: number;
-}
+const NetflixId = Schema.Union([
+  Schema.Natural,
+  Schema.String.check(Schema.isPattern(/^\d+$/)),
+]);
+const Coordinate = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
+const SummaryFields = {
+  id: NetflixId,
+  seriesId: Schema.optional(NetflixId),
+  episode: Schema.optional(Coordinate),
+};
+const NetflixVideoSummarySchema = Schema.Union([
+  Schema.Struct({ ...SummaryFields, type: Schema.Literal('episode'), season: Coordinate }),
+  Schema.Struct({ ...SummaryFields, type: Schema.Literal('movie'), season: Schema.optional(Coordinate) }),
+]);
+type NetflixVideoSummary = typeof NetflixVideoSummarySchema.Type;
+const decodeSummary = Schema.decodeUnknownExit(NetflixVideoSummarySchema);
+const decodeSummaryJson = Schema.decodeUnknownExit(Schema.fromJsonString(NetflixVideoSummarySchema));
+const decodeEmbeddedJson = Schema.decodeUnknownExit(
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
+);
 
 export function parseNetflixWatchPath(pathname: string) {
   const match = WATCH_PATH.exec(pathname);
@@ -25,41 +39,15 @@ function slugify(value: string) {
     .replace(/^-|-$/g, '');
 }
 
-function asSummary(value: unknown): NetflixVideoSummary | null {
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  if (record.type !== 'episode' && record.type !== 'movie') return null;
-  if (typeof record.id !== 'number' && typeof record.id !== 'string') {
-    return null;
-  }
-  if (
-    record.seriesId !== undefined &&
-    typeof record.seriesId !== 'number' &&
-    typeof record.seriesId !== 'string'
-  ) return null;
-  if (record.episode !== undefined && typeof record.episode !== 'number') return null;
-  if (record.type === 'episode' && typeof record.season !== 'number') return null;
-  return {
-    type: record.type,
-    id: record.id,
-    seriesId: record.seriesId as number | string | undefined,
-    episode: record.episode as number | undefined,
-    season: record.season as number | undefined,
-  };
-}
-
 function parseEmbeddedSummary(
   document: Document,
   videoId: string,
 ): NetflixVideoSummary | null {
   const bridged = document.documentElement.dataset.netflixVideoSummary;
   if (bridged) {
-    try {
-      const summary = asSummary(JSON.parse(bridged));
-      if (!summary) throw new Error('Unexpected summary shape');
-      return String(summary.id) === videoId ? summary : null;
-    } catch {
-    }
+    const summary = decodeSummaryJson(bridged);
+    if (Exit.isSuccess(summary))
+      return String(summary.value.id) === videoId ? summary.value : null;
   }
 
   for (const script of document.scripts) {
@@ -71,11 +59,11 @@ function parseEmbeddedSummary(
     if (videosIndex < 0 || videoIndex < 0) continue;
     const match = /^"\d+"\s*:\s*\{\s*"summary"\s*:\s*\{[^{}]*"value"\s*:\s*(\{[^{}]*\})/.exec(source.slice(videoIndex));
     if (!match?.[1]) continue;
-    try {
-      const summary = asSummary({ id: videoId, ...JSON.parse(match[1]) });
-      if (summary && String(summary.id) === videoId) return summary;
-    } catch {
-    }
+    const value = decodeEmbeddedJson(match[1]);
+    if (Exit.isFailure(value)) continue;
+    const summary = decodeSummary({ id: videoId, ...value.value });
+    if (Exit.isSuccess(summary) && String(summary.value.id) === videoId)
+      return summary.value;
   }
   return null;
 }
@@ -93,7 +81,7 @@ function findMovieTitle(document: Document) {
 export function parseNetflixPage(
   document: Document,
   url: URL,
-  updatedAt = Date.now(),
+  updatedAt = DateTime.toEpochMillis(DateTime.nowUnsafe()),
 ): EpisodeBookmark | null {
   const watch = parseNetflixWatchPath(url.pathname);
   if (!watch) return null;

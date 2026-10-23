@@ -4,6 +4,8 @@ import type { SeasonPage } from "@/lib/catalog";
 
 const mocks = vi.hoisted(() => ({
   itemId: "owned-item",
+  itemRemoved: false,
+  navigate: vi.fn<(args: { to: string }) => Promise<void>>(),
   tmdbId: 1,
   touch: vi.fn<(args: Record<string, unknown>) => Promise<void>>(),
   episode: vi.fn<(args: Record<string, unknown>) => Promise<void>>(),
@@ -16,7 +18,7 @@ vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ itemId: mocks.itemId, mediaType: "tv", tmdbId: String(mocks.tmdbId) }),
   useSearch: () => ({}),
   Navigate: () => null,
-  useNavigate: () => vi.fn<() => void>(),
+  useNavigate: () => mocks.navigate,
   useRouter: () => ({ history: { canGoBack: () => false } }),
 }));
 vi.mock("convex/react", async () => {
@@ -37,12 +39,13 @@ vi.mock("convex/react", async () => {
         seasons: [1, 2].map((season) => ({ season, name: `Season ${season}`, episodeCount: 2 })),
         genres: [], cast: [], episodeRunTime: [],
       };
-      if (name === "resolvedMetadata/reads:getItemView") return {
+      if (name === "resolvedMetadata/reads:getItemView") return mocks.itemRemoved ? null : {
         item: { _id: mocks.itemId, title: "Example", tmdbId: mocks.tmdbId, mediaType: "tv", status: "watching", tags: [], timesWatched: 0 },
         title,
       };
       if (name === "resolvedMetadata/reads:getTitleView") return { title };
       if (name === "library/items:getOwnedItemByTmdb") return null;
+      if (name === "library/items:listTagSuggestions") return [];
       if (name.endsWith("RequestState")) return mocks.request;
       if (name === "library/episodes:listEpisodes" || name === "library/episodes:listEpisodeProgress") return [];
       throw new Error(`Unexpected query: ${name}`);
@@ -56,6 +59,8 @@ import { TitleDetailPage } from "@/pages/title-detail";
 afterEach(cleanup);
 beforeEach(() => {
   mocks.itemId = "owned-item";
+  mocks.itemRemoved = false;
+  mocks.navigate.mockReset().mockResolvedValue(undefined);
   mocks.tmdbId = 1;
   mocks.touch.mockReset().mockResolvedValue(undefined);
   mocks.episode.mockReset().mockResolvedValue(undefined);
@@ -114,6 +119,21 @@ describe.each([
 });
 
 describe("item detail metadata lifecycle", () => {
+  it("returns to the library when a reactive deletion unmounts the dialog before its mutation settles", async () => {
+    let finishRemove!: () => void;
+    mocks.mutation.mockReturnValueOnce(new Promise<void>((resolve) => { finishRemove = resolve; }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const view = render(<ItemDetailPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit library entry" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove from library" }));
+    mocks.itemRemoved = true;
+    view.rerender(<ItemDetailPage />);
+    expect(screen.getByText("Title not found.")).toBeInTheDocument();
+    await act(async () => { finishRemove(); });
+    expect(mocks.navigate).toHaveBeenCalledWith({ to: "/" });
+    confirm.mockRestore();
+  });
+
   it("surfaces a rejected refresh and retries it instead of showing an empty guide", async () => {
     mocks.touch.mockRejectedValueOnce(new Error("Unavailable"));
     render(<ItemDetailPage />);

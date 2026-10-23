@@ -1,9 +1,17 @@
+import { DateTime, Effect, Exit, Predicate, Schema } from "effect";
+import {
+  operation,
+  runExtension,
+  storageService,
+  ExtensionFailure,
+  createFifo,
+} from "./effects";
 import {
   BOOKMARKS_STORAGE_KEY,
   createBookmarkOperations,
   validateBookmark,
 } from "./bookmarks";
-import type { EpisodeBookmark } from "./types";
+import type { SyncHttpError } from "./http";
 import {
   createOutboxManager,
   buildWatchPayload,
@@ -17,213 +25,263 @@ import {
   type WatchPayload,
 } from "./sync";
 
-type BackgroundMessage =
-  | { type: "sync/connect" }
-  | { type: "sync/signOut" }
-  | { type: "sync/status" }
-  | { type: "bookmark/save"; bookmark: EpisodeBookmark }
-  | { type: "bookmark/remove"; key: string }
-  | { type: "bookmark/clear" };
+const DeliveryResponse = Schema.Struct({
+  ok: Schema.Boolean,
+  reason: Schema.optional(Schema.String),
+  unverified: Schema.optional(Schema.Boolean),
+});
 
-type ErrorLike = {
-  status?: unknown;
-  name?: unknown;
-};
+const DeliveryFailure = Schema.Struct({
+  status: Schema.Union([Schema.Finite, Schema.FiniteFromString]),
+});
+const UnsupportedBookmark = Schema.Struct({
+  seriesTitle: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
+});
 type DeliveryClassification = "retryable" | "auth" | "terminal";
 
+type ClientResult<A> =
+  | Promise<A>
+  | Effect.Effect<A, ExtensionFailure | SyncHttpError>;
+
 export interface AuthClient {
-  getSession(): Promise<{ token: string; accountId: string; accountLabel: string } | null>;
-  connect(): Promise<void>;
-  signOut(): Promise<void>;
-  record(token: string, payload: WatchPayload): Promise<unknown>;
+  getSession(): ClientResult<{
+    token: string;
+    accountId: string;
+    accountLabel: string;
+  } | null>;
+  connect(): ClientResult<void>;
+  signOut(): ClientResult<void>;
+  record(token: string, payload: WatchPayload): ClientResult<unknown>;
 }
 
 export function classifyDeliveryError(error: unknown): DeliveryClassification {
-  const value = error as ErrorLike | null;
-  const status = Number(value?.status);
+  const decoded = Schema.decodeUnknownExit(DeliveryFailure)(error);
+  if (Exit.isFailure(decoded)) return "retryable";
+  const { status } = decoded.value;
   if (status === 401 || status === 403 || status === 409) return "auth";
   if (status === 408 || status === 429 || status >= 500) return "retryable";
-  if (value?.name === "AbortError" || value?.name === "TimeoutError")
-    return "retryable";
-  if (error instanceof TypeError) return "retryable";
-  return "terminal";
+  if (Number.isInteger(status) && status >= 400 && status < 500)
+    return "terminal";
+  return "retryable";
 }
 
-function isBackgroundMessage(value: unknown): value is BackgroundMessage {
-  if (typeof value !== "object" || value === null) return false;
-  const message = value as Record<string, unknown>;
-  switch (message.type) {
-    case "sync/connect":
-    case "sync/signOut":
-    case "sync/status":
-    case "bookmark/clear":
-      return true;
-    case "bookmark/save":
-      return typeof message.bookmark === "object" && message.bookmark !== null;
-    case "bookmark/remove":
-      return typeof message.key === "string";
-    default:
-      return false;
-  }
-}
+// Validate the message envelope separately so malformed bookmarks retain the
+// existing unsupported-episode response and result recording behavior.
+const BackgroundMessageSchema = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literals([
+      "sync/connect",
+      "sync/signOut",
+      "sync/status",
+      "bookmark/clear",
+    ]),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("bookmark/save"),
+    bookmark: Schema.Unknown.check(
+      Schema.makeFilter(Predicate.isObjectOrArray),
+    ),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("bookmark/remove"),
+    key: Schema.String,
+  }),
+]);
+const isBackgroundMessage = Schema.is(BackgroundMessageSchema);
 
 export function createMessageHandler(
   storage: SyncStorage & { remove(key: string): Promise<void> },
   client: AuthClient,
   options: { now?: () => number; alarms?: AlarmScheduler } = {},
 ) {
+  const db = storageService(storage);
+  const serializeStorage = createFifo();
   let accountRevision = 0;
-  const deliver = async (
-    payload: WatchPayload,
-    accountId?: string,
-  ): Promise<SyncResult> => {
-    const revision = accountRevision;
-    const current = await client.getSession();
-    if (!current || accountId === undefined || current.accountId !== accountId)
-      return { ok: false, reason: "not-signed-in", retryable: true };
-    const stored = await storage.get(SYNC_ACCOUNT_KEY);
-    if (stored[SYNC_ACCOUNT_KEY] && stored[SYNC_ACCOUNT_KEY] !== current.accountId)
-      return { ok: false, reason: "not-signed-in", retryable: true };
-    try {
-      const result = (await client.record(current.token, payload)) as {
-        ok?: unknown;
-        reason?: unknown;
-        unverified?: unknown;
-      };
-      return await recordResult(
-        result.ok === true
-          ? {
-              ok: true,
-              retryable: false,
-              ...(result.unverified === true ? { unverified: true } : {}),
-            }
-          : {
-              ok: false,
-              reason:
-                typeof result.reason === "string" ? result.reason : "rejected",
-              retryable: false,
-            },
-        payload.seriesTitle,
-        revision,
-      );
-    } catch (error) {
-      const classification = classifyDeliveryError(error);
-      const result: SyncResult =
-        classification === "auth"
-          ? { ok: false, reason: "not-signed-in", retryable: true }
-          :
-          classification === "retryable"
-            ? { ok: false, retryable: true }
-            : { ok: false, reason: "rejected", retryable: false };
-      return recordResult(result, payload.seriesTitle, revision);
-    }
-  };
-  const recordResult = async (
+  let signingOut = 0;
+  // Every session lookup is bounded, including the second lookup before delivery.
+  const session = Effect.fnUntraced(
+    function* () {
+      if (signingOut > 0) return null;
+      const revision = accountRevision;
+      const current = yield* operation("auth.session", () => client.getSession());
+      return signingOut > 0 || revision !== accountRevision ? null : current;
+    },
+      Effect.timeout(15_000),
+      Effect.mapError(
+        (cause) => new ExtensionFailure({ operation: "auth.session", cause }),
+      ),
+    );
+  const recordResult = Effect.fnUntraced(function* (
     result: SyncResult,
     seriesTitle?: string,
     revision?: number,
-  ) => {
+  ) {
     if (revision !== undefined && revision !== accountRevision) return result;
-    await storage.set({
+    yield* db.set({
       [SYNC_LAST_RESULT_KEY]: {
         ok: result.ok,
-        at: Date.now(),
+        at: options.now
+          ? options.now()
+          : DateTime.toEpochMillis(yield* DateTime.now),
         ...(result.reason ? { reason: result.reason } : {}),
         ...(result.unverified === true ? { unverified: true } : {}),
         ...(seriesTitle ? { seriesTitle } : {}),
       },
     });
     return result;
-  };
+  }, serializeStorage);
+  const deliver = Effect.fn("deliverWatch")(function* (
+    payload: WatchPayload,
+    accountId?: string,
+  ) {
+    const revision = accountRevision;
+    const current = yield* session();
+    if (!current || accountId === undefined || current.accountId !== accountId)
+      return { ok: false, reason: "not-signed-in", retryable: true };
+    const stored = yield* db.get(SYNC_ACCOUNT_KEY);
+    if (
+      revision !== accountRevision ||
+      (stored[SYNC_ACCOUNT_KEY] &&
+        stored[SYNC_ACCOUNT_KEY] !== current.accountId)
+    )
+      return { ok: false, reason: "not-signed-in", retryable: true };
+    const result = yield* operation("auth.record", () =>
+      client.record(current.token, payload),
+    ).pipe(
+      Effect.map((value): SyncResult => {
+        if (!Schema.is(DeliveryResponse)(value))
+          return { ok: false, retryable: true };
+        return value.ok === true
+          ? {
+              ok: true,
+              retryable: false,
+              ...(value.unverified === true ? { unverified: true } : {}),
+            }
+          : {
+              ok: false,
+              reason: value.reason ?? "rejected",
+              retryable: false,
+            };
+      }),
+      Effect.catch((error) => {
+        const classification = classifyDeliveryError(
+          error instanceof ExtensionFailure ? error.cause : error,
+        );
+        return Effect.succeed<SyncResult>(
+          classification === "auth"
+            ? { ok: false, reason: "not-signed-in", retryable: true }
+            : classification === "retryable"
+              ? { ok: false, retryable: true }
+              : { ok: false, reason: "rejected", retryable: false },
+        );
+      }),
+    );
+    return yield* recordResult(result, payload.seriesTitle, revision);
+  });
   const outbox = createOutboxManager(storage, deliver, {
     ...options,
-    prepare: async () => {
-      const current = await client.getSession();
+    serializeStorage,
+    onClear: Effect.gen(function* () {
+      yield* db.remove(SYNC_ACCOUNT_KEY);
+      yield* db.remove(SYNC_LAST_RESULT_KEY);
+    }),
+    prepare: Effect.fnUntraced(function* () {
+      const current = yield* session();
       if (!current) return;
-      const stored = await storage.get(SYNC_ACCOUNT_KEY);
+      const stored = yield* db.get(SYNC_ACCOUNT_KEY);
       const previous = stored[SYNC_ACCOUNT_KEY];
       if (previous === current.accountId) return;
       accountRevision += 1;
       if (previous) {
-        await storage.remove(SYNC_OUTBOX_KEY);
-        await storage.remove(SYNC_RETRY_KEY);
-        await storage.remove(SYNC_LAST_RESULT_KEY);
+        yield* db.remove(SYNC_OUTBOX_KEY);
+        yield* db.remove(SYNC_RETRY_KEY);
+        yield* db.remove(SYNC_LAST_RESULT_KEY);
       }
-      await storage.set({ [SYNC_ACCOUNT_KEY]: current.accountId });
-    },
+      yield* db.set({ [SYNC_ACCOUNT_KEY]: current.accountId });
+    }),
   });
   const bookmarks = createBookmarkOperations(storage, BOOKMARKS_STORAGE_KEY);
+  const handleMessage = Effect.fn("handleMessage")(function* (message: unknown) {
+        if (!isBackgroundMessage(message))
+          return { ok: false, reason: "invalid-message", retryable: false };
+        switch (message.type) {
+          case "sync/connect":
+            return yield* Effect.gen(function* () {
+              yield* operation("auth.connect", () => client.connect());
+              const signedIn = yield* session();
+              if (signedIn) yield* outbox.effects.flush;
+              return signedIn
+                ? { signedIn: true, accountLabel: signedIn.accountLabel }
+                : { signedIn: false, reason: "sign-in-opened" };
+            }).pipe(
+              Effect.catchTag("ExtensionFailure", (error) =>
+                Effect.succeed({
+                  signedIn: false,
+                  reason:
+                    error.cause instanceof Error
+                      ? error.cause.message
+                      : "connect-failed",
+                }),
+              ),
+            );
+          case "sync/signOut":
+            accountRevision += 1;
+            signingOut += 1;
+            yield* operation("auth.signOut", () => client.signOut()).pipe(
+              Effect.andThen(outbox.effects.clear()),
+              Effect.ensuring(Effect.sync(() => {
+                accountRevision += 1;
+                signingOut -= 1;
+              })),
+            );
+            return { signedIn: false };
+          case "sync/status": {
+            const current = yield* session();
+            return current
+              ? { signedIn: true, accountLabel: current.accountLabel }
+              : { signedIn: false };
+          }
+          case "bookmark/save": {
+            const bookmark = validateBookmark(message.bookmark);
+            if (!bookmark) {
+              const incoming = Schema.decodeUnknownExit(UnsupportedBookmark)(message.bookmark);
+              const seriesTitle = Exit.isSuccess(incoming)
+                ? incoming.value.seriesTitle
+                : undefined;
+              yield* recordResult(
+                { ok: false, reason: "unsupported-episode", retryable: false },
+                seriesTitle,
+              );
+              return { changed: false, reason: "unsupported-episode" };
+            }
+            const changed = yield* bookmarks.effects.save(bookmark);
+            const payload = buildWatchPayload(bookmark);
+            if (payload) {
+              yield* outbox.effects.enqueue(payload);
+            } else {
+              yield* recordResult(
+                { ok: false, reason: "unsupported-episode", retryable: false },
+                bookmark.seriesTitle,
+              );
+            }
+            return { changed };
+          }
+          case "bookmark/remove":
+            yield* bookmarks.effects.remove(message.key);
+            return { ok: true };
+          case "bookmark/clear":
+            yield* bookmarks.effects.clear();
+            return { ok: true };
+        }
+  });
   const handler = async (message: unknown) => {
-    if (!isBackgroundMessage(message))
-      return { ok: false, reason: "invalid-message", retryable: false };
-    switch (message.type) {
-      case "sync/connect": {
-        try {
-          await client.connect();
-          const signedIn = await client.getSession();
-          if (signedIn) await outbox.flush();
-          return signedIn
-            ? { signedIn: true, accountLabel: signedIn.accountLabel }
-            : { signedIn: false, reason: "sign-in-opened" };
-        } catch (error) {
-          return {
-            signedIn: false,
-            reason: error instanceof Error ? error.message : "connect-failed",
-          };
-        }
-      }
-      case "sync/signOut":
-        accountRevision += 1;
-        await client.signOut();
-        await outbox.clear();
-        await storage.remove(SYNC_ACCOUNT_KEY);
-        await storage.remove(SYNC_LAST_RESULT_KEY);
-        return { signedIn: false };
-      case "sync/status": {
-        const current = await client.getSession();
-        return current
-          ? { signedIn: true, accountLabel: current.accountLabel }
-          : { signedIn: false };
-      }
-      case "bookmark/save": {
-        const bookmark = validateBookmark(message.bookmark);
-        if (!bookmark) {
-          const incoming = message.bookmark as unknown as Record<
-            string,
-            unknown
-          >;
-          const seriesTitle =
-            typeof incoming.seriesTitle === "string" &&
-            incoming.seriesTitle.trim() &&
-            incoming.seriesTitle.length <= 300
-              ? incoming.seriesTitle.trim()
-              : undefined;
-          await recordResult(
-            { ok: false, reason: "unsupported-episode", retryable: false },
-            seriesTitle,
-          );
-          return { changed: false, reason: "unsupported-episode" };
-        }
-        const changed = await bookmarks.save(bookmark);
-        const payload = buildWatchPayload(bookmark);
-        if (payload) {
-          await outbox.enqueue(payload);
-          void outbox.flush().catch(() => undefined);
-        } else {
-          await recordResult(
-            { ok: false, reason: "unsupported-episode", retryable: false },
-            bookmark.seriesTitle,
-          );
-        }
-        return { changed };
-      }
-      case "bookmark/remove":
-        await bookmarks.remove(message.key);
-        return { ok: true };
-      case "bookmark/clear":
-        await bookmarks.clear();
-        return { ok: true };
+    const response = await runExtension(handleMessage(message));
+    if ("changed" in response && !("reason" in response)) {
+      void outbox.flush().catch(() =>
+        console.error("[Marker] Outbox delivery failed; persisted events remain queued"),
+      );
     }
+    return response;
   };
   return {
     handler,

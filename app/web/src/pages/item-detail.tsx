@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { touchMetadata, saveLibrary } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -7,11 +10,7 @@ import {
   Film,
   RefreshCw,
 } from "lucide-react";
-import {
-  useAction,
-  useMutation,
-  useQuery,
-} from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@marker/shared/api";
 import type { Id } from "@marker/shared/dataModel";
 import { EpisodeDialog } from "@/components/episode-dialog";
@@ -35,16 +34,18 @@ import { localDateKey } from "@/hooks/use-local-today";
 
 function EntryDialog({
   item,
-  onRemoved,
+  onRemove,
   children,
 }: {
   item: LibraryItem;
-  onRemoved: () => void;
+  onRemove: (onFailure: () => void) => Promise<void>;
   children: ReactNode;
 }) {
+  const runOperation = useOperation();
   const updateItem = useMutation(api.library.items.updateItem);
-  const removeItem = useMutation(api.library.items.removeItem);
-  const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
+  const moveItemToWatched = useAction(
+    api.library.seasonWatched.moveItemToWatched,
+  );
   const [open, setOpen] = useState(false);
   const suggestions = useQuery(
     api.library.items.listTagSuggestions,
@@ -62,40 +63,47 @@ function EntryDialog({
   const save = async () => {
     setBusy("save");
     setError("");
-    try {
-      await updateItem({
-        itemId: item._id,
-        ...(item.mediaType !== "tv" || draft.status !== "watched"
-          ? { status: draft.status }
-          : {}),
-        timesWatched: draft.timesWatched,
-        ...(draft.rating === undefined
-          ? { clearRating: true }
-          : { rating: draft.rating }),
-        tags: draft.tags,
-      });
-      if (item.mediaType === "tv" && draft.status === "watched")
-        await moveItemToWatched({ itemId: item._id });
-      setOpen(false);
-    } catch {
-      setError("Couldn’t save this entry. Try again.");
-    } finally {
-      setBusy(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() =>
+          updateItem({
+            itemId: item._id,
+            ...(item.mediaType !== "tv" || draft.status !== "watched"
+              ? { status: draft.status }
+              : {}),
+            timesWatched: draft.timesWatched,
+            ...(draft.rating === undefined
+              ? { clearRating: true }
+              : { rating: draft.rating }),
+            tags: draft.tags,
+          }),
+        );
+        if (item.mediaType === "tv" && draft.status === "watched")
+          yield* saveLibrary(() => moveItemToWatched({ itemId: item._id }));
+      }),
+      {
+        success: () => {
+          setOpen(false);
+        },
+
+        failure: () => {
+          setError("Couldn’t save this entry. Try again.");
+        },
+        settled: () => {
+          setBusy(undefined);
+        },
+      },
+    );
   };
 
   const remove = async () => {
     if (!window.confirm(`Remove ${item.title} and its episode history?`))
       return;
     setBusy("remove");
-    try {
-      await removeItem({ itemId: item._id });
-      setOpen(false);
-      onRemoved();
-    } catch {
+    await onRemove(() => {
       setError("Couldn’t remove this title. Try again.");
       setBusy(undefined);
-    }
+    });
   };
 
   return (
@@ -147,34 +155,46 @@ function EntryDialog({
 }
 
 export function ItemDetailPage() {
+  const runOperation = useOperation();
   const { itemId } = useParams({ from: "/app/item/$itemId" });
   const navigate = useNavigate();
+  const removeItem = useMutation(api.library.items.removeItem);
   const touchItemView = useMutation(api.resolvedMetadata.touch.touchItemView);
-  const setSeasonWatched = useAction(api.library.seasonWatched.setSeasonWatched);
-  const itemView = useQuery(
-    api.resolvedMetadata.reads.getItemView,
-    { itemId: itemId as Id<"items"> },
+  const setSeasonWatched = useAction(
+    api.library.seasonWatched.setSeasonWatched,
   );
+  const itemView = useQuery(api.resolvedMetadata.reads.getItemView, {
+    itemId: itemId as Id<"items">,
+  });
   const item = itemView?.item;
   const title = itemView?.title;
   const [touchError, setTouchError] = useState(false);
   const refreshGeneration = useRef(0);
-  const guide = useSeasonGuide({ mediaType: item?.mediaType, tmdbId: item?.tmdbId, title, refreshError: touchError });
+  const guide = useSeasonGuide({
+    mediaType: item?.mediaType,
+    tmdbId: item?.tmdbId,
+    title,
+    refreshError: touchError,
+  });
   const { seasons, season, setSeason, episodes, summary: seasonRow } = guide;
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
-  const [episodePending, setEpisodePending] = useState<ReadonlySet<string>>(() => new Set());
+  const [episodePending, setEpisodePending] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const setEpisodeState = useMutation(api.library.episodes.setEpisodeState);
   const savedEpisodes = useQuery(
     api.library.episodes.listEpisodes,
     item?.mediaType === "tv"
-      ? { itemId: item._id, season, pageCount: Math.max(1, guide.loadedPageCount) }
+      ? {
+          itemId: item._id,
+          season,
+          pageCount: Math.max(1, guide.loadedPageCount),
+        }
       : "skip",
   );
   const episodeProgress = useQuery(
     api.library.episodes.listEpisodeProgress,
-    item?.mediaType === "tv"
-      ? { itemId: item._id }
-      : "skip",
+    item?.mediaType === "tv" ? { itemId: item._id } : "skip",
   );
   const titleRequestState = useQuery(
     api.resolvedMetadata.reads.getTitleRequestState,
@@ -183,13 +203,7 @@ export function ItemDetailPage() {
       : "skip",
   );
   const savedByEpisode = useMemo(
-    () =>
-      new Map(
-        (savedEpisodes ?? []).map((entry) => [
-          entry.episode,
-          entry,
-        ]),
-      ),
+    () => new Map((savedEpisodes ?? []).map((entry) => [entry.episode, entry])),
     [savedEpisodes],
   );
   const watchedSeasonCount =
@@ -210,14 +224,30 @@ export function ItemDetailPage() {
     setTouchError(false);
     setMetadataActionError("");
     if (!touchItemId || !touchMediaType) return undefined;
-    void touchItemView({
-      itemId: touchItemId,
-      ...(touchMediaType === "tv" && { season }),
-    }).catch(() => {
-      if (generation === refreshGeneration.current) setTouchError(true);
-    });
-    return () => { refreshGeneration.current += 1; };
-  }, [itemId, season, touchItemId, touchItemView, touchMediaType]);
+    void runOperation(
+      touchMetadata(() =>
+        touchItemView({
+          itemId: touchItemId,
+          ...(touchMediaType === "tv" && { season }),
+        }),
+      ),
+      {
+        failure: () => {
+          if (generation === refreshGeneration.current) setTouchError(true);
+        },
+      },
+    );
+    return () => {
+      refreshGeneration.current += 1;
+    };
+  }, [
+    itemId,
+    season,
+    touchItemId,
+    touchItemView,
+    touchMediaType,
+    runOperation,
+  ]);
 
   if (itemView === undefined) {
     return (
@@ -252,7 +282,8 @@ export function ItemDetailPage() {
   const runtime = titleRuntime(title, item.runtime);
   const titleFailed =
     !title &&
-    (touchError || titleRequestState?.state === "failed" ||
+    (touchError ||
+      titleRequestState?.state === "failed" ||
       titleRequestState?.state === "notFound");
 
   return (
@@ -318,22 +349,35 @@ export function ItemDetailPage() {
               const generation = ++refreshGeneration.current;
               setMetadataActionError("");
               setTouchError(false);
-              void touchItemView({
-                itemId: item._id,
-                ...(item.mediaType === "tv" && { season }),
-                force: true,
-              }).catch(() => {
-                if (generation !== refreshGeneration.current) return;
-                setTouchError(true);
-                setMetadataActionError("Couldn’t retry loading title details.");
-              });
+              void runOperation(
+                touchMetadata(() =>
+                  touchItemView({
+                    itemId: item._id,
+                    ...(item.mediaType === "tv" && { season }),
+                    force: true,
+                  }),
+                ),
+                {
+                  failure: () => {
+                    if (generation !== refreshGeneration.current) return;
+                    setTouchError(true);
+                    setMetadataActionError(
+                      "Couldn’t retry loading title details.",
+                    );
+                  },
+                },
+              );
             }}
           >
             <RefreshCw className="size-4" /> Retry
           </Button>
         </div>
       )}
-      {metadataActionError ? <p role="alert" className="mt-3 text-xs text-destructive">{metadataActionError}</p> : null}
+      {metadataActionError ? (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {metadataActionError}
+        </p>
+      ) : null}
 
       <section className="mt-10">
         <SectionHeader title="Your entry" />
@@ -377,7 +421,20 @@ export function ItemDetailPage() {
             <span className="text-xs text-muted-foreground">No tags</span>
           )}
         </div>
-        <EntryDialog item={item} onRemoved={() => void navigate({ to: "/" })}>
+        <EntryDialog
+          item={item}
+          onRemove={(onFailure) =>
+            runOperation.write(
+              saveLibrary(() => removeItem({ itemId: item._id })),
+              {
+                success: () => {
+                  void navigate({ to: "/" });
+                },
+                failure: onFailure,
+              },
+            )
+          }
+        >
           <Button
             variant="outline"
             className="mt-7 h-12 w-full"
@@ -450,17 +507,22 @@ export function ItemDetailPage() {
                   const watched = !seasonFullyWatched;
                   setSeasonPending(true);
                   setSeasonActionError("");
-                  void setSeasonWatched({
-                    itemId: item._id,
-                    season,
-                    watched,
-                    orderEpoch: seasonRow.orderEpoch,
-                    metadataProvider: seasonRow.metadataProvider,
-                  })
-                    .catch(() =>
-                      setSeasonActionError("Couldn’t update this season."),
-                    )
-                    .finally(() => setSeasonPending(false));
+                  void runOperation.write(
+                    saveLibrary(() =>
+                      setSeasonWatched({
+                        itemId: item._id,
+                        season,
+                        watched,
+                        orderEpoch: seasonRow.orderEpoch,
+                        metadataProvider: seasonRow.metadataProvider,
+                      }),
+                    ),
+                    {
+                      settled: () => setSeasonPending(false),
+                      failure: () =>
+                        setSeasonActionError("Couldn’t update this season."),
+                    },
+                  );
                 }}
               >
                 {seasonPending
@@ -488,15 +550,24 @@ export function ItemDetailPage() {
                   const generation = ++refreshGeneration.current;
                   setMetadataActionError("");
                   setTouchError(false);
-                  void touchItemView({
-                    itemId: item._id,
-                    season,
-                    force: true,
-                  }).catch(() => {
-                    if (generation !== refreshGeneration.current) return;
-                    setTouchError(true);
-                    setMetadataActionError("Couldn’t retry loading episodes.");
-                  });
+                  void runOperation(
+                    touchMetadata(() =>
+                      touchItemView({
+                        itemId: item._id,
+                        season,
+                        force: true,
+                      }),
+                    ),
+                    {
+                      failure: () => {
+                        if (generation !== refreshGeneration.current) return;
+                        setTouchError(true);
+                        setMetadataActionError(
+                          "Couldn’t retry loading episodes.",
+                        );
+                      },
+                    },
+                  );
                 }}
               >
                 <RefreshCw className="size-4" /> Retry
@@ -570,8 +641,7 @@ export function ItemDetailPage() {
                         <strong className="mt-1.5 block truncate text-base">
                           {episode.name}
                         </strong>
-                        {episode.overview &&
-                        !expanded ? (
+                        {episode.overview && !expanded ? (
                           <span className="mt-1.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
                             {episode.overview}
                           </span>
@@ -593,35 +663,50 @@ export function ItemDetailPage() {
                           aria-label={`Mark episode ${episode.episode} watched`}
                           disabled={episodePending.has(key)}
                           onClick={() => {
-                            setEpisodePending((current) => new Set(current).add(key));
+                            setEpisodePending((current) =>
+                              new Set(current).add(key),
+                            );
                             setEpisodeActionError("");
-                            void setEpisodeState({
-                              itemId: item._id,
-                              season: episode.season,
-                              episode: episode.episode,
-                              seasonName: episodeView.seasonName,
-                              name: episode.name,
-                              ...(episodeView.overview !== undefined && {
-                                overview: episodeView.overview.slice(0, 400),
-                              }),
-                              ...(episodeView.runtime !== undefined && {
-                                runtime: episodeView.runtime,
-                              }),
-                              ...(episodeView.imageUrl !== undefined && {
-                                imageUrl: episodeView.imageUrl,
-                              }),
-                              ...(episodeView.airDate !== undefined && {
-                                airDate: episodeView.airDate,
-                              }),
-                              watched: true,
-                              activityDate: localDateKey(),
-                            })
-                              .catch(() => setEpisodeActionError("Couldn’t mark that episode watched."))
-                              .finally(() => setEpisodePending((current) => {
-                                const next = new Set(current);
-                                next.delete(key);
-                                return next;
-                              }));
+                            void runOperation.write(
+                              saveLibrary(() =>
+                                setEpisodeState({
+                                  itemId: item._id,
+                                  season: episode.season,
+                                  episode: episode.episode,
+                                  seasonName: episodeView.seasonName,
+                                  name: episode.name,
+                                  ...(episodeView.overview !== undefined && {
+                                    overview: episodeView.overview.slice(
+                                      0,
+                                      400,
+                                    ),
+                                  }),
+                                  ...(episodeView.runtime !== undefined && {
+                                    runtime: episodeView.runtime,
+                                  }),
+                                  ...(episodeView.imageUrl !== undefined && {
+                                    imageUrl: episodeView.imageUrl,
+                                  }),
+                                  ...(episodeView.airDate !== undefined && {
+                                    airDate: episodeView.airDate,
+                                  }),
+                                  watched: true,
+                                  activityDate: localDateKey(),
+                                }),
+                              ),
+                              {
+                                settled: () =>
+                                  setEpisodePending((current) => {
+                                    const next = new Set(current);
+                                    next.delete(key);
+                                    return next;
+                                  }),
+                                failure: () =>
+                                  setEpisodeActionError(
+                                    "Couldn’t mark that episode watched.",
+                                  ),
+                              },
+                            );
                           }}
                           className="grid size-11 place-items-center rounded-full border border-border text-muted-foreground transition hover:bg-foreground hover:text-background disabled:opacity-50 sm:size-8"
                         >
@@ -653,7 +738,11 @@ export function ItemDetailPage() {
               </p>
             </div>
           )}
-          {episodeActionError && <p role="alert" className="mt-3 text-xs text-destructive">{episodeActionError}</p>}
+          {episodeActionError && (
+            <p role="alert" className="mt-3 text-xs text-destructive">
+              {episodeActionError}
+            </p>
+          )}
           {guide.canLoadMore && (
             <Button
               variant="outline"

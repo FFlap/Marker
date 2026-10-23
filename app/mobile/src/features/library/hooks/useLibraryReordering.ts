@@ -1,3 +1,6 @@
+import { Effect } from 'effect';
+import { saveLibrary } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useAction, useMutation } from 'convex/react';
@@ -10,6 +13,7 @@ import type { LibraryItem, Status } from '@/types';
 import { MOBILE_NAV_HEIGHT, TOOLBAR_HEIGHT } from '../screens/LibraryScreen.styles';
 
 export function useLibraryReordering(items: LibraryItem[], filtersActive: boolean) {
+  const runOperation = useOperation();
   const reorderItem = useMutation(api.library.ordering.reorderItem);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const toast = useToast();
@@ -77,23 +81,31 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
       ...current,
       [status]: data.map((item) => item._id),
     }));
-    try {
-      await reorderItem({
-        itemId: moved._id,
-        beforeId: data[to - 1]?._id,
-        afterId: data[to + 1]?._id,
-      });
-    } catch {
-      toast.show('Couldn’t save order');
-    } finally {
-      if (reorderVersions.current[status] === version) {
-        setOptimisticOrders((current) => {
-          const next = { ...current };
-          delete next[status];
-          return next;
-        });
-      }
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() =>
+          reorderItem({
+            itemId: moved._id,
+            beforeId: data[to - 1]?._id,
+            afterId: data[to + 1]?._id,
+          }),
+        );
+      }),
+      {
+        failure: () => {
+          toast.show('Couldn’t save order');
+        },
+        settled: () => {
+          if (reorderVersions.current[status] === version) {
+            setOptimisticOrders((current) => {
+              const next = { ...current };
+              delete next[status];
+              return next;
+            });
+          }
+        },
+      },
+    );
   };
 
   const moveToStatus = async (item: LibraryItem, target: Status) => {
@@ -109,29 +121,37 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
       [source]: sourceItems.map((entry) => entry._id),
       [target]: [...targetItems, item].map((entry) => entry._id),
     }));
-    try {
-      const placement = { itemId: item._id, beforeId: targetItems.at(-1)?._id };
-      if (target === 'watched') await moveItemToWatched(placement);
-      else await reorderItem({ ...placement, status: target });
-    } catch {
-      toast.show(
-        target === 'watched' ? 'Couldn’t mark every episode watched' : 'Couldn’t move this title',
-      );
-    } finally {
-      setOptimisticStatuses((current) => {
-        const next = { ...current };
-        delete next[item._id];
-        return next;
-      });
-      setOptimisticOrders((current) => {
-        const next = { ...current };
-        delete next[source];
-        delete next[target];
-        return next;
-      });
-      statusMovePendingRef.current = false;
-      setStatusMovePending(false);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        const placement = { itemId: item._id, beforeId: targetItems.at(-1)?._id };
+        if (target === 'watched') yield* saveLibrary(() => moveItemToWatched(placement));
+        else yield* saveLibrary(() => reorderItem({ ...placement, status: target }));
+      }),
+      {
+        failure: () => {
+          toast.show(
+            target === 'watched'
+              ? 'Couldn’t mark every episode watched'
+              : 'Couldn’t move this title',
+          );
+        },
+        settled: () => {
+          setOptimisticStatuses((current) => {
+            const next = { ...current };
+            delete next[item._id];
+            return next;
+          });
+          setOptimisticOrders((current) => {
+            const next = { ...current };
+            delete next[source];
+            delete next[target];
+            return next;
+          });
+          statusMovePendingRef.current = false;
+          setStatusMovePending(false);
+        },
+      },
+    );
   };
 
   const requestStatusMove = (itemId: string, target: Status) => {

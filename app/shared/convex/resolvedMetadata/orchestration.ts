@@ -1,3 +1,5 @@
+import { Effect } from 'effect';
+import { attempt, runActionEffect } from '../actionEffects';
 import { ConvexError, v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
@@ -10,7 +12,7 @@ import {
 import { refreshLeaseKey, requestKey } from './requests';
 import { resolveAndCommitCanonical } from './seasonResolution';
 import { FAILED_TOUCH_BACKOFF_MS, mediaType, REFRESH_LEASE_MS, REQUEST_LEASE_MS } from './shared';
-import { errorCode, pause } from './titleResolution';
+import { errorCode } from './titleResolution';
 
 const MAX_CLAIM_RETRIES = 60;
 
@@ -49,12 +51,17 @@ export const orchestrateRefresh = internalAction({
         attemptToken: args.attemptToken,
       });
       if (!claimed) {
-        const pending = await Promise.all(
-          args.keys.map(
+        const pending = await runActionEffect(
+          Effect.forEach(
+            args.keys,
             (key) =>
-              ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
-                key,
-              }) as Promise<Doc<'metadataRefreshRequests'> | null>,
+              attempt(
+                () =>
+                  ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
+                    key,
+                  }) as Promise<Doc<'metadataRefreshRequests'> | null>,
+              ),
+            { concurrency: 4 },
           ),
         );
         if (
@@ -139,18 +146,24 @@ export const orchestrateRefresh = internalAction({
 });
 
 async function waitForTitleRequest(ctx: ActionCtx, tmdbId: number) {
-  const deadline = Date.now() + 10_000;
-  let waited = false;
-  while (Date.now() < deadline) {
-    const row: Doc<'metadataRefreshRequests'> | null = await ctx.runQuery(
-      internal.resolvedMetadata.orchestration.readRefreshRequest,
-      { key: requestKey('tv', tmdbId) },
-    );
-    if (!row || row.state !== 'inFlight' || row.expiresAt <= Date.now()) return waited;
-    waited = true;
-    await pause(200);
-  }
-  return waited;
+  return runActionEffect(
+    Effect.gen(function* () {
+      const deadline = Date.now() + 10_000;
+      let waited = false;
+      while (Date.now() < deadline) {
+        const row = yield* attempt(
+          () =>
+            ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
+              key: requestKey('tv', tmdbId),
+            }) as Promise<Doc<'metadataRefreshRequests'> | null>,
+        );
+        if (!row || row.state !== 'inFlight' || row.expiresAt <= Date.now()) return waited;
+        waited = true;
+        yield* Effect.sleep(200);
+      }
+      return waited;
+    }),
+  );
 }
 
 export const orchestrateSeasonRefresh = internalAction({
@@ -211,19 +224,33 @@ export const orchestrateSeasonRefresh = internalAction({
         key: `resolved:${args.userId}`,
       });
       if (!allowed) throw new ConvexError({ code: 'throttled' });
-      const [title, mapping, request] = await Promise.all([
-        ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
-          mediaType: 'tv',
-          tmdbId: args.tmdbId,
-        }) as Promise<Doc<'resolvedTitles'> | null>,
-        ctx.runQuery(internal.resolvedMetadata.reads.readTitleMapping, {
-          mediaType: 'tv',
-          tmdbId: args.tmdbId,
-        }) as Promise<Doc<'titleMappings'> | null>,
-        ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
-          key: args.key,
-        }) as Promise<Doc<'metadataRefreshRequests'> | null>,
-      ]);
+      const [title, mapping, request] = await runActionEffect(
+        Effect.all(
+          [
+            attempt(
+              () =>
+                ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
+                  mediaType: 'tv',
+                  tmdbId: args.tmdbId,
+                }) as Promise<Doc<'resolvedTitles'> | null>,
+            ),
+            attempt(
+              () =>
+                ctx.runQuery(internal.resolvedMetadata.reads.readTitleMapping, {
+                  mediaType: 'tv',
+                  tmdbId: args.tmdbId,
+                }) as Promise<Doc<'titleMappings'> | null>,
+            ),
+            attempt(
+              () =>
+                ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
+                  key: args.key,
+                }) as Promise<Doc<'metadataRefreshRequests'> | null>,
+            ),
+          ],
+          { concurrency: 3 },
+        ),
+      );
       if (!title || title.orderEpoch !== (mapping?.orderEpoch ?? 0))
         throw new ConvexError({ code: 'title_unavailable', retryable: true });
       const result = await resolveAndCommitCanonical(ctx, {

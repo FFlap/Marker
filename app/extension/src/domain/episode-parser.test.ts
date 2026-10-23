@@ -10,6 +10,19 @@ function makeDocument(html: string, title: string) {
   return document;
 }
 
+it('uses DOM fallbacks when structured coordinates are non-finite', () => {
+  const document = makeDocument(`
+    <script type="application/ld+json">{
+      "@type": "TVEpisode", "episodeNumber": 1e400,
+      "partOfSeason": {"name": "Season 1"}
+    }</script>
+    <a href="/series/GABC12345/example-show">Example Show</a>
+    <h1>E2 - Second Episode</h1>
+  `, 'Season 1 Second Episode - Watch on Crunchyroll');
+  expect(parseEpisodePage(document, new URL('https://www.crunchyroll.com/watch/GEP123456/second-episode')))
+    .toMatchObject({ seasonNumber: '1', episodeNumber: '2' });
+});
+
 describe("parseWatchPath", () => {
   it("rejects non-watch paths", () => {
     expect(parseWatchPath("/series/GYZJ43JMR/slime")).toBeNull();

@@ -1,3 +1,5 @@
+import { touchMetadata, saveLibrary } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useEffect, useMemo, useState } from "react";
 import { Check, EllipsisVertical, SlidersHorizontal, Star } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
@@ -17,6 +19,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { localDateKey, useLocalToday } from "@/hooks/use-local-today";
 
 export function EpisodesPage() {
+  const runOperation = useOperation();
   const today = useLocalToday();
   const data = useQuery(api.episodeHub.overview, { today });
   const setEpisode = useMutation(api.library.episodes.setEpisodeState);
@@ -31,11 +34,21 @@ export function EpisodesPage() {
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   useEffect(() => {
     let active = true;
-    void refreshWatching({}).catch(() => {
-      if (active) setError("Couldn’t refresh your next episodes. Try reopening this tab.");
-    });
-    return () => { active = false; };
-  }, [refreshWatching]);
+    void runOperation(
+      touchMetadata(() => refreshWatching({})),
+      {
+        failure: () => {
+          if (active)
+            setError(
+              "Couldn’t refresh your next episodes. Try reopening this tab.",
+            );
+        },
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [refreshWatching, runOperation]);
   const favoriteTags = useMemo(() => {
     const byKey = new Map<string, string>();
     for (const episode of data?.favorites ?? [])
@@ -117,7 +130,9 @@ export function EpisodesPage() {
                     value,
                     label: value ? String(value) : "Any",
                     ariaLabel: value ? `${value} stars and up` : "Any rating",
-                    icon: value ? <Star aria-hidden="true" className="size-3.5" /> : undefined,
+                    icon: value ? (
+                      <Star aria-hidden="true" className="size-3.5" />
+                    ) : undefined,
                   }))}
                   value={minimumRating}
                   onChange={setMinimumRating}
@@ -231,35 +246,41 @@ export function EpisodesPage() {
                     onClick={() => {
                       setPending((current) => new Set(current).add(key));
                       setError("");
-                      void setEpisode({
-                        itemId: episode.itemId,
-                        season: episode.season,
-                        episode: episode.episode,
-                        seasonName: episode.seasonName,
-                        name: episode.name,
-                        ...(episode.overview !== undefined && {
-                          overview: episode.overview,
-                        }),
-                        ...(episode.runtime !== undefined && {
-                          runtime: episode.runtime,
-                        }),
-                        ...(episode.imageUrl !== undefined && {
-                          imageUrl: episode.imageUrl,
-                        }),
-                        ...(episode.airDate !== undefined && {
-                          airDate: episode.airDate,
-                        }),
-                        watched: true,
-                        activityDate: localDateKey(),
-                      })
-                        .catch(() => setError("Couldn’t mark that episode watched."))
-                        .finally(() =>
-                          setPending((current) => {
-                            const next = new Set(current);
-                            next.delete(key);
-                            return next;
+                      void runOperation.write(
+                        saveLibrary(() =>
+                          setEpisode({
+                            itemId: episode.itemId,
+                            season: episode.season,
+                            episode: episode.episode,
+                            seasonName: episode.seasonName,
+                            name: episode.name,
+                            ...(episode.overview !== undefined && {
+                              overview: episode.overview,
+                            }),
+                            ...(episode.runtime !== undefined && {
+                              runtime: episode.runtime,
+                            }),
+                            ...(episode.imageUrl !== undefined && {
+                              imageUrl: episode.imageUrl,
+                            }),
+                            ...(episode.airDate !== undefined && {
+                              airDate: episode.airDate,
+                            }),
+                            watched: true,
+                            activityDate: localDateKey(),
                           }),
-                        );
+                        ),
+                        {
+                          settled: () =>
+                            setPending((current) => {
+                              const next = new Set(current);
+                              next.delete(key);
+                              return next;
+                            }),
+                          failure: () =>
+                            setError("Couldn’t mark that episode watched."),
+                        },
+                      );
                     }}
                     className="grid size-11 place-items-center rounded-full border border-border transition hover:bg-foreground hover:text-background disabled:opacity-50 sm:size-8"
                   >
@@ -302,7 +323,11 @@ export function EpisodesPage() {
             </div>
           );
         })}
-        {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
         {data === undefined ? (
           ["one", "two", "three", "four"].map((key) => (
             <div key={key} className="h-20 animate-pulse rounded-2xl bg-card" />

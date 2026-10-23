@@ -1,3 +1,4 @@
+import { Option, Schema, flow } from 'effect';
 import { boundedEpisode } from './seasonStorage';
 
 export type Json = Record<string, unknown>;
@@ -51,15 +52,30 @@ export const validOrders = new Set<SeasonOrder>([
   'alttwo',
   'regional',
 ]);
+const array = flow(Schema.decodeUnknownOption(Schema.Array(Schema.Unknown)), Option.getOrUndefined);
+const object = flow(
+  Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown)),
+  Option.getOrUndefined,
+);
 export const records = (value: unknown): Json[] =>
-  Array.isArray(value)
-    ? value.filter((entry): entry is Json => typeof entry === 'object' && entry !== null)
-    : [];
-export const record = (value: unknown): Json =>
-  typeof value === 'object' && value !== null ? (value as Json) : {};
-export const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
-export const integer = (value: unknown) =>
-  typeof value === 'number' && Number.isInteger(value) ? value : undefined;
+  (array(value) ?? []).flatMap((entry) => {
+    const value = object(entry);
+    return value ? [value] : [];
+  });
+export const record = (value: unknown): Json => object(value) ?? {};
+export const text = flow(
+  Schema.decodeUnknownOption(Schema.Trim),
+  Option.getOrElse(() => ''),
+);
+export const integer = flow(Schema.decodeUnknownOption(Schema.Int), Option.getOrUndefined);
+const positiveIntegerFromText = flow(
+  Schema.decodeUnknownOption(
+    Schema.FiniteFromString.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  ),
+  Option.getOrUndefined,
+);
+export const seasonOrderSchema = Schema.Literals([...validOrders]);
+const seasonOrder = flow(Schema.decodeUnknownOption(seasonOrderSchema), Option.getOrUndefined);
 const normalize = (value: string) =>
   value
     .normalize('NFKC')
@@ -104,8 +120,8 @@ export const mapSeason = (value: Json): SeasonRecord | undefined => {
   const id = integer(value.id);
   const number = integer(value.number);
   const typeRecord = record(value.type);
-  const type = text(typeRecord.type).toLocaleLowerCase() as SeasonOrder;
-  if (id === undefined || number === undefined || !validOrders.has(type)) return undefined;
+  const type = seasonOrder(text(typeRecord.type).toLocaleLowerCase());
+  if (id === undefined || number === undefined || type === undefined) return undefined;
   const translatedName = records(value.translations)
     .map((translation) => ({
       language: normalize(text(translation.language) || text(translation.languageCode)),
@@ -138,10 +154,10 @@ export function selectSeasonOrder(
 }
 
 export const seriesId = (entry: Json) => {
-  const direct = Number(text(entry.tvdb_id));
-  if (Number.isInteger(direct) && direct > 0) return direct;
-  const parsed = Number(text(entry.id).match(/(\d+)$/)?.[1]);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+  return (
+    positiveIntegerFromText(text(entry.tvdb_id)) ??
+    positiveIntegerFromText(text(entry.id).match(/(\d+)$/)?.[1])
+  );
 };
 export const authoritativeNames = (title: string, originalTitle?: string) => [
   ...new Set([title, originalTitle].filter((value): value is string => !!value?.trim())),
@@ -153,9 +169,9 @@ export const seasonTranslationLimit = (seasonCount: number) =>
   Math.max(0, Math.min(MAX_SEASON_TRANSLATIONS, seasonCount));
 const titleMatches = (entry: Json, titles: string[]) => {
   const targets = new Set(normalizedNames(titles));
-  const aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
+  const aliases = array(entry.aliases) ?? [];
   return [entry.name, entry.name_translated, entry.title, ...aliases]
-    .map((value) => (typeof value === 'string' ? value : text(record(value).name)))
+    .map((value) => text(value) || text(record(value).name))
     .some((value) => targets.has(normalize(value)));
 };
 const tmdbRemoteSources = new Set(['tmdb', 'the movie database', 'themoviedb', 'themoviedb com']);
@@ -176,7 +192,7 @@ export function selectSeriesMatch(entries: Json[], tmdbId: number, titles: strin
         entry.name_translated,
         entry.title,
         ...Object.values(record(entry.translations)),
-      ].some((name) => typeof name === 'string' && targets.has(normalize(name)));
+      ].some((name) => targets.has(normalize(text(name))));
       const score = verified ? 3 : primaryMatch ? 2 : titleMatches(entry, titles) ? 1 : 0;
       return score ? [{ entry, score }] : [];
     })
@@ -234,6 +250,7 @@ export const knownAnimeSeasonName = (titles: string[], season: number) => {
 };
 
 export const validateOrder = (value: string): SeasonOrder => {
-  if (!validOrders.has(value as SeasonOrder)) throw new Error('Unsupported TVDB season order');
-  return value as SeasonOrder;
+  return Option.getOrElse(Schema.decodeUnknownOption(seasonOrderSchema)(value), () => {
+    throw new Error('Unsupported TVDB season order');
+  });
 };

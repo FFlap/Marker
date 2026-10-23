@@ -1,3 +1,7 @@
+import * as DateTime from 'effect/DateTime';
+import * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
+
 export type CalendarEvent = {
   id: string;
   date: string;
@@ -27,31 +31,50 @@ export type CalendarResult = {
   needsRefresh?: boolean;
 };
 
-export type CalendarFetch = (args: {
+export type CalendarWindow = {
   startDate: string;
   endDate: string;
   region: string;
-  cursor?: CalendarCursor;
   timeZoneOffsetMinutes?: number;
   cachedOnly?: boolean;
-}) => Promise<CalendarResult>;
-
-export const currentCalendarMonth = () => {
-  const now = new Date(Date.now());
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
-export async function loadCalendarPages(
+export type CalendarFetch = (
+  args: CalendarWindow & { cursor?: CalendarCursor },
+  options?: { signal?: AbortSignal },
+) => Promise<CalendarResult>;
+
+export class CalendarRequestError extends Schema.TaggedError<CalendarRequestError>()(
+  'CalendarRequestError',
+  { cause: Schema.Defect() },
+) {
+  get message() {
+    return this.cause instanceof Error ? this.cause.message : 'Calendar could not be loaded';
+  }
+}
+
+export class CalendarRefreshTimeout extends Schema.TaggedError<CalendarRefreshTimeout>()(
+  'CalendarRefreshTimeout',
+  {},
+) {
+  readonly message = 'Release dates are still updating. Please retry.';
+}
+
+export class CalendarPaginationError extends Schema.TaggedError<CalendarPaginationError>()(
+  'CalendarPaginationError',
+  { message: Schema.String },
+) {}
+
+export const currentCalendarMonth = () => {
+  const now = DateTime.setZone(DateTime.nowUnsafe(), DateTime.zoneMakeLocal());
+  return DateTime.formatIsoDate(now).slice(0, 7);
+};
+
+export const loadCalendarPagesEffect = Effect.fn('calendar.loadPages')(function* (
   fetch: CalendarFetch,
-  args: {
-    startDate: string;
-    endDate: string;
-    region: string;
-    timeZoneOffsetMinutes?: number;
-    cachedOnly?: boolean;
-  },
+  args: CalendarWindow,
   onProgress: (result: CalendarResult) => void,
-): Promise<CalendarResult> {
+) {
   const events = new Map<string, CalendarEvent>();
   const names = new Set<string>();
   let count = 0;
@@ -64,15 +87,17 @@ export async function loadCalendarPages(
     failedTitles: { count, names: [] },
   };
   while (true) {
-    const page = await fetch({ ...args, ...(cursor && { cursor }) });
+    const page = yield* Effect.tryPromise({
+      try: (signal) => fetch({ ...args, ...(cursor && { cursor }) }, { signal }),
+      catch: (cause) => new CalendarRequestError({ cause }),
+    });
     if (page.refreshPending) {
       // Discovery can span several provider windows and has no replacement data
       // to publish over a saved view while pending.
       const delay = Math.min(Math.max(page.retryAfterMs ?? 1_000, 250), 60_000);
-      if (refreshWaitMs + delay > 5 * 60_000)
-        throw new Error('Release dates are still updating. Please retry.');
+      if (refreshWaitMs + delay > 5 * 60_000) return yield* new CalendarRefreshTimeout();
       refreshWaitMs += delay;
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      yield* Effect.sleep(delay);
       continue;
     }
     const merged = new Map(events);
@@ -92,11 +117,13 @@ export async function loadCalendarPages(
     if (page.retryAfterMs && retries < 2) {
       retries++;
       const delay = Math.min(page.retryAfterMs, 60_000);
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      yield* Effect.sleep(delay);
       continue;
     }
     if (page.truncated && !page.nextCursor)
-      throw new Error('The calendar backend must be updated to load the full library');
+      return yield* new CalendarPaginationError({
+        message: 'The calendar backend must be updated to load the full library',
+      });
     retries = 0;
     needsRefresh ||= page.needsRefresh === true;
     for (const event of page.events) events.set(event.id, event);
@@ -104,8 +131,17 @@ export async function loadCalendarPages(
     for (const name of page.failedTitles.names) if (names.size < 5) names.add(name);
     const next = page.nextCursor ?? undefined;
     if (next && JSON.stringify(next) === JSON.stringify(cursor))
-      throw new Error('Calendar pagination did not advance');
+      return yield* new CalendarPaginationError({ message: 'Calendar pagination did not advance' });
     cursor = next;
     if (!cursor) return result;
   }
-}
+});
+
+/** Promise boundary for React/Convex callers. Polling and requests share cancellation. */
+export const loadCalendarPages = (
+  fetch: CalendarFetch,
+  args: CalendarWindow,
+  onProgress: (result: CalendarResult) => void,
+  options?: { signal?: AbortSignal },
+): Promise<CalendarResult> =>
+  Effect.runPromise(loadCalendarPagesEffect(fetch, args, onProgress), options);

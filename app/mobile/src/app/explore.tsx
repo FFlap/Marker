@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveProfile } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
@@ -43,6 +46,7 @@ const filters: { value: Filter; label: string }[] = [
 ];
 const PREVIEW_RESULT_LIMIT = 3;
 export default function Explore() {
+  const runOperation = useOperation();
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
   const toast = useToast();
@@ -91,17 +95,25 @@ export default function Explore() {
   const updateFollow = async (person: Person) => {
     if (person.relationship === 'self' || pendingPeople.has(person.username)) return;
     setPendingPeople((current) => new Set(current).add(person.username));
-    try {
-      if (person.relationship === 'none') await follow({ username: person.username });
-      else await unfollow({ username: person.username });
-    } catch {
-      toast.show('Couldn’t update this follow');
-    }
-    setPendingPeople((current) => {
-      const next = new Set(current);
-      next.delete(person.username);
-      return next;
-    });
+    await runOperation.write(
+      Effect.gen(function* () {
+        if (person.relationship === 'none')
+          yield* saveProfile(() => follow({ username: person.username }));
+        else yield* saveProfile(() => unfollow({ username: person.username }));
+      }),
+      {
+        failure: () => {
+          toast.show('Couldn’t update this follow');
+        },
+        settled: () => {
+          setPendingPeople((current) => {
+            const next = new Set(current);
+            next.delete(person.username);
+            return next;
+          });
+        },
+      },
+    );
   };
 
   const movies = mediaResults.filter((result) => result.mediaType === 'movie');

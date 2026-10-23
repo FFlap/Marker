@@ -1,11 +1,20 @@
+import * as Cause from 'effect/Cause';
+import * as DateTime from 'effect/DateTime';
+import * as Effect from 'effect/Effect';
+import * as Exit from 'effect/Exit';
 import {
   currentCalendarMonth,
-  loadCalendarPages,
+  loadCalendarPagesEffect,
   type CalendarFetch,
   type CalendarResult,
 } from './calendar';
 type Snapshot = { result?: CalendarResult; loading: boolean; error: boolean };
-type Entry = { snapshot: Snapshot; updatedAt: number; pending?: Promise<void> };
+type Entry = {
+  snapshot: Snapshot;
+  updatedAt: number;
+  pending?: Promise<void>;
+  controller: AbortController;
+};
 const EMPTY: Snapshot = { loading: true, error: false };
 const PAST: Snapshot = {
   loading: false,
@@ -16,10 +25,10 @@ const FRESH_MS = 5 * 60 * 1000;
 const MAX_MONTHS = 12;
 
 export const monthRange = (month: string) => {
-  const [year, number] = month.split('-').map(Number);
+  const start = DateTime.makeUnsafe(`${month}-01`);
   return {
-    startDate: `${month}-01`,
-    endDate: `${month}-${new Date(year, number, 0).getDate()}`,
+    startDate: DateTime.formatIsoDateUtc(start),
+    endDate: DateTime.formatIsoDateUtc(DateTime.endOf(start, 'month')),
   };
 };
 
@@ -34,7 +43,9 @@ export class CalendarCache {
     this.libraryRevision = revision;
     if (!changed) return;
     // Detaching the entries fences requests started before a title was removed or dropped.
+    const obsolete = [...this.entries.values()];
     this.entries.clear();
+    obsolete.forEach((entry) => entry.controller.abort());
     this.listeners.forEach((listeners) => listeners.forEach((listener) => listener()));
   }
 
@@ -58,8 +69,21 @@ export class CalendarCache {
   private prune() {
     for (const key of this.entries.keys()) {
       if (this.entries.size <= MAX_MONTHS) break;
-      if (!this.listeners.has(key)) this.entries.delete(key);
+      if (!this.listeners.has(key)) {
+        const entry = this.entries.get(key);
+        this.entries.delete(key);
+        entry?.controller.abort();
+      }
     }
+  }
+
+  /** Release session-owned requests and timers when the account/provider unmounts. */
+  dispose() {
+    const entries = [...this.entries.values()];
+    this.entries.clear();
+    this.listeners.clear();
+    this.libraryRevision = undefined;
+    entries.forEach((entry) => entry.controller.abort());
   }
 
   async load(month: string, region: string, fetch: CalendarFetch, force = false): Promise<void> {
@@ -73,7 +97,12 @@ export class CalendarCache {
     if (previous?.pending) return previous.pending;
     const ttl =
       previous?.snapshot.error || previous?.snapshot.result?.failedTitles.count ? 30_000 : FRESH_MS;
-    if (!force && previous && Date.now() - previous.updatedAt < ttl) return;
+    if (
+      !force &&
+      previous &&
+      DateTime.toEpochMillis(DateTime.nowUnsafe()) - previous.updatedAt < ttl
+    )
+      return;
     const entry: Entry = {
       snapshot: {
         result: previous?.snapshot.result,
@@ -81,79 +110,98 @@ export class CalendarCache {
         error: false,
       },
       updatedAt: 0,
+      controller: new AbortController(),
     };
     this.entries.delete(key);
     this.entries.set(key, entry);
     this.prune();
     const current = () => this.entries.get(key) === entry;
-    const fetchCurrent: CalendarFetch = async (args) => {
-      if (!current()) throw new Error('Calendar library changed');
-      const page = await fetch(args);
-      if (!current()) throw new Error('Calendar library changed');
-      return page;
-    };
-    entry.pending = Promise.resolve().then(async () => {
-      try {
-        const args = {
-          ...monthRange(month),
-          region,
-          timeZoneOffsetMinutes: new Date(Date.now()).getTimezoneOffset(),
-        };
-        let result = await loadCalendarPages(
-          fetchCurrent,
-          {
-            ...args,
-            ...(!force && { cachedOnly: true }),
-          },
-          (progress) => {
-            if (!previous?.snapshot.result) {
-              entry.snapshot = {
-                result: progress,
-                loading: true,
-                error: false,
-              };
-              this.listeners.get(key)?.forEach((listener) => listener());
-            }
-          },
-        );
-        if (!force && result.needsRefresh) {
-          const saved = previous?.snapshot.result ?? result;
-          const hasSavedEvents = saved.events.length > 0;
-          entry.snapshot = {
-            result: { ...saved, needsRefresh: true },
-            loading: true,
-            error: false,
-          };
-          this.listeners.get(key)?.forEach((listener) => listener());
-          result = await loadCalendarPages(fetchCurrent, args, (progress) => {
-            if (!hasSavedEvents) {
-              entry.snapshot = {
-                result: progress,
-                loading: true,
-                error: false,
-              };
-              this.listeners.get(key)?.forEach((listener) => listener());
-            }
-          });
-        }
-        // The server retains stale data only for failed providers. Merging here
-        // would resurrect removed titles or episodes whose release date moved.
+    const program = Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const args = {
+        ...monthRange(month),
+        region,
+        timeZoneOffsetMinutes:
+          -DateTime.zonedOffset(DateTime.setZone(now, DateTime.zoneMakeLocal())) / 60_000,
+      };
+      let result = yield* loadCalendarPagesEffect(
+        fetch,
+        {
+          ...args,
+          ...(!force && { cachedOnly: true }),
+        },
+        (progress) => {
+          if (!previous?.snapshot.result) {
+            entry.snapshot = {
+              result: progress,
+              loading: true,
+              error: false,
+            };
+            notify();
+          }
+        },
+      );
+      if (!force && result.needsRefresh) {
+        const saved = previous?.snapshot.result ?? result;
+        const hasSavedEvents = saved.events.length > 0;
         entry.snapshot = {
-          result,
-          loading: false,
-          error: result.needsRefresh === true,
+          result: { ...saved, needsRefresh: true },
+          loading: true,
+          error: false,
         };
-      } catch {
-        if (current()) entry.snapshot = { ...entry.snapshot, loading: false, error: true };
-      } finally {
-        entry.updatedAt = Date.now();
-        entry.pending = undefined;
-        if (current()) {
-          this.prune();
-          this.listeners.get(key)?.forEach((listener) => listener());
-        }
+        notify();
+        result = yield* loadCalendarPagesEffect(fetch, args, (progress) => {
+          if (!hasSavedEvents) {
+            entry.snapshot = {
+              result: progress,
+              loading: true,
+              error: false,
+            };
+            notify();
+          }
+        });
       }
+      // The server retains stale data only for failed providers. Merging here
+      // would resurrect removed titles or episodes whose release date moved.
+      entry.snapshot = {
+        result,
+        loading: false,
+        error: result.needsRefresh === true,
+      };
     });
+    const notify = () => {
+      if (current()) this.listeners.get(key)?.forEach((listener) => listener());
+    };
+    const failed = () =>
+      Effect.sync(() => {
+        if (current()) entry.snapshot = { ...entry.snapshot, loading: false, error: true };
+      });
+    const load = program.pipe(
+      Effect.catchTags({
+        CalendarRequestError: failed,
+        CalendarRefreshTimeout: failed,
+        CalendarPaginationError: failed,
+      }),
+      Effect.onExit((exit) =>
+        Effect.map(DateTime.now, (now) => {
+          entry.updatedAt = DateTime.toEpochMillis(now);
+          entry.pending = undefined;
+          if (current()) {
+            if (Exit.isFailure(exit))
+              entry.snapshot = { ...entry.snapshot, loading: false, error: true };
+            this.prune();
+            notify();
+          }
+        }),
+      ),
+    );
+    // Register the pending promise before starting work: observers may reenter load().
+    entry.pending = Promise.resolve()
+      .then(() => Effect.runPromiseExit(load, { signal: entry.controller.signal }))
+      .then((exit) => {
+        if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause))
+          throw Cause.squash(exit.cause);
+      });
     this.listeners.get(key)?.forEach((listener) => listener());
     return entry.pending;
   }

@@ -1,3 +1,5 @@
+import { saveProfile } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Camera, Globe2, LockKeyhole, Trash2 } from "lucide-react";
@@ -12,13 +14,17 @@ import { USERNAME_PATTERN } from "@/lib/utils";
 export function ProfileEditPage() {
   const profile = useQuery(api.profiles.me, {});
   const save = useMutation(api.profiles.save);
+  const run = useOperation();
   const navigate = useNavigate();
   const [usernameDraft, setUsername] = useState<string>();
   const [isPublicDraft, setIsPublic] = useState<boolean>();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const { pending: photoPending, upload, clear: clearAvatar } =
-    useAvatarUpload(setError);
+  const {
+    pending: photoPending,
+    upload,
+    clear: clearAvatar,
+  } = useAvatarUpload(setError);
   const username = usernameDraft ?? profile?.username ?? "";
   const isPublic = isPublicDraft ?? profile?.isPublic ?? false;
 
@@ -30,18 +36,21 @@ export function ProfileEditPage() {
     }
     setSaving(true);
     setError("");
-    try {
-      await save({ username: value, isPublic });
-      void navigate({ to: "/profile" });
-    } catch (cause) {
-      setError(
-        cause instanceof Error && /taken/i.test(cause.message)
-          ? "That username is already taken."
-          : "Couldn’t save your profile.",
-      );
-    } finally {
-      setSaving(false);
-    }
+    await run.write(
+      saveProfile(() => save({ username: value, isPublic })),
+      {
+        success: () => {
+          void navigate({ to: "/profile" });
+        },
+        failure: ({ cause }) =>
+          setError(
+            cause instanceof Error && /taken/i.test(cause.message)
+              ? "That username is already taken."
+              : "Couldn’t save your profile.",
+          ),
+        settled: () => setSaving(false),
+      },
+    );
   };
 
   return (
@@ -54,9 +63,13 @@ export function ProfileEditPage() {
           <div className="flex items-center gap-5">
             <label className="group relative grid size-24 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-full bg-card text-xl font-bold">
               {profile.avatarUrl ? (
-                <img src={profile.avatarUrl} alt="" className="size-full object-cover" />
+                <img
+                  src={profile.avatarUrl}
+                  alt=""
+                  className="size-full object-cover"
+                />
               ) : (
-                username[0]?.toUpperCase() ?? "M"
+                (username[0]?.toUpperCase() ?? "M")
               )}
               <span className="absolute bottom-0 right-0 grid size-8 place-items-center rounded-full border-2 border-background bg-foreground text-background">
                 <Camera className="size-4" />
@@ -74,8 +87,12 @@ export function ProfileEditPage() {
               />
             </label>
             <div>
-              <strong className="text-sm">{profile.avatarUrl ? "Your photo" : "Add a photo"}</strong>
-              <p className="mt-1 text-xs text-muted-foreground">Square images work best. Up to 5 MB.</p>
+              <strong className="text-sm">
+                {profile.avatarUrl ? "Your photo" : "Add a photo"}
+              </strong>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Square images work best. Up to 5 MB.
+              </p>
               {profile.avatarUrl && (
                 <Button
                   variant="ghost"
@@ -93,7 +110,9 @@ export function ProfileEditPage() {
           <label className="grid gap-2 text-sm font-bold">
             Username
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+                @
+              </span>
               <Input
                 aria-label="Username"
                 value={username}
@@ -122,7 +141,9 @@ export function ProfileEditPage() {
                 <Globe2 className="size-5" />
                 <span>
                   <strong className="block text-sm">Public</strong>
-                  <span className="text-xs text-muted-foreground">Anyone can view your profile and watch statistics.</span>
+                  <span className="text-xs text-muted-foreground">
+                    Anyone can view your profile and watch statistics.
+                  </span>
                 </span>
               </button>
               <button
@@ -134,14 +155,24 @@ export function ProfileEditPage() {
                 <LockKeyhole className="size-5" />
                 <span>
                   <strong className="block text-sm">Private</strong>
-                  <span className="text-xs text-muted-foreground">You and approved followers can see your activity. Public tags remain visible to everyone.</span>
+                  <span className="text-xs text-muted-foreground">
+                    You and approved followers can see your activity. Public
+                    tags remain visible to everyone.
+                  </span>
                 </span>
               </button>
             </div>
           </fieldset>
 
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          <Button disabled={saving || photoPending || !username.trim()} onClick={() => void submit()}>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <Button
+            disabled={saving || photoPending || !username.trim()}
+            onClick={() => void submit()}
+          >
             {saving ? "Saving…" : "Save changes"}
           </Button>
         </div>

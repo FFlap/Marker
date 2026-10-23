@@ -1,6 +1,12 @@
 import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 
+jest.unmock('../../src/hooks/operation-session');
+
+const mockClerk = {
+  session: { id: 'session_test' },
+  addListener: jest.fn(() => jest.fn()),
+};
 let mockFontsLoaded = false;
 let mockFontError: Error | null = null;
 process.env.EXPO_PUBLIC_CONVEX_URL = 'https://example.convex.cloud';
@@ -13,6 +19,7 @@ jest.mock('expo-splash-screen', () => ({
 jest.mock('@clerk/expo', () => ({
   ClerkProvider: ({ children }: React.PropsWithChildren) => children,
   useAuth: () => ({ sessionId: 'session_test' }),
+  useClerk: () => mockClerk,
 }));
 jest.mock('@clerk/expo/token-cache', () => ({ tokenCache: {} }));
 jest.mock('convex/react', () => ({ ConvexReactClient: jest.fn() }));

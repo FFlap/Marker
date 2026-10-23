@@ -1,3 +1,6 @@
+import { runClientEffect } from "@marker/shared/clientOperations";
+import { Effect } from "effect";
+import { linkAccount } from "@marker/shared/clientEffects";
 import { useCallback, useEffect, useState } from "react";
 import { useConvexAuth, useMutation } from "convex/react";
 import { api } from "@marker/shared/api";
@@ -9,23 +12,28 @@ export function useMarkerAccount() {
     "idle",
   );
   const [attempt, setAttempt] = useState(0);
-  const retryAccountLink = useCallback(() => setAttempt((value) => value + 1), []);
+  const retryAccountLink = useCallback(
+    () => setAttempt((value) => value + 1),
+    [],
+  );
 
   useEffect(() => {
-    let active = true;
     if (!auth.isAuthenticated) {
       setState("idle");
-      return () => {
-        active = false;
-      };
+      return undefined;
     }
     setState("linking");
-    void ensureCurrentUser({})
-      .then(() => active && setState("ready"))
-      .catch(() => active && setState("error"));
-    return () => {
-      active = false;
-    };
+    const controller = new AbortController();
+    void runClientEffect(
+      linkAccount(() => ensureCurrentUser({})).pipe(
+        Effect.match({
+          onSuccess: () => setState("ready"),
+          onFailure: () => setState("error"),
+        }),
+      ),
+      { signal: controller.signal },
+    );
+    return () => controller.abort();
   }, [attempt, auth.isAuthenticated, ensureCurrentUser]);
 
   return {

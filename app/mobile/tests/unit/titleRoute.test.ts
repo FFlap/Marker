@@ -18,4 +18,68 @@ describe('title route input', () => {
     expect(parseTitlePreview(JSON.stringify({ ...preview, title: ' ' }))).toBeUndefined();
     expect(parseTitlePreview('null')).toBeUndefined();
   });
+
+  it.each([
+    { originalTitle: { text: 'Title' } },
+    { voteAverage: '8.5' },
+    { voteAverage: { value: 8.5 } },
+    { posterPath: '/folder/../poster.jpg' },
+    { posterPath: '/../poster.jpg' },
+    { posterPath: '/folder/..' },
+    { mediaType: 'person' },
+  ])('rejects malformed preview fields %j', (invalid) => {
+    expect(
+      parseTitlePreview(
+        JSON.stringify({
+          id: 42,
+          mediaType: 'tv',
+          title: 'Title',
+          ...invalid,
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('preserves validated preview metadata and discards unknown fields', () => {
+    const preview = {
+      id: 42,
+      mediaType: 'tv',
+      title: ' Title ',
+      originalTitle: 'Original title',
+      posterPath: '/folder/poster..jpg',
+      overview: 'Overview',
+      releaseDate: '2026-01-01',
+      voteAverage: 8.5,
+    };
+    expect(parseTitlePreview(JSON.stringify({ ...preview, untrusted: { nested: true } }))).toEqual(
+      preview,
+    );
+  });
+
+  it.each([undefined, '', ' ', 'null', '{}', '[]', '{invalid'])(
+    'ignores an invalid preview %s',
+    (value) => {
+      expect(parseTitlePreview(value)).toBeUndefined();
+    },
+  );
+
+  it.each([undefined, '', ' ', 'NaN', 'Infinity', '42x'])(
+    'rejects an invalid route id %s',
+    (tmdbId) => {
+      expect(parseTitleRoute({ mediaType: 'tv', tmdbId })).toMatchObject({
+        validId: false,
+        routeKey: 'tv:invalid',
+      });
+    },
+  );
+
+  it('decodes route parameters into their existing canonical key', () => {
+    expect(parseTitleRoute({ mediaType: 'tv', tmdbId: ' 0042 ' })).toEqual({
+      mediaType: 'tv',
+      tmdbId: 42,
+      validId: true,
+      routeKey: 'tv:42',
+    });
+    expect(parseTitleRoute({ mediaType: 'person', tmdbId: '42' }).mediaType).toBeUndefined();
+  });
 });

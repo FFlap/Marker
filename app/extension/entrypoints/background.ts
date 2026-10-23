@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { external } from "../src/domain/effects";
+import { createWatchTransportEffect } from "../src/domain/http";
 import { createClerkClient } from "@clerk/chrome-extension/client";
 import {
   CLERK_PUBLISHABLE_KEY,
@@ -6,7 +9,7 @@ import {
   WEBSITE_URL,
 } from "../src/config";
 import { createMessageHandler } from "../src/domain/background";
-import { SYNC_RETRY_ALARM, type WatchPayload } from "../src/domain/sync";
+import { SYNC_RETRY_ALARM } from "../src/domain/sync";
 
 export default defineBackground(() => {
   const clerkPromise = createClerkClient({
@@ -15,65 +18,40 @@ export default defineBackground(() => {
     background: true,
   });
 
-  const getSession = async () => {
-    const clerk = await clerkPromise;
-    const session = clerk.session;
-    const user = clerk.user;
-    if (!session || !user) return null;
-    let token: string | null;
-    try {
-      token = await session.getToken();
-    } catch {
-      return null;
-    }
-    if (!token) return null;
-    const accountLabel = user.username
-      ? `@${user.username}`
-      : (user.primaryEmailAddress?.emailAddress ?? "Marker account");
-    return { token, accountId: user.id, accountLabel };
-  };
-
-  const recordWatch = async (
-    token: string,
-    payload: WatchPayload,
-  ) => {
-    const response = await fetch(`${CONVEX_SITE_URL}/extension/watch`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(15_000),
+  const getSession = Effect.fn("getSession")(function* () {
+      const clerk = yield* external("auth.client", () => clerkPromise);
+      const session = clerk.session;
+      const user = clerk.user;
+      if (!session || !user) return null;
+      const token = yield* external("auth.token", () =>
+        session.getToken(),
+      ).pipe(Effect.catchTag("ExtensionFailure", () => Effect.succeed(null)));
+      if (!token || clerk.session !== session || clerk.user?.id !== user.id)
+        return null;
+      const accountLabel = user.username
+        ? `@${user.username}`
+        : (user.primaryEmailAddress?.emailAddress ?? "Marker account");
+      return { token, accountId: user.id, accountLabel };
     });
-    if (!response.ok) {
-      const error = new Error(
-        response.status === 401
-          ? "Authentication required"
-          : "Sync request failed",
-      );
-      Object.assign(error, { status: response.status });
-      throw error;
-    }
-    try {
-      return (await response.json()) as Record<string, unknown>;
-    } catch {
-      const error = new Error("Sync returned an invalid response");
-      Object.assign(error, { status: 502 });
-      throw error;
-    }
-  };
+  const recordWatch = createWatchTransportEffect(
+    `${CONVEX_SITE_URL}/extension/watch`,
+  );
 
   const background = createMessageHandler(
     browser.storage.local,
     {
       getSession,
-      connect: async () => {
-        const url = new URL("/extension/connect", WEBSITE_URL);
-        url.searchParams.set("next", "/extension/connect");
-        await browser.tabs.create({ url: url.toString() });
-      },
-      signOut: async () => (await clerkPromise).signOut(),
+      connect: Effect.fn("connect")(function* () {
+          const url = new URL("/extension/connect", WEBSITE_URL);
+          url.searchParams.set("next", "/extension/connect");
+          yield* external("tabs.create", () =>
+            browser.tabs.create({ url: url.toString() }),
+          );
+        }),
+      signOut: Effect.fn("signOut")(function* () {
+          const clerk = yield* external("auth.client", () => clerkPromise);
+          yield* external("auth.signOut", () => clerk.signOut());
+        }),
       record: recordWatch,
     },
     {
@@ -86,19 +64,25 @@ export default defineBackground(() => {
 
   browser.runtime.onMessage.addListener(
     (message: unknown, _sender, sendResponse) => {
-      void background.handler(message).then(sendResponse).catch(() => {
-        sendResponse({
-          ok: false,
-          reason: "background-error",
-          retryable: true,
+      void background
+        .handler(message)
+        .then(sendResponse)
+        .catch(() => {
+          console.error("[Marker] Background message failed");
+          sendResponse({
+            ok: false,
+            reason: "background-error",
+            retryable: true,
+          });
         });
-      });
       return true;
     },
   );
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === SYNC_RETRY_ALARM)
-      void background.alarmFired().catch(() => undefined);
+      void background
+        .alarmFired()
+        .catch(() => console.error("[Marker] Outbox alarm failed"));
   });
   void clerkPromise
     .then((clerk) => {
@@ -107,9 +91,11 @@ export default defineBackground(() => {
         const nextAccountId = clerk.user?.id;
         if (nextAccountId === accountId) return;
         accountId = nextAccountId;
-        void background.flush().catch(() => undefined);
+        void background
+          .flush()
+          .catch(() => console.error("[Marker] Account sync failed"));
       });
       return background.flush();
     })
-    .catch(() => undefined);
+    .catch(() => console.error("[Marker] Background initialization failed"));
 });

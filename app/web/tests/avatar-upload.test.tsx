@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getToken: vi.fn<() => Promise<string | null>>(),
@@ -53,8 +53,8 @@ it("uploads to Convex with the current Clerk session token", async () => {
       method: "POST",
       body: file,
       headers: {
-        "Content-Type": "image/png",
-        Authorization: "Bearer test-token",
+        "content-type": "image/png",
+        authorization: "Bearer test-token",
       },
     }),
   );
@@ -77,6 +77,41 @@ it("does not send a token to an unrelated upload origin", async () => {
   );
 });
 
+it("finishes an accepted upload after navigation without notifying the old screen", async () => {
+  mocks.generateUploadUrl.mockResolvedValue("/avatar/upload?uploadId=upload");
+  mocks.getToken.mockResolvedValue("test-token");
+  mocks.setAvatar.mockResolvedValue(undefined);
+  vi.stubEnv("VITE_CONVEX_SITE_URL", "https://marker-test.convex.site");
+  let finishUpload!: (response: Response) => void;
+  const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+    () =>
+      new Promise<Response>((resolve) => {
+        finishUpload = resolve;
+      }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const onError = vi.fn<(message: string) => void>();
+  const { result, unmount } = renderHook(() => useAvatarUpload(onError));
+  let pending!: Promise<void>;
+  act(() => {
+    pending = result.current.upload(new File(["image"], "photo.png"));
+  });
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+  onError.mockClear();
+  unmount();
+  const signal = fetchMock.mock.calls[0][1]?.signal;
+  expect(signal?.aborted).toBe(false);
+  finishUpload(
+    new Response(JSON.stringify({ storageId: "uploaded-after-navigation" })),
+  );
+  await pending;
+  expect(mocks.setAvatar).toHaveBeenCalledWith({
+    storageId: "uploaded-after-navigation",
+  });
+  expect(signal?.aborted).toBe(true);
+  expect(onError).not.toHaveBeenCalled();
+});
+
 it.each([
   ["https://marker-test.convex.site", false, true],
   ["http://marker-test.convex.site", false, false],
@@ -94,9 +129,11 @@ it.each([
     mocks.setAvatar.mockResolvedValue(undefined);
     vi.stubEnv("VITE_CONVEX_SITE_URL", siteUrl);
     vi.stubEnv("DEV", dev);
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ storageId: "stored-image" })),
-    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ storageId: "stored-image" })),
+      );
     vi.stubGlobal("fetch", fetchMock);
     const { result } = renderHook(() => useAvatarUpload(vi.fn()));
     await act(async () => {

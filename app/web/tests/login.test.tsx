@@ -116,6 +116,20 @@ describe("login page", () => {
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: "/" }));
   });
 
+  it("shows a fallback for malformed SDK error messages", async () => {
+    mocks.signUp.password.mockResolvedValueOnce({ error: { message: { detail: "unavailable" } } });
+    render(<LoginPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "viewer" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "viewer@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "long-enough-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "We couldn’t sign you in. Check your details and try again.",
+    );
+    expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
+  });
+
   it("prevents switching accounts while sign-in is pending", async () => {
     let finish!: (value: { error: null }) => void;
     mocks.signIn.password.mockReturnValue(

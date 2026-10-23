@@ -1,3 +1,4 @@
+import { DateTime, Effect, Exit, Option, Schema } from "effect";
 import type { EpisodeBookmark } from "./types";
 
 const WATCH_PATH = /^\/watch\/([A-Z0-9]+)\/([^/?#]+)/i;
@@ -18,32 +19,49 @@ interface StructuredEpisode {
   watchUrl?: string;
 }
 
+const metadataField = <S extends Schema.Constraint>(schema: S) =>
+  Schema.catchDecoding<Schema.optional<S>>(() => Effect.succeed(Option.none()))(
+    Schema.optional(schema),
+  );
+const MetadataText = Schema.Trim.check(Schema.isMinLength(1));
+const MetadataCoordinate = Schema.Union([
+  Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+  MetadataText,
+]);
+const StructuredEpisodeSchema = Schema.Struct({
+  "@type": Schema.Literal("TVEpisode"),
+  name: metadataField(MetadataText),
+  episodeNumber: metadataField(MetadataCoordinate),
+  url: metadataField(MetadataText),
+  partOfSeason: metadataField(Schema.Struct({
+    name: metadataField(MetadataText),
+    seasonNumber: metadataField(MetadataCoordinate),
+  })),
+  partOfSeries: metadataField(Schema.Struct({
+    name: metadataField(MetadataText),
+    "@id": metadataField(MetadataText),
+  })),
+});
+const decodeJson = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
+const decodeStructuredEpisode = Schema.decodeUnknownExit(StructuredEpisodeSchema);
+
 function normalizeSeasonName(
-  name: unknown,
-  seasonNumber: unknown,
-  seriesName: unknown,
+  name: string | undefined,
+  seasonNumber: string | number | undefined,
+  seriesName: string | undefined,
 ) {
-  if (typeof name === "string" && name.trim()) {
-    const normalizedName = name.trim();
-    const numberedName = /^Season\s+(.+)$/i.exec(normalizedName)?.[1];
+  if (name) {
+    const numberedName = /^Season\s+(.+)$/i.exec(name)?.[1];
     if (numberedName) return numberedName.trim();
 
-    const normalizedSeriesName =
-      typeof seriesName === "string" ? seriesName.trim() : "";
-    const numericSeason =
-      typeof seasonNumber === "number"
-        ? seasonNumber
-        : typeof seasonNumber === "string" && seasonNumber.trim() !== ""
-          ? Number(seasonNumber)
-          : Number.NaN;
-    if (numericSeason === 0) return normalizedName;
+    if (Number(seasonNumber) === 0) return name;
 
     const isSeriesDerivedVariant =
-      normalizedSeriesName && normalizedName.startsWith(normalizedSeriesName);
+      seriesName && name.startsWith(seriesName);
 
-    if (!isSeriesDerivedVariant) return normalizedName;
+    if (!isSeriesDerivedVariant) return name;
   }
-  if (typeof seasonNumber === "number" || typeof seasonNumber === "string") {
+  if (seasonNumber !== undefined) {
     return String(seasonNumber);
   }
   return undefined;
@@ -53,51 +71,34 @@ function parseStructuredEpisode(document: Document): StructuredEpisode | null {
   for (const script of document.querySelectorAll<HTMLScriptElement>(
     'script[type="application/ld+json"]',
   )) {
-    try {
-      const data: unknown = JSON.parse(script.textContent ?? "");
-      const entries = Array.isArray(data) ? data : [data];
-      for (const entry of entries) {
-        if (!entry || typeof entry !== "object") continue;
-        const record = entry as Record<string, unknown>;
-        if (record["@type"] !== "TVEpisode") continue;
-        const season =
-          record.partOfSeason && typeof record.partOfSeason === "object"
-            ? (record.partOfSeason as Record<string, unknown>)
-            : {};
-        const series =
-          record.partOfSeries && typeof record.partOfSeries === "object"
-            ? (record.partOfSeries as Record<string, unknown>)
-            : {};
-        const structuredName =
-          typeof record.name === "string" ? record.name.trim() : "";
-        const nameAfterSeparator = /\|\s*(.+)$/
-          .exec(structuredName)?.[1]
-          ?.trim();
-        const episodeFromName = nameAfterSeparator
-          ? (EPISODE_HEADING.exec(nameAfterSeparator)?.[2] ??
-            nameAfterSeparator)
-          : undefined;
+    const data = decodeJson(script.textContent ?? "");
+    if (Exit.isFailure(data)) continue;
+    const entries = Array.isArray(data.value) ? data.value : [data.value];
+    for (const entry of entries) {
+      const decoded = decodeStructuredEpisode(entry);
+      if (Exit.isFailure(decoded)) continue;
+      const record = decoded.value;
+      const nameAfterSeparator = /\|\s*(.+)$/
+        .exec(record.name ?? "")?.[1]
+        ?.trim();
+      const episodeFromName = nameAfterSeparator
+        ? (EPISODE_HEADING.exec(nameAfterSeparator)?.[2] ?? nameAfterSeparator)
+        : undefined;
 
-        return {
-          episodeNumber:
-            typeof record.episodeNumber === "number" ||
-            typeof record.episodeNumber === "string"
-              ? String(record.episodeNumber)
-              : undefined,
-          episodeTitle: episodeFromName?.trim(),
-          season: normalizeSeasonName(
-            season.name,
-            season.seasonNumber,
-            series.name,
-          ),
-          seriesTitle:
-            typeof series.name === "string" ? series.name.trim() : undefined,
-          seriesUrl:
-            typeof series["@id"] === "string" ? series["@id"] : undefined,
-          watchUrl: typeof record.url === "string" ? record.url : undefined,
-        };
-      }
-    } catch {
+      return {
+        episodeNumber: record.episodeNumber !== undefined
+          ? String(record.episodeNumber)
+          : undefined,
+        episodeTitle: episodeFromName?.trim(),
+        season: normalizeSeasonName(
+          record.partOfSeason?.name,
+          record.partOfSeason?.seasonNumber,
+          record.partOfSeries?.name,
+        ),
+        seriesTitle: record.partOfSeries?.name,
+        seriesUrl: record.partOfSeries?.["@id"],
+        watchUrl: record.url,
+      };
     }
   }
   return null;
@@ -129,7 +130,7 @@ export function parseWatchPath(pathname: string) {
 export function parseEpisodePage(
   document: Document,
   url: URL,
-  updatedAt = Date.now(),
+  updatedAt = DateTime.toEpochMillis(DateTime.nowUnsafe()),
 ): EpisodeBookmark | null {
   if (!CRUNCHYROLL_ORIGINS.has(url.origin)) return null;
   const watch = parseWatchPath(url.pathname);

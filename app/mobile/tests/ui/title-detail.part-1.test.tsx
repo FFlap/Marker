@@ -346,6 +346,35 @@ describe('Explore title metadata subscriptions', () => {
     }
   });
 
+  it('keeps the title retry armed when a season timer touches the same route concurrently', async () => {
+    jest.useFakeTimers();
+    try {
+      mockState.titleView.requestState = { state: 'inFlight', delayMs: 1_000 };
+      mockState.mockSeasonView[1].requestState = { state: 'inFlight', delayMs: 1_000 };
+      const decision = {
+        title: { scheduled: false, reason: 'inFlight', delayMs: 4_000 },
+        season: { scheduled: true },
+      };
+      let finishTitleTouch!: (result: typeof decision) => void;
+      mockTouchTitle
+        .mockResolvedValueOnce(undefined)
+        .mockImplementationOnce(() => new Promise((resolve) => (finishTitleTouch = resolve)))
+        .mockResolvedValueOnce(decision)
+        .mockResolvedValue({ scheduled: true });
+      await screen();
+      await act(async () => jest.advanceTimersByTime(2_000));
+      expect(mockTouchTitle).toHaveBeenCalledTimes(3);
+      await act(async () => finishTitleTouch(decision));
+
+      await act(async () => jest.advanceTimersByTime(4_999));
+      expect(mockTouchTitle).toHaveBeenCalledTimes(3);
+      await act(async () => jest.advanceTimersByTime(1));
+      expect(mockTouchTitle).toHaveBeenCalledTimes(4);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('never spins failed-state re-polls below the five-second floor', async () => {
     jest.useFakeTimers();
     try {

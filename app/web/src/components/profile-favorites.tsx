@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { saveLibrary } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
@@ -52,6 +55,7 @@ export function ProfileFavorites({
   favorites: Favorite[];
   interactive?: boolean;
 }) {
+  const runOperation = useOperation();
   const [pickerType, setPickerType] = useState<FavoriteSection>();
   const eligible = useQuery(
     api.profileFavorites.eligible,
@@ -90,7 +94,13 @@ export function ProfileFavorites({
 
   const move = async (section: FavoriteSection, from: number, to: number) => {
     const displayed = displayedFor(section);
-    if (pending || reorderPending.current || from === to || to < 0 || to >= displayed.length)
+    if (
+      pending ||
+      reorderPending.current ||
+      from === to ||
+      to < 0 ||
+      to >= displayed.length
+    )
       return;
     const next = [...displayed];
     const [moved] = next.splice(from, 1);
@@ -103,51 +113,79 @@ export function ProfileFavorites({
     reorderPending.current = true;
     setPending(moved._id);
     setError("");
-    try {
-      await reorderFavorite({
-        itemId: moved._id as Id<"items">,
-        ...(next[to - 1] && { beforeId: next[to - 1]._id as Id<"items"> }),
-        ...(next[to + 1] && { afterId: next[to + 1]._id as Id<"items"> }),
-      });
-    } catch {
-      setError(`Couldn’t save the ${sectionLabel(section)} order.`);
-    } finally {
-      setOrders((current) => ({ ...current, [section]: undefined }));
-      reorderPending.current = false;
-      setPending(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() =>
+          reorderFavorite({
+            itemId: moved._id as Id<"items">,
+            ...(next[to - 1] && { beforeId: next[to - 1]._id as Id<"items"> }),
+            ...(next[to + 1] && { afterId: next[to + 1]._id as Id<"items"> }),
+          }),
+        );
+      }),
+      {
+        failure: () => {
+          setError(`Couldn’t save the ${sectionLabel(section)} order.`);
+        },
+        settled: () => {
+          setOrders((current) => ({ ...current, [section]: undefined }));
+          reorderPending.current = false;
+          setPending(undefined);
+        },
+      },
+    );
   };
 
   const remove = async (favorite: Favorite) => {
     if (pending) return;
     setPending(favorite._id);
     setError("");
-    try {
-      await removeFavorite({ itemId: favorite._id as Id<"items"> });
-      setOrders((current) => ({
-        ...current,
-        [favoriteSection(favorite)]: undefined,
-      }));
-    } catch {
-      setError("Couldn’t remove this favorite.");
-    } finally {
-      setPending(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() =>
+          removeFavorite({ itemId: favorite._id as Id<"items"> }),
+        );
+      }),
+      {
+        success: () => {
+          setOrders((current) => ({
+            ...current,
+            [favoriteSection(favorite)]: undefined,
+          }));
+        },
+
+        failure: () => {
+          setError("Couldn’t remove this favorite.");
+        },
+        settled: () => {
+          setPending(undefined);
+        },
+      },
+    );
   };
 
   const add = async (itemId: Id<"items">) => {
     if (pending || !pickerType) return;
     setPending(String(itemId));
     setError("");
-    try {
-      await addFavorite({ itemId });
-      setOrders((current) => ({ ...current, [pickerType]: undefined }));
-      setPickerType(undefined);
-    } catch {
-      setError("Couldn’t add this favorite.");
-    } finally {
-      setPending(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() => addFavorite({ itemId }));
+      }),
+      {
+        success: () => {
+          setOrders((current) => ({ ...current, [pickerType]: undefined }));
+          setPickerType(undefined);
+        },
+
+        failure: () => {
+          setError("Couldn’t add this favorite.");
+        },
+        settled: () => {
+          setPending(undefined);
+        },
+      },
+    );
   };
 
   const pickerItems = eligible?.filter(
@@ -237,7 +275,9 @@ export function ProfileFavorites({
                               { group: section, id: favorite._id, index },
                               Boolean(pending),
                             )}
-                            onMove={(direction) => void move(section, index, index + direction)}
+                            onMove={(direction) =>
+                              void move(section, index, index + direction)
+                            }
                           />
                           <SortableItemActions
                             title={favorite.title}
@@ -295,7 +335,11 @@ export function ProfileFavorites({
           <DialogTitle>
             Add {pickerType ? sectionLabel(pickerType) : "favorite"}
           </DialogTitle>
-          {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
+          )}
           {eligible === undefined ? (
             <div className="h-40 animate-pulse rounded-lg bg-card" />
           ) : pickerItems?.length ? (
@@ -327,7 +371,9 @@ export function ProfileFavorites({
           ) : (
             <p className="py-8 text-sm text-muted-foreground">
               No more watched{" "}
-              {sections.find((entry) => entry.section === pickerType)?.title.toLowerCase() ?? "titles"}{" "}
+              {sections
+                .find((entry) => entry.section === pickerType)
+                ?.title.toLowerCase() ?? "titles"}{" "}
               are available.
             </p>
           )}

@@ -1,5 +1,8 @@
 import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { Effect } from 'effect';
+import { saveLibrary } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import {
   Animated,
   type NativeScrollEvent,
@@ -44,6 +47,7 @@ import {
 } from '@/features/tags/components/TagScreenParts';
 
 export default function TagDetailScreen() {
+  const runOperation = useOperation();
   const params = useLocalSearchParams<{ tag?: string | string[] }>();
   const tag = Array.isArray(params.tag) ? params.tag[0] : (params.tag ?? '');
   const tagKey = tag.trim().toLocaleLowerCase();
@@ -132,23 +136,31 @@ export default function TagDetailScreen() {
         orders: { ...orders, [status]: next.map((item) => String(item._id)) },
       };
     });
-    try {
-      await reorderTagItem({
-        tag,
-        itemId: moved._id,
-        beforeId: next[to - 1]?._id,
-        afterId: next[to + 1]?._id,
-      });
-    } catch {
-      toast.show('Couldn’t save this tag order');
-    } finally {
-      if (reorderVersions.current[versionKey] === version)
-        setOptimisticState((current) =>
-          current.tagKey === tagKey
-            ? { tagKey, orders: { ...current.orders, [status]: undefined } }
-            : current,
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() =>
+          reorderTagItem({
+            tag,
+            itemId: moved._id,
+            beforeId: next[to - 1]?._id,
+            afterId: next[to + 1]?._id,
+          }),
         );
-    }
+      }),
+      {
+        failure: () => {
+          toast.show('Couldn’t save this tag order');
+        },
+        settled: () => {
+          if (reorderVersions.current[versionKey] === version)
+            setOptimisticState((current) =>
+              current.tagKey === tagKey
+                ? { tagKey, orders: { ...current.orders, [status]: undefined } }
+                : current,
+            );
+        },
+      },
+    );
   };
   const performCategoryMove = async (item: RankedItem, targetStatus: Status) => {
     if (filtersActive || statusMovePendingRef.current || item.status === targetStatus) return;
@@ -175,45 +187,55 @@ export default function TagDetailScreen() {
       };
     });
 
-    try {
-      const placement = {
-        itemId: item._id,
-        beforeId: targetLibraryItems.at(-1)?._id,
-      };
-      if (targetStatus === 'watched') await moveItemToWatched(placement);
-      else await reorderItem({ ...placement, status: targetStatus });
-      try {
-        await reorderTagItem({ tag, itemId: item._id, beforeId: targetItems.at(-1)?._id });
-      } catch {
-        toast.show('Title moved, but its tag order couldn’t be saved');
-      }
-    } catch {
-      toast.show(
-        targetStatus === 'watched'
-          ? 'Couldn’t mark every episode watched'
-          : 'Couldn’t move this title',
-      );
-    } finally {
-      setOptimisticStatuses((current) => {
-        const next = { ...current };
-        delete next[String(item._id)];
-        return next;
-      });
-      setOptimisticState((current) =>
-        current.tagKey === tagKey
-          ? {
-              tagKey,
-              orders: {
-                ...current.orders,
-                [sourceStatus]: undefined,
-                [targetStatus]: undefined,
-              },
-            }
-          : current,
-      );
-      statusMovePendingRef.current = false;
-      setStatusMovePending(false);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        const placement = {
+          itemId: item._id,
+          beforeId: targetLibraryItems.at(-1)?._id,
+        };
+        if (targetStatus === 'watched') yield* saveLibrary(() => moveItemToWatched(placement));
+        else yield* saveLibrary(() => reorderItem({ ...placement, status: targetStatus }));
+        return yield* saveLibrary(() =>
+          reorderTagItem({ tag, itemId: item._id, beforeId: targetItems.at(-1)?._id }),
+        ).pipe(
+          Effect.as(true),
+          Effect.catchTag('LibraryError', () => Effect.succeed(false)),
+        );
+      }),
+      {
+        success: (ordered) => {
+          if (!ordered) toast.show('Title moved, but its tag order couldn’t be saved');
+        },
+        failure: () => {
+          toast.show(
+            targetStatus === 'watched'
+              ? 'Couldn’t mark every episode watched'
+              : 'Couldn’t move this title',
+          );
+        },
+        settled: () => {
+          setOptimisticStatuses((current) => {
+            const next = { ...current };
+            delete next[String(item._id)];
+            return next;
+          });
+          setOptimisticState((current) =>
+            current.tagKey === tagKey
+              ? {
+                  tagKey,
+                  orders: {
+                    ...current.orders,
+                    [sourceStatus]: undefined,
+                    [targetStatus]: undefined,
+                  },
+                }
+              : current,
+          );
+          statusMovePendingRef.current = false;
+          setStatusMovePending(false);
+        },
+      },
+    );
   };
   const requestCategoryMove = (itemId: string, targetStatus: Status) => {
     if (filtersActive || statusMovePendingRef.current) return;

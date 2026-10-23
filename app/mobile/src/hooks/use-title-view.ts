@@ -1,3 +1,6 @@
+import { runClientEffect } from '@marker/shared/clientOperations';
+import { Effect } from 'effect';
+import { touchMetadata } from '@marker/shared/clientEffects';
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
@@ -64,22 +67,23 @@ function useMetadataExpiryTimer(
       state === 'failed' ? FAILED_REPOLL_MIN_MS : INFLIGHT_REPOLL_MIN_MS,
       relativeDelay + (armReason === 'inFlight' ? EXPIRY_GRACE_MS : 0),
     );
-    const timer = setTimeout(
-      () =>
-        void Promise.resolve(onRetouch())
-          .then((value) => {
+    const controller = new AbortController();
+    const rearmFailure = () =>
+      setServerArm({
+        key,
+        delayMs: Math.min(FAILED_REPOLL_MAX_MS, Math.max(FAILED_REPOLL_MIN_MS, timerDelay * 2)),
+        reason: 'mutationRejected',
+        sourceState: state,
+        sourceDelayMs: delayMs,
+      });
+    void runClientEffect(
+      Effect.sleep(timerDelay).pipe(
+        Effect.andThen(touchMetadata(() => Promise.resolve(onRetouch()))),
+        Effect.match({
+          onSuccess: (value) => {
             const decision = decisionForKey(key, value as TouchDecision | undefined);
             if (decision?.mutationRejected) {
-              setServerArm({
-                key,
-                delayMs: Math.min(
-                  FAILED_REPOLL_MAX_MS,
-                  Math.max(FAILED_REPOLL_MIN_MS, timerDelay * 2),
-                ),
-                reason: 'mutationRejected',
-                sourceState: state,
-                sourceDelayMs: delayMs,
-              });
+              rearmFailure();
               return;
             }
             if (
@@ -94,22 +98,13 @@ function useMetadataExpiryTimer(
               sourceState: state,
               sourceDelayMs: delayMs,
             });
-          })
-          .catch(() =>
-            setServerArm({
-              key,
-              delayMs: Math.min(
-                FAILED_REPOLL_MAX_MS,
-                Math.max(FAILED_REPOLL_MIN_MS, timerDelay * 2),
-              ),
-              reason: 'mutationRejected',
-              sourceState: state,
-              sourceDelayMs: delayMs,
-            }),
-          ),
-      timerDelay,
+          },
+          onFailure: rearmFailure,
+        }),
+      ),
+      { signal: controller.signal },
     );
-    return () => clearTimeout(timer);
+    return () => controller.abort();
   }, [key, state, delayMs, serverArm]);
 }
 
@@ -180,6 +175,7 @@ export function useTitleView(target: TitleTarget | undefined) {
       ? `${mediaType}:${tmdbId}`
       : undefined;
   const generation = useRef(0);
+  const requests = useRef(new Set<AbortController>());
   const [touchFailure, setTouchFailure] = useState<{
     routeKey: string;
     season?: number;
@@ -194,29 +190,46 @@ export function useTitleView(target: TitleTarget | undefined) {
         ...(selectedSeason !== undefined && { season: selectedSeason }),
         ...(options?.force !== undefined && { force: options.force }),
       };
-      const pending = itemId
-        ? touchItem({ itemId, ...touchOptions })
-        : touchTitle({
-            mediaType,
-            tmdbId,
-            ...(titleHint !== undefined && { title: titleHint }),
-            ...touchOptions,
-          });
-      return pending
-        .then((result) => {
-          if (generation.current === request) setTouchFailure(undefined);
-          return result;
-        })
-        .catch((error: unknown) => {
-          if (generation.current === request)
-            setTouchFailure({ routeKey, season: selectedSeason, error });
-          return { mutationRejected: true as const };
-        });
+      const controller = new AbortController();
+      requests.current.add(controller);
+      // Interruption prevents obsolete UI callbacks; the admitted server job remains durable.
+      const exit = await runClientEffect(
+        touchMetadata(() =>
+          itemId
+            ? touchItem({ itemId, ...touchOptions })
+            : touchTitle({
+                mediaType,
+                tmdbId,
+                ...(titleHint !== undefined && { title: titleHint }),
+                ...touchOptions,
+              }),
+        ).pipe(
+          Effect.match({
+            onSuccess: (result) => {
+              if (generation.current === request) setTouchFailure(undefined);
+              return result;
+            },
+            onFailure: (error) => {
+              if (generation.current === request)
+                setTouchFailure({ routeKey, season: selectedSeason, error: error.cause });
+              return { mutationRejected: true as const };
+            },
+          }),
+        ),
+        { signal: controller.signal },
+      );
+      requests.current.delete(controller);
+      return exit._tag === 'Success' ? exit.value : undefined;
     },
     [itemId, mediaType, routeKey, selectedSeason, titleHint, tmdbId, touchItem, touchTitle],
   );
   useEffect(() => {
+    const pending = requests.current;
     void refresh();
+    return () => {
+      for (const controller of pending) controller.abort();
+      pending.clear();
+    };
   }, [refresh]);
   useMetadataRecoveryTimers({
     titleKey: routeKey,

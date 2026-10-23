@@ -1,3 +1,5 @@
+import { useOperation } from "@/hooks/use-operation";
+import { saveLibrary } from "@marker/shared/clientEffects";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@marker/shared/api";
@@ -44,38 +46,47 @@ export function EpisodeDialog({
     () => episode.rating,
   );
   const [tags, setTags] = useState<string[]>(() => episode.tags ?? []);
+  const runOperation = useOperation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const mutate = async (patch: {
-    rating?: number;
-    clearRating?: boolean;
-    tags?: string[];
-    watched?: boolean;
-  }) => {
+  const mutate = async (
+    patch: {
+      rating?: number;
+      clearRating?: boolean;
+      tags?: string[];
+      watched?: boolean;
+    },
+    onFailure?: () => void,
+  ) => {
     setBusy(true);
     setError("");
-    try {
-      await setEpisodeState({
-        itemId: episode.itemId as Id<"items">,
-        season: episode.season,
-        episode: episode.episode,
-        seasonName: episode.seasonName,
-        name: episode.name,
-        ...(episode.overview !== undefined && { overview: episode.overview }),
-        ...(episode.runtime !== undefined && { runtime: episode.runtime }),
-        ...(episode.imageUrl !== undefined && { imageUrl: episode.imageUrl }),
-        ...(episode.airDate !== undefined && { airDate: episode.airDate }),
-        ...patch,
-      });
-      if (patch.watched === false) setOpen(false);
-      return true;
-    } catch {
-      setError("Couldn’t update this episode. Please try again.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
+    await runOperation.write(
+      saveLibrary(() =>
+        setEpisodeState({
+          itemId: episode.itemId as Id<"items">,
+          season: episode.season,
+          episode: episode.episode,
+          seasonName: episode.seasonName,
+          name: episode.name,
+          ...(episode.overview !== undefined && { overview: episode.overview }),
+          ...(episode.runtime !== undefined && { runtime: episode.runtime }),
+          ...(episode.imageUrl !== undefined && { imageUrl: episode.imageUrl }),
+          ...(episode.airDate !== undefined && { airDate: episode.airDate }),
+          ...patch,
+        }),
+      ),
+      {
+        success: () => {
+          if (patch.watched === false) setOpen(false);
+        },
+        failure: () => {
+          onFailure?.();
+          setError("Couldn’t update this episode. Please try again.");
+        },
+        settled: () => setBusy(false),
+      },
+    );
   };
 
   return (
@@ -102,10 +113,8 @@ export function EpisodeDialog({
               setRating(next);
               void mutate(
                 next === undefined ? { clearRating: true } : { rating: next },
-              ).then((saved) => {
-                if (!saved) setRating(previous);
-                return undefined;
-              });
+                () => setRating(previous),
+              );
             }}
           />
           <div className="mt-6">
@@ -115,10 +124,7 @@ export function EpisodeDialog({
               onChange={(next) => {
                 const previous = tags;
                 setTags(next);
-                void mutate({ tags: next }).then((saved) => {
-                  if (!saved) setTags(previous);
-                  return undefined;
-                });
+                void mutate({ tags: next }, () => setTags(previous));
               }}
             />
           </div>

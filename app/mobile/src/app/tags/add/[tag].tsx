@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveLibrary } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
@@ -20,6 +23,7 @@ import type { LibraryItem } from '@/types';
 const BATCH_SIZE = 100;
 
 export default function AddTitlesToTagScreen() {
+  const runOperation = useOperation();
   const params = useLocalSearchParams<{ tag?: string | string[] }>();
   const tag = Array.isArray(params.tag) ? params.tag[0] : (params.tag ?? '');
   const items = useQuery(api.library.items.listItems);
@@ -54,27 +58,35 @@ export default function AddTitlesToTagScreen() {
     setSaving(true);
     const ids = [...selected] as Id<'items'>[];
     let added = 0;
-    try {
-      for (let start = 0; start < ids.length; start += BATCH_SIZE) {
-        const batch = ids.slice(start, start + BATCH_SIZE);
-        await addTagToItems({ tag, itemIds: batch });
-        added += batch.length;
-      }
-      toast.show(`${ids.length} ${ids.length === 1 ? 'title' : 'titles'} added to ${tag}`);
-      if (router.canGoBack()) router.back();
-      else
-        router.replace({
-          pathname: '/tags/[tag]',
-          params: { tag },
-        });
-    } catch {
-      toast.show(
-        added
-          ? `Only ${added} of ${ids.length} ${ids.length === 1 ? 'title was' : 'titles were'} added to ${tag}`
-          : `Couldn’t add titles to ${tag}`,
-      );
-      setSaving(false);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        for (let start = 0; start < ids.length; start += BATCH_SIZE) {
+          const batch = ids.slice(start, start + BATCH_SIZE);
+          yield* saveLibrary(() => addTagToItems({ tag, itemIds: batch }));
+          added += batch.length;
+        }
+      }),
+      {
+        success: () => {
+          toast.show(`${ids.length} ${ids.length === 1 ? 'title' : 'titles'} added to ${tag}`);
+          if (router.canGoBack()) router.back();
+          else
+            router.replace({
+              pathname: '/tags/[tag]',
+              params: { tag },
+            });
+        },
+
+        failure: () => {
+          toast.show(
+            added
+              ? `Only ${added} of ${ids.length} ${ids.length === 1 ? 'title was' : 'titles were'} added to ${tag}`
+              : `Couldn’t add titles to ${tag}`,
+          );
+          setSaving(false);
+        },
+      },
+    );
   };
 
   const selectedCount = selected.size;

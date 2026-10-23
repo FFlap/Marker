@@ -1,3 +1,10 @@
+import { Effect, Option, Schema } from "effect";
+import {
+  sessionStep,
+  sessionResult,
+  SessionError,
+} from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useState } from "react";
 import { useSignIn, useSignUp } from "@clerk/react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -30,12 +37,19 @@ function GoogleIcon() {
   );
 }
 
+const AuthErrorDetail = Schema.Struct({
+  message: Schema.optional(Schema.String),
+  longMessage: Schema.optional(Schema.String),
+});
+const AuthFailure = Schema.Struct({
+  ...AuthErrorDetail.fields,
+  errors: Schema.optional(Schema.Array(AuthErrorDetail)),
+});
+
 function clerkError(cause: unknown) {
-  const value = cause as {
-    message?: string;
-    longMessage?: string;
-    errors?: Array<{ longMessage?: string; message?: string }>;
-  };
+  const value = Option.getOrUndefined(
+    Schema.decodeUnknownOption(AuthFailure)(cause),
+  );
   return (
     value?.errors?.[0]?.longMessage ??
     value?.errors?.[0]?.message ??
@@ -43,10 +57,6 @@ function clerkError(cause: unknown) {
     value?.message ??
     ""
   );
-}
-
-function throwIfError(result: { error: unknown | null }) {
-  if (result.error) throw result.error;
 }
 
 type RecoveryStage = "identifier" | "code" | "password";
@@ -71,12 +81,15 @@ function recoveryError(cause: unknown) {
 }
 
 export function LoginPage() {
+  const runOperation = useOperation();
   const search = useSearch({ strict: false }) as { next?: string };
   const next = safeInternalPath(search.next);
   const { signIn } = useSignIn();
   const { signUp } = useSignUp();
   const navigate = useNavigate();
-  const [chosenFlow, setFlow] = useState<"choose" | "signIn" | "signUp">("choose");
+  const [chosenFlow, setFlow] = useState<"choose" | "signIn" | "signUp">(
+    "choose",
+  );
   const [identifier, setIdentifier] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -116,114 +129,180 @@ export function LoginPage() {
     signUp.status === "missing_requirements" &&
     signUp.missingFields.includes("username");
   const flow = needsOAuthUsername ? "signUp" : chosenFlow;
-  const verification = needsOAuthUsername ? "oauthUsername" : chosenVerification;
+  const verification = needsOAuthUsername
+    ? "oauthUsername"
+    : chosenVerification;
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError("");
-    try {
-      if (recovery === "identifier") {
-        throwIfError(await signIn.create({ identifier: identifier.trim() }));
-        throwIfError(await signIn.resetPasswordEmailCode.sendCode());
-        setCode("");
-        setRecovery("code");
-      } else if (recovery === "code") {
-        throwIfError(
-          await signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() }),
-        );
-        if (signIn.status !== "needs_new_password") {
-          throw new Error("Password reset verification is incomplete");
+    await runOperation(
+      Effect.gen(function* () {
+        if (recovery === "identifier") {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signIn.create({ identifier: identifier.trim() }),
+            ),
+          );
+          yield* sessionResult(
+            yield* sessionStep(() => signIn.resetPasswordEmailCode.sendCode()),
+          );
+          setCode("");
+          setRecovery("code");
+        } else if (recovery === "code") {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signIn.resetPasswordEmailCode.verifyCode({ code: code.trim() }),
+            ),
+          );
+          if (signIn.status !== "needs_new_password") {
+            return yield* Effect.fail(
+              new SessionError({
+                cause: new Error("Password reset verification is incomplete"),
+              }),
+            );
+          }
+          setCode("");
+          setPassword("");
+          setConfirmPassword("");
+          setRecovery("password");
+        } else if (recovery === "password") {
+          if (password !== confirmPassword)
+            return yield* Effect.fail(
+              new SessionError({ cause: new Error("Passwords do not match") }),
+            );
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signIn.resetPasswordEmailCode.submitPassword({
+                password,
+                signOutOfOtherSessions: true,
+              }),
+            ),
+          );
+          if (signIn.status === "complete") {
+            yield* sessionResult(yield* sessionStep(() => signIn.finalize()));
+            yield* sessionStep(() => navigate({ to: next }));
+          } else if (signIn.status === "needs_client_trust") {
+            yield* sessionResult(
+              yield* sessionStep(() => signIn.mfa.sendEmailCode()),
+            );
+            setRecovery(null);
+            setVerification("clientTrust");
+          } else {
+            return yield* Effect.fail(
+              new SessionError({
+                cause: new Error("Additional sign-in verification is required"),
+              }),
+            );
+          }
+        } else if (verification === "oauthUsername") {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signUp.update({ username: username.trim() }),
+            ),
+          );
+          if (signUp.status !== "complete")
+            return yield* Effect.fail(
+              new SessionError({ cause: new Error("Username is required") }),
+            );
+          yield* sessionResult(yield* sessionStep(() => signUp.finalize()));
+          yield* sessionStep(() => navigate({ to: next }));
+        } else if (verification === "signUp") {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signUp.verifications.verifyEmailCode({ code: code.trim() }),
+            ),
+          );
+          if (signUp.status !== "complete")
+            return yield* Effect.fail(
+              new SessionError({
+                cause: new Error("Email verification is incomplete"),
+              }),
+            );
+          yield* sessionResult(yield* sessionStep(() => signUp.finalize()));
+          yield* sessionStep(() => navigate({ to: next }));
+        } else if (verification === "clientTrust") {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signIn.mfa.verifyEmailCode({ code: code.trim() }),
+            ),
+          );
+          if (signIn.status !== "complete")
+            return yield* Effect.fail(
+              new SessionError({
+                cause: new Error("Verification is incomplete"),
+              }),
+            );
+          yield* sessionResult(yield* sessionStep(() => signIn.finalize()));
+          yield* sessionStep(() => navigate({ to: next }));
+        } else if (flow === "signUp") {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signUp.password({
+                emailAddress: identifier.trim(),
+                username: username.trim(),
+                password,
+              }),
+            ),
+          );
+          if (signUp.status === "complete") {
+            yield* sessionResult(yield* sessionStep(() => signUp.finalize()));
+            yield* sessionStep(() => navigate({ to: next }));
+          } else {
+            yield* sessionResult(
+              yield* sessionStep(() => signUp.verifications.sendEmailCode()),
+            );
+            setVerification("signUp");
+          }
+        } else {
+          yield* sessionResult(
+            yield* sessionStep(() =>
+              signIn.password({ identifier: identifier.trim(), password }),
+            ),
+          );
+          if (signIn.status === "complete") {
+            yield* sessionResult(yield* sessionStep(() => signIn.finalize()));
+            yield* sessionStep(() => navigate({ to: next }));
+          } else if (signIn.status === "needs_client_trust") {
+            yield* sessionResult(
+              yield* sessionStep(() => signIn.mfa.sendEmailCode()),
+            );
+            setVerification("clientTrust");
+          } else {
+            return yield* Effect.fail(
+              new SessionError({
+                cause: new Error("Additional sign-in verification is required"),
+              }),
+            );
+          }
         }
-        setCode("");
-        setPassword("");
-        setConfirmPassword("");
-        setRecovery("password");
-      } else if (recovery === "password") {
-        if (password !== confirmPassword)
-          throw new Error("Passwords do not match");
-        throwIfError(
-          await signIn.resetPasswordEmailCode.submitPassword({
-            password,
-            signOutOfOtherSessions: true,
+        return undefined;
+      }).pipe(
+        Effect.catch(({ cause }) =>
+          Effect.sync(() => {
+            if (recovery) {
+              setError(recoveryError(cause));
+              return;
+            }
+            const message = clerkError(cause);
+            setError(
+              /taken/i.test(message)
+                ? "That username is already taken."
+                : /already/i.test(message)
+                  ? "An account with that email already exists."
+                  : /code|verification/i.test(message)
+                    ? "That verification code is invalid or expired."
+                    : "We couldn’t sign you in. Check your details and try again.",
+            );
           }),
-        );
-        if (signIn.status === "complete") {
-          throwIfError(await signIn.finalize());
-          await navigate({ to: next });
-        } else if (signIn.status === "needs_client_trust") {
-          throwIfError(await signIn.mfa.sendEmailCode());
-          setRecovery(null);
-          setVerification("clientTrust");
-        } else {
-          throw new Error("Additional sign-in verification is required");
-        }
-      } else if (verification === "oauthUsername") {
-        throwIfError(await signUp.update({ username: username.trim() }));
-        if (signUp.status !== "complete")
-          throw new Error("Username is required");
-        throwIfError(await signUp.finalize());
-        await navigate({ to: next });
-      } else if (verification === "signUp") {
-        throwIfError(
-          await signUp.verifications.verifyEmailCode({ code: code.trim() }),
-        );
-        if (signUp.status !== "complete")
-          throw new Error("Email verification is incomplete");
-        throwIfError(await signUp.finalize());
-        await navigate({ to: next });
-      } else if (verification === "clientTrust") {
-        throwIfError(await signIn.mfa.verifyEmailCode({ code: code.trim() }));
-        if (signIn.status !== "complete")
-          throw new Error("Verification is incomplete");
-        throwIfError(await signIn.finalize());
-        await navigate({ to: next });
-      } else if (flow === "signUp") {
-        throwIfError(
-          await signUp.password({
-            emailAddress: identifier.trim(),
-            username: username.trim(),
-            password,
-          }),
-        );
-        if (signUp.status === "complete") {
-          throwIfError(await signUp.finalize());
-          await navigate({ to: next });
-        } else {
-          throwIfError(await signUp.verifications.sendEmailCode());
-          setVerification("signUp");
-        }
-      } else {
-        throwIfError(
-          await signIn.password({ identifier: identifier.trim(), password }),
-        );
-        if (signIn.status === "complete") {
-          throwIfError(await signIn.finalize());
-          await navigate({ to: next });
-        } else if (signIn.status === "needs_client_trust") {
-          throwIfError(await signIn.mfa.sendEmailCode());
-          setVerification("clientTrust");
-        } else {
-          throw new Error("Additional sign-in verification is required");
-        }
-      }
-    } catch (cause) {
-      if (recovery) {
-        setError(recoveryError(cause));
-        return;
-      }
-      const message = clerkError(cause);
-      setError(
-        /taken/i.test(message)
-          ? "That username is already taken."
-          : /already/i.test(message)
-            ? "An account with that email already exists."
-            : /code|verification/i.test(message)
-              ? "That verification code is invalid or expired."
-              : "We couldn’t sign you in. Check your details and try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
+        ),
+      ),
+      {
+        settled: () => {
+          setBusy(false);
+        },
+      },
+    );
   };
   const resetToSignIn = () => {
     void signIn.reset();
@@ -238,20 +317,30 @@ export function LoginPage() {
   const signInWithGoogle = async () => {
     setBusy(true);
     setError("");
-    try {
-      throwIfError(
-        await signIn.sso({
-          strategy: "oauth_google",
-          redirectUrl: next,
-          redirectCallbackUrl: next,
-        }),
-      );
-    } catch (cause) {
-      setError(
-        clerkError(cause) || "Google sign-in couldn’t start. Please try again.",
-      );
-      setBusy(false);
-    }
+    await runOperation(
+      Effect.gen(function* () {
+        yield* sessionResult(
+          yield* sessionStep(() =>
+            signIn.sso({
+              strategy: "oauth_google",
+              redirectUrl: next,
+              redirectCallbackUrl: next,
+            }),
+          ),
+        );
+      }).pipe(
+        Effect.catch(({ cause }) =>
+          Effect.sync(() => {
+            setError(
+              clerkError(cause) ||
+                "Google sign-in couldn’t start. Please try again.",
+            );
+            setBusy(false);
+          }),
+        ),
+      ),
+      {},
+    );
   };
   const enteringCode = Boolean(verification) || recovery === "code";
   const heading =

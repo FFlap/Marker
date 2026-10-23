@@ -1,6 +1,33 @@
+import { Option, Schema } from 'effect';
 import type { SearchResult } from '@/types';
 
-export type MediaType = 'movie' | 'tv';
+const MediaTypeSchema = Schema.Literals(['movie', 'tv']);
+const TmdbId = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
+const decodeMediaType = Schema.decodeUnknownOption(MediaTypeSchema);
+const decodeTmdbId = Schema.decodeUnknownOption(
+  Schema.NumberFromString.pipe(Schema.decodeTo(TmdbId)),
+);
+const decodePreview = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      id: TmdbId,
+      title: Schema.String.check(Schema.isPattern(/\S/u)),
+      originalTitle: Schema.optional(Schema.String),
+      mediaType: MediaTypeSchema,
+      posterPath: Schema.optional(
+        Schema.String.check(
+          Schema.isPattern(/^\/(?!\/)[A-Za-z0-9._/-]+$/u),
+          Schema.isPattern(/^(?!.*\/\.\.(?:\/|$))/u),
+        ),
+      ),
+      overview: Schema.optional(Schema.String),
+      releaseDate: Schema.optional(Schema.String),
+      voteAverage: Schema.optional(Schema.Finite),
+    }),
+  ),
+);
+
+export type MediaType = typeof MediaTypeSchema.Type;
 export type TitleRouteParams = {
   mediaType?: string;
   tmdbId?: string;
@@ -8,11 +35,10 @@ export type TitleRouteParams = {
 };
 
 export function parseTitleRoute(params: TitleRouteParams) {
-  const mediaType: MediaType | undefined =
-    params.mediaType === 'movie' || params.mediaType === 'tv' ? params.mediaType : undefined;
-  const rawTmdbId = params.tmdbId ?? '';
-  const tmdbId = Number(rawTmdbId);
-  const validId = rawTmdbId.trim() !== '' && Number.isSafeInteger(tmdbId) && tmdbId >= 1;
+  const mediaType = Option.getOrUndefined(decodeMediaType(params.mediaType));
+  const id = decodeTmdbId(params.tmdbId);
+  const tmdbId = Option.getOrElse(id, () => Number.NaN);
+  const validId = Option.isSome(id);
   return {
     mediaType,
     tmdbId,
@@ -22,27 +48,14 @@ export function parseTitleRoute(params: TitleRouteParams) {
 }
 
 export function parseTitlePreview(value?: string): SearchResult | undefined {
-  if (!value) return undefined;
-  try {
-    const parsed = JSON.parse(value) as Partial<SearchResult>;
-    if (
-      typeof parsed.id !== 'number' ||
-      !Number.isSafeInteger(parsed.id) ||
-      parsed.id < 1 ||
-      typeof parsed.title !== 'string' ||
-      !parsed.title.trim() ||
-      (parsed.mediaType !== 'movie' && parsed.mediaType !== 'tv') ||
-      (parsed.posterPath !== undefined &&
-        (typeof parsed.posterPath !== 'string' ||
-          !/^\/(?!\/)[A-Za-z0-9._/-]+$/u.test(parsed.posterPath) ||
-          parsed.posterPath.split('/').includes('..'))) ||
-      (parsed.overview !== undefined && typeof parsed.overview !== 'string') ||
-      (parsed.releaseDate !== undefined && typeof parsed.releaseDate !== 'string')
-    ) {
-      return undefined;
-    }
-    return parsed as SearchResult;
-  } catch {
-    return undefined;
-  }
+  const preview = Option.getOrUndefined(decodePreview(value));
+  if (!preview) return undefined;
+  return {
+    ...preview,
+    originalTitle: preview.originalTitle,
+    posterPath: preview.posterPath,
+    overview: preview.overview,
+    releaseDate: preview.releaseDate,
+    voteAverage: preview.voteAverage,
+  };
 }

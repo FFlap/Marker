@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@clerk/chrome-extension": "3.1.63",
+    "effect": "4.0.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -27,7 +28,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.5.2",
     "jsdom": "^26.1.0",
-    "typescript": "^5.8.3",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "wxt": "^0.20.6"
   },
