@@ -41,7 +41,6 @@ export const currentCalendarMonth = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
-/** Fetch every date-index page, publishing releases before the whole library finishes. */
 export async function loadCalendarPages(
   fetch: CalendarFetch,
   args: {
@@ -67,9 +66,8 @@ export async function loadCalendarPages(
   while (true) {
     const page = await fetch({ ...args, ...(cursor && { cursor }) });
     if (page.refreshPending) {
-      // Discovery progresses in background batches and can span several provider
-      // windows. Its polling budget is independent of per-title retry attempts.
-      // Pending discovery has no replacement data to publish over a saved view.
+      // Discovery can span several provider windows and has no replacement data
+      // to publish over a saved view while pending.
       const delay = Math.min(Math.max(page.retryAfterMs ?? 1_000, 250), 60_000);
       if (refreshWaitMs + delay > 5 * 60_000)
         throw new Error('Release dates are still updating. Please retry.');

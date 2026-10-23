@@ -53,7 +53,6 @@ export function RatingControl({
               key={wholeRating}
               className="relative flex size-11 items-center justify-center sm:size-8"
             >
-              {/* The fill is measured against the star itself, not its larger tap area. */}
               <span className="relative size-7" aria-hidden="true">
                 <Star
                   className="absolute inset-0 size-7 text-muted-foreground"

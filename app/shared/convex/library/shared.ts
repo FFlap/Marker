@@ -174,7 +174,6 @@ export const episodeMetadataStamp = async (
   return {
     metadataProvider,
     seasonOrder: metadataProvider === 'tvdb' ? seasonOrder : undefined,
-    // Undefined is intentional: a verified replacement clears a stale id.
     providerEpisodeId: canonicalEpisode.providerEpisodeId,
     summaryIdentityKey: seasonSummaryIdentityKey(activeResolved!, seasonOrder),
     summarySeasonVersion: activeResolved!.seasonVersion,

@@ -13,7 +13,6 @@ const canonicalGcPhase = v.union(
   v.literal('mappings'),
 );
 
-/** Bounded storage hygiene only: never resolves or refreshes provider metadata. */
 export const pruneCanonicalData = internalMutation({
   args: { phase: v.optional(canonicalGcPhase), cursor: v.optional(v.string()) },
   handler: async (ctx, { phase = 'titles', cursor }) => {

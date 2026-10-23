@@ -439,7 +439,6 @@ it.each(['missing', 'stale', 'incomplete'])(
       providerEpisodeId: 202,
     });
 
-    // Once the earlier season is available, its episodes take precedence again.
     await putSeason(t, firstSeason);
     await t.mutation(internal.nextEpisode.startNextEpisodeRefresh, { itemId });
     expect((await t.run((ctx) => ctx.db.get(itemId)))?.nextEpisode).toMatchObject({

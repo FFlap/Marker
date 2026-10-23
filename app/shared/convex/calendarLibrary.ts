@@ -3,7 +3,6 @@ import type { Id } from './_generated/dataModel';
 import { query, type MutationCtx } from './_generated/server';
 import { requireUser } from './clerkAuth';
 
-/** Changes only when the library projection used by the calendar changes. */
 export const revision = query({
   args: {},
   returns: v.number(),

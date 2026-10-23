@@ -77,7 +77,6 @@ describe('settings and ordering', () => {
     for (let index = 0; index < 5; index += 1)
       ids.push(await asUser.mutation(api.library.items.addItem, add(`Item ${index}`, index + 10)));
 
-    // Reversed and non-adjacent claims are projected onto an authoritative slot.
     await asUser.mutation(api.library.ordering.reorderItem, {
       itemId: ids[4],
       beforeId: ids[3],

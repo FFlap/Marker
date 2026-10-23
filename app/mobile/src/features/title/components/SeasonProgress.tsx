@@ -6,7 +6,6 @@ import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { InlineAction } from './SectionHeader';
 
-/** Season picker with its action on one line, directly under the Episodes heading. */
 export function SeasonHeaderRow({ picker, action }: { picker: ReactNode; action: ReactNode }) {
   return (
     <View style={styles.headerRow}>
@@ -16,7 +15,6 @@ export function SeasonHeaderRow({ picker, action }: { picker: ReactNode; action:
   );
 }
 
-/** Season picker with its watched count, a progress bar, and the whole-season toggle below. */
 export function SeasonProgress({
   picker,
   loading,
@@ -30,7 +28,6 @@ export function SeasonProgress({
   loading: boolean;
   watched: number;
   total: number;
-  /** Whether every episode in the season is watched; decides what the toggle does. */
   complete: boolean;
   disabled: boolean;
   onToggle: () => void;
@@ -86,8 +83,6 @@ export function SeasonProgress({
 const styles = createAppStyles(
   {
     root: { paddingBottom: 6 },
-    // The 44pt picker target adds space above the heading text; pull it up so the
-    // gap under the section rule matches the other sections.
     headerRow: {
       marginTop: -10,
       flexDirection: 'row',
@@ -104,7 +99,6 @@ const styles = createAppStyles(
       backgroundColor: colors.border,
     },
     fill: { height: '100%', borderRadius: 2, backgroundColor: colors.text },
-    // Sits under the bar on the left, with its 44pt target reaching into the gap.
     toggleRow: { flexDirection: 'row', marginTop: 14 },
     count: { color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
     countStrong: { color: colors.text, fontWeight: '600' },

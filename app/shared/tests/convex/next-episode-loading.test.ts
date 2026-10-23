@@ -142,7 +142,6 @@ describe('watching entries own their episode loading', () => {
           updatedAt: 1,
         });
       }
-      // The series after these movies must be reached by a scheduled page.
       for (let rank = 1; rank <= 10; rank += 1) {
         await ctx.db.insert('items', {
           userId,
@@ -219,7 +218,6 @@ describe('watching entries own their episode loading', () => {
       await settle();
       expect(fetchMock).not.toHaveBeenCalled();
 
-      // The provider has published new episodes since the last cached title.
       vi.setSystemTime(Date.now() + 24 * 60 * 60 * 1000);
       const fetchOriginal = fetchMock.getMockImplementation()!;
       fetchMock.mockImplementation(async (input) => {

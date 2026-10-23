@@ -45,7 +45,6 @@ type LibraryFiltersDrawerProps = {
   onStatusChange: (value: StatusFilter) => void;
   onMinimumRatingChange: (value: number) => void;
   onClear: () => void;
-  /** Tag filtering is offered only where titles can carry several tags. */
   tags?: {
     all: string[];
     selected: string[];

@@ -162,7 +162,6 @@ export function LibraryEntryDrawer({
                 }}
               />
             ) : (
-              // Closing the sheet saves pending edits, so Done simply dismisses it.
               <DrawerClose asChild>
                 <Button title="Done" onPress={() => undefined} />
               </DrawerClose>

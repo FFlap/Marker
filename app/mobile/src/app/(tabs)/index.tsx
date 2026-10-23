@@ -393,8 +393,6 @@ function Library() {
                           finishNativeDrag(status, next, from, to)
                         }
                         renderItem={(p: RenderItemParams<LibraryItem>) => (
-                          // Multi-column lists render items straight into the row, so
-                          // each needs its own width.
                           <View style={{ width: listItemWidth(listColumns) }}>
                             <ScaleDecorator activeScale={motionReduced ? 1 : 1.012}>
                               <ShadowDecorator

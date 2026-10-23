@@ -31,7 +31,6 @@ export const userIdForIdentity = internalQuery({
   handler: (ctx, args) => findUserId(ctx, args.subject),
 });
 
-/** Resolves the current Clerk subject to its Marker user document. */
 export async function getClerkUserId(ctx: AuthOnlyCtx): Promise<Id<'users'> | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
@@ -54,9 +53,8 @@ function usernameCandidate(identity: UserIdentity, requestedUsername?: string) {
   if (claimed) {
     try {
       return validateUsername(claimed).username;
-    } catch {
-      // Fall through to a deterministic, valid username.
-    }
+      // eslint-disable-next-line no-empty
+    } catch {}
   }
   const emailPrefix = normalizeEmail(identity.email)
     ?.split('@')[0]
@@ -89,7 +87,6 @@ async function availableUsername(
   throw new Error('Could not reserve a username for this account');
 }
 
-/** Ensures each Clerk identity is linked to exactly one existing Marker profile. */
 export const ensureCurrentUser = mutation({
   args: { username: v.optional(v.string()) },
   returns: v.id('users'),

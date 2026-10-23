@@ -37,7 +37,6 @@ export function EpisodeFiltersDrawer({
   active: boolean;
   showFilter: ShowFilter;
   minimumRating: number;
-  /** Lower-cased tag, or `all`. */
   tagFilter: string;
   tags: string[];
   onShowFilterChange: (value: ShowFilter) => void;

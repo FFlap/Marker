@@ -50,7 +50,6 @@ export function TagAddPage() {
         (_, index) => ids.slice(index * 100, index * 100 + 100),
       );
       for (const itemIds of batches) {
-        // Convex batches update the same tag records and must run in order.
         // eslint-disable-next-line no-await-in-loop
         await addTagToItems({ tag, itemIds });
         savedCount += itemIds.length;

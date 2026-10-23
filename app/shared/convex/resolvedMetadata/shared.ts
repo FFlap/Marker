@@ -72,7 +72,6 @@ export const cleanEpisode = (episode: ResolvedEpisode): ResolvedEpisode => ({
   ...(episode.providerEpisodeId !== undefined && { providerEpisodeId: episode.providerEpisodeId }),
 });
 
-/** Matching coordinates alone cannot identify content across different provider orders. */
 const sameEpisodeContent = (primary: ResolvedEpisode, secondary: ResolvedEpisode) => {
   if (primary.airDate && secondary.airDate) return primary.airDate === secondary.airDate;
   const normalizeName = (name: string) => name.normalize('NFKC').trim().toLocaleLowerCase();

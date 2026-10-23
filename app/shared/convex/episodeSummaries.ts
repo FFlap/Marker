@@ -167,7 +167,6 @@ async function beginEpisodeSummaryRebuild(
   return true;
 }
 
-/** Applies one aggregate delta without reading any other episode rows. */
 async function applyEpisodeSummaryDelta(ctx: MutationCtx, delta: EpisodeSummaryDelta) {
   if (
     delta.total === 0 &&
@@ -255,7 +254,6 @@ const tagDelta = (before: string[], after: string[]) => {
   return [...counts.values()].filter(({ count }) => count !== 0);
 };
 
-/** Accounts for an episode upsert in the matching season summary. */
 export async function updateSummaryForEpisodeUpsert(
   ctx: MutationCtx,
   userId: Id<'users'>,
@@ -431,7 +429,6 @@ export const rebuildEpisodeSummary = internalMutation({
   },
 });
 
-/** Fans a published canonical season out to affected personal summaries in bounded pages. */
 export const reconcileSeasonSummaries = internalMutation({
   args: { tmdbId: v.number(), season: v.number(), cursor: v.optional(v.string()) },
   returns: v.object({ work: v.number(), isDone: v.boolean() }),

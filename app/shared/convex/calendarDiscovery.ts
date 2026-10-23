@@ -5,7 +5,6 @@ import { internal } from './_generated/api';
 import { createRequest } from './calendarProviders';
 import { CALENDAR_TTL_MS, catalogRegion, monthEnd } from './calendarTypes';
 
-/** Each page is durable before its successor is scheduled. */
 export const continueDiscovery = internalAction({
   args: { month: v.string(), region: v.string(), token: v.string() },
   returns: v.null(),
@@ -60,7 +59,6 @@ export const continueDiscovery = internalAction({
   },
 });
 
-/** Share discovery across users, and publish only after every page succeeds. */
 export async function ensureMonth(
   ctx: ActionCtx,
   month: string,

@@ -17,7 +17,6 @@ export type ActivityEventWrite = {
 const HISTORY_LIMIT = 200;
 const MAX_WRITE_BATCH = 120;
 
-/** Inserts semantic events and bounds the actor's retained history in one mutation. */
 export async function writeActivityEvents(ctx: MutationCtx, events: ActivityEventWrite[]) {
   if (events.length === 0) return;
   if (events.length > MAX_WRITE_BATCH) throw new Error('Too many activity events in one write');

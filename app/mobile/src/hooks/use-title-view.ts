@@ -34,7 +34,6 @@ type TouchDecision = {
 const decisionForKey = (key: string, result: TouchDecision | undefined) =>
   key.startsWith('season:') ? (result?.season ?? result) : (result?.title ?? result);
 
-/** Arms one recovery timer for one observed title or season request. */
 function useMetadataExpiryTimer(
   key: string | undefined,
   requestState: MetadataRequestState | null | undefined,
@@ -114,7 +113,6 @@ function useMetadataExpiryTimer(
   }, [key, state, delayMs, serverArm]);
 }
 
-/** Coalesces the matching backoff produced by one combined title/season attempt. */
 function useMetadataRecoveryTimers(args: {
   titleKey: string | undefined;
   titleState: MetadataRequestState | null | undefined;
@@ -146,10 +144,6 @@ function useMetadataRecoveryTimers(args: {
   );
 }
 
-/**
- * Owns title/item metadata, season selection, refresh admission and recovery.
- * Callers provide an identity and render the resulting state.
- */
 export function useTitleView(target: TitleTarget | undefined) {
   const itemId = target && 'itemId' in target ? target.itemId : undefined;
   const titleTarget = target && 'mediaType' in target ? target : undefined;

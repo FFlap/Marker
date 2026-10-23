@@ -59,7 +59,6 @@ function parseEmbeddedSummary(
       if (!summary) throw new Error('Unexpected summary shape');
       return String(summary.id) === videoId ? summary : null;
     } catch {
-      // Fall through to the server-rendered cache.
     }
   }
 
@@ -70,14 +69,12 @@ function parseEmbeddedSummary(
     const videosIndex = source.indexOf('"videos"', cacheIndex);
     const videoIndex = source.indexOf(`"${videoId}"`, videosIndex);
     if (videosIndex < 0 || videoIndex < 0) continue;
-    // Only accept this video's flat summary; the metadata bridge handles other cache shapes.
     const match = /^"\d+"\s*:\s*\{\s*"summary"\s*:\s*\{[^{}]*"value"\s*:\s*(\{[^{}]*\})/.exec(source.slice(videoIndex));
     if (!match?.[1]) continue;
     try {
       const summary = asSummary({ id: videoId, ...JSON.parse(match[1]) });
       if (summary && String(summary.id) === videoId) return summary;
     } catch {
-      // Wait for the metadata bridge when the script is not valid JSON.
     }
   }
   return null;

@@ -127,7 +127,6 @@ export function WatchHeatmap({
               <legend className="sr-only">
                 Daily watch activity. Use arrow keys to navigate days and weeks.
               </legend>
-              {/* One tab stop; arrow keys navigate days and weeks. Future days trail the grid. */}
               {cells.map((day, index) => (
                 <button
                   key={day.date}

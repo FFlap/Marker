@@ -1,7 +1,5 @@
-# Dependencies
 node_modules/
 
-# Build and tool output
 dist/
 .output/
 .wxt/
@@ -14,7 +12,6 @@ test-results/
 output/
 *.tsbuildinfo
 
-# Local editor and agent state
 .agents/
 agent/
 .review/
@@ -24,13 +21,11 @@ agent/
 .impeccable.md
 skills-lock.json
 
-# OS and debug files
 .DS_Store
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 *.log
 
-# Local environment
 .env*
 !.env.example

@@ -5,7 +5,6 @@ import { DrawerClose } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 
-/** Toolbar button that opens a filter sheet; a dot marks active filters. */
 export const FilterTrigger = forwardRef<
   View,
   PressableProps & { accessibilityLabel: string; active: boolean }
@@ -25,7 +24,6 @@ export const FilterTrigger = forwardRef<
   );
 });
 
-/** Filters apply as they change; the footer resets them or dismisses the sheet. */
 export function FilterSheetFooter({ active, onClear }: { active: boolean; onClear: () => void }) {
   return (
     <View style={styles.footer}>

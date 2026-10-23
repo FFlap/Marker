@@ -175,7 +175,6 @@ export const upcoming = action({
         }),
       );
       if (result.failed) failedNames.push(result.item.title);
-      // Preserve successful seasons; incomplete schedules remain stale for retry.
       if (previous || releases.length || (!result.failed && !result.needsRefresh)) {
         const refreshedAt =
           result.failed || result.needsRefresh

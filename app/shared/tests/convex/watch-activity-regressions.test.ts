@@ -56,7 +56,6 @@ it('preserves a manual watch day through sync, metadata edits, and next-day retr
   for (let retry = 0; retry < 2; retry += 1)
     await user.mutation(api.library.episodes.setEpisodeState, { ...coordinate, watched: false });
   expect((await user.query(api.stats.profile, {})).watchActivity).toEqual([]);
-  // A later sync remains unlogged after the manual contribution has been undone.
   await t.mutation(internal.sync.recordWatchInternal, { ...coordinate, userId });
   expect((await user.query(api.stats.profile, {})).watchActivity).toEqual([]);
   expect(await t.run((ctx) => ctx.db.get(episodeId))).not.toHaveProperty('activityDate');
@@ -120,7 +119,6 @@ it('keeps mixed logged and historical episodes correct across season batches and
     season: 1,
     watched: false,
     offset: EPISODES_PER_CHUNK,
-    // Simulate a metadata refresh that makes this continuation restart at zero.
     expectedRefreshedAt: Date.now() - 1,
     expectedOrderEpoch: 0,
     expectedMetadataProvider: 'tmdb' as const,
