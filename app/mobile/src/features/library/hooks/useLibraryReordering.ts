@@ -4,7 +4,6 @@ import { useAction, useMutation } from 'convex/react';
 import { api } from '@marker/shared/api';
 import type { NativeGridAutoScroll, NativeGridDragMotion } from '@/components/NativeDraggableGrid';
 import type { NativePosterDragLayout } from '@/components/NativePosterDragPreview';
-import type { NativeDragValues } from '@/components/NativeDragMonitor';
 import { useToast } from '@/components/ui/Toast';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import type { LibraryItem, Status } from '@/types';
@@ -25,11 +24,9 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   }>();
   const [dragPreviewLayout, setDragPreviewLayout] = useState<NativePosterDragLayout>();
   const [targetStatus, setTargetStatus] = useState<Status>();
-  const [listTops, setListTops] = useState<Partial<Record<Status, number>>>({});
   const [sectionLayouts, setSectionLayouts] = useState<
     Partial<Record<Status, { height: number; top: number }>>
   >({});
-  const [dragValues, setDragValues] = useState<Partial<Record<Status, NativeDragValues>>>({});
   const [posterMotion, setPosterMotion] = useState<Partial<Record<Status, NativeGridDragMotion>>>(
     {},
   );
@@ -187,14 +184,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     });
   };
 
-  const beginListDrag = (item: LibraryItem, status: Status) => {
-    const next = { item, status };
-    targetStatusRef.current = status;
-    setTargetStatus(status);
-    draggedItemRef.current = next;
-    setDraggedItem(next);
-  };
-
   const positionDrag = (layout: { height: number; width: number; x: number; y: number }) => {
     const dragged = draggedItemRef.current;
     if (!dragged) return;
@@ -249,15 +238,12 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     drag: {
       autoScroll,
       begin: beginDrag,
-      beginList: beginListDrag,
       cancel: cancelDrag,
       contentYFromWindow: (absoluteY: number) =>
         absoluteY - rootWindowY.current + scrollOffset.current,
       draggedItem,
       dragPreviewLayout,
-      dragValues,
       finish: finishDrag,
-      listTops,
       posterMotion,
       position: positionDrag,
       posterScrollRef,
@@ -268,8 +254,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
       scrollContentHeight,
       scrollOffset,
       scrollViewportHeight,
-      setDragValues,
-      setListTops,
       setPosterMotion,
       setRootHeight,
       setSectionLayouts,

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import { Text } from 'react-native';
 import { colors } from '@/constants/colors';
@@ -41,11 +42,13 @@ export function clampNativePosterTop(
 
 export function NativePosterDragPreview({
   bounds,
+  children,
   layout,
   motion,
   posterPath,
   title,
 }: {
+  children?: ReactNode;
   bounds?: NativePosterDragBounds;
   layout: NativePosterDragLayout;
   motion: NativePosterDragMotion;
@@ -82,11 +85,15 @@ export function NativePosterDragPreview({
         motionStyle,
       ]}
     >
-      <PosterImage path={posterPath} title={title} style={styles.poster} />
-      <Text numberOfLines={2} style={styles.title}>
-        {layout.rank !== undefined && <Text style={styles.rank}>{layout.rank}. </Text>}
-        {title}
-      </Text>
+      {children || (
+        <>
+          <PosterImage path={posterPath} title={title} style={styles.poster} />
+          <Text numberOfLines={2} style={styles.title}>
+            {layout.rank !== undefined && <Text style={styles.rank}>{layout.rank}. </Text>}
+            {title}
+          </Text>
+        </>
+      )}
     </Reanimated.View>
   );
 }

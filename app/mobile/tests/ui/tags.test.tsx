@@ -133,38 +133,31 @@ jest.mock('@/components/AppDrawer', () => {
     ),
   };
 });
-jest.mock('react-native-draggable-flatlist', () => {
+jest.mock('@/components/NativeDraggableGrid', () => {
   const { View } = require('react-native');
-  const Decorator = ({ children }: { children: React.ReactNode }) => <>{children}</>;
-  const MockList = ({
-    data,
-    renderItem,
-    onDragEnd,
-  }: {
-    data: typeof mockItems;
-    renderItem: (params: {
-      item: (typeof mockItems)[number];
-      drag: () => void;
-      getIndex: () => number;
-    }) => React.ReactNode;
-    onDragEnd: (event: { data: typeof mockItems; from: number; to: number }) => void;
-  }) => {
-    if (data.length > 1) mockDragEnd = ({ from, to }) => onDragEnd({ data, from, to });
-    return (
-      <View>
-        {data.map((item, index) => (
-          <View key={item._id}>{renderItem({ item, drag: jest.fn(), getIndex: () => index })}</View>
-        ))}
-      </View>
-    );
-  };
   return {
-    __esModule: true,
-    default: MockList,
-    NestableDraggableFlatList: MockList,
-    NestableScrollContainer: View,
-    ScaleDecorator: Decorator,
-    ShadowDecorator: Decorator,
+    NativeDraggableGrid: ({
+      data,
+      renderItem,
+      onDragEnd,
+    }: {
+      data: typeof mockItems;
+      renderItem: (params: {
+        item: (typeof mockItems)[number];
+        index: number;
+        isActive: boolean;
+      }) => React.ReactNode;
+      onDragEnd: (event: { data: typeof mockItems; from: number; to: number }) => void;
+    }) => {
+      if (data.length > 1) mockDragEnd = ({ from, to }) => onDragEnd({ data, from, to });
+      return (
+        <View>
+          {data.map((item, index) => (
+            <View key={item._id}>{renderItem({ item, index, isActive: false })}</View>
+          ))}
+        </View>
+      );
+    },
   };
 });
 jest.mock('@/components/ui/drawer', () => {

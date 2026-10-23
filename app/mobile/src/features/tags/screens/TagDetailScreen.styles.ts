@@ -90,9 +90,6 @@ export const tagDetailStyles = createAppStyles(
     sectionTitle: { color: colors.muted, fontSize: 12, letterSpacing: 0.2, fontWeight: '600' },
     count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
     grid: { paddingTop: 16, paddingBottom: 4 },
-    // Cells carry their own width (see NativeTagItem); widths that fill the row exactly
-    // could round past it, so the row spreads them apart instead.
-    gridRow: { justifyContent: 'space-between', marginBottom: 12 },
     card: {
       flex: 1,
       width: '100%',

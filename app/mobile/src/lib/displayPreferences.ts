@@ -27,11 +27,6 @@ export function gridMetrics(width: number, columns: number, pixelRatio: number) 
   return { gap, itemWidth: floorToPixel((width - gap * (columns - 1)) / columns) };
 }
 
-/** Two-column list cells leave slack between them instead of summing to 100%. */
-export function listItemWidth(columns: ListColumns) {
-  return columns === 2 ? '48%' : '100%';
-}
-
 export function listTypography(size: ListTextSize) {
   if (size === 'small') return { fontSize: 13, lineHeight: 18, minHeight: 44 };
   if (size === 'large') return { fontSize: 19, lineHeight: 26, minHeight: 52 };
