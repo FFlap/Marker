@@ -34,14 +34,16 @@ export function createPopupClient(
   send: (message: unknown) => Promise<unknown>,
 ) {
   const db = storageService(storage);
+  const readStatus = Effect.fn("readStatus")(function* (type: string) {
+    const value = yield* external("message." + type, () => send({ type }));
+    return yield* Schema.decodeUnknownEffect(Status)(value);
+  });
   const status = (type: string, signal?: AbortSignal) =>
-    runExtension(
-      Effect.gen(function* () {
-        const value = yield* external("message." + type, () => send({ type }));
-        return yield* Schema.decodeUnknownEffect(Status)(value);
-      }),
-      signal,
-    );
+    runExtension(readStatus(type), signal);
+  const mutate = Effect.fn("mutate")(function* (message: { type: string; key?: string }) {
+    const value = yield* external("message." + message.type, () => send(message));
+    yield* Schema.decodeUnknownEffect(Acknowledged)(value);
+  });
   return {
     bookmarks: (signal?: AbortSignal) =>
       runExtension(
@@ -69,13 +71,6 @@ export function createPopupClient(
       ),
     status,
     mutate: (message: { type: string; key?: string }) =>
-      runExtension(
-        Effect.gen(function* () {
-          const value = yield* external("message." + message.type, () =>
-            send(message),
-          );
-          yield* Schema.decodeUnknownEffect(Acknowledged)(value);
-        }),
-      ),
+      runExtension(mutate(message)),
   };
 }

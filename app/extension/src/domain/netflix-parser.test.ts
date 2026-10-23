@@ -259,3 +259,29 @@ it('does not take an episode number from a neighboring cached video', () => {
   `);
   expect(parseNetflixPage(document, new URL('https://www.netflix.com/watch/111'))).toBeNull();
 });
+
+it.each([
+  { season: -1 },
+  { episode: -1 },
+  { episode: '2' },
+  { seriesId: '' },
+  { seriesId: '../browse' },
+])('rejects malformed Netflix summary fields: %o', (patch) => {
+  const document = makeDocument(`
+    <div data-uia="video-title"><h4>Example Show</h4><span>E2</span><span>Second Episode</span></div>
+  `);
+  document.documentElement.dataset.netflixVideoSummary = JSON.stringify({
+    type: 'episode', id: 222, season: 1, episode: 2, ...patch,
+  });
+  expect(parseNetflixPage(document, new URL('https://www.netflix.com/watch/222'))).toBeNull();
+});
+
+it('rejects non-finite coordinates in embedded metadata', () => {
+  const document = makeDocument(`
+    <script>netflix.falcorCache = {"videos": {
+      "222": {"summary": {"value": {"type": "episode", "season": 1e400, "episode": 2}}}
+    }};</script>
+    <div data-uia="video-title"><h4>Example Show</h4><span>E2</span><span>Second Episode</span></div>
+  `);
+  expect(parseNetflixPage(document, new URL('https://www.netflix.com/watch/222'))).toBeNull();
+});

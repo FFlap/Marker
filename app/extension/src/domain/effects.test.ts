@@ -356,14 +356,17 @@ it("bounds stalled auth preparation and fences its late result after sign-out", 
     }>();
     const x = blockedStorage({ [SYNC_OUTBOX_KEY]: [payload] });
     x.gate.resolve();
+    const getSession = vi.fn(() => session.promise);
     const background = createMessageHandler(x.storage, {
-      getSession: () => session.promise,
+      getSession,
       connect: async () => {},
       signOut: async () => {},
       record: async () => ({ ok: true }),
     });
     const flush = background.flush();
     const failed = expect(flush).rejects.toBeDefined();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getSession).toHaveBeenCalledOnce();
     const signOut = background.handler({ type: "sync/signOut" });
     await vi.advanceTimersByTimeAsync(15_001);
     await failed;

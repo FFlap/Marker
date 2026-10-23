@@ -1,4 +1,4 @@
-import { Clock, Effect, Predicate, Schema } from "effect";
+import { DateTime, Effect, Exit, Schema } from "effect";
 import {
   ExtensionStorage,
   createFifo,
@@ -9,16 +9,6 @@ import {
   type ExtensionFailure,
 } from "./effects";
 import type { EpisodeBookmark } from "./types";
-
-export interface WatchPayload {
-  service: "crunchyroll" | "netflix";
-  seriesTitle: string;
-  seasonTitle?: string;
-  seasonNumber?: number;
-  episodeNumber?: number;
-  episodeTitle?: string;
-  url?: string;
-}
 
 export interface SyncResult {
   ok: boolean;
@@ -34,6 +24,38 @@ export const SYNC_LAST_RESULT_KEY = "sync.lastResult";
 export const SYNC_OUTBOX_MAX = 20;
 const TEXT_MAX = 300;
 const URL_MAX = 1_000;
+const PayloadText = Schema.Trim.check(Schema.isMaxLength(TEXT_MAX));
+const Coordinate = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+);
+const decodeHttpUrl = Schema.decodeUnknownExit(
+  Schema.URLFromString.check(
+    Schema.makeFilter((url) => url.protocol === "https:" || url.protocol === "http:"),
+  ),
+);
+export const WatchPayloadSchema = Schema.Struct({
+  service: Schema.Literals(["crunchyroll", "netflix"]),
+  seriesTitle: PayloadText.check(Schema.isMinLength(1)),
+  seasonTitle: Schema.optional(PayloadText),
+  seasonNumber: Schema.optional(Coordinate),
+  episodeNumber: Schema.optional(Coordinate),
+  episodeTitle: Schema.optional(PayloadText),
+  url: Schema.optional(
+    Schema.Trim.check(
+      Schema.isMaxLength(URL_MAX),
+      Schema.makeFilter((url) => url === "" || Exit.isSuccess(decodeHttpUrl(url))),
+    ),
+  ),
+}).check(
+  Schema.makeFilter(
+    (payload) =>
+      (payload.seasonNumber !== undefined && payload.episodeNumber !== undefined) ||
+      Boolean(payload.episodeTitle),
+  ),
+);
+export type WatchPayload = typeof WatchPayloadSchema.Type;
+const decodeWatchPayload = Schema.decodeUnknownExit(WatchPayloadSchema);
 const RETRY_DELAYS_MS = [
   60_000,
   5 * 60_000,
@@ -87,67 +109,9 @@ export function buildWatchPayload(
 }
 
 export function parseWatchPayload(value: unknown): WatchPayload | null {
-  if (!Predicate.isObjectOrArray(value)) return null;
-  const input = value as Record<string, unknown>;
-  const allowedKeys = new Set([
-    "service",
-    "seriesTitle",
-    "seasonTitle",
-    "seasonNumber",
-    "episodeNumber",
-    "episodeTitle",
-    "url",
-  ]);
-  if (Object.keys(input).some((key) => !allowedKeys.has(key))) return null;
-  const service =
-    input.service === "crunchyroll" || input.service === "netflix"
-      ? input.service
-      : undefined;
-  const seriesTitle =
-    typeof input.seriesTitle === "string" ? input.seriesTitle.trim() : "";
-  const seasonTitle =
-    typeof input.seasonTitle === "string"
-      ? input.seasonTitle.trim()
-      : undefined;
-  const seasonNumber =
-    typeof input.seasonNumber === "number" &&
-    Number.isInteger(input.seasonNumber) &&
-    input.seasonNumber >= 0
-      ? input.seasonNumber
-      : undefined;
-  const episodeNumber =
-    typeof input.episodeNumber === "number" &&
-    Number.isInteger(input.episodeNumber) &&
-    input.episodeNumber >= 0
-      ? input.episodeNumber
-      : undefined;
-  const episodeTitle =
-    typeof input.episodeTitle === "string"
-      ? input.episodeTitle.trim()
-      : undefined;
-  const url = typeof input.url === "string" ? input.url.trim() : undefined;
-  if (
-    !service ||
-    !seriesTitle ||
-    seriesTitle.length > TEXT_MAX ||
-    (seasonTitle && seasonTitle.length > TEXT_MAX) ||
-    (episodeTitle && episodeTitle.length > TEXT_MAX) ||
-    ((seasonNumber === undefined || episodeNumber === undefined) &&
-      !episodeTitle)
-  )
-    return null;
-  if (url) {
-    try {
-      const parsed = new URL(url);
-      if (
-        url.length > URL_MAX ||
-        (parsed.protocol !== "https:" && parsed.protocol !== "http:")
-      )
-        return null;
-    } catch {
-      return null;
-    }
-  }
+  const decoded = decodeWatchPayload(value, { onExcessProperty: "error" });
+  if (Exit.isFailure(decoded)) return null;
+  const { service, seriesTitle, seasonTitle, seasonNumber, episodeNumber, episodeTitle, url } = decoded.value;
   return {
     service,
     seriesTitle,
@@ -217,11 +181,15 @@ export function createOutboxManager(
     now?: () => number;
     alarms?: AlarmScheduler;
     prepare?: () => Promise<void> | Effect.Effect<void, ExtensionFailure>;
+    serializeStorage?: ReturnType<typeof createFifo>;
+    onClear?: Effect.Effect<void, ExtensionFailure>;
   } = {},
 ) {
-  const now = options.now ? Effect.sync(options.now) : Clock.currentTimeMillis;
+  const now = options.now
+    ? Effect.sync(options.now)
+    : DateTime.now.pipe(Effect.map(DateTime.toEpochMillis));
   const service = storageService(storage);
-  const fifo = createFifo();
+  const fifo = options.serializeStorage ?? createFifo();
   const provide = <A>(
     effect: Effect.Effect<A, ExtensionFailure, ExtensionStorage>,
   ) => effect.pipe(Effect.provideService(ExtensionStorage, service));
@@ -266,7 +234,12 @@ export function createOutboxManager(
   let generation = 0;
   let flushing: Effect.Effect<boolean, ExtensionFailure> | undefined;
   const flushEffect = Effect.gen(function* () {
-    if (flushing) return yield* flushing;
+    if (flushing) {
+      const pending = flushing;
+      // Account notifications must prepare storage even when sharing delivery.
+      if (options.prepare) yield* provide(serialize(Effect.void));
+      return yield* pending;
+    }
     const currentGeneration = generation;
     const isCurrent = () => currentGeneration === generation;
     const batch = provide(
@@ -356,6 +329,7 @@ export function createOutboxManager(
         const db = yield* ExtensionStorage;
         yield* db.remove(SYNC_OUTBOX_KEY);
         yield* db.remove(SYNC_RETRY_KEY);
+        if (options.onClear) yield* options.onClear;
         yield* alarm("clear");
       },
       (effect) => serialize(effect, false),

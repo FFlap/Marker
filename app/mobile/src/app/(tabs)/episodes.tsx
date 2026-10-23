@@ -35,6 +35,12 @@ import { localDateKey, useLocalToday } from '@/hooks/use-local-today';
 type EpisodeHubItem = FunctionReturnType<typeof api.episodeHub.overview>['watching'][number];
 
 type EpisodeTab = 'watching' | 'favorites';
+type EpisodeEditor = {
+  savedRating?: number;
+  savedTags: string[];
+  ratingVersion: number;
+  tagsVersion: number;
+};
 const EMPTY_EPISODES: EpisodeHubItem[] = [];
 
 export default function EpisodesScreen() {
@@ -69,6 +75,7 @@ function Episodes() {
   const episodeMutationQueues = useRef(new Map<string, Promise<unknown>>());
   const [draftRating, setDraftRating] = useState<number>();
   const [draftTags, setDraftTags] = useState<string[]>([]);
+  const editor = useRef<EpisodeEditor | undefined>(undefined);
   const episodes = overview?.[tab] ?? EMPTY_EPISODES;
   const favoriteTags = useMemo(
     () =>
@@ -99,6 +106,12 @@ function Episodes() {
     showFilter !== 'all' || (tab === 'favorites' && (minimumRating > 0 || tagFilter !== 'all'));
 
   const openEpisode = (episode: EpisodeHubItem) => {
+    editor.current = {
+      savedRating: episode.rating,
+      savedTags: episode.tags,
+      ratingVersion: 0,
+      tagsVersion: 0,
+    };
     setEditing(episode);
     setDraftRating(episode.rating);
     setDraftTags(episode.tags);
@@ -106,7 +119,7 @@ function Episodes() {
   const updateEpisode = async (
     episode: EpisodeHubItem,
     patch: { watched?: boolean; rating?: number; clearRating?: boolean; tags?: string[] },
-    onFailure?: () => void,
+    handlers: { success?: () => void; failure?: () => void } = {},
   ) => {
     const key = `${episode.itemId}:${episode.season}:${episode.episode}`;
     setPending((current) => new Set(current).add(key));
@@ -132,8 +145,9 @@ function Episodes() {
         ),
       ),
       {
+        success: handlers.success,
         failure: () => {
-          onFailure?.();
+          handlers.failure?.();
           toast.show('Couldn’t update this episode');
         },
         settled: () => {
@@ -321,7 +335,15 @@ function Episodes() {
         )}
       </ScrollView>
 
-      <Drawer open={editing !== undefined} onOpenChange={(open) => !open && setEditing(undefined)}>
+      <Drawer
+        open={editing !== undefined}
+        onOpenChange={(open) => {
+          if (!open) {
+            editor.current = undefined;
+            setEditing(undefined);
+          }
+        }}
+      >
         {editing && (
           <DrawerContent className="max-w-lg">
             <DrawerHeader className="sr-only">
@@ -330,12 +352,23 @@ function Episodes() {
             <RatingControl
               value={draftRating}
               onChange={(rating) => {
-                const previous = draftRating;
+                const current = editor.current;
+                if (!current) return;
+                const version = ++current.ratingVersion;
                 setDraftRating(rating);
                 void updateEpisode(
                   editing,
                   rating === undefined ? { clearRating: true } : { rating },
-                  () => setDraftRating(previous),
+                  {
+                    success: () => {
+                      current.savedRating = rating;
+                    },
+                    failure: () => {
+                      if (editor.current === current && current.ratingVersion === version) {
+                        setDraftRating(current.savedRating);
+                      }
+                    },
+                  },
                 );
               }}
             />
@@ -343,9 +376,24 @@ function Episodes() {
               tags={draftTags}
               suggestions={favoriteTags}
               onChange={(tags) => {
-                const previous = draftTags;
+                const current = editor.current;
+                if (!current) return;
+                const version = ++current.tagsVersion;
                 setDraftTags(tags);
-                void updateEpisode(editing, { tags }, () => setDraftTags(previous));
+                void updateEpisode(
+                  editing,
+                  { tags },
+                  {
+                    success: () => {
+                      current.savedTags = tags;
+                    },
+                    failure: () => {
+                      if (editor.current === current && current.tagsVersion === version) {
+                        setDraftTags(current.savedTags);
+                      }
+                    },
+                  },
+                );
               }}
             />
             <View style={s.editorFooter}>

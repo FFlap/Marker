@@ -21,7 +21,7 @@ export const providerSearchResultsValidator = v.array(
     voteAverage: v.optional(v.number()),
   }),
 );
-const movie = v.object({
+export const providerMovieValidator = v.object({
   id: v.number(),
   title: v.string(),
   mediaType: v.literal('movie'),
@@ -33,7 +33,7 @@ const movie = v.object({
   genres: v.array(v.string()),
   cast: v.array(castMember),
 });
-const tv = v.object({
+export const providerTvValidator = v.object({
   id: v.number(),
   title: v.string(),
   originalTitle: v.optional(v.string()),
@@ -86,8 +86,8 @@ const truncated = v.object({
 });
 export const providerSnapshotEntryValidator = v.union(
   v.object({ kind: v.literal('tmdbSearch'), value: providerSearchResultsValidator }),
-  v.object({ kind: v.literal('tmdbMovie'), value: movie }),
-  v.object({ kind: v.literal('tmdbTv'), value: tv }),
+  v.object({ kind: v.literal('tmdbMovie'), value: providerMovieValidator }),
+  v.object({ kind: v.literal('tmdbTv'), value: providerTvValidator }),
   v.object({
     kind: v.literal('episodes'),
     value: v.union(v.array(episode), v.array(animeEpisodeValidator)),

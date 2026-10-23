@@ -34,16 +34,15 @@ import { localDateKey } from "@/hooks/use-local-today";
 
 function EntryDialog({
   item,
-  onRemoved,
+  onRemove,
   children,
 }: {
   item: LibraryItem;
-  onRemoved: () => void;
+  onRemove: (onFailure: () => void) => Promise<void>;
   children: ReactNode;
 }) {
   const runOperation = useOperation();
   const updateItem = useMutation(api.library.items.updateItem);
-  const removeItem = useMutation(api.library.items.removeItem);
   const moveItemToWatched = useAction(
     api.library.seasonWatched.moveItemToWatched,
   );
@@ -101,22 +100,10 @@ function EntryDialog({
     if (!window.confirm(`Remove ${item.title} and its episode history?`))
       return;
     setBusy("remove");
-    await runOperation.write(
-      Effect.gen(function* () {
-        yield* saveLibrary(() => removeItem({ itemId: item._id }));
-      }),
-      {
-        success: () => {
-          setOpen(false);
-          onRemoved();
-        },
-
-        failure: () => {
-          setError("Couldn’t remove this title. Try again.");
-          setBusy(undefined);
-        },
-      },
-    );
+    await onRemove(() => {
+      setError("Couldn’t remove this title. Try again.");
+      setBusy(undefined);
+    });
   };
 
   return (
@@ -171,6 +158,7 @@ export function ItemDetailPage() {
   const runOperation = useOperation();
   const { itemId } = useParams({ from: "/app/item/$itemId" });
   const navigate = useNavigate();
+  const removeItem = useMutation(api.library.items.removeItem);
   const touchItemView = useMutation(api.resolvedMetadata.touch.touchItemView);
   const setSeasonWatched = useAction(
     api.library.seasonWatched.setSeasonWatched,
@@ -433,7 +421,20 @@ export function ItemDetailPage() {
             <span className="text-xs text-muted-foreground">No tags</span>
           )}
         </div>
-        <EntryDialog item={item} onRemoved={() => void navigate({ to: "/" })}>
+        <EntryDialog
+          item={item}
+          onRemove={(onFailure) =>
+            runOperation.write(
+              saveLibrary(() => removeItem({ itemId: item._id })),
+              {
+                success: () => {
+                  void navigate({ to: "/" });
+                },
+                failure: onFailure,
+              },
+            )
+          }
+        >
           <Button
             variant="outline"
             className="mt-7 h-12 w-full"

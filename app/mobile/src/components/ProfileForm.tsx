@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { useOperation } from '@/hooks/use-operation';
-import { avatarStep, uploadAvatar, saveProfile } from '@marker/shared/clientEffects';
+import { AvatarError, avatarStep, uploadAvatar, saveProfile } from '@marker/shared/clientEffects';
 import { useRef, useState } from 'react';
 import { useAuth } from '@clerk/expo';
 import { ActivityIndicator, Text, View } from 'react-native';
@@ -27,14 +27,7 @@ export function ProfileForm({ setup = false, onSaved }: { setup?: boolean; onSav
   if (profile === undefined) {
     return <ProfileFormSkeleton />;
   }
-  return (
-    <ProfileFormFields
-      key={`${profile.username ?? ''}:${profile.isPublic}`}
-      profile={profile}
-      setup={setup}
-      onSaved={onSaved}
-    />
-  );
+  return <ProfileFormFields profile={profile} setup={setup} onSaved={onSaved} />;
 }
 
 function ProfileFormFields({
@@ -93,54 +86,61 @@ function ProfileFormFields({
     photoBusy.current = false;
     setPhotoPending(false);
   };
+  const persistAvatar = Effect.fn('persistAvatar')(function* (asset: ImagePicker.ImagePickerAsset) {
+    if (asset.fileSize && asset.fileSize > MAX_AVATAR_BYTES) return 'Choose an image under 5 MB';
+    const blob =
+      asset.file ??
+      (yield* Effect.gen(function* () {
+        const response = yield* avatarStep((signal) => fetch(asset.uri, { signal }));
+        if (!response.ok) return yield* new AvatarError({ cause: 'Could not read selected image' });
+        return yield* avatarStep(() => response.blob());
+      }));
+    if (blob.size > MAX_AVATAR_BYTES) return 'Choose an image under 5 MB';
+    yield* uploadAvatar({
+      blob,
+      contentType: asset.mimeType || blob.type || 'image/jpeg',
+      uploadPath: generateUploadUrl,
+      token: getToken,
+      resolveUrl: (path) => {
+        const siteUrl = getConvexSiteUrl();
+        if (!siteUrl) throw new Error('Avatar uploads are unavailable');
+        const url = new URL(path, siteUrl);
+        if (url.origin !== new URL(siteUrl).origin) throw new Error('Invalid upload origin');
+        return url.toString();
+      },
+      publish: (storageId) => setAvatar({ storageId: storageId as Id<'_storage'> }),
+    });
+    return 'Profile photo updated';
+  });
   const pickAvatar = () => {
     if (photoBusy.current) return Promise.resolve();
     photoBusy.current = true;
     setPhotoPending(true);
     return run(
-      Effect.gen(function* () {
-        const result = yield* avatarStep(() =>
-          ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.82,
-          }),
-        );
-        if (result.canceled || !result.assets[0]) return undefined;
-        const asset = result.assets[0];
-        if (asset.fileSize && asset.fileSize > MAX_AVATAR_BYTES)
-          return 'Choose an image under 5 MB';
-        const blob =
-          asset.file ??
-          (yield* Effect.gen(function* () {
-            const response = yield* avatarStep((signal) => fetch(asset.uri, { signal }));
-            if (!response.ok) return yield* Effect.fail(new Error('Could not read selected image'));
-            return yield* avatarStep(() => response.blob());
-          }));
-        if (blob.size > MAX_AVATAR_BYTES) return 'Choose an image under 5 MB';
-        yield* uploadAvatar({
-          blob,
-          contentType: asset.mimeType || blob.type || 'image/jpeg',
-          uploadPath: generateUploadUrl,
-          token: getToken,
-          resolveUrl: (path) => {
-            const siteUrl = getConvexSiteUrl();
-            if (!siteUrl) throw new Error('Avatar uploads are unavailable');
-            const url = new URL(path, siteUrl);
-            if (url.origin !== new URL(siteUrl).origin) throw new Error('Invalid upload origin');
-            return url.toString();
-          },
-          publish: (storageId) => setAvatar({ storageId: storageId as Id<'_storage'> }),
-        });
-        return 'Profile photo updated';
-      }),
+      avatarStep(() =>
+        ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.82,
+        }),
+      ),
       {
-        success: (message) => {
-          if (message) toast.show(message);
+        success: (result) => {
+          if (result.canceled || !result.assets[0]) {
+            finishPhoto();
+            return;
+          }
+          void run.write(persistAvatar(result.assets[0]), {
+            success: (message) => toast.show(message),
+            failure: () => toast.show('Couldn’t update your profile photo'),
+            settled: finishPhoto,
+          });
         },
-        failure: () => toast.show('Couldn’t update your profile photo'),
-        settled: finishPhoto,
+        failure: () => {
+          toast.show('Couldn’t update your profile photo');
+          finishPhoto();
+        },
       },
     );
   };
@@ -149,7 +149,7 @@ function ProfileFormFields({
     if (photoBusy.current) return Promise.resolve();
     photoBusy.current = true;
     setPhotoPending(true);
-    return run(
+    return run.write(
       avatarStep(() => removeAvatar()),
       {
         success: () => toast.show('Profile photo removed'),

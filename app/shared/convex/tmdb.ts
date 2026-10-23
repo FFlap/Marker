@@ -1,4 +1,4 @@
-import { Effect, Predicate } from 'effect';
+import { DateTime, Effect, Option, Schema, flow } from 'effect';
 import { attempt } from './actionEffects';
 import { action, internalAction } from './_generated/server';
 import { internal } from './_generated/api';
@@ -9,21 +9,35 @@ import {
   decodeProviderObject,
   runProviderEffect,
   ProviderIntegrationFailure,
+  providerObject,
+  providerRecords,
 } from './providerHttp';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
 import { boundedEpisode, MAX_SEASON_EPISODES } from './seasonStorage';
 import { validateInteger, validateTmdbId } from './providerValidation';
-import { providerSearchResultsValidator } from './providerValidators';
+import {
+  providerMovieValidator,
+  providerTvValidator,
+  providerSearchResultsValidator,
+} from './providerValidators';
+import { resolvedEpisodeValidator } from './publicValidators';
 
 type Json = Record<string, unknown>;
 type SnapshotCtx = { runQuery: Function; runMutation: Function };
 type ProviderRequestCtx = { runMutation: Function };
-const string = (x: unknown) => (typeof x === 'string' ? x : undefined);
-const number = (x: unknown) => (typeof x === 'number' ? x : undefined);
-const identifier = (x: unknown) =>
-  typeof x === 'number' && Number.isInteger(x) && x >= 0 ? x : undefined;
+const string = flow(Schema.decodeUnknownOption(Schema.String), Option.getOrUndefined);
+const number = flow(Schema.decodeUnknownOption(Schema.Finite), Option.getOrUndefined);
+const identifier = flow(
+  Schema.decodeUnknownOption(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  Option.getOrUndefined,
+);
+const record = flow(Schema.decodeUnknownOption(providerObject), Option.getOrUndefined);
+const array = flow(Schema.decodeUnknownOption(Schema.Array(Schema.Unknown)), Option.getOrUndefined);
 const records = (x: unknown): Json[] =>
-  Array.isArray(x) ? x.filter((y): y is Json => Predicate.isObjectOrArray(y)) : [];
+  (array(x) ?? []).flatMap((entry) => {
+    const value = record(entry);
+    return value ? [value] : [];
+  });
 const genres = (x: unknown) =>
   records(x)
     .map((g) => string(g.name))
@@ -40,15 +54,19 @@ const malformed = (): never => {
     message: 'TMDB returned malformed data',
   });
 };
-const requiredNumber = (x: unknown) => number(x) ?? malformed();
-const requiredString = (x: unknown) => {
-  const value = string(x)?.trim();
-  return value || malformed();
-};
+const requiredNumber = (x: unknown) => identifier(x) ?? malformed();
+const requiredString = flow(
+  Schema.decodeUnknownOption(Schema.Trim.check(Schema.isNonEmpty())),
+  Option.getOrElse(malformed),
+);
+const requiredRecords = flow(
+  Schema.decodeUnknownOption(providerRecords),
+  Option.getOrElse(malformed),
+);
 
 export function mapSearchResponse(payload: unknown) {
-  const root = payload as Json;
-  return records(root?.results)
+  const root = record(payload) ?? malformed();
+  return requiredRecords(root.results)
     .filter((r) => r.media_type === 'movie' || r.media_type === 'tv')
     .flatMap((r) => {
       const id = identifier(r.id);
@@ -84,7 +102,7 @@ export function mapMovieDetails(r: Json) {
   };
 }
 const mapCast = (credits: unknown) =>
-  records((credits as Json)?.cast)
+  records(record(credits)?.cast)
     .slice(0, 12)
     .map((c) => ({
       name: string(c.name) ?? '',
@@ -94,7 +112,7 @@ const mapCast = (credits: unknown) =>
 export function mapTvDetails(r: Json) {
   const genreNames = genres(r.genres);
   const originalTitle = string(r.original_name)?.trim();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = DateTime.formatIsoDateUtc(DateTime.nowUnsafe());
   return {
     id: requiredNumber(r.id),
     title: requiredString(r.name),
@@ -104,9 +122,10 @@ export function mapTvDetails(r: Json) {
     overview: string(r.overview),
     firstAirDate: string(r.first_air_date),
     voteAverage: number(r.vote_average),
-    episodeRunTime: Array.isArray(r.episode_run_time)
-      ? r.episode_run_time.filter((x): x is number => typeof x === 'number')
-      : [],
+    episodeRunTime: (array(r.episode_run_time) ?? []).flatMap((value) => {
+      const runtime = number(value);
+      return runtime === undefined ? [] : [runtime];
+    }),
     genres: withAnimeGenre(r, genreNames),
     seasons: records(r.seasons).flatMap((s) => {
       const season = identifier(s.season_number);
@@ -127,7 +146,7 @@ type TmdbSeasonEpisode = ReturnType<typeof boundedEpisode> & { stillPath?: strin
 export function mapSeasonDetails(r: Json): TmdbSeasonEpisode[] {
   const parentSeason = identifier(r.season_number);
   const episodes: TmdbSeasonEpisode[] = [];
-  for (const e of records(r.episodes)) {
+  for (const e of requiredRecords(r.episodes)) {
     if (episodes.length >= MAX_SEASON_EPISODES) break;
     const season = identifier(e.season_number) ?? parentSeason;
     const episode = identifier(e.episode_number);
@@ -207,7 +226,7 @@ const requestEffect = Effect.fnUntraced(function* (
         }),
     },
   );
-  if (response.status === 404 && emptyOnNotFound) return {};
+  if (response.status === 404 && emptyOnNotFound) return { episodes: [] };
   if (!response.ok)
     return yield* Effect.fail(
       new ProviderIntegrationFailure({
@@ -217,13 +236,31 @@ const requestEffect = Effect.fnUntraced(function* (
     );
   return yield* decodeProviderObject(response, 'tmdb');
 });
-async function search(ctx: ProviderRequestCtx, query: string, type?: 'movie' | 'tv') {
-  const raw = await runProviderEffect(
-    requestEffect(ctx, `/search/${type ?? 'multi'}?query=${encodeURIComponent(query)}`),
+const searchEffect = Effect.fnUntraced(function* (
+  ctx: ProviderRequestCtx,
+  query: string,
+  type?: 'movie' | 'tv',
+) {
+  const raw = yield* requestEffect(
+    ctx,
+    `/search/${type ?? 'multi'}?query=${encodeURIComponent(query)}`,
   );
-  if (type) for (const result of records(raw.results)) result.media_type = type;
-  return mapSearchResponse(raw);
-}
+  return yield* parseProvider(() =>
+    mapSearchResponse(
+      type
+        ? {
+            ...raw,
+            results: requiredRecords(raw.results).map((result) => ({
+              ...result,
+              media_type: type,
+            })),
+          }
+        : raw,
+    ),
+  );
+});
+const search = (...args: Parameters<typeof searchEffect>) =>
+  runProviderEffect(searchEffect(...args));
 async function authorizeAction(ctx: Parameters<typeof requireUser>[0] & { runMutation: Function }) {
   const userId = await requireUser(ctx);
   const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
@@ -249,6 +286,7 @@ export const internalSearchTv = internalAction({
 });
 export const refreshMovieDetails = internalAction({
   args: { tmdbId: v.number(), force: v.optional(v.boolean()) },
+  returns: providerMovieValidator,
   handler: async (ctx, { tmdbId, force = false }) => {
     validateTmdbId(tmdbId);
     const load = () =>
@@ -262,6 +300,7 @@ export const refreshMovieDetails = internalAction({
 });
 export const refreshTvDetails = internalAction({
   args: { tmdbId: v.number(), force: v.optional(v.boolean()) },
+  returns: providerTvValidator,
   handler: async (ctx, { tmdbId, force = false }) => {
     validateTmdbId(tmdbId);
     const load = () =>
@@ -275,6 +314,7 @@ export const refreshTvDetails = internalAction({
 });
 export const refreshSeasonDetails = internalAction({
   args: { tmdbId: v.number(), season: v.number(), force: v.optional(v.boolean()) },
+  returns: v.array(resolvedEpisodeValidator),
   handler: async (ctx, { force = false, ...args }): Promise<TmdbSeasonEpisode[]> => {
     validateTmdbId(args.tmdbId);
     validateInteger('season', args.season, 10_000);

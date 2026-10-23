@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Option, Schema } from "effect";
 import {
   sessionStep,
   sessionResult,
@@ -37,12 +37,19 @@ function GoogleIcon() {
   );
 }
 
+const AuthErrorDetail = Schema.Struct({
+  message: Schema.optional(Schema.String),
+  longMessage: Schema.optional(Schema.String),
+});
+const AuthFailure = Schema.Struct({
+  ...AuthErrorDetail.fields,
+  errors: Schema.optional(Schema.Array(AuthErrorDetail)),
+});
+
 function clerkError(cause: unknown) {
-  const value = cause as {
-    message?: string;
-    longMessage?: string;
-    errors?: Array<{ longMessage?: string; message?: string }>;
-  };
+  const value = Option.getOrUndefined(
+    Schema.decodeUnknownOption(AuthFailure)(cause),
+  );
   return (
     value?.errors?.[0]?.longMessage ??
     value?.errors?.[0]?.message ??

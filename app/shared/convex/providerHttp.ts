@@ -248,7 +248,8 @@ export const runProviderEffect = <A, E>(effect: Effect.Effect<A, E>): Promise<A>
 export const providerFetch = (url: string, init: RequestInit, options: ProviderFetchOptions) =>
   runProviderEffect(providerFetchEffect(url, init, options));
 
-const providerObject = Schema.Record(Schema.String, Schema.Unknown);
+export const providerObject = Schema.Record(Schema.String, Schema.Unknown);
+export const providerRecords = Schema.Array(providerObject);
 /** Validate the provider envelope; domain mappers deliberately tolerate optional fields. */
 export const decodeProviderObject = (response: Response, provider: Provider) =>
   Effect.tryPromise({

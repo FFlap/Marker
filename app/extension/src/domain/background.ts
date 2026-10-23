@@ -1,9 +1,10 @@
-import { Clock, Effect, Predicate, Schema } from "effect";
+import { DateTime, Effect, Exit, Predicate, Schema } from "effect";
 import {
   operation,
   runExtension,
   storageService,
   ExtensionFailure,
+  createFifo,
 } from "./effects";
 import {
   BOOKMARKS_STORAGE_KEY,
@@ -25,15 +26,17 @@ import {
 } from "./sync";
 
 const DeliveryResponse = Schema.Struct({
-  ok: Schema.optional(Schema.Boolean),
+  ok: Schema.Boolean,
   reason: Schema.optional(Schema.String),
   unverified: Schema.optional(Schema.Boolean),
 });
 
-type ErrorLike = {
-  status?: unknown;
-  name?: unknown;
-};
+const DeliveryFailure = Schema.Struct({
+  status: Schema.Union([Schema.Finite, Schema.FiniteFromString]),
+});
+const UnsupportedBookmark = Schema.Struct({
+  seriesTitle: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
+});
 type DeliveryClassification = "retryable" | "auth" | "terminal";
 
 type ClientResult<A> =
@@ -52,13 +55,11 @@ export interface AuthClient {
 }
 
 export function classifyDeliveryError(error: unknown): DeliveryClassification {
-  const value = error as ErrorLike | null;
-  const status = Number(value?.status);
+  const decoded = Schema.decodeUnknownExit(DeliveryFailure)(error);
+  if (Exit.isFailure(decoded)) return "retryable";
+  const { status } = decoded.value;
   if (status === 401 || status === 403 || status === 409) return "auth";
   if (status === 408 || status === 429 || status >= 500) return "retryable";
-  if (value?.name === "AbortError" || value?.name === "TimeoutError")
-    return "retryable";
-  if (error instanceof TypeError) return "retryable";
   if (Number.isInteger(status) && status >= 400 && status < 500)
     return "terminal";
   return "retryable";
@@ -94,10 +95,17 @@ export function createMessageHandler(
   options: { now?: () => number; alarms?: AlarmScheduler } = {},
 ) {
   const db = storageService(storage);
+  const serializeStorage = createFifo();
   let accountRevision = 0;
+  let signingOut = 0;
   // Every session lookup is bounded, including the second lookup before delivery.
-  const session = () =>
-    operation("auth.session", () => client.getSession()).pipe(
+  const session = Effect.fnUntraced(
+    function* () {
+      if (signingOut > 0) return null;
+      const revision = accountRevision;
+      const current = yield* operation("auth.session", () => client.getSession());
+      return signingOut > 0 || revision !== accountRevision ? null : current;
+    },
       Effect.timeout(15_000),
       Effect.mapError(
         (cause) => new ExtensionFailure({ operation: "auth.session", cause }),
@@ -112,14 +120,16 @@ export function createMessageHandler(
     yield* db.set({
       [SYNC_LAST_RESULT_KEY]: {
         ok: result.ok,
-        at: options.now ? options.now() : yield* Clock.currentTimeMillis,
+        at: options.now
+          ? options.now()
+          : DateTime.toEpochMillis(yield* DateTime.now),
         ...(result.reason ? { reason: result.reason } : {}),
         ...(result.unverified === true ? { unverified: true } : {}),
         ...(seriesTitle ? { seriesTitle } : {}),
       },
     });
     return result;
-  });
+  }, serializeStorage);
   const deliver = Effect.fn("deliverWatch")(function* (
     payload: WatchPayload,
     accountId?: string,
@@ -170,6 +180,11 @@ export function createMessageHandler(
   });
   const outbox = createOutboxManager(storage, deliver, {
     ...options,
+    serializeStorage,
+    onClear: Effect.gen(function* () {
+      yield* db.remove(SYNC_ACCOUNT_KEY);
+      yield* db.remove(SYNC_LAST_RESULT_KEY);
+    }),
     prepare: Effect.fnUntraced(function* () {
       const current = yield* session();
       if (!current) return;
@@ -186,9 +201,7 @@ export function createMessageHandler(
     }),
   });
   const bookmarks = createBookmarkOperations(storage, BOOKMARKS_STORAGE_KEY);
-  const handler = (message: unknown) =>
-    runExtension(
-      Effect.gen(function* () {
+  const handleMessage = Effect.fn("handleMessage")(function* (message: unknown) {
         if (!isBackgroundMessage(message))
           return { ok: false, reason: "invalid-message", retryable: false };
         switch (message.type) {
@@ -213,10 +226,14 @@ export function createMessageHandler(
             );
           case "sync/signOut":
             accountRevision += 1;
-            yield* operation("auth.signOut", () => client.signOut());
-            yield* outbox.effects.clear();
-            yield* db.remove(SYNC_ACCOUNT_KEY);
-            yield* db.remove(SYNC_LAST_RESULT_KEY);
+            signingOut += 1;
+            yield* operation("auth.signOut", () => client.signOut()).pipe(
+              Effect.andThen(outbox.effects.clear()),
+              Effect.ensuring(Effect.sync(() => {
+                accountRevision += 1;
+                signingOut -= 1;
+              })),
+            );
             return { signedIn: false };
           case "sync/status": {
             const current = yield* session();
@@ -227,16 +244,10 @@ export function createMessageHandler(
           case "bookmark/save": {
             const bookmark = validateBookmark(message.bookmark);
             if (!bookmark) {
-              const incoming = message.bookmark as unknown as Record<
-                string,
-                unknown
-              >;
-              const seriesTitle =
-                typeof incoming.seriesTitle === "string" &&
-                incoming.seriesTitle.trim() &&
-                incoming.seriesTitle.length <= 300
-                  ? incoming.seriesTitle.trim()
-                  : undefined;
+              const incoming = Schema.decodeUnknownExit(UnsupportedBookmark)(message.bookmark);
+              const seriesTitle = Exit.isSuccess(incoming)
+                ? incoming.value.seriesTitle
+                : undefined;
               yield* recordResult(
                 { ok: false, reason: "unsupported-episode", retryable: false },
                 seriesTitle,
@@ -247,13 +258,6 @@ export function createMessageHandler(
             const payload = buildWatchPayload(bookmark);
             if (payload) {
               yield* outbox.effects.enqueue(payload);
-              void outbox
-                .flush()
-                .catch(() =>
-                  console.error(
-                    "[Marker] Outbox delivery failed; persisted events remain queued",
-                  ),
-                );
             } else {
               yield* recordResult(
                 { ok: false, reason: "unsupported-episode", retryable: false },
@@ -269,8 +273,16 @@ export function createMessageHandler(
             yield* bookmarks.effects.clear();
             return { ok: true };
         }
-      }),
-    );
+  });
+  const handler = async (message: unknown) => {
+    const response = await runExtension(handleMessage(message));
+    if ("changed" in response && !("reason" in response)) {
+      void outbox.flush().catch(() =>
+        console.error("[Marker] Outbox delivery failed; persisted events remain queued"),
+      );
+    }
+    return response;
+  };
   return {
     handler,
     flush: outbox.flush,

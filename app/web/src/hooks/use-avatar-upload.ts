@@ -30,7 +30,7 @@ export function useAvatarUpload(onError: (message: string) => void) {
     busy.current = true;
     setPending(true);
     onError("");
-    return run(
+    return run.write(
       uploadAvatar({
         blob: file,
         contentType: file.type || "image/jpeg",
@@ -69,7 +69,7 @@ export function useAvatarUpload(onError: (message: string) => void) {
     busy.current = true;
     setPending(true);
     onError("");
-    return run(
+    return run.write(
       avatarStep(() => removeAvatar()),
       {
         failure: () => onError("Couldn’t remove your profile photo."),

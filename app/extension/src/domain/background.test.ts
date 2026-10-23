@@ -66,6 +66,8 @@ describe("background delivery classification", () => {
     [new DOMException("Expired", "TimeoutError"), "retryable"],
     [{ status: 503 }, "retryable"],
     [{ status: 400 }, "terminal"],
+    [{ status: '401' }, "auth"],
+    [{ status: Symbol('unknown') }, "retryable"],
     [new Error("server exploded"), "retryable"],
   ] as const)("classifies %o as %s", (error, expected) =>
     expect(classifyDeliveryError(error)).toBe(expected),
@@ -363,4 +365,91 @@ it('waits to bind an unowned batch when sign-in finishes after its snapshot', as
   expect(x.client.record).toHaveBeenCalledExactlyOnceWith(token, payload);
   expect(x.values['sync.accountId']).toBe('viewer');
   expect(x.values[SYNC_OUTBOX_KEY]).toEqual([]);
+});
+
+it.each(['sign-out', 'account switch'] as const)(
+  'does not restore an old account result when its storage write overlaps %s',
+  async (transition) => {
+    const x = setup();
+    x.values[SYNC_OUTBOX_KEY] = [payload];
+    x.values['sync.accountId'] = 'viewer';
+    x.client.record.mockResolvedValue({ ok: true });
+    const resultWrite = deferred<void>();
+    const writeStarted = deferred<void>();
+    x.storage.set.mockImplementation(async (items) => {
+      if ('sync.lastResult' in items) {
+        writeStarted.resolve();
+        await resultWrite.promise;
+      }
+      Object.assign(x.values, items);
+    });
+    const flushing = x.background.flush();
+    await writeStarted.promise;
+    x.client.getSession.mockResolvedValue(
+      transition === 'sign-out'
+        ? null
+        : { token: 'other-token', accountId: 'other', accountLabel: 'Other' },
+    );
+    const changing = x.background.handler(
+      transition === 'sign-out'
+        ? { type: 'sync/signOut' }
+        : { type: 'bookmark/save', bookmark: trackedBookmark },
+    );
+    // Drain already-ready storage callbacks while the old write is blocked.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    resultWrite.resolve();
+    await Promise.all([flushing, changing]);
+    expect(x.values['sync.lastResult']).toBeUndefined();
+  },
+);
+
+it('does not start deliveries while sign-out is pending', async () => {
+  const x = setup();
+  x.values[SYNC_OUTBOX_KEY] = [payload];
+  x.values['sync.accountId'] = 'viewer';
+  x.client.record.mockResolvedValue({ ok: true });
+  const signOut = deferred<void>();
+  x.client.signOut.mockReturnValue(signOut.promise);
+  const signingOut = x.background.handler({ type: 'sync/signOut' });
+  await vi.waitFor(() => expect(x.client.signOut).toHaveBeenCalledOnce());
+  await x.background.flush();
+  signOut.resolve();
+  await signingOut;
+  expect(x.client.record).not.toHaveBeenCalled();
+  expect(x.values['sync.lastResult']).toBeUndefined();
+});
+
+it.each([{}, { reason: 'unknown response' }])(
+  'retains a delivery whose response lacks an explicit acknowledgement: %o',
+  async (response) => {
+    const x = setup();
+    x.values[SYNC_OUTBOX_KEY] = [payload];
+    x.client.record.mockResolvedValue(response);
+    await x.background.flush();
+    expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
+    expect(x.values['sync.lastResult']).not.toHaveProperty('reason', 'rejected');
+  },
+);
+
+it('prepares the new account when its notification joins an in-flight flush', async () => {
+  const x = setup();
+  x.values[SYNC_OUTBOX_KEY] = [payload];
+  x.values['sync.accountId'] = 'viewer';
+  const delivery = deferred<unknown>();
+  x.client.record.mockReturnValue(delivery.promise);
+  const flushing = x.background.flush();
+  await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
+
+  x.client.getSession.mockResolvedValue({
+    token: 'other-token', accountId: 'other', accountLabel: 'Other',
+  });
+  const accountChanged = x.background.flush();
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  delivery.resolve({ ok: true });
+  await Promise.all([flushing, accountChanged]);
+
+  expect(x.client.record).toHaveBeenCalledOnce();
+  expect(x.values['sync.accountId']).toBe('other');
+  expect(x.values['sync.lastResult']).toBeUndefined();
+  expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
 });

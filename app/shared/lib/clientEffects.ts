@@ -66,7 +66,7 @@ export const saveLibrary = <A>(save: () => Promise<A>) =>
 export const avatarStep = <A>(step: (signal: AbortSignal) => Promise<A>) =>
   guardedPromise(step, (cause) => new AvatarError({ cause }));
 
-const UploadResponse = Schema.Struct({ storageId: Schema.String });
+const UploadResponse = Schema.Struct({ storageId: Schema.NonEmptyString });
 /** Credentials are independent; publication happens only after a validated upload. */
 export const uploadAvatar = Effect.fnUntraced(function* (args: {
   blob: Blob;
@@ -119,9 +119,9 @@ export const uploadAvatar = Effect.fnUntraced(function* (args: {
     Effect.provideService(HttpClient.TracerPropagationEnabled, false),
     Effect.provide(FetchHttpClient.layer),
   );
-  const payload = yield* Schema.decodeUnknownEffect(UploadResponse)(raw);
-  if (!payload.storageId)
-    return yield* Effect.fail(new AvatarError({ cause: 'Missing storage ID' }));
+  const payload = yield* Schema.decodeUnknownEffect(UploadResponse)(raw).pipe(
+    Effect.mapError((cause) => new AvatarError({ cause })),
+  );
   yield* avatarStep(() => args.publish(payload.storageId));
   return undefined;
 });

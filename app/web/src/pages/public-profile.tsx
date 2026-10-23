@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { saveProfile } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
+import { useAuth } from "@clerk/react";
 import { useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { ChartNoAxesColumn, Library } from "lucide-react";
@@ -15,8 +16,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { posterUrl } from "@/lib/utils";
 
 export function PublicProfilePage() {
-  const runOperation = useOperation();
+  const { sessionId } = useAuth();
   const { username } = useParams({ from: "/u/$username" });
+  return (
+    <PublicProfile
+      key={`${sessionId ?? "anonymous"}:${username}`}
+      username={username}
+    />
+  );
+}
+
+function PublicProfile({ username }: { username: string }) {
+  const runOperation = useOperation();
   const result = useQuery(api.profiles.publicProfile, { username });
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);

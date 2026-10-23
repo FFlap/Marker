@@ -175,7 +175,7 @@ export function useTitleView(target: TitleTarget | undefined) {
       ? `${mediaType}:${tmdbId}`
       : undefined;
   const generation = useRef(0);
-  const currentRequest = useRef<AbortController | undefined>(undefined);
+  const requests = useRef(new Set<AbortController>());
   const [touchFailure, setTouchFailure] = useState<{
     routeKey: string;
     season?: number;
@@ -190,9 +190,8 @@ export function useTitleView(target: TitleTarget | undefined) {
         ...(selectedSeason !== undefined && { season: selectedSeason }),
         ...(options?.force !== undefined && { force: options.force }),
       };
-      currentRequest.current?.abort();
       const controller = new AbortController();
-      currentRequest.current = controller;
+      requests.current.add(controller);
       // Interruption prevents obsolete UI callbacks; the admitted server job remains durable.
       const exit = await runClientEffect(
         touchMetadata(() =>
@@ -219,14 +218,17 @@ export function useTitleView(target: TitleTarget | undefined) {
         ),
         { signal: controller.signal },
       );
+      requests.current.delete(controller);
       return exit._tag === 'Success' ? exit.value : undefined;
     },
     [itemId, mediaType, routeKey, selectedSeason, titleHint, tmdbId, touchItem, touchTitle],
   );
   useEffect(() => {
+    const pending = requests.current;
     void refresh();
     return () => {
-      currentRequest.current?.abort();
+      for (const controller of pending) controller.abort();
+      pending.clear();
     };
   }, [refresh]);
   useMetadataRecoveryTimers({

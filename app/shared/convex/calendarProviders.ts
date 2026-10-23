@@ -1,4 +1,4 @@
-import { Clock, Effect, Predicate } from 'effect';
+import { Clock, Effect, Option, Schema, flow } from 'effect';
 import { ActionCallFailure, actionFailureCause, attempt, providerOutcome } from './actionEffects';
 import { ConvexError, type Infer } from 'convex/values';
 import type { ActionCtx } from './_generated/server';
@@ -9,6 +9,8 @@ import {
   runProviderEffect,
   providerBoundaryFailure,
   ProviderIntegrationFailure,
+  providerObject,
+  providerRecords,
 } from './providerHttp';
 import {
   CALENDAR_SNAPSHOT_BATCH_SIZE,
@@ -31,20 +33,28 @@ type CacheRead = {
   needsRefresh: boolean;
   refreshedAt: number;
 };
-class MissingSchedule extends Error {}
+class MissingSchedule extends Schema.TaggedError<MissingSchedule>()('MissingSchedule', {}) {}
 type Json = Record<string, unknown>;
-const string = (value: unknown) => (typeof value === 'string' ? value : undefined);
-const number = (value: unknown) => (typeof value === 'number' ? value : undefined);
+const string = flow(Schema.decodeUnknownOption(Schema.String), Option.getOrUndefined);
+const number = flow(Schema.decodeUnknownOption(Schema.Finite), Option.getOrUndefined);
+const coordinate = flow(
+  Schema.decodeUnknownOption(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  Option.getOrUndefined,
+);
+const array = flow(Schema.decodeUnknownOption(Schema.Array(Schema.Unknown)), Option.getOrUndefined);
+const object = flow(Schema.decodeUnknownOption(providerObject), Option.getOrUndefined);
 const records = (value: unknown): Json[] =>
-  Array.isArray(value) ? value.filter((entry): entry is Json => Predicate.isObject(entry)) : [];
-const requiredRecords = (value: unknown, label: string): Json[] => {
-  if (!Array.isArray(value) || records(value).length !== value.length)
+  (array(value) ?? []).flatMap((entry) => {
+    const value = object(entry);
+    return value ? [value] : [];
+  });
+const requiredRecords = (value: unknown, label: string) =>
+  Option.getOrElse(Schema.decodeUnknownOption(providerRecords)(value), () => {
     throw new ProviderIntegrationFailure({
       provider: 'tmdb',
       message: `Invalid TMDB ${label} response`,
     });
-  return value as Json[];
-};
+  });
 export function createRequestEffect(ctx: ActionCtx, reservationSize = 5) {
   let budgetQueue: Promise<unknown> = Promise.resolve();
   let reserved = 0;
@@ -226,8 +236,8 @@ const normalizedTvSchedule = (payload: Json) => {
   const seasons = new Map<number, { season: number; airDate?: string; lastAirDate?: string }>();
   const last = records([payload.last_episode_to_air])[0];
   for (const entry of requiredRecords(payload.seasons, 'TV seasons')) {
-    const season = number(entry.season_number);
-    if (season === undefined || !Number.isInteger(season) || season < 0)
+    const season = coordinate(entry.season_number);
+    if (season === undefined)
       throw new ProviderIntegrationFailure({
         provider: 'tmdb',
         message: 'Invalid TMDB season number',
@@ -249,7 +259,7 @@ const normalizedTvSchedule = (payload: Json) => {
       });
   }
   for (const entry of records([payload.last_episode_to_air, payload.next_episode_to_air])) {
-    const season = number(entry.season_number);
+    const season = coordinate(entry.season_number);
     if (season !== undefined && !seasons.has(season)) seasons.set(season, { season });
   }
   return [...seasons.values()].sort((a, b) => a.season - b.season);
@@ -271,16 +281,11 @@ const relevantSeasons = (
 const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
   requiredRecords(payload.episodes, 'season episodes').flatMap((episode) => {
     const date = string(episode.air_date);
-    const episodeNumber = number(episode.episode_number);
-    const season = number(episode.season_number) ?? fallbackSeason;
+    const episodeNumber = coordinate(episode.episode_number);
+    const rawSeason = number(episode.season_number);
+    const season = rawSeason === undefined ? fallbackSeason : coordinate(rawSeason);
     if (!date || !isDate(date)) return [];
-    if (
-      episodeNumber === undefined ||
-      !Number.isInteger(episodeNumber) ||
-      episodeNumber < 0 ||
-      !Number.isInteger(season) ||
-      season < 0
-    )
+    if (episodeNumber === undefined || season === undefined)
       throw new ProviderIntegrationFailure({
         provider: 'tmdb',
         message: 'Invalid TMDB episode number',
@@ -301,41 +306,38 @@ function seasonLoader(
   request: ReturnType<typeof createRequestEffect>,
 ) {
   const batches = new Map<number, number[]>();
-  // Memoize successes and expected failures without leaving the calling fiber.
+  // Share successes and expected failures, with cancellation tied to the callers.
   const completed = new Map<number, ReturnType<ReturnType<typeof createRequestEffect>>>();
   for (let offset = 0; offset < missing.length; offset += 5) {
     const batch = missing.slice(offset, offset + 5);
     for (const season of batch) batches.set(season, batch);
   }
-  return (season: number) =>
-    Effect.gen(function* () {
-      const batch = batches.get(season) ?? [season];
-      if (batch.length === 1) return yield* request(`/tv/${tmdbId}/season/${season}`);
-      const key = batch[0];
-      let response = completed.get(key);
-      if (!response) {
-        response = yield* Effect.cached(
-          request(
-            `/tv/${tmdbId}?append_to_response=${batch.map((number) => `season/${number}`).join(',')}`,
-          ),
-        );
-        completed.set(key, response);
-      }
-      const payload = (yield* response)[`season/${season}`];
-      if (
-        !payload ||
-        typeof payload !== 'object' ||
-        !('episodes' in payload) ||
-        !Array.isArray(payload.episodes)
-      )
-        return yield* Effect.fail(
+  return Effect.fnUntraced(function* (season: number) {
+    const batch = batches.get(season) ?? [season];
+    if (batch.length === 1) return yield* request(`/tv/${tmdbId}/season/${season}`);
+    const key = batch[0];
+    let response = completed.get(key);
+    if (!response) {
+      response = yield* Effect.cached(
+        request(
+          `/tv/${tmdbId}?append_to_response=${batch.map((number) => `season/${number}`).join(',')}`,
+        ),
+      );
+      completed.set(key, response);
+    }
+    const payload = (yield* response)[`season/${season}`];
+    return yield* Schema.decodeUnknownEffect(Schema.Struct({ episodes: providerRecords }))(
+      payload,
+    ).pipe(
+      Effect.mapError(
+        () =>
           new ProviderIntegrationFailure({
             provider: 'tmdb',
             message: `TMDB did not return season ${season}`,
           }),
-        );
-      return payload as Json;
-    });
+      ),
+    );
+  });
 }
 
 const titleEvents = Effect.fnUntraced(function* (

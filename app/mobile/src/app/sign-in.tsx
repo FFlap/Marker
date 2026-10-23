@@ -1,5 +1,5 @@
 import { ScreenKeyboardScrollView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import { Effect, Option, Schema } from 'effect';
 import { sessionStep, sessionResult, SessionError } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
@@ -16,18 +16,19 @@ import { usernameError } from '@/lib/profile';
 
 type AuthErrorContext = 'signIn' | 'signUp' | 'recovery' | 'verification' | 'session' | 'oauth';
 
+const AuthErrorDetail = Schema.Struct({
+  code: Schema.optional(Schema.String),
+  message: Schema.optional(Schema.String),
+  longMessage: Schema.optional(Schema.String),
+  meta: Schema.optional(Schema.Struct({ paramName: Schema.optional(Schema.String) })),
+});
+const AuthFailure = Schema.Struct({
+  ...AuthErrorDetail.fields,
+  errors: Schema.optional(Schema.Array(AuthErrorDetail)),
+});
+
 const friendly = (e: unknown, context: AuthErrorContext) => {
-  const value = e as {
-    code?: string;
-    message?: string;
-    longMessage?: string;
-    errors?: {
-      code?: string;
-      longMessage?: string;
-      message?: string;
-      meta?: { paramName?: string };
-    }[];
-  };
+  const value = Option.getOrUndefined(Schema.decodeUnknownOption(AuthFailure)(e));
   const clerkError = value?.errors?.[0];
   const code = clerkError?.code ?? value?.code ?? '';
   const parameter = clerkError?.meta?.paramName ?? '';
@@ -586,6 +587,7 @@ export default function SignIn() {
                       : 'Already have an account? Sign in'
               }
               variant="ghost"
+              disabled={busy}
               onPress={() => {
                 if (recovery) {
                   resetToSignIn();

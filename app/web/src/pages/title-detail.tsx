@@ -11,44 +11,11 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { useMutation, useQuery as useConvexQuery } from "convex/react";
 import { api } from "@marker/shared/api";
 import { AddTitleDialog } from "@/components/title-dialog";
-import { titleRuntime, type SearchResult } from "@/lib/catalog";
+import { parseTitlePreview, titleRuntime, type SearchResult } from "@/lib/catalog";
 import { useSeasonGuide } from "@/hooks/use-season-guide";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { posterUrl } from "@/lib/utils";
-
-function parsePreview(value: string | undefined): SearchResult | undefined {
-  if (!value) return undefined;
-  try {
-    const parsed = JSON.parse(value) as Partial<SearchResult>;
-    if (
-      typeof parsed.id !== "number" ||
-      typeof parsed.title !== "string" ||
-      (parsed.mediaType !== "movie" && parsed.mediaType !== "tv")
-    )
-      return undefined;
-    return {
-      id: parsed.id,
-      title: parsed.title,
-      mediaType: parsed.mediaType,
-      ...(typeof parsed.posterPath === "string" && {
-        posterPath: parsed.posterPath,
-      }),
-      ...(typeof parsed.overview === "string" && { overview: parsed.overview }),
-      ...(typeof parsed.releaseDate === "string" && {
-        releaseDate: parsed.releaseDate,
-      }),
-      ...(typeof parsed.runtime === "number" &&
-        Number.isFinite(parsed.runtime) && { runtime: parsed.runtime }),
-      ...(Array.isArray(parsed.genres) &&
-        parsed.genres.every((genre) => typeof genre === "string") && {
-          genres: parsed.genres,
-        }),
-    };
-  } catch {
-    return undefined;
-  }
-}
 
 export function TitleDetailPage() {
   const runOperation = useOperation();
@@ -69,7 +36,7 @@ export function TitleDetailPage() {
   const tmdbId = Number(rawTmdbId);
   const valid = Boolean(mediaType && Number.isInteger(tmdbId) && tmdbId > 0);
   const preview = useMemo(() => {
-    const parsed = parsePreview(rawPreview);
+    const parsed = parseTitlePreview(rawPreview);
     return parsed?.id === tmdbId && parsed.mediaType === mediaType
       ? parsed
       : undefined;

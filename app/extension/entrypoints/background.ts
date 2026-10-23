@@ -18,8 +18,7 @@ export default defineBackground(() => {
     background: true,
   });
 
-  const getSession = () =>
-    Effect.gen(function* () {
+  const getSession = Effect.fn("getSession")(function* () {
       const clerk = yield* external("auth.client", () => clerkPromise);
       const session = clerk.session;
       const user = clerk.user;
@@ -27,7 +26,8 @@ export default defineBackground(() => {
       const token = yield* external("auth.token", () =>
         session.getToken(),
       ).pipe(Effect.catchTag("ExtensionFailure", () => Effect.succeed(null)));
-      if (!token) return null;
+      if (!token || clerk.session !== session || clerk.user?.id !== user.id)
+        return null;
       const accountLabel = user.username
         ? `@${user.username}`
         : (user.primaryEmailAddress?.emailAddress ?? "Marker account");
@@ -41,16 +41,14 @@ export default defineBackground(() => {
     browser.storage.local,
     {
       getSession,
-      connect: () =>
-        Effect.gen(function* () {
+      connect: Effect.fn("connect")(function* () {
           const url = new URL("/extension/connect", WEBSITE_URL);
           url.searchParams.set("next", "/extension/connect");
           yield* external("tabs.create", () =>
             browser.tabs.create({ url: url.toString() }),
           );
         }),
-      signOut: () =>
-        Effect.gen(function* () {
+      signOut: Effect.fn("signOut")(function* () {
           const clerk = yield* external("auth.client", () => clerkPromise);
           yield* external("auth.signOut", () => clerk.signOut());
         }),

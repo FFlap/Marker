@@ -44,27 +44,34 @@ const avatar = (publish: (id: string) => Promise<unknown>) => ({
   publish,
 });
 
-it('starts both credential requests and never publishes malformed upload responses', async () => {
-  const publish = vi.fn(async () => undefined);
-  let resolvePath!: (path: string) => void;
-  const uploadPath = vi.fn(
-    () =>
-      new Promise<string>((resolve) => {
-        resolvePath = resolve;
-      }),
-  );
-  const token = vi.fn(async () => 'test-token');
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => new Response(JSON.stringify({ storageId: 123 }))),
-  );
-  const pending = Effect.runPromiseExit(uploadAvatar({ ...avatar(publish), uploadPath, token }));
-  expect(uploadPath).toHaveBeenCalledTimes(1);
-  expect(token).toHaveBeenCalledTimes(1);
-  resolvePath('/upload');
-  expect((await pending)._tag).toBe('Failure');
-  expect(publish).not.toHaveBeenCalled();
-});
+it.each([123, '', null, undefined])(
+  'starts both credential requests and rejects invalid storage IDs (%s)',
+  async (storageId) => {
+    const publish = vi.fn(async () => undefined);
+    let resolvePath!: (path: string) => void;
+    const uploadPath = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          resolvePath = resolve;
+        }),
+    );
+    const token = vi.fn(async () => 'test-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ storageId }))),
+    );
+    const pending = Effect.runPromise(
+      Effect.result(uploadAvatar({ ...avatar(publish), uploadPath, token })),
+    );
+    expect(uploadPath).toHaveBeenCalledTimes(1);
+    expect(token).toHaveBeenCalledTimes(1);
+    resolvePath('/upload');
+    const result = await pending;
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure).toBeInstanceOf(AvatarError);
+    expect(publish).not.toHaveBeenCalled();
+  },
+);
 
 it('times out body consumption and aborts the transport without publishing', async () => {
   vi.useFakeTimers();

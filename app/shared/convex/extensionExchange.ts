@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect';
+import { Effect, Option, Schema } from 'effect';
 import { actionFailureCause, attempt, providerOutcome, runActionEffect } from './actionEffects';
 import { httpAction } from './_generated/server';
 import { internal } from './_generated/api';
@@ -37,7 +37,7 @@ export const options = httpAction(async (_ctx, request) => {
   });
 });
 
-const retryableCodes = [
+const retryableCode = Schema.Literals([
   'upstream',
   'timeout',
   'provider_global_limiter',
@@ -47,24 +47,31 @@ const retryableCodes = [
   'refresh_superseded',
   'mapping_changed',
   'title_unavailable',
-];
+]);
+const errorPayload = Schema.Record(Schema.String, Schema.Unknown);
+const decodeErrorPayload = Schema.decodeUnknownOption(errorPayload);
+const decodeSerializedError = Schema.decodeUnknownOption(Schema.fromJsonString(errorPayload));
+const decodeRetryable = Schema.decodeUnknownOption(Schema.Boolean);
+const decodeRetryableCode = Schema.decodeUnknownOption(retryableCode);
+const decodeError = Schema.decodeUnknownOption(
+  Schema.Struct({
+    data: Schema.optional(Schema.Unknown),
+  }),
+);
 
 function isRetryable(error: unknown) {
-  let data: unknown =
-    typeof error === 'object' && error !== null && 'data' in error ? error.data : undefined;
-  if (data === undefined) {
-    // Action boundaries can preserve the ConvexError payload only in the message.
-    const serialized = String(error).match(/\bConvexError:\s*(\{[^\n]*\})/u)?.[1];
-    if (!serialized) return false;
-    try {
-      data = JSON.parse(serialized);
-    } catch {
-      return false;
-    }
-  }
-  if (!data || typeof data !== 'object') return false;
-  if ('retryable' in data && typeof data.retryable === 'boolean') return data.retryable;
-  return 'code' in data && retryableCodes.some((code) => data.code === code);
+  const raw = Option.getOrUndefined(decodeError(error))?.data;
+  // Action boundaries can preserve the ConvexError payload only in the message.
+  const data = Option.getOrUndefined(
+    raw === undefined
+      ? decodeSerializedError(String(error).match(/\bConvexError:\s*(\{[^\n]*\})/u)?.[1])
+      : decodeErrorPayload(raw),
+  );
+  if (!data) return false;
+  return (
+    Option.getOrUndefined(decodeRetryable(data.retryable)) ??
+    Option.isSome(decodeRetryableCode(data.code))
+  );
 }
 
 export const recordWatch = httpAction((ctx, request) =>
@@ -102,12 +109,9 @@ export const recordWatch = httpAction((ctx, request) =>
       if (new TextEncoder().encode(textResult.value).byteLength > MAX_BODY_BYTES)
         return new Response(JSON.stringify({ error: 'invalid-request' }), { status: 413, headers });
       const body = yield* providerOutcome(
-        Effect.try({
-          try: () => JSON.parse(textResult.value) as unknown,
-          catch: (error) => error,
-        }).pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))),
-        ),
+        Schema.decodeUnknownEffect(
+          Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
+        )(textResult.value),
       );
       if (!body.ok)
         return new Response(JSON.stringify({ error: 'invalid-request' }), { status: 400, headers });

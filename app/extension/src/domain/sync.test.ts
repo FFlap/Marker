@@ -61,6 +61,25 @@ describe("background-owned sync outbox", () => {
     expect(parseWatchPayload({ ...payload, url: "javascript:alert(1)" })).toBeNull();
     expect(parseWatchPayload({ ...payload, seriesTitle: "x".repeat(301) })).toBeNull();
   });
+  it.each([
+    { seasonNumber: '1' },
+    { episodeNumber: '2' },
+    { seasonNumber: -1 },
+    { episodeNumber: Number.NaN },
+    { seasonTitle: {} },
+    { url: 123 },
+  ])('rejects malformed stored fields instead of silently changing episode identity: %o', (patch) => {
+    expect(parseWatchPayload({ ...payload, episodeTitle: 'Lies', ...patch })).toBeNull();
+  });
+  it('normalizes padded text and omits blank optional fields', () => {
+    expect(parseWatchPayload({
+      ...payload,
+      seriesTitle: '  Dark  ',
+      seasonTitle: '  ',
+      episodeTitle: ' ',
+      url: '',
+    })).toEqual(payload);
+  });
   it("preserves and accepts a valid HTTPS watch URL", () => {
     const url = "https://www.netflix.com/watch/2";
     expect(buildWatchPayload({ ...bookmark, watchUrl: url })).toEqual({

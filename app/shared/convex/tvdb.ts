@@ -8,6 +8,7 @@ import {
   decodeProviderObject,
   runProviderEffect,
   ProviderIntegrationFailure,
+  providerRecords,
   type ProviderTransportFailure,
 } from './providerHttp';
 import { animeEpisodeValidator, animeGuideValidator } from './providerValidators';
@@ -70,7 +71,20 @@ const SEASON_COUNT_DEADLINE_MS = 20_000;
 
 let credentials: { token: string; expiresAt: number } | undefined;
 
-class TvdbNotFoundError extends Error {}
+class TvdbNotFoundError extends Schema.TaggedError<TvdbNotFoundError>()('TvdbNotFoundError', {
+  message: Schema.String,
+}) {}
+
+const runTvdbEffect = <A, E>(effect: Effect.Effect<A, E>) =>
+  runProviderEffect(
+    effect.pipe(
+      Effect.mapError((error) =>
+        error instanceof TvdbNotFoundError
+          ? new ProviderIntegrationFailure({ provider: 'tvdb', message: error.message })
+          : error,
+      ),
+    ),
+  );
 
 const loginPayload = Schema.Struct({ data: Schema.Struct({ token: Schema.String }) });
 
@@ -161,7 +175,7 @@ const requestEffect = Effect.fnUntraced(function* (
     }
     if (response.status === 404 && emptyOnNotFound) return {};
     if (response.status === 404)
-      return yield* Effect.fail(new TvdbNotFoundError('TVDB record not found'));
+      return yield* Effect.fail(new TvdbNotFoundError({ message: 'TVDB record not found' }));
     if (!response.ok)
       return yield* Effect.fail(
         new ProviderIntegrationFailure({
@@ -200,7 +214,17 @@ const fetchEpisodesEffect = Effect.fnUntraced(function* (
       ctx,
       `/series/${tvdbId}/episodes/${order}/eng?${query.toString()}`,
     );
-    const rawEpisodes = records(record(payload.data).episodes);
+    const rawEpisodes = yield* Schema.decodeUnknownEffect(providerRecords)(
+      record(payload.data).episodes,
+    ).pipe(
+      Effect.mapError(
+        () =>
+          new ProviderIntegrationFailure({
+            provider: 'tvdb',
+            message: 'TVDB returned malformed data',
+          }),
+      ),
+    );
     const mapped = rawEpisodes.flatMap((entry) => {
       const episode = mapEpisode(entry);
       if (!episode || seen.has(episode.id)) return [];
@@ -231,7 +255,7 @@ const fetchEpisodes = (
   tvdbId: number,
   order: SeasonOrder,
   season?: number,
-) => runProviderEffect(fetchEpisodesEffect(ctx, tvdbId, order, season));
+) => runTvdbEffect(fetchEpisodesEffect(ctx, tvdbId, order, season));
 
 function translatedSeasonNameEffect(
   ctx: Pick<ActionCtx, 'runMutation'>,
@@ -323,7 +347,16 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
   });
   // A previously matched anime can lose its Anime tag when TVDB recreates it.
   if (!isAnime(genreNames) && !(pinned?.tvdbId && genreNames.includes('Animation'))) return null;
-  const seasonRecords = records(data.seasons).flatMap((entry) => {
+  const rawSeasons = yield* Schema.decodeUnknownEffect(providerRecords)(data.seasons).pipe(
+    Effect.mapError(
+      () =>
+        new ProviderIntegrationFailure({
+          provider: 'tvdb',
+          message: 'TVDB returned malformed data',
+        }),
+    ),
+  );
+  const seasonRecords = rawSeasons.flatMap((entry) => {
     const season = mapSeason(entry);
     return season ? [season] : [];
   });
@@ -378,37 +411,41 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
   return { details, episodes: selectedEpisodes };
 });
 
-function resolveSeasonCountsEffect(ctx: Pick<ActionCtx, 'runMutation'>, seasons: SeasonRecord[]) {
-  return Effect.suspend(() => {
-    const counts = new Map<number, number>();
-    const deadline = Date.now() + SEASON_COUNT_DEADLINE_MS;
-    return Effect.forEach(
-      seasons.slice(0, MAX_SEASON_COUNT_REQUESTS),
-      (season) =>
-        Effect.suspend(() => {
-          if (Date.now() >= deadline) return Effect.void;
-          return requestEffect(ctx, `/seasons/${season.id}/extended`).pipe(
-            Effect.map((payload) => {
-              const data = record(payload.data);
-              if (integer(data.id) !== season.id || !Array.isArray(data.episodes)) return;
-              // The season ID identifies the chosen order, independently of episode coordinates.
-              const episodes = records(data.episodes).flatMap((entry) => {
-                const episode = mapEpisode(entry);
-                return episode ? [episode] : [];
-              });
-              counts.set(
-                season.number,
-                new Set(releasedEpisodes(episodes).map((episode) => episode.id)).size,
-              );
-            }),
-            // Missing counts remain optional; interruption still propagates to sibling work.
-            Effect.catch(() => Effect.void),
-          );
-        }),
-      { concurrency: 4, discard: true },
-    ).pipe(Effect.as(counts));
-  });
-}
+const resolveSeasonCountsEffect = Effect.fnUntraced(function* (
+  ctx: Pick<ActionCtx, 'runMutation'>,
+  seasons: SeasonRecord[],
+) {
+  const counts = new Map<number, number>();
+  const deadline = (yield* Clock.currentTimeMillis) + SEASON_COUNT_DEADLINE_MS;
+  yield* Effect.forEach(
+    seasons.slice(0, MAX_SEASON_COUNT_REQUESTS),
+    (season) =>
+      Effect.gen(function* () {
+        if ((yield* Clock.currentTimeMillis) >= deadline) return;
+        const payload = yield* requestEffect(ctx, `/seasons/${season.id}/extended`);
+        const data = record(payload.data);
+        if (integer(data.id) !== season.id) return;
+        const rawEpisodes = yield* Schema.decodeUnknownEffect(providerRecords)(data.episodes);
+        // The season ID identifies the chosen order, independently of episode coordinates.
+        const episodes: AnimeEpisode[] = [];
+        for (const entry of rawEpisodes) {
+          const episode = mapEpisode(entry);
+          // A filtered list cannot establish the season's complete episode count.
+          if (!episode) return;
+          episodes.push(episode);
+        }
+        counts.set(
+          season.number,
+          new Set(releasedEpisodes(episodes).map((episode) => episode.id)).size,
+        );
+      }).pipe(
+        // Missing counts remain optional; interruption still propagates to sibling work.
+        Effect.catch(() => Effect.void),
+      ),
+    { concurrency: 4, discard: true },
+  );
+  return counts;
+});
 
 type SnapshotActionCtx = Pick<ActionCtx, 'runQuery' | 'runMutation'>;
 type StoredSnapshot = { value: unknown; refreshedAt: number } | null;
@@ -441,7 +478,7 @@ async function refreshAnimeSnapshot(
   pinned?: { tvdbId?: number; order?: SeasonOrder },
   requestedSeason?: number,
 ): Promise<AnimeDetails | null> {
-  const resolution: AnimeResolution | null = await runProviderEffect(
+  const resolution: AnimeResolution | null = await runTvdbEffect(
     resolveAnimeEffect(ctx, tmdbId, titles, pinned, requestedSeason),
   );
   if (resolution) {
