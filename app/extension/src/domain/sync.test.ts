@@ -146,7 +146,6 @@ describe("background-owned sync outbox", () => {
     const values: Record<string, unknown> = {};
     const manager = createOutboxManager(storageFor(values), async () => ({ ok: false, retryable: true }));
     for (let episodeNumber = 0; episodeNumber < SYNC_OUTBOX_MAX + 2; episodeNumber += 1) {
-      // Queue operations are intentionally sequential so each one sees the prior write.
       // eslint-disable-next-line no-await-in-loop
       await manager.enqueue({ ...payload, episodeNumber });
     }

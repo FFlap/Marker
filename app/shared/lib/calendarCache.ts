@@ -23,7 +23,6 @@ export const monthRange = (month: string) => {
   };
 };
 
-/** One session's schedules, shared by the month grid and day routes. */
 export class CalendarCache {
   private entries = new Map<string, Entry>();
   private listeners = new Map<string, Set<() => void>>();
@@ -34,8 +33,7 @@ export class CalendarCache {
     const changed = this.libraryRevision !== undefined;
     this.libraryRevision = revision;
     if (!changed) return;
-    // Membership changes invalidate every prefetched month. Detaching the entries
-    // also fences requests started before a title was removed or dropped.
+    // Detaching the entries fences requests started before a title was removed or dropped.
     this.entries.clear();
     this.listeners.forEach((listeners) => listeners.forEach((listener) => listener()));
   }
@@ -60,7 +58,6 @@ export class CalendarCache {
   private prune() {
     for (const key of this.entries.keys()) {
       if (this.entries.size <= MAX_MONTHS) break;
-      // Mounted month and day screens must never lose their current snapshot.
       if (!this.listeners.has(key)) this.entries.delete(key);
     }
   }
@@ -70,7 +67,6 @@ export class CalendarCache {
     const key = `${region}:${month}`;
     const previous = this.entries.get(key);
     if (previous) {
-      // Fresh cache hits count as visits too, so eviction follows recent use.
       this.entries.delete(key);
       this.entries.set(key, previous);
     }
@@ -110,7 +106,6 @@ export class CalendarCache {
             ...(!force && { cachedOnly: true }),
           },
           (progress) => {
-            // A refresh keeps the complete old snapshot until its replacement is ready.
             if (!previous?.snapshot.result) {
               entry.snapshot = {
                 result: progress,
@@ -122,10 +117,6 @@ export class CalendarCache {
           },
         );
         if (!force && result.needsRefresh) {
-          // A saved schedule can be shown immediately after an app restart,
-          // even when provider snapshots need refreshing. Keep loading true
-          // until the authoritative refresh completes; never claim missing
-          // schedules are a finished, empty calendar.
           const saved = previous?.snapshot.result ?? result;
           const hasSavedEvents = saved.events.length > 0;
           entry.snapshot = {

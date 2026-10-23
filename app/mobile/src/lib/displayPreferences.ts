@@ -13,11 +13,9 @@ export function stepGridColumns(columns: GridColumns, direction: 'in' | 'out'): 
   return Math.max(3, columns - 1) as GridColumns;
 }
 
-/** Space between grid cells, as a share of the grid's width. */
 const GRID_GAP_RATIO = 0.035;
 
 /**
- * Cell width and gap in whole device pixels, rounded down so a full row always fits.
  * Percentage widths that add up to exactly 100% can round a few pixels over and push
  * the last cell of every row onto the next line on some screen widths.
  */

@@ -192,7 +192,6 @@ it('reuses the recovered guide for automatic mappings without repeating provider
   ).toEqual(guide);
   expect(fetchMock).toHaveBeenCalledTimes(requests);
 
-  // A cached automatic lookup must not override a different explicit identity.
   await expect(
     t.action(internal.tvdb.refreshAnimeWithMapping, {
       tmdbId: 296286,

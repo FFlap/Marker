@@ -42,8 +42,6 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const [progress] = useState(() => new Animated.Value(0));
   const pendingClose = useRef<(() => void) | undefined>(undefined);
   const profile = useQuery(api.profiles.me);
-  // The modal draws edge to edge, outside the root SafeAreaView, so it has to
-  // clear the status bar, camera cutout, and gesture bar itself.
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
@@ -223,8 +221,6 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   );
 });
 
-// Matches the tab header's top padding so the profile row starts where the
-// header avatar sits.
 const DRAWER_TOP_GAP = 16;
 const DRAWER_BOTTOM_GAP = 20;
 const DRAWER_SIDE_GAP = 20;

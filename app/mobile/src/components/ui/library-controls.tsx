@@ -7,7 +7,6 @@ import { createAppStyles } from '@/lib/typography';
 import { useKeyboardFieldSpace } from '@/components/ui/KeyboardScrollView';
 import { Input } from './primitives';
 
-// Compact controls keep a 44pt touch target through hit slop.
 const TAG_HIT_SLOP = { top: 6, bottom: 6, left: 2, right: 2 };
 const MAX_TAG_MATCHES = 5;
 const TAG_OPTION_HEIGHT = 46;
@@ -88,7 +87,6 @@ export function Stepper({
 function StarGlyph({ fill }: { fill: number }) {
   return (
     <View pointerEvents="none" style={styles.ratingStar}>
-      {/* Muted rather than border grey so empty stars stay visible on the dark sheet. */}
       <Star size={30} color={colors.muted} strokeWidth={1.6} />
       {fill > 0 ? (
         <View pointerEvents="none" style={[styles.ratingStarFill, { width: `${fill * 100}%` }]}>
@@ -162,7 +160,6 @@ export function RatingControl({
   );
 }
 
-/** Filter by rating: tapping a star keeps titles rated that high or higher. */
 export function MinimumRatingControl({
   value,
   onChange,
@@ -201,7 +198,6 @@ export function MinimumRatingControl({
   );
 }
 
-/** A compact, toggleable tag for filter lists; `exclusive` lists allow one choice. */
 export function SelectableTag({
   label,
   selected,
@@ -270,14 +266,12 @@ export function TagEditor({
         .filter((tag) => normalize(tag).includes(normalize(query)))
         .slice(0, MAX_TAG_MATCHES)
     : [];
-  // Only offer to create a tag that does not exist yet, under any casing.
   const canCreate =
     query.length > 0 &&
     !unusedSuggestions.some((tag) => normalize(tag) === normalize(query)) &&
     !selectedTags.has(normalize(query));
 
   const optionCount = matches.length + (canCreate ? 1 : 0);
-  // Keep the options list above the keyboard together with the field.
   useKeyboardFieldSpace(optionCount > 0 ? optionCount * TAG_OPTION_HEIGHT + TAG_OPTIONS_GAP : 0);
 
   const setQuery = (value: string) => {

@@ -173,7 +173,6 @@ describe('resumable calendar discovery', () => {
       return new Response(
         JSON.stringify({
           total_pages: 301,
-          // Include a repeated candidate to exercise deduplication against staged rows.
           results: Array.from({ length: 31 }, (_, i) => ({ id: 9000 + i })),
         }),
       );

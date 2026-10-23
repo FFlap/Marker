@@ -46,7 +46,6 @@ const kindForKey = (key: string): Exclude<SnapshotKind, 'truncated'> => {
 
 type SnapshotActionCtx = { runMutation: Function };
 
-/** Cache failures must never turn a successful provider refresh into a failed refresh. */
 export async function putNonFatal(
   ctx: SnapshotActionCtx,
   args: { key: string; value: unknown; metricKey: string },
@@ -89,7 +88,6 @@ export const get = internalQuery({
 
 export const CALENDAR_SNAPSHOT_BATCH_SIZE = 20;
 
-/** Bound each batch below the read/return limits, including large season snapshots. */
 export const getCalendarSnapshots = internalQuery({
   args: { keys: v.array(v.string()) },
   returns: v.array(
@@ -135,7 +133,6 @@ export const put = internalMutation({
   },
 });
 
-/** Isolated, bounded continuation so snapshot cleanup cannot fail other pruning. */
 export const prune = internalMutation({
   args: { cursor: v.optional(v.string()) },
   returns: v.object({ deleted: v.number(), isDone: v.boolean() }),

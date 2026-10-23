@@ -197,8 +197,7 @@ export function NativeDraggableGrid<T>({
         order,
         over: index,
         scrollStart: autoScrollRef.current?.getOffset() ?? 0,
-        // Keep hit targets fixed for the duration of this drag. Reading layouts
-        // while neighboring cells animate can make the nearest slot oscillate.
+        // Reading layouts while neighboring cells animate can make the nearest slot oscillate.
         slots: new Map(slotLayouts.current),
       };
       setDragOrder(order);
@@ -314,10 +313,8 @@ export function NativeDraggableGrid<T>({
 
   const displayed = dragOrder ?? data;
   const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
-  // Cells animate position changes so reordering glides, but Reanimated's layout
-  // transitions can stall mid-flight when a cell is inserted or removed, leaving
-  // posters stacked on each other. Remount the cells whenever membership changes;
-  // pure reorders keep the same key and still animate.
+  // Reanimated layout transitions can stall when a cell is inserted or removed,
+  // leaving posters stacked unless cells remount when membership changes.
   const membership = data.map(keyExtractor).sort().join('|');
   return (
     <View

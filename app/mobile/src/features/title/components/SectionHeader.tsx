@@ -11,14 +11,9 @@ type InlineActionProps = {
   onPress: () => void;
   disabled?: boolean;
   accessibilityLabel?: string;
-  /** Header actions match the heading's size; inline ones sit at body size. */
   size?: 'body' | 'heading';
 };
 
-/**
- * Borderless icon-and-label action used across the detail pages, so page-level
- * actions read as part of the text rather than as boxed buttons.
- */
 export function InlineAction({
   label,
   icon: Icon,
@@ -45,7 +40,6 @@ export function InlineAction({
   );
 }
 
-/** Detail-page section title on a hairline rule, with an optional inline action. */
 export function SectionHeader({ title, action }: { title: string; action?: InlineActionProps }) {
   return (
     <View style={styles.header}>

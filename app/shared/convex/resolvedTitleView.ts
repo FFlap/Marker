@@ -2,7 +2,6 @@ import type { Doc } from './_generated/dataModel';
 import type { QueryCtx } from './_generated/server';
 import { activeResolvedTitle } from './resolvedTitleModel';
 
-/** Only expose seasons with available episodes; canonical counts override provider counts. */
 export async function visibleResolvedTitle(
   ctx: QueryCtx,
   identity: Pick<Doc<'items'>, 'mediaType' | 'tmdbId'>,
@@ -18,7 +17,6 @@ export async function visibleResolvedTitle(
       if (
         resolved?.chunksComplete === true &&
         resolved.orderEpoch === title.orderEpoch &&
-        // A newer title refresh can discover releases in a previously empty season.
         resolved.episodeCount !== undefined &&
         (resolved.refreshedAt >= title.refreshedAt ||
           (entry.episodeCountVerified === false && resolved.episodeCount > 0))

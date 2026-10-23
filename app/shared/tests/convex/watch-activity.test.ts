@@ -37,7 +37,6 @@ describe('watch activity', () => {
         watched,
         ...(activityDate && { activityDate }),
       });
-    // 02:00 UTC is still Oct 9 for a viewer in the Americas.
     await mark(1, true, '2026-10-09');
     await mark(2, true, '2026-10-09');
     await mark(2, true, '2026-10-09');
@@ -47,7 +46,6 @@ describe('watch activity', () => {
       { date: '2026-10-10', episodes: 1 },
     ]);
 
-    // Rating an already-watched episode is not another watch.
     await asUser.mutation(api.library.episodes.setEpisodeState, {
       itemId,
       season: 1,
@@ -109,7 +107,6 @@ describe('watch activity', () => {
       { date: '2026-10-09', episodes: 3 },
       { date: '2026-10-10', episodes: 1 },
     ]);
-    // Retry the unmark: both days must be decremented only once, and season 2 must survive.
     for (let attempt = 0; attempt < 2; attempt += 1)
       await asUser.action(api.library.seasonWatched.setSeasonWatched, {
         itemId,
@@ -216,7 +213,6 @@ describe('watch activity', () => {
       });
     });
     await asUser.mutation(api.library.items.removeItem, { itemId });
-    // Exercise the bounded cleanup and its retry without running unrelated scheduled work.
     await t.mutation(internal.library.items.continueRemoveItem, { itemId });
     await t.mutation(internal.library.items.continueRemoveItem, { itemId });
     expect((await asUser.query(api.stats.profile, {})).watchActivity).toEqual([

@@ -91,12 +91,9 @@ export async function publishCanonicalMetadata(
     await ctx.db.replace(currentMapping._id, args.mapping);
     return;
   }
-  // Manual mapping identity is authoritative and can only be changed by the
-  // explicit mapping controls, never by provider discovery.
   await ctx.db.patch(currentMapping._id, { updatedAt: args.now });
 }
 
-/** Keeps the library's display projection current without adding list-time joins. */
 export const refreshItemProjections = internalMutation({
   args: { mediaType, tmdbId: v.number(), cursor: v.optional(v.string()) },
   returns: v.object({ updated: v.number(), isDone: v.boolean() }),
@@ -176,10 +173,6 @@ type RefreshOutcome = {
   errorCode?: string;
 };
 
-/**
- * Resolves the explicit attempt outcome plus late request rows that attached to
- * the same lease token before this publication transaction began.
- */
 async function requestsForPublication(
   ctx: MutationCtx,
   explicitOutcomes: RefreshOutcome[],
@@ -326,8 +319,6 @@ export const commitRefresh = internalMutation({
       .withIndex('by_key', (query) => query.eq('key', args.leaseKey))
       .unique();
     if (!lease || lease.token !== args.leaseToken || lease.expiresAt <= now) return false;
-    // This is deliberately checked before the first write. A newer touch may have
-    // superseded an outbound attempt while it was waiting on a provider.
     const outcomes: RefreshOutcome[] =
       args.outcomes ?? (args.keys ?? []).map((key) => ({ key, state: 'succeeded' as const }));
     const currentMapping = await ctx.db

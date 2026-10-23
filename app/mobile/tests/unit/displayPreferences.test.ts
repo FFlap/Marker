@@ -7,13 +7,11 @@ describe('display preferences', () => {
       for (let width = 280; width <= 880; width += 0.5) {
         for (const columns of [3, 4, 5]) {
           const { gap, itemWidth } = gridMetrics(width, columns, pixelRatio);
-          // Compare in device pixels, which is what actually renders.
           const px = (value: number) => Math.round(value * pixelRatio * 1e6) / 1e6;
           expect(Number.isInteger(px(itemWidth))).toBe(true);
           expect(Number.isInteger(px(gap))).toBe(true);
           const rowPixels = px(itemWidth) * columns + px(gap) * (columns - 1);
           expect(rowPixels).toBeLessThanOrEqual(Math.floor(px(width)));
-          // …while wasting no more than about a pixel per cell.
           expect(px(width) - rowPixels).toBeLessThan(columns + 1);
         }
       }

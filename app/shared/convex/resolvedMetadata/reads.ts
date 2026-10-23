@@ -45,7 +45,6 @@ export const getTitleView = query({
   },
 });
 
-/** Kept separate so request-state transitions do not retransmit title content. */
 export const getTitleRequestState = query({
   args: { mediaType, tmdbId: v.number() },
   returns: requestStateValidator,
@@ -73,7 +72,6 @@ export const readSeason = internalQuery({
   },
 });
 
-/** Reads one canonical episode chunk plus its season counts. */
 export const readSeasonChunk = internalQuery({
   args: { tmdbId: v.number(), season: v.number(), chunkIndex: v.optional(v.number()) },
   handler: async (ctx, args) => {
@@ -221,7 +219,6 @@ export const getSeasonView = query({
   },
 });
 
-/** Kept separate so request-state transitions do not retransmit episode chunks. */
 export const getSeasonRequestState = query({
   args: { tmdbId: v.number(), season: v.number() },
   returns: requestStateValidator,

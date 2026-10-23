@@ -42,8 +42,7 @@ export function useSeasonGuide({ mediaType, tmdbId, title, refreshError = false 
           !chunks.has(page.chunkIndex))
         chunks.set(page.chunkIndex, page);
     }
-    // A refresh can restart an already-loaded cursor at chunk zero. Keep the
-    // current generation's contiguous prefix until subsequent pages catch up.
+    // A refresh can restart an already-loaded cursor at chunk zero.
     const contiguous: SeasonPage[] = [];
     for (let index = 0; chunks.has(index); index += 1)
       contiguous.push(chunks.get(index)!);
@@ -54,7 +53,6 @@ export function useSeasonGuide({ mediaType, tmdbId, title, refreshError = false 
   const failed = enabled && !summary &&
     (refreshError || request?.state === "failed" || request?.state === "notFound");
   // An empty reactive cache read can arrive before its provider refresh starts.
-  // Only a stored empty season or a completed request establishes an empty guide.
   const loading = enabled && !summary && !failed &&
     (pagination.status === "LoadingFirstPage" || request == null || request.state === "inFlight");
   return {

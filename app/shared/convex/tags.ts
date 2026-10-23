@@ -281,9 +281,8 @@ export const publicDetails = query({
           (typeof parsed.cursor === 'string' || parsed.cursor === null)
         )
           pageState = parsed;
-      } catch {
-        // Restart at the first page instead of treating a damaged cursor as a missing tag.
-      }
+        // eslint-disable-next-line no-empty
+      } catch {}
     }
     let collectionIndex = populatedCollections.findIndex(
       (collection) => String(collection._id) === pageState.collectionId,

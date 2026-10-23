@@ -1,4 +1,3 @@
-/** Single source of truth for provider ownership in the metadata merge. */
 export const isAnime = (genres: readonly string[] | undefined) =>
   (genres ?? []).some((genre) => genre.trim().toLocaleLowerCase() === 'anime');
 

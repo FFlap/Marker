@@ -151,7 +151,6 @@ async function snapshot<T>(
     if (!isTruncatedSnapshot(stored.value)) return stored.value as T;
     const durable = await readTruncated?.();
     if (durable !== null && durable !== undefined) return durable;
-    // A truncation marker without durable chunks is a cold cache miss.
   }
   return refreshSnapshot(ctx, key, load);
 }

@@ -2,7 +2,6 @@ import { Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 
-// Read-only tags stay compact so they read as metadata, not as controls.
 export function TagList({ tags }: { tags: readonly string[] }) {
   return (
     <View style={styles.list}>

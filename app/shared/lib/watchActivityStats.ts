@@ -1,7 +1,3 @@
-/**
- * Pure watch-activity math shared by the Convex backend and both clients.
- * Dates are local calendar days in `YYYY-MM-DD` form.
- */
 export type WatchActivityDay = { date: string; episodes: number };
 
 type HeatmapCell = { date: string; episodes: number; level: 0 | 1 | 2 | 3 | 4 };
@@ -31,7 +27,6 @@ export function summarizeWatchActivity(days: WatchActivityDay[], today: string) 
   let longestStreak = 0;
   let run = 0;
   let totalEpisodes = 0;
-  // Weeks run Sunday to Saturday, matching the heatmap columns.
   const weekStart = todayNumber - ((todayNumber + 4) % 7);
   let thisWeek = 0;
   let lastWeek = 0;
@@ -42,7 +37,6 @@ export function summarizeWatchActivity(days: WatchActivityDay[], today: string) 
     if (day.day >= weekStart && day.day <= todayNumber) thisWeek += day.episodes;
     else if (day.day >= weekStart - 7 && day.day < weekStart) lastWeek += day.episodes;
   }
-  // A streak stays alive until a full local day passes without an episode.
   const latest = active.at(-1);
   const currentStreak = latest && latest.day >= todayNumber - 1 ? run : 0;
   const firstDate = active[0]?.date;
@@ -60,10 +54,6 @@ export function summarizeWatchActivity(days: WatchActivityDay[], today: string) 
   };
 }
 
-/**
- * Lays out a Sunday-first contribution grid ending with the week that contains
- * `today`. Days after today are null so the final column stays ragged.
- */
 export function buildActivityHeatmap(days: WatchActivityDay[], today: string, weekCount: number) {
   const counts = new Map(days.map((day) => [day.date, day.episodes]));
   const todayNumber = activityDayNumber(today);
@@ -97,7 +87,6 @@ export function buildActivityHeatmap(days: WatchActivityDay[], today: string, we
   const months: { week: number; label: string }[] = [];
   for (const [week, column] of weeks.entries()) {
     const monthStart = column.find((cell) => cell?.date.endsWith('-01'))?.date;
-    // The first column names its partial month unless a new month starts right after it.
     const leading =
       week === 0 && !weeks.slice(1, 3).some((next) => next.some((c) => c?.date.endsWith('-01')))
         ? column[0]?.date

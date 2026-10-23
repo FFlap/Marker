@@ -7,8 +7,6 @@ import { v } from 'convex/values';
 
 const migrations = new Migrations(components.migrations, { schema });
 
-// Mark every processed row, including unrated rows, so retries cannot halve a
-// rating twice. Normal rating writes also set this marker before migration runs.
 const fiveStarPatch = (doc: { rating?: number; ratingScale?: 5 }) =>
   doc.ratingScale === 5
     ? {}
@@ -29,8 +27,6 @@ export const activity = migrations.define({
   migrateOne: (_ctx, doc) => fiveStarPatch(doc),
 });
 
-// Rebuild totals from migrated items instead of scaling potentially stale totals.
-// An already-running refresh is marked to restart after its current pass.
 export const profiles = migrations.define({
   table: 'users',
   migrateOne: async (ctx, doc) => {
