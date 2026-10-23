@@ -80,7 +80,6 @@ export function LibraryPosterCard({
 
 export function LibraryRow({
   item,
-  drag,
   isActive,
   rank,
   ranked,
@@ -91,7 +90,6 @@ export function LibraryRow({
   contained = false,
 }: {
   item: LibraryItem;
-  drag?: () => void;
   isActive?: boolean;
   rank: number;
   ranked: boolean;
@@ -103,7 +101,7 @@ export function LibraryRow({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={item.title}
-      accessibilityHint={disabled ? undefined : 'Use accessibility actions to reorder this title'}
+      accessibilityHint={disabled ? undefined : 'Long press and drag to reorder this title'}
       accessibilityActions={
         disabled
           ? undefined
@@ -117,9 +115,6 @@ export function LibraryRow({
         handleReorderAction(event.nativeEvent.actionName, onMove, onCategoryMove)
       }
       onPress={() => router.push(`/item/${item._id}`)}
-      onLongPress={disabled ? undefined : drag}
-      delayLongPress={220}
-      hitSlop={{ top: 7, bottom: 7, left: 0, right: 0 }}
       style={[
         s.row,
         { minHeight: typography.minHeight },
