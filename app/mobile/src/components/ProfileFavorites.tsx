@@ -1,3 +1,6 @@
+import { Effect } from 'effect';
+import { saveLibrary } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
@@ -47,6 +50,7 @@ export function ProfileFavorites({
   favorites: ProfileFavorite[];
   interactive?: boolean;
 }) {
+  const runOperation = useOperation();
   const [favoriteSearch, setFavoriteSearch] = useState('');
   const [pickerType, setPickerType] = useState<FavoriteSection>();
   const eligible = useQuery(
@@ -91,43 +95,74 @@ export function ProfileFavorites({
     next.splice(to, 0, moved!);
     reorderPending.current = true;
     setOrders((current) => ({ ...current, [section]: next.map((favorite) => favorite._id) }));
-    try {
-      await reorder({
-        itemId: moved!._id,
-        beforeId: next[to - 1]?._id,
-        afterId: next[to + 1]?._id,
-      });
-      setOrders((current) => ({ ...current, [section]: undefined }));
-    } catch {
-      setOrders((current) => ({ ...current, [section]: undefined }));
-      toast.show(`Couldn’t save the ${sectionLabel(section)} order`);
-    } finally {
-      reorderPending.current = false;
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() =>
+          reorder({
+            itemId: moved!._id,
+            beforeId: next[to - 1]?._id,
+            afterId: next[to + 1]?._id,
+          }),
+        );
+      }),
+      {
+        success: () => {
+          setOrders((current) => ({ ...current, [section]: undefined }));
+        },
+
+        failure: () => {
+          setOrders((current) => ({ ...current, [section]: undefined }));
+          toast.show(`Couldn’t save the ${sectionLabel(section)} order`);
+        },
+        settled: () => {
+          reorderPending.current = false;
+        },
+      },
+    );
   };
 
   const removeFavorite = async (favorite: ProfileFavorite) => {
     setPendingId(favorite._id);
-    try {
-      await remove({ itemId: favorite._id });
-      setOrders((current) => ({ ...current, [favoriteSection(favorite)]: undefined }));
-    } catch {
-      toast.show('Couldn’t remove this favorite');
-    }
-    setPendingId(undefined);
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() => remove({ itemId: favorite._id }));
+      }),
+      {
+        success: () => {
+          setOrders((current) => ({ ...current, [favoriteSection(favorite)]: undefined }));
+        },
+
+        failure: () => {
+          toast.show('Couldn’t remove this favorite');
+        },
+        settled: () => {
+          setPendingId(undefined);
+        },
+      },
+    );
   };
 
   const addFavorite = async (itemId: Id<'items'>) => {
     if (!pickerType) return;
     setPendingId(itemId);
-    try {
-      await add({ itemId });
-      setOrders((current) => ({ ...current, [pickerType]: undefined }));
-      setPickerType(undefined);
-    } catch {
-      toast.show('Couldn’t add this favorite');
-    }
-    setPendingId(undefined);
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() => add({ itemId }));
+      }),
+      {
+        success: () => {
+          setOrders((current) => ({ ...current, [pickerType]: undefined }));
+          setPickerType(undefined);
+        },
+
+        failure: () => {
+          toast.show('Couldn’t add this favorite');
+        },
+        settled: () => {
+          setPendingId(undefined);
+        },
+      },
+    );
   };
 
   const card = (favorite: ProfileFavorite, drag?: () => void, active = false) => (

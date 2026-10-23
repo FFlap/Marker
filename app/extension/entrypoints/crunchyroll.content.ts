@@ -1,12 +1,14 @@
+import { createContentLifetime } from "../src/domain/lifecycle";
 import { parseEpisodePage, parseWatchPath } from "../src/domain/episode-parser";
-import {
-  persistDetectedEpisode,
-} from "../src/domain/tracking";
+import { persistDetectedEpisode } from "../src/domain/tracking";
 
 export default defineContentScript({
   matches: ["https://www.crunchyroll.com/*"],
   runAt: "document_idle",
-  main() {
+  main(ctx) {
+    const lifetime = createContentLifetime((dispose) =>
+      ctx.onInvalidated(dispose),
+    );
     document.documentElement.dataset.markerCrunchyroll = "loaded";
     let lastSentEpisodeId: string | null = null;
     let lastObservedUrl = location.href;
@@ -15,6 +17,7 @@ export default defineContentScript({
     let inspectAgain = false;
 
     const inspect = async () => {
+      if (!lifetime.active) return;
       if (saveInFlight) {
         inspectAgain = true;
         return;
@@ -29,15 +32,17 @@ export default defineContentScript({
         saveInFlight = true;
         document.documentElement.dataset.markerCrunchyroll = "saving";
         try {
-          await persistDetectedEpisode(bookmark);
+          await persistDetectedEpisode(bookmark, undefined, lifetime.signal);
+          if (!lifetime.active) return;
           lastSentEpisodeId = bookmark.episodeId;
           document.documentElement.dataset.markerCrunchyroll = "tracked";
-        } catch (error: unknown) {
+        } catch {
+          if (!lifetime.active) return;
           document.documentElement.dataset.markerCrunchyroll = "error";
-          console.error("[Marker] Failed to save Crunchyroll episode", error);
+          console.error("[Marker] Failed to save Crunchyroll episode");
         } finally {
           saveInFlight = false;
-          if (inspectAgain) {
+          if (inspectAgain && lifetime.active) {
             inspectAgain = false;
             scheduleInspect(0);
           }
@@ -51,6 +56,7 @@ export default defineContentScript({
     };
 
     const scheduleInspect = (delay = 100) => {
+      if (!lifetime.active) return;
       clearTimeout(inspectionTimer);
       inspectionTimer = setTimeout(() => void inspect(), delay);
     };
@@ -62,15 +68,19 @@ export default defineContentScript({
 
     for (const methodName of ["pushState", "replaceState"] as const) {
       const original = history[methodName];
-      history[methodName] = function (...args) {
+      const patched: typeof original = function (this: History, ...args) {
         const result = original.apply(this, args);
         window.dispatchEvent(new Event("marker:crunchyroll-navigation"));
         return result;
       };
+      history[methodName] = patched;
+      lifetime.own(() => {
+        if (history[methodName] === patched) history[methodName] = original;
+      });
     }
 
-    window.addEventListener("popstate", handleNavigation);
-    window.addEventListener("marker:crunchyroll-navigation", handleNavigation);
+    lifetime.listen(window, "popstate", handleNavigation);
+    lifetime.listen(window, "marker:crunchyroll-navigation", handleNavigation);
 
     const observer = new MutationObserver(() => {
       if (parseWatchPath(location.pathname)) scheduleInspect();
@@ -80,7 +90,7 @@ export default defineContentScript({
       subtree: true,
     });
 
-    window.setInterval(() => {
+    const interval = window.setInterval(() => {
       if (location.href !== lastObservedUrl) {
         lastObservedUrl = location.href;
         handleNavigation();
@@ -89,6 +99,9 @@ export default defineContentScript({
       if (parseWatchPath(location.pathname)) scheduleInspect(0);
     }, 1000);
 
+    lifetime.own(() => observer.disconnect());
+    lifetime.own(() => window.clearInterval(interval));
+    lifetime.own(() => clearTimeout(inspectionTimer));
     scheduleInspect(0);
   },
 });

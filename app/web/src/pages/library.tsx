@@ -1,19 +1,32 @@
+import { Effect } from "effect";
+import { saveLibrary } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Grid3X3, List, Plus } from "lucide-react";
 import { api } from "@marker/shared/api";
 import { FilterDialog } from "@/components/filter-dialog";
-import { SortableHandle, SortableItemActions } from "@/components/sortable-item-controls";
+import {
+  SortableHandle,
+  SortableItemActions,
+} from "@/components/sortable-item-controls";
 import { AddTitleDialog } from "@/components/title-dialog";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { Page, SectionHeader } from "@/components/page";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-import { filterLibraryItems, uniqueTags, type LibraryFilters } from "@/lib/library-filters";
+import {
+  filterLibraryItems,
+  uniqueTags,
+  type LibraryFilters,
+} from "@/lib/library-filters";
 import { gridWidth, listType, listWidth } from "@/lib/display-preferences";
-import { usePointerSortable, type SortableLocation } from "@/hooks/use-pointer-sortable";
+import {
+  usePointerSortable,
+  type SortableLocation,
+} from "@/hooks/use-pointer-sortable";
 import { useSessionLibraryView } from "@/hooks/use-session-library-view";
 import {
   libraryStatuses as statuses,
@@ -47,51 +60,73 @@ function ListItem({
           {index + 1}.
         </span>
       )}
-        <span className="min-w-0 flex-1 overflow-hidden">
-          <strong
-            className={`block font-medium ${contained ? "line-clamp-2" : "truncate"}`}
-            style={{ fontSize: typography.fontSize, lineHeight: `${typography.lineHeight}px` }}
-          >
-            {item.title}
-          </strong>
+      <span className="min-w-0 flex-1 overflow-hidden">
+        <strong
+          className={`block font-medium ${contained ? "line-clamp-2" : "truncate"}`}
+          style={{
+            fontSize: typography.fontSize,
+            lineHeight: `${typography.lineHeight}px`,
+          }}
+        >
+          {item.title}
+        </strong>
+      </span>
+      {item.rating !== undefined && (
+        <span
+          className="w-[34px] shrink-0 text-right font-normal tabular-nums"
+          style={{
+            fontSize: typography.fontSize,
+            lineHeight: `${typography.lineHeight}px`,
+          }}
+        >
+          {item.rating.toFixed(1)}
         </span>
-        {item.rating !== undefined && (
-          <span className="w-[34px] shrink-0 text-right font-normal tabular-nums" style={{ fontSize: typography.fontSize, lineHeight: `${typography.lineHeight}px` }}>{item.rating.toFixed(1)}</span>
-        )}
+      )}
     </Link>
   );
 }
 
-function PosterItem({ item, index, ranked }: { item: WebLibraryItem; index: number; ranked: boolean }) {
+function PosterItem({
+  item,
+  index,
+  ranked,
+}: {
+  item: WebLibraryItem;
+  index: number;
+  ranked: boolean;
+}) {
   return (
     <Link
       to="/item/$itemId"
       params={{ itemId: String(item._id) }}
       className="block min-h-11 text-left focus:outline-none focus:ring-2 focus:ring-ring"
     >
-        <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-card">
-          {posterUrl(item.posterPath) ? (
-            <img
-              src={posterUrl(item.posterPath)}
-              alt=""
-              loading="lazy"
-              className="size-full object-cover"
-            />
-          ) : null}
-        </div>
-        <strong className="mt-1.5 block line-clamp-2 text-[13px] leading-[17px] font-semibold">
-          {ranked && <span className="text-muted-foreground">{index + 1}. </span>}
-          {item.title}
-        </strong>
+      <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-card">
+        {posterUrl(item.posterPath) ? (
+          <img
+            src={posterUrl(item.posterPath)}
+            alt=""
+            loading="lazy"
+            className="size-full object-cover"
+          />
+        ) : null}
+      </div>
+      <strong className="mt-1.5 block line-clamp-2 text-[13px] leading-[17px] font-semibold">
+        {ranked && <span className="text-muted-foreground">{index + 1}. </span>}
+        {item.title}
+      </strong>
     </Link>
   );
 }
 
 export function LibraryPage() {
+  const runOperation = useOperation();
   const items = useQuery(api.library.items.listItems, {});
   const settings = useQuery(api.settings.getSettings, {});
   const reorderItem = useMutation(api.library.ordering.reorderItem);
-  const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
+  const moveItemToWatched = useAction(
+    api.library.seasonWatched.moveItemToWatched,
+  );
   const { view, setView } = useSessionLibraryView(
     settings?.defaultView ?? "list",
   );
@@ -105,7 +140,9 @@ export function LibraryPage() {
     status: "all",
     tags: [],
   });
-  const [orders, setOrders] = useState<Partial<Record<WebLibraryItem["status"], string[]>>>({});
+  const [orders, setOrders] = useState<
+    Partial<Record<WebLibraryItem["status"], string[]>>
+  >({});
   const [moving, setMoving] = useState<string>();
   const movePending = useRef(false);
   const [error, setError] = useState("");
@@ -139,7 +176,8 @@ export function LibraryPage() {
     };
     return section.toSorted(
       (left, right) =>
-        position(String(left._id)) - position(String(right._id)) || left.rank - right.rank,
+        position(String(left._id)) - position(String(right._id)) ||
+        left.rank - right.rank,
     );
   };
   const move = async (
@@ -148,7 +186,14 @@ export function LibraryPage() {
     from: number,
     to: number,
   ) => {
-    if (filtersActive || movePending.current || from === to || to < 0 || to >= section.length) return;
+    if (
+      filtersActive ||
+      movePending.current ||
+      from === to ||
+      to < 0 ||
+      to >= section.length
+    )
+      return;
     setError("");
     const next = [...section];
     const [moved] = next.splice(from, 1);
@@ -157,50 +202,82 @@ export function LibraryPage() {
     setAnnouncement(
       `${moved.title} moved to position ${to + 1} of ${section.length} in ${statusLabels[status]}.`,
     );
-    setOrders((current) => ({ ...current, [status]: next.map((item) => String(item._id)) }));
+    setOrders((current) => ({
+      ...current,
+      [status]: next.map((item) => String(item._id)),
+    }));
     movePending.current = true;
     setMoving(String(moved._id));
-    try {
-      await reorderItem({
-        itemId: moved._id,
-        status,
-        ...(next[to - 1] && { beforeId: next[to - 1]._id }),
-        ...(next[to + 1] && { afterId: next[to + 1]._id }),
-      });
-    } catch {
-      setError("Couldn’t save the new order.");
-    } finally {
-      setOrders((current) => ({ ...current, [status]: undefined }));
-      movePending.current = false;
-      setMoving(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() =>
+          reorderItem({
+            itemId: moved._id,
+            status,
+            ...(next[to - 1] && { beforeId: next[to - 1]._id }),
+            ...(next[to + 1] && { afterId: next[to + 1]._id }),
+          }),
+        );
+      }),
+      {
+        failure: () => {
+          setError("Couldn’t save the new order.");
+        },
+        settled: () => {
+          setOrders((current) => ({ ...current, [status]: undefined }));
+          movePending.current = false;
+          setMoving(undefined);
+        },
+      },
+    );
   };
-  const moveStatus = async (item: WebLibraryItem, status: WebLibraryItem["status"], targetIndex?: number) => {
+  const moveStatus = async (
+    item: WebLibraryItem,
+    status: WebLibraryItem["status"],
+    targetIndex?: number,
+  ) => {
     if (filtersActive || movePending.current || item.status === status) return;
     const target = (items ?? [])
       .filter((entry) => entry.status === status && entry._id !== item._id)
       .toSorted((left, right) => left.rank - right.rank);
-    const insertion = Math.max(0, Math.min(targetIndex ?? target.length, target.length));
+    const insertion = Math.max(
+      0,
+      Math.min(targetIndex ?? target.length, target.length),
+    );
     const placed = [...target];
     placed.splice(insertion, 0, item);
     movePending.current = true;
     setMoving(String(item._id));
     setError("");
-    try {
-      const placement = {
-        itemId: item._id,
-        ...(placed[insertion - 1] && { beforeId: placed[insertion - 1]._id }),
-        ...(placed[insertion + 1] && { afterId: placed[insertion + 1]._id }),
-      };
-      if (status === "watched") await moveItemToWatched(placement);
-      else await reorderItem({ ...placement, status });
-      setOrders({});
-    } catch {
-      setError(status === "watched" ? "Couldn’t mark every episode watched." : "Couldn’t move this title.");
-    } finally {
-      movePending.current = false;
-      setMoving(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        const placement = {
+          itemId: item._id,
+          ...(placed[insertion - 1] && { beforeId: placed[insertion - 1]._id }),
+          ...(placed[insertion + 1] && { afterId: placed[insertion + 1]._id }),
+        };
+        if (status === "watched")
+          yield* saveLibrary(() => moveItemToWatched(placement));
+        else yield* saveLibrary(() => reorderItem({ ...placement, status }));
+      }),
+      {
+        success: () => {
+          setOrders({});
+        },
+
+        failure: () => {
+          setError(
+            status === "watched"
+              ? "Couldn’t mark every episode watched."
+              : "Couldn’t move this title.",
+          );
+        },
+        settled: () => {
+          movePending.current = false;
+          setMoving(undefined);
+        },
+      },
+    );
   };
 
   const sortable = usePointerSortable({
@@ -242,11 +319,23 @@ export function LibraryPage() {
           aria-pressed={view === "posters"}
           onClick={() => setView(view === "list" ? "posters" : "list")}
         >
-          {view === "list" ? <Grid3X3 className="size-4" /> : <List className="size-4" />}
+          {view === "list" ? (
+            <Grid3X3 className="size-4" />
+          ) : (
+            <List className="size-4" />
+          )}
         </Button>
-        <FilterDialog value={filters} onChange={setFilters} availableTags={allTags} />
+        <FilterDialog
+          value={filters}
+          onChange={setFilters}
+          availableTags={allTags}
+        />
       </div>
-      {error && <p role="alert" className="mt-3 text-xs text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {error}
+        </p>
+      )}
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
@@ -282,7 +371,9 @@ export function LibraryPage() {
                       {filtersActive ? "No matches" : "Nothing here yet"}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {filtersActive ? "Try a broader filter." : "Add a title when you’re ready."}
+                      {filtersActive
+                        ? "Try a broader filter."
+                        : "Add a title when you’re ready."}
                     </p>
                   </div>
                 ) : view === "list" ? (
@@ -290,9 +381,18 @@ export function LibraryPage() {
                     {section.map((item, index) => (
                       <div
                         key={item._id}
-                        {...sortable.itemProps({ group: status, id: String(item._id), index })}
+                        {...sortable.itemProps({
+                          group: status,
+                          id: String(item._id),
+                          index,
+                        })}
                         className="flex min-w-0 items-center rounded-lg"
-                        style={{ width: listWidth(listColumns), flexBasis: listWidth(listColumns), flexGrow: 0, flexShrink: 0 }}
+                        style={{
+                          width: listWidth(listColumns),
+                          flexBasis: listWidth(listColumns),
+                          flexGrow: 0,
+                          flexShrink: 0,
+                        }}
                       >
                         <SortableHandle
                           disabled={filtersActive || Boolean(moving)}
@@ -301,7 +401,9 @@ export function LibraryPage() {
                             { group: status, id: String(item._id), index },
                             filtersActive || Boolean(moving),
                           )}
-                          onMove={(direction) => void move(status, section, index, index + direction)}
+                          onMove={(direction) =>
+                            void move(status, section, index, index + direction)
+                          }
                         />
                         <ListItem
                           item={item}
@@ -315,11 +417,20 @@ export function LibraryPage() {
                           disabled={filtersActive || Boolean(moving)}
                           canMoveUp={index > 0}
                           canMoveDown={index < section.length - 1}
-                          onMoveUp={() => void move(status, section, index, index - 1)}
-                          onMoveDown={() => void move(status, section, index, index + 1)}
+                          onMoveUp={() =>
+                            void move(status, section, index, index - 1)
+                          }
+                          onMoveDown={() =>
+                            void move(status, section, index, index + 1)
+                          }
                           status={status}
                           statuses={statusOptions}
-                          onMoveToStatus={(next) => void moveStatus(item, next as WebLibraryItem["status"])}
+                          onMoveToStatus={(next) =>
+                            void moveStatus(
+                              item,
+                              next as WebLibraryItem["status"],
+                            )
+                          }
                         />
                       </div>
                     ))}
@@ -329,9 +440,18 @@ export function LibraryPage() {
                     {section.map((item, index) => (
                       <div
                         key={item._id}
-                        {...sortable.itemProps({ group: status, id: String(item._id), index })}
+                        {...sortable.itemProps({
+                          group: status,
+                          id: String(item._id),
+                          index,
+                        })}
                         className="relative min-w-0 rounded-xl"
-                        style={{ width: gridWidth(gridColumns), flexBasis: gridWidth(gridColumns), flexGrow: 0, flexShrink: 0 }}
+                        style={{
+                          width: gridWidth(gridColumns),
+                          flexBasis: gridWidth(gridColumns),
+                          flexGrow: 0,
+                          flexShrink: 0,
+                        }}
                       >
                         <div className="absolute inset-x-1 top-1 z-10 flex justify-between">
                           <SortableHandle
@@ -341,18 +461,34 @@ export function LibraryPage() {
                               { group: status, id: String(item._id), index },
                               filtersActive || Boolean(moving),
                             )}
-                            onMove={(direction) => void move(status, section, index, index + direction)}
+                            onMove={(direction) =>
+                              void move(
+                                status,
+                                section,
+                                index,
+                                index + direction,
+                              )
+                            }
                           />
                           <SortableItemActions
                             title={item.title}
                             disabled={filtersActive || Boolean(moving)}
                             canMoveUp={index > 0}
                             canMoveDown={index < section.length - 1}
-                            onMoveUp={() => void move(status, section, index, index - 1)}
-                            onMoveDown={() => void move(status, section, index, index + 1)}
+                            onMoveUp={() =>
+                              void move(status, section, index, index - 1)
+                            }
+                            onMoveDown={() =>
+                              void move(status, section, index, index + 1)
+                            }
                             status={status}
                             statuses={statusOptions}
-                            onMoveToStatus={(next) => void moveStatus(item, next as WebLibraryItem["status"])}
+                            onMoveToStatus={(next) =>
+                              void moveStatus(
+                                item,
+                                next as WebLibraryItem["status"],
+                              )
+                            }
                           />
                         </div>
                         <PosterItem

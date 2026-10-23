@@ -1,9 +1,17 @@
+import { Clock, Effect, Schema } from 'effect';
+import { attempt } from './actionEffects';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction, type ActionCtx } from './_generated/server';
-import { providerFetch } from './providerHttp';
+import {
+  providerFetchEffect,
+  decodeProviderObject,
+  runProviderEffect,
+  ProviderIntegrationFailure,
+  type ProviderTransportFailure,
+} from './providerHttp';
 import { animeEpisodeValidator, animeGuideValidator } from './providerValidators';
-import { findSeries } from './tvdbSeriesLookup';
+import { findSeriesEffect } from './tvdbSeriesLookup';
 import { isAnime } from './mergePolicy';
 import { releasedEpisodes } from './episodeAvailability';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
@@ -64,11 +72,20 @@ let credentials: { token: string; expiresAt: number } | undefined;
 
 class TvdbNotFoundError extends Error {}
 
-async function login(ctx: Pick<ActionCtx, 'runMutation'>) {
+const loginPayload = Schema.Struct({ data: Schema.Struct({ token: Schema.String }) });
+
+const loginEffect = Effect.fnUntraced(function* (ctx: Pick<ActionCtx, 'runMutation'>) {
   const apikey = process.env.TVDB_API_KEY;
-  if (!apikey) throw new Error('TVDB_API_KEY is not configured');
-  if (credentials && credentials.expiresAt > Date.now() + 60_000) return credentials.token;
-  const response = await providerFetch(
+  if (!apikey)
+    return yield* Effect.fail(
+      new ProviderIntegrationFailure({
+        provider: 'tvdb',
+        message: 'TVDB_API_KEY is not configured',
+      }),
+    );
+  if (credentials && credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000)
+    return credentials.token;
+  const response = yield* providerFetchEffect(
     `${API_ROOT}/login`,
     {
       method: 'POST',
@@ -84,45 +101,82 @@ async function login(ctx: Pick<ActionCtx, 'runMutation'>) {
         }),
     },
   );
-  if (!response.ok) throw new Error(`TVDB login failed (${response.status})`);
-  const payload = record(await response.json());
-  const token = text(record(payload.data).token);
-  if (!token) throw new Error('TVDB login returned malformed data');
-  credentials = { token, expiresAt: Date.now() + 29 * 24 * 60 * 60 * 1000 };
+  if (!response.ok)
+    return yield* Effect.fail(
+      new ProviderIntegrationFailure({
+        provider: 'tvdb',
+        message: `TVDB login failed (${response.status})`,
+      }),
+    );
+  const payload = yield* decodeProviderObject(response, 'tvdb').pipe(
+    Effect.flatMap(Schema.decodeUnknownEffect(loginPayload)),
+    Effect.mapError(
+      () =>
+        new ProviderIntegrationFailure({
+          provider: 'tvdb',
+          message: 'TVDB login returned malformed data',
+        }),
+    ),
+  );
+  const token = payload.data.token.trim();
+  if (!token)
+    return yield* Effect.fail(
+      new ProviderIntegrationFailure({
+        provider: 'tvdb',
+        message: 'TVDB login returned malformed data',
+      }),
+    );
+  credentials = { token, expiresAt: (yield* Clock.currentTimeMillis) + 29 * 24 * 60 * 60 * 1000 };
   return token;
-}
+});
 
-async function request(
+const requestEffect = Effect.fnUntraced(function* (
   ctx: Pick<ActionCtx, 'runMutation'>,
   path: string,
   emptyOnNotFound = false,
-  retryAuth = true,
-): Promise<Json> {
-  const response = await providerFetch(
-    `${API_ROOT}${path}`,
-    {
-      headers: { Authorization: `Bearer ${await login(ctx)}`, accept: 'application/json' },
-    },
-    {
-      provider: 'tvdb',
-      operation: path.split('?')[0],
-      beforeRequest: () =>
-        ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+): Effect.fn.Return<
+  Json,
+  ProviderTransportFailure | ProviderIntegrationFailure | TvdbNotFoundError
+> {
+  // Authentication gets one refresh, independently of idempotent transport retries.
+  for (let authAttempt = 0; authAttempt < 2; authAttempt++) {
+    const token = yield* loginEffect(ctx);
+    const response = yield* providerFetchEffect(
+      `${API_ROOT}${path}`,
+      {
+        headers: { Authorization: `Bearer ${token}`, accept: 'application/json' },
+      },
+      {
+        provider: 'tvdb',
+        operation: path.split('?')[0],
+        beforeRequest: () =>
+          ctx.runMutation(internal.providerRateLimits.consumeGlobalProviderLimiter, {
+            provider: 'tvdb',
+          }),
+      },
+    );
+    if (response.status === 401 && authAttempt === 0) {
+      credentials = undefined;
+      continue;
+    }
+    if (response.status === 404 && emptyOnNotFound) return {};
+    if (response.status === 404)
+      return yield* Effect.fail(new TvdbNotFoundError('TVDB record not found'));
+    if (!response.ok)
+      return yield* Effect.fail(
+        new ProviderIntegrationFailure({
           provider: 'tvdb',
+          message: `TVDB request failed (${response.status})`,
         }),
-    },
-  );
-  if (response.status === 401 && retryAuth) {
-    credentials = undefined;
-    return request(ctx, path, emptyOnNotFound, false);
+      );
+    return yield* decodeProviderObject(response, 'tvdb');
   }
-  if (response.status === 404 && emptyOnNotFound) return {};
-  if (response.status === 404) throw new TvdbNotFoundError('TVDB record not found');
-  if (!response.ok) throw new Error(`TVDB request failed (${response.status})`);
-  return record(await response.json());
-}
+  return yield* Effect.fail(
+    new ProviderIntegrationFailure({ provider: 'tvdb', message: 'TVDB authentication failed' }),
+  );
+});
 
-async function fetchEpisodes(
+const fetchEpisodesEffect = Effect.fnUntraced(function* (
   ctx: Pick<ActionCtx, 'runMutation'>,
   tvdbId: number,
   order: SeasonOrder,
@@ -131,12 +185,18 @@ async function fetchEpisodes(
   const episodes: AnimeEpisode[] = [];
   const seen = new Set<number>();
   let hasNextPage = false;
-  const deadline = Date.now() + EPISODE_FETCH_DEADLINE_MS;
+  const deadline = (yield* Clock.currentTimeMillis) + EPISODE_FETCH_DEADLINE_MS;
   for (let page = 0; page < MAX_EPISODE_PAGES; page += 1) {
-    if (Date.now() >= deadline) throw new Error('TVDB episode pagination exceeded its deadline');
+    if ((yield* Clock.currentTimeMillis) >= deadline)
+      return yield* Effect.fail(
+        new ProviderIntegrationFailure({
+          provider: 'tvdb',
+          message: 'TVDB episode pagination exceeded its deadline',
+        }),
+      );
     const query = new URLSearchParams({ page: String(page) });
     if (season !== undefined) query.set('season', String(season));
-    const payload = await request(
+    const payload = yield* requestEffect(
       ctx,
       `/series/${tvdbId}/episodes/${order}/eng?${query.toString()}`,
     );
@@ -156,88 +216,106 @@ async function fetchEpisodes(
     hasNextPage = next !== null && next !== undefined && next !== '' && rawEpisodes.length > 0;
     if (!hasNextPage) break;
   }
-  if (hasNextPage) throw new Error('TVDB episode pagination exceeded the safety limit');
+  if (hasNextPage)
+    return yield* Effect.fail(
+      new ProviderIntegrationFailure({
+        provider: 'tvdb',
+        message: 'TVDB episode pagination exceeded the safety limit',
+      }),
+    );
   return episodesForSeason(episodes, season);
-}
+});
 
-async function translatedSeasonName(
+const fetchEpisodes = (
+  ctx: Pick<ActionCtx, 'runMutation'>,
+  tvdbId: number,
+  order: SeasonOrder,
+  season?: number,
+) => runProviderEffect(fetchEpisodesEffect(ctx, tvdbId, order, season));
+
+function translatedSeasonNameEffect(
   ctx: Pick<ActionCtx, 'runMutation'>,
   season: SeasonRecord,
   titles: string[],
 ) {
-  if (season.number === 0) return 'Specials';
   const localName = seasonDisplayName(season.number, season.name, season.translatedName);
   const knownName = knownAnimeSeasonName(titles, season.number);
+  if (season.number === 0) return Effect.succeed('Specials');
   if (knownName && (!season.translatedName || /^season\s+\d+$/i.test(season.translatedName)))
-    return knownName;
-  try {
-    const payload = await request(ctx, `/seasons/${season.id}/translations/eng`, true);
-    const translated = seasonDisplayName(
-      season.number,
-      season.name,
-      text(record(payload.data).name),
-    );
-    return knownName && /^season\s+\d+$/i.test(translated) ? knownName : translated;
-  } catch {
-    return knownName && /^season\s+\d+$/i.test(localName) ? knownName : localName;
-  }
+    return Effect.succeed(knownName);
+  return requestEffect(ctx, `/seasons/${season.id}/translations/eng`, true).pipe(
+    Effect.map((payload) => {
+      const translated = seasonDisplayName(
+        season.number,
+        season.name,
+        text(record(payload.data).name),
+      );
+      return knownName && /^season\s+\d+$/i.test(translated) ? knownName : translated;
+    }),
+    Effect.catch(() =>
+      Effect.succeed(knownName && /^season\s+\d+$/i.test(localName) ? knownName : localName),
+    ),
+  );
 }
 
-async function translateSeasonNames(
+function translateSeasonNamesEffect(
   ctx: Pick<ActionCtx, 'runMutation'>,
   seasons: SeasonRecord[],
   titles: string[],
 ) {
-  const names = new Map<number, string>();
   let translationsRequested = 0;
   const translationLimit = seasonTranslationLimit(seasons.length);
-  for (let start = 0; start < seasons.length; start += 6) {
-    const batch = seasons.slice(start, start + 6).map((season) => {
-      const translate = season.number > 0 && translationsRequested < translationLimit;
-      if (translate) translationsRequested += 1;
-      return { season, translate };
-    });
-    const translated = await Promise.all(
-      batch.map(
-        async ({ season, translate }) =>
-          [
-            season.number,
-            translate
-              ? await translatedSeasonName(ctx, season, titles)
-              : seasonDisplayName(
-                  season.number,
-                  season.name,
-                  season.translatedName ?? knownAnimeSeasonName(titles, season.number),
-                ),
-          ] as const,
-      ),
-    );
-    for (const [number, name] of translated) names.set(number, name);
-  }
-  return names;
+  const work = seasons.map((season) => {
+    const translate = season.number > 0 && translationsRequested < translationLimit;
+    if (translate) translationsRequested++;
+    return { season, translate };
+  });
+  return Effect.forEach(
+    work,
+    ({ season, translate }) =>
+      (translate
+        ? translatedSeasonNameEffect(ctx, season, titles)
+        : Effect.succeed(
+            seasonDisplayName(
+              season.number,
+              season.name,
+              season.translatedName ?? knownAnimeSeasonName(titles, season.number),
+            ),
+          )
+      ).pipe(Effect.map((name) => [season.number, name] as const)),
+    { concurrency: 6 },
+  ).pipe(Effect.map((entries) => new Map(entries)));
 }
 
-async function resolveAnime(
+const resolveAnimeEffect = Effect.fnUntraced(function* (
   ctx: Pick<ActionCtx, 'runMutation'>,
   tmdbId: number,
   titles: string[],
   pinned?: { tvdbId?: number; order?: SeasonOrder },
   requestedSeason?: number,
-): Promise<AnimeResolution | null> {
+) {
   const lookup = (excluded: Set<number> = new Set()) =>
-    findSeries((path) => request(ctx, path, true), tmdbId, titles, excluded);
-  let tvdbId = pinned?.tvdbId ?? (await lookup());
+    findSeriesEffect((path) => requestEffect(ctx, path, true), tmdbId, titles, excluded);
+  let tvdbId = pinned?.tvdbId ?? (yield* lookup());
   if (!tvdbId) return null;
-  let payload: Json;
-  try {
-    payload = await request(ctx, `/series/${tvdbId}/extended?meta=translations`);
-  } catch (error) {
-    if (!(error instanceof TvdbNotFoundError) || pinned?.order) throw error;
-    const replacement = await lookup(new Set([tvdbId]));
-    if (!replacement) throw new Error('No unambiguous replacement TVDB series found');
-    tvdbId = replacement;
-    payload = await request(ctx, `/series/${tvdbId}/extended?meta=translations`);
-  }
+  const payload = yield* requestEffect(ctx, `/series/${tvdbId}/extended?meta=translations`).pipe(
+    Effect.catch((error) =>
+      Effect.gen(function* () {
+        if (!(error instanceof TvdbNotFoundError) || pinned?.order)
+          return yield* Effect.fail(error);
+        const replacement = yield* lookup(new Set([tvdbId!]));
+        if (!replacement)
+          return yield* Effect.fail(
+            new ProviderIntegrationFailure({
+              provider: 'tvdb',
+              message: 'No unambiguous replacement TVDB series found',
+            }),
+          );
+        tvdbId = replacement;
+        return yield* requestEffect(ctx, `/series/${tvdbId}/extended?meta=translations`);
+      }),
+    ),
+  );
   const data = record(payload.data);
   const genreNames = records(data.genres).flatMap((genre) => {
     const name = text(genre.name);
@@ -257,16 +335,21 @@ async function resolveAnime(
   const loadSelectedEpisodes =
     selectedSeason !== undefined &&
     (requestedSeason === undefined || requestedSeason === selectedSeason);
-  const [names, counts, selectedEpisodes] = await Promise.all([
-    translateSeasonNames(ctx, selectedSeasons, titles),
-    resolveSeasonCounts(
-      ctx,
-      selectedSeasons.filter((season) => !loadSelectedEpisodes || season.number !== selectedSeason),
-    ),
-    loadSelectedEpisodes
-      ? fetchEpisodes(ctx, tvdbId, order, selectedSeason)
-      : Promise.resolve(undefined),
-  ]);
+  const [names, counts, selectedEpisodes] = yield* Effect.all(
+    [
+      translateSeasonNamesEffect(ctx, selectedSeasons, titles),
+      resolveSeasonCountsEffect(
+        ctx,
+        selectedSeasons.filter(
+          (season) => !loadSelectedEpisodes || season.number !== selectedSeason,
+        ),
+      ),
+      loadSelectedEpisodes
+        ? fetchEpisodesEffect(ctx, tvdbId, order, selectedSeason)
+        : Effect.succeed(undefined),
+    ],
+    { concurrency: 3 },
+  );
   const details: AnimeDetails = {
     tvdbId,
     title: text(data.name) || titles[0] || `TVDB ${tvdbId}`,
@@ -293,36 +376,38 @@ async function resolveAnime(
     }),
   };
   return { details, episodes: selectedEpisodes };
-}
+});
 
-async function resolveSeasonCounts(ctx: Pick<ActionCtx, 'runMutation'>, seasons: SeasonRecord[]) {
-  const counts = new Map<number, number>();
-  const candidates = seasons.slice(0, MAX_SEASON_COUNT_REQUESTS);
-  const deadline = Date.now() + SEASON_COUNT_DEADLINE_MS;
-  for (let start = 0; start < candidates.length; start += 4) {
-    if (Date.now() >= deadline) break;
-    await Promise.all(
-      candidates.slice(start, start + 4).map(async (season) => {
-        try {
-          const payload = await request(ctx, `/seasons/${season.id}/extended`);
-          const data = record(payload.data);
-          if (integer(data.id) !== season.id || !Array.isArray(data.episodes)) return;
-          // The season ID identifies the chosen order; episode coordinates can
-          // refer to the default order, so do not filter by seasonNumber here.
-          const episodes = records(data.episodes).flatMap((entry) => {
-            const episode = mapEpisode(entry);
-            return episode ? [episode] : [];
-          });
-          counts.set(
-            season.number,
-            new Set(releasedEpisodes(episodes).map((episode) => episode.id)).size,
+function resolveSeasonCountsEffect(ctx: Pick<ActionCtx, 'runMutation'>, seasons: SeasonRecord[]) {
+  return Effect.suspend(() => {
+    const counts = new Map<number, number>();
+    const deadline = Date.now() + SEASON_COUNT_DEADLINE_MS;
+    return Effect.forEach(
+      seasons.slice(0, MAX_SEASON_COUNT_REQUESTS),
+      (season) =>
+        Effect.suspend(() => {
+          if (Date.now() >= deadline) return Effect.void;
+          return requestEffect(ctx, `/seasons/${season.id}/extended`).pipe(
+            Effect.map((payload) => {
+              const data = record(payload.data);
+              if (integer(data.id) !== season.id || !Array.isArray(data.episodes)) return;
+              // The season ID identifies the chosen order, independently of episode coordinates.
+              const episodes = records(data.episodes).flatMap((entry) => {
+                const episode = mapEpisode(entry);
+                return episode ? [episode] : [];
+              });
+              counts.set(
+                season.number,
+                new Set(releasedEpisodes(episodes).map((episode) => episode.id)).size,
+              );
+            }),
+            // Missing counts remain optional; interruption still propagates to sibling work.
+            Effect.catch(() => Effect.void),
           );
-          // eslint-disable-next-line no-empty
-        } catch {}
-      }),
-    );
-  }
-  return counts;
+        }),
+      { concurrency: 4, discard: true },
+    ).pipe(Effect.as(counts));
+  });
 }
 
 type SnapshotActionCtx = Pick<ActionCtx, 'runQuery' | 'runMutation'>;
@@ -356,28 +441,39 @@ async function refreshAnimeSnapshot(
   pinned?: { tvdbId?: number; order?: SeasonOrder },
   requestedSeason?: number,
 ): Promise<AnimeDetails | null> {
-  const resolution = await resolveAnime(ctx, tmdbId, titles, pinned, requestedSeason);
+  const resolution: AnimeResolution | null = await runProviderEffect(
+    resolveAnimeEffect(ctx, tmdbId, titles, pinned, requestedSeason),
+  );
   if (resolution) {
-    await Promise.all([
-      putNonFatal(ctx, {
-        key: guideSnapshotKey(tmdbId, resolution.details.tvdbId, resolution.details.order),
-        value: resolution.details,
-        metricKey: 'tvdb-guide',
-      }),
-      ...(!pinned?.order
-        ? [
+    await runProviderEffect(
+      Effect.all(
+        [
+          attempt(() =>
             putNonFatal(ctx, {
-              key: guideLookupKey(tmdbId),
-              value: {
-                tvdbId: resolution.details.tvdbId,
-                order: resolution.details.order,
-                authoritativeNames: normalizedNames(titles),
-              },
-              metricKey: 'tvdb-guide-lookup',
+              key: guideSnapshotKey(tmdbId, resolution.details.tvdbId, resolution.details.order),
+              value: resolution.details,
+              metricKey: 'tvdb-guide',
             }),
-          ]
-        : []),
-    ]);
+          ),
+          ...(!pinned?.order
+            ? [
+                attempt(() =>
+                  putNonFatal(ctx, {
+                    key: guideLookupKey(tmdbId),
+                    value: {
+                      tvdbId: resolution.details.tvdbId,
+                      order: resolution.details.order,
+                      authoritativeNames: normalizedNames(titles),
+                    },
+                    metricKey: 'tvdb-guide-lookup',
+                  }),
+                ),
+              ]
+            : []),
+        ],
+        { concurrency: 2 },
+      ),
+    );
   } else if (pinned?.tvdbId && pinned.order)
     await putNonFatal(ctx, {
       key: guideSnapshotKey(tmdbId, pinned.tvdbId, pinned.order),

@@ -1,5 +1,6 @@
 import { useCallback, useRef, type ReactNode } from 'react';
 import { ScreenReadinessContext } from '@/components/ScreenLayout';
+import { OperationSessionProvider } from '@/hooks/operation-session';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ClerkProvider, useAuth } from '@clerk/expo';
@@ -45,7 +46,9 @@ function ConvexClerkBridge({ children }: { children: React.ReactNode }) {
   const { sessionId } = useAuth();
   return (
     <ConvexProviderWithClerk key={sessionId ?? 'signed-out'} client={client} useAuth={useAuth}>
-      <CalendarProvider>{children}</CalendarProvider>
+      <OperationSessionProvider>
+        <CalendarProvider>{children}</CalendarProvider>
+      </OperationSessionProvider>
     </ConvexProviderWithClerk>
   );
 }

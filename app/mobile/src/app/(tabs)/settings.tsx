@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveProfile } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useClerk } from '@clerk/expo';
@@ -32,6 +35,7 @@ const listColumns = [
 ] as const;
 
 export default function Settings() {
+  const runOperation = useOperation();
   const settings = useQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);
   const { signOut } = useClerk();
@@ -43,36 +47,48 @@ export default function Settings() {
   const update = async (key: string, value: unknown) => {
     setPending((current) => new Set(current).add(key));
     setOptimistic((existing) => ({ ...existing, [key]: value }));
-    try {
-      await setSettings({ [key]: value });
-    } catch {
-      toast.show('Couldn’t update settings');
-    } finally {
-      setOptimistic((existing) => {
-        const next = { ...existing };
-        delete next[key];
-        return next;
-      });
-      setPending((current) => {
-        const next = new Set(current);
-        next.delete(key);
-        return next;
-      });
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveProfile(() => setSettings({ [key]: value }));
+      }),
+      {
+        failure: () => {
+          toast.show('Couldn’t update settings');
+        },
+        settled: () => {
+          setOptimistic((existing) => {
+            const next = { ...existing };
+            delete next[key];
+            return next;
+          });
+          setPending((current) => {
+            const next = new Set(current);
+            next.delete(key);
+            return next;
+          });
+        },
+      },
+    );
   };
   const handleSignOut = async () => {
     setPending((current) => new Set(current).add('signout'));
-    try {
-      await signOut();
-    } catch {
-      toast.show('Couldn’t sign out');
-    } finally {
-      setPending((current) => {
-        const next = new Set(current);
-        next.delete('signout');
-        return next;
-      });
-    }
+    await runOperation(
+      Effect.gen(function* () {
+        yield* saveProfile(() => signOut());
+      }),
+      {
+        failure: () => {
+          toast.show('Couldn’t sign out');
+        },
+        settled: () => {
+          setPending((current) => {
+            const next = new Set(current);
+            next.delete('signout');
+            return next;
+          });
+        },
+      },
+    );
   };
 
   return (

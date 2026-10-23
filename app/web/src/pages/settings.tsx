@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { sessionStep, saveProfile } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useState } from "react";
 import { useClerk } from "@clerk/react";
 import { useMutation, useQuery } from "convex/react";
@@ -92,6 +95,7 @@ function Toggle({
 }
 
 export function SettingsPage() {
+  const runOperation = useOperation();
   const stored = useQuery(api.settings.getSettings, {});
   const save = useMutation(api.settings.setSettings);
   const { signOut } = useClerk();
@@ -100,8 +104,7 @@ export function SettingsPage() {
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState("");
-  const [failedPreference, setFailedPreference] =
-    useState<FailedPreference>();
+  const [failedPreference, setFailedPreference] = useState<FailedPreference>();
   const current: Preferences = { ...defaults, ...stored, ...overrides };
 
   const update = async <K extends keyof Preferences>(
@@ -112,22 +115,31 @@ export function SettingsPage() {
     setOverrides({ [key]: value });
     setSaving(key);
     setError("");
-    try {
-      await save({ [key]: value });
-      setOverrides((old) => {
-        const next = { ...old };
-        delete next[key];
-        return next;
-      });
-      setFailedPreference(undefined);
-    } catch {
-      setFailedPreference({ key, value } as FailedPreference);
-      setError(
-        "Couldn’t save that preference. Your selection is kept locally so you can retry.",
-      );
-    } finally {
-      setSaving(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveProfile(() => save({ [key]: value }));
+      }),
+      {
+        success: () => {
+          setOverrides((old) => {
+            const next = { ...old };
+            delete next[key];
+            return next;
+          });
+          setFailedPreference(undefined);
+        },
+
+        failure: () => {
+          setFailedPreference({ key, value } as FailedPreference);
+          setError(
+            "Couldn’t save that preference. Your selection is kept locally so you can retry.",
+          );
+        },
+        settled: () => {
+          setSaving(undefined);
+        },
+      },
+    );
   };
 
   return (
@@ -290,14 +302,23 @@ export function SettingsPage() {
               onClick={() => {
                 setSigningOut(true);
                 setSignOutError("");
-                void signOut()
-                  .catch(() => setSignOutError("Couldn’t sign out. Please try again."))
-                  .finally(() => setSigningOut(false));
+                void runOperation(
+                  sessionStep(() => signOut()),
+                  {
+                    settled: () => setSigningOut(false),
+                    failure: () =>
+                      setSignOutError("Couldn’t sign out. Please try again."),
+                  },
+                );
               }}
             >
               {signingOut ? "Signing out…" : "Sign out"}
             </Button>
-            {signOutError && <p role="alert" className="mt-3 text-sm text-destructive">{signOutError}</p>}
+            {signOutError && (
+              <p role="alert" className="mt-3 text-sm text-destructive">
+                {signOutError}
+              </p>
+            )}
           </div>
         </section>
       </div>

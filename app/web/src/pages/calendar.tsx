@@ -109,9 +109,14 @@ function regionFromLocale() {
 }
 
 export function CalendarPage() {
-  const fetchUpcoming = useAction(api.calendar.upcoming);
+  const upcoming = useAction(api.calendar.upcoming);
+  const fetchUpcoming = useCallback(
+    (args: Parameters<typeof upcoming>[0]) => upcoming(args),
+    [upcoming],
+  );
   const libraryRevision = useQuery(api.calendarLibrary.revision);
   const [cache] = useState(() => new CalendarCache());
+  useEffect(() => () => cache.dispose(), [cache]);
   const [month, setMonth] = useState(() => monthStart(new Date(Date.now())));
   const [today, setToday] = useState(() => dateKey(new Date(Date.now())));
   const [selectedDate, setSelectedDate] = useState(() =>

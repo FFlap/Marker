@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { Effect } from 'effect';
+import { useOperation } from '@/hooks/use-operation';
+import { avatarStep, uploadAvatar, saveProfile } from '@marker/shared/clientEffects';
+import { useRef, useState } from 'react';
 import { useAuth } from '@clerk/expo';
 import { ActivityIndicator, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,12 +21,6 @@ import { ProfileFormSkeleton } from './PageSkeletons';
 import { ProfileVisibility } from './ProfileVisibility';
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
-
-async function fetchImageBlob(uri: string) {
-  const response = await fetch(uri);
-  if (!response.ok) throw new Error('Could not read the selected image');
-  return response.blob();
-}
 
 export function ProfileForm({ setup = false, onSaved }: { setup?: boolean; onSaved: () => void }) {
   const profile = useQuery(api.profiles.me);
@@ -64,6 +61,8 @@ function ProfileFormFields({
   const [saving, setSaving] = useState(false);
   const [photoPending, setPhotoPending] = useState(false);
   const [error, setError] = useState('');
+  const run = useOperation();
+  const photoBusy = useRef(false);
 
   const submit = async () => {
     const validation = usernameError(username);
@@ -73,78 +72,91 @@ function ProfileFormFields({
     }
     setSaving(true);
     setError('');
-    try {
-      await save({ username: username.trim(), isPublic });
-      onSaved();
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : '';
-      setError(
-        /taken/i.test(message) ? 'That username is already taken.' : 'Couldn’t save your profile.',
-      );
-    }
-    setSaving(false);
-  };
-
-  const pickAvatar = async () => {
-    setPhotoPending(true);
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.82,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      if (!asset) return;
-      if (asset.fileSize && asset.fileSize > MAX_AVATAR_BYTES) {
-        toast.show('Choose an image under 5 MB');
-        return;
-      }
-      const blob = asset.file ?? (await fetchImageBlob(asset.uri));
-      if (blob.size > MAX_AVATAR_BYTES) {
-        toast.show('Choose an image under 5 MB');
-        return;
-      }
-      const uploadPath = await generateUploadUrl();
-      const siteUrl = getConvexSiteUrl();
-      const token = await getToken();
-      if (!siteUrl || !token) throw new Error('Avatar uploads are unavailable');
-      const response = await fetch(new URL(uploadPath, siteUrl).toString(), {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': asset.mimeType || blob.type || 'image/jpeg',
+    await run.write(
+      saveProfile(() => save({ username: username.trim(), isPublic })),
+      {
+        success: onSaved,
+        failure: ({ cause }) => {
+          const message = cause instanceof Error ? cause.message : '';
+          setError(
+            /taken/i.test(message)
+              ? 'That username is already taken.'
+              : 'Couldn’t save your profile.',
+          );
         },
-        body: blob,
-      });
-      if (!response.ok) {
-        toast.show('Couldn’t update your profile photo');
-        return;
-      }
-      const payload = (await response.json()) as { storageId?: string };
-      if (!payload.storageId) {
-        toast.show('Couldn’t update your profile photo');
-        return;
-      }
-      await setAvatar({ storageId: payload.storageId as Id<'_storage'> });
-      toast.show('Profile photo updated');
-    } catch {
-      toast.show('Couldn’t update your profile photo');
-    } finally {
-      setPhotoPending(false);
-    }
+        settled: () => setSaving(false),
+      },
+    );
   };
 
-  const clearAvatar = async () => {
-    setPhotoPending(true);
-    try {
-      await removeAvatar();
-      toast.show('Profile photo removed');
-    } catch {
-      toast.show('Couldn’t remove your profile photo');
-    }
+  const finishPhoto = () => {
+    photoBusy.current = false;
     setPhotoPending(false);
+  };
+  const pickAvatar = () => {
+    if (photoBusy.current) return Promise.resolve();
+    photoBusy.current = true;
+    setPhotoPending(true);
+    return run(
+      Effect.gen(function* () {
+        const result = yield* avatarStep(() =>
+          ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.82,
+          }),
+        );
+        if (result.canceled || !result.assets[0]) return undefined;
+        const asset = result.assets[0];
+        if (asset.fileSize && asset.fileSize > MAX_AVATAR_BYTES)
+          return 'Choose an image under 5 MB';
+        const blob =
+          asset.file ??
+          (yield* Effect.gen(function* () {
+            const response = yield* avatarStep((signal) => fetch(asset.uri, { signal }));
+            if (!response.ok) return yield* Effect.fail(new Error('Could not read selected image'));
+            return yield* avatarStep(() => response.blob());
+          }));
+        if (blob.size > MAX_AVATAR_BYTES) return 'Choose an image under 5 MB';
+        yield* uploadAvatar({
+          blob,
+          contentType: asset.mimeType || blob.type || 'image/jpeg',
+          uploadPath: generateUploadUrl,
+          token: getToken,
+          resolveUrl: (path) => {
+            const siteUrl = getConvexSiteUrl();
+            if (!siteUrl) throw new Error('Avatar uploads are unavailable');
+            const url = new URL(path, siteUrl);
+            if (url.origin !== new URL(siteUrl).origin) throw new Error('Invalid upload origin');
+            return url.toString();
+          },
+          publish: (storageId) => setAvatar({ storageId: storageId as Id<'_storage'> }),
+        });
+        return 'Profile photo updated';
+      }),
+      {
+        success: (message) => {
+          if (message) toast.show(message);
+        },
+        failure: () => toast.show('Couldn’t update your profile photo'),
+        settled: finishPhoto,
+      },
+    );
+  };
+
+  const clearAvatar = () => {
+    if (photoBusy.current) return Promise.resolve();
+    photoBusy.current = true;
+    setPhotoPending(true);
+    return run(
+      avatarStep(() => removeAvatar()),
+      {
+        success: () => toast.show('Profile photo removed'),
+        failure: () => toast.show('Couldn’t remove your profile photo'),
+        settled: finishPhoto,
+      },
+    );
   };
 
   return (

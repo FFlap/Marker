@@ -14,6 +14,38 @@ afterEach(() => {
 });
 
 describe('shared calendar schedules', () => {
+  it('settles obsolete requests immediately even if the transport never resolves', async () => {
+    const cache = new CalendarCache();
+    cache.setLibraryRevision(0);
+    let signal: AbortSignal | undefined;
+    const pending = cache.load('2026-09', 'CA', (_args, options) => {
+      signal = options?.signal;
+      return new Promise<CalendarResult>(() => {});
+    });
+    await Promise.resolve();
+    cache.setLibraryRevision(1);
+    await pending;
+    expect(signal?.aborted).toBe(true);
+    expect(cache.get('2026-09', 'CA').result).toBeUndefined();
+  });
+
+  it('releases polling timers and subscribers when the session is disposed', async () => {
+    vi.useFakeTimers();
+    const cache = new CalendarCache();
+    const listener = vi.fn();
+    cache.subscribe('2026-09', 'CA', listener);
+    const fetch = vi.fn(async () => ({ ...result(), refreshPending: true, retryAfterMs: 60_000 }));
+    const pending = cache.load('2026-09', 'CA', fetch);
+    await vi.advanceTimersByTimeAsync(0);
+    listener.mockClear();
+    cache.dispose();
+    await pending;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(listener).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('bounds abandoned pending months and stops their pagination when they are evicted', async () => {
     const cache = new CalendarCache();
     const releases: ((value: CalendarResult) => void)[] = [];

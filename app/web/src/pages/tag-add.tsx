@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { saveLibrary } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { Check } from "lucide-react";
@@ -11,6 +14,7 @@ import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
 
 export function TagAddPage() {
+  const runOperation = useOperation();
   const { tag } = useParams({ from: "/app/tags/$tag/add" });
   const items = useQuery(api.library.items.listItems, {});
   const addTagToItems = useMutation(api.library.items.addTagToItems);
@@ -43,26 +47,33 @@ export function TagAddPage() {
     setSaving(true);
     setError("");
     let savedCount = 0;
-    try {
-      const ids = [...selected];
-      const batches = Array.from(
-        { length: Math.ceil(ids.length / 100) },
-        (_, index) => ids.slice(index * 100, index * 100 + 100),
-      );
-      for (const itemIds of batches) {
-        // eslint-disable-next-line no-await-in-loop
-        await addTagToItems({ tag, itemIds });
-        savedCount += itemIds.length;
-      }
-      void navigate({ to: "/tags/$tag", params: { tag } });
-    } catch {
-      setError(
-        savedCount
-          ? `${savedCount} ${savedCount === 1 ? "title was" : "titles were"} added to ${tag}, but the rest could not be saved.`
-          : `Couldn’t add titles to ${tag}.`,
-      );
-      setSaving(false);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        const ids = [...selected];
+        const batches = Array.from(
+          { length: Math.ceil(ids.length / 100) },
+          (_, index) => ids.slice(index * 100, index * 100 + 100),
+        );
+        for (const itemIds of batches) {
+          yield* saveLibrary(() => addTagToItems({ tag, itemIds }));
+          savedCount += itemIds.length;
+        }
+      }),
+      {
+        success: () => {
+          void navigate({ to: "/tags/$tag", params: { tag } });
+        },
+
+        failure: () => {
+          setError(
+            savedCount
+              ? `${savedCount} ${savedCount === 1 ? "title was" : "titles were"} added to ${tag}, but the rest could not be saved.`
+              : `Couldn’t add titles to ${tag}.`,
+          );
+          setSaving(false);
+        },
+      },
+    );
   };
   return (
     <Page width="compact">
@@ -165,7 +176,11 @@ export function TagAddPage() {
           disabled={!selected.size || saving}
           onClick={() => void confirm()}
         >
-          {saving ? "Adding…" : selected.size ? `Add ${selected.size}` : "Select titles"}
+          {saving
+            ? "Adding…"
+            : selected.size
+              ? `Add ${selected.size}`
+              : "Select titles"}
         </Button>
       </div>
       {error && (

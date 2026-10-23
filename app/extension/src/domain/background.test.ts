@@ -66,7 +66,7 @@ describe("background delivery classification", () => {
     [new DOMException("Expired", "TimeoutError"), "retryable"],
     [{ status: 503 }, "retryable"],
     [{ status: 400 }, "terminal"],
-    [new Error("server exploded"), "terminal"],
+    [new Error("server exploded"), "retryable"],
   ] as const)("classifies %o as %s", (error, expected) =>
     expect(classifyDeliveryError(error)).toBe(expected),
   );
@@ -209,13 +209,14 @@ describe("background queue behavior", () => {
     expect(x.client.record).not.toHaveBeenCalled();
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
   });
-  it("dequeues malformed server failures as rejected", async () => {
+  it("retains unknown server failures for retry", async () => {
     const x = setup();
     x.client.record.mockRejectedValue(new Error("bad response"));
     await x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
     await x.background.flush();
-    expect(x.values[SYNC_OUTBOX_KEY]).toEqual([]);
-    expect(x.values["sync.lastResult"]).toMatchObject({ reason: "rejected" });
+    expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
+    expect(x.values["sync.lastResult"]).toMatchObject({ ok: false });
+    expect(x.values["sync.lastResult"]).not.toHaveProperty("reason", "rejected");
   });
   it("refreshes the retry schedule when an alarm fires without a session", async () => {
     const x = setup();

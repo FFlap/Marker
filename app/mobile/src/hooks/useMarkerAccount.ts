@@ -1,3 +1,6 @@
+import { runClientEffect } from '@marker/shared/clientOperations';
+import { Effect } from 'effect';
+import { linkAccount } from '@marker/shared/clientEffects';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth, useUser } from '@clerk/expo';
 import { useConvexAuth, useMutation } from 'convex/react';
@@ -15,22 +18,18 @@ export function useMarkerAccount() {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    let active = true;
     if (!auth.isAuthenticated || !userId || !userLoaded) return;
-    const timeout = setTimeout(() => active && setResult({ userId, state: 'error' }), 15_000);
-    void ensureCurrentUser({ username: user?.username ?? undefined })
-      .then(() => {
-        clearTimeout(timeout);
-        if (active) setResult({ userId, state: 'ready' });
-      })
-      .catch(() => {
-        clearTimeout(timeout);
-        if (active) setResult({ userId, state: 'error' });
-      });
-    return () => {
-      active = false;
-      clearTimeout(timeout);
-    };
+    const controller = new AbortController();
+    void runClientEffect(
+      linkAccount(() => ensureCurrentUser({ username: user?.username ?? undefined })).pipe(
+        Effect.match({
+          onSuccess: () => setResult({ userId, state: 'ready' }),
+          onFailure: () => setResult({ userId, state: 'error' }),
+        }),
+      ),
+      { signal: controller.signal },
+    );
+    return () => controller.abort();
   }, [attempt, auth.isAuthenticated, ensureCurrentUser, user?.username, userId, userLoaded]);
 
   const retryAccount = useCallback(() => {

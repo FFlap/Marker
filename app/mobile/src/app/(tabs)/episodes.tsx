@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveLibrary, touchMetadata } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -43,14 +46,18 @@ export default function EpisodesScreen() {
 }
 
 function Episodes() {
+  const runOperation = useOperation();
   const today = useLocalToday();
   const overview = useQuery(api.episodeHub.overview, { today });
   const setEpisode = useMutation(api.library.episodes.setEpisodeState);
   const refreshWatching = useMutation(api.episodeHub.refreshWatching);
   const toast = useToast();
   useEffect(() => {
-    void refreshWatching({}).catch(() => toast.show('Couldn’t refresh your episodes'));
-  }, [refreshWatching, toast]);
+    void runOperation(
+      touchMetadata(() => refreshWatching({})),
+      { failure: () => toast.show('Couldn’t refresh your episodes') },
+    );
+  }, [refreshWatching, toast, runOperation]);
   const [tab, setTab] = useState<EpisodeTab>('watching');
   const [search, setSearch] = useState('');
   const [showFilter, setShowFilter] = useState<ShowFilter>('all');
@@ -99,44 +106,50 @@ function Episodes() {
   const updateEpisode = async (
     episode: EpisodeHubItem,
     patch: { watched?: boolean; rating?: number; clearRating?: boolean; tags?: string[] },
+    onFailure?: () => void,
   ) => {
     const key = `${episode.itemId}:${episode.season}:${episode.episode}`;
     setPending((current) => new Set(current).add(key));
     const previous = episodeMutationQueues.current.get(key) ?? Promise.resolve();
-    const request = previous
-      .catch(() => undefined)
-      .then(() =>
-        setEpisode({
-          itemId: episode.itemId,
-          season: episode.season,
-          episode: episode.episode,
-          ...(episode.seasonName !== undefined && { seasonName: episode.seasonName }),
-          name: episode.name,
-          ...(episode.overview !== undefined && { overview: episode.overview }),
-          ...(episode.runtime !== undefined && { runtime: episode.runtime }),
-          ...(episode.imageUrl !== undefined && { imageUrl: episode.imageUrl }),
-          ...(episode.airDate !== undefined && { airDate: episode.airDate }),
-          ...(patch.watched && { activityDate: localDateKey() }),
-          ...patch,
-        }),
-      );
+    const request = runOperation.write(
+      Effect.promise(() => previous.catch(() => undefined)).pipe(
+        Effect.andThen(
+          saveLibrary(() =>
+            setEpisode({
+              itemId: episode.itemId,
+              season: episode.season,
+              episode: episode.episode,
+              ...(episode.seasonName !== undefined && { seasonName: episode.seasonName }),
+              name: episode.name,
+              ...(episode.overview !== undefined && { overview: episode.overview }),
+              ...(episode.runtime !== undefined && { runtime: episode.runtime }),
+              ...(episode.imageUrl !== undefined && { imageUrl: episode.imageUrl }),
+              ...(episode.airDate !== undefined && { airDate: episode.airDate }),
+              ...(patch.watched && { activityDate: localDateKey() }),
+              ...patch,
+            }),
+          ),
+        ),
+      ),
+      {
+        failure: () => {
+          onFailure?.();
+          toast.show('Couldn’t update this episode');
+        },
+        settled: () => {
+          if (episodeMutationQueues.current.get(key) === request) {
+            episodeMutationQueues.current.delete(key);
+            setPending((current) => {
+              const next = new Set(current);
+              next.delete(key);
+              return next;
+            });
+          }
+        },
+      },
+    );
     episodeMutationQueues.current.set(key, request);
-    try {
-      await request;
-      return true;
-    } catch {
-      toast.show('Couldn’t update this episode');
-      return false;
-    } finally {
-      if (episodeMutationQueues.current.get(key) === request) {
-        episodeMutationQueues.current.delete(key);
-        setPending((current) => {
-          const next = new Set(current);
-          next.delete(key);
-          return next;
-        });
-      }
-    }
+    await request;
   };
 
   return (
@@ -322,9 +335,8 @@ function Episodes() {
                 void updateEpisode(
                   editing,
                   rating === undefined ? { clearRating: true } : { rating },
-                ).then((saved) => {
-                  if (!saved) setDraftRating(previous);
-                });
+                  () => setDraftRating(previous),
+                );
               }}
             />
             <TagEditor
@@ -333,9 +345,7 @@ function Episodes() {
               onChange={(tags) => {
                 const previous = draftTags;
                 setDraftTags(tags);
-                void updateEpisode(editing, { tags }).then((saved) => {
-                  if (!saved) setDraftTags(previous);
-                });
+                void updateEpisode(editing, { tags }, () => setDraftTags(previous));
               }}
             />
             <View style={s.editorFooter}>

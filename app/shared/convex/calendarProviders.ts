@@ -1,7 +1,15 @@
+import { Clock, Effect, Predicate } from 'effect';
+import { ActionCallFailure, actionFailureCause, attempt, providerOutcome } from './actionEffects';
 import { ConvexError, type Infer } from 'convex/values';
 import type { ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
-import { providerFetch } from './providerHttp';
+import {
+  providerFetchEffect,
+  decodeProviderObject,
+  runProviderEffect,
+  providerBoundaryFailure,
+  ProviderIntegrationFailure,
+} from './providerHttp';
 import {
   CALENDAR_SNAPSHOT_BATCH_SIZE,
   isTruncatedSnapshot,
@@ -28,18 +36,16 @@ type Json = Record<string, unknown>;
 const string = (value: unknown) => (typeof value === 'string' ? value : undefined);
 const number = (value: unknown) => (typeof value === 'number' ? value : undefined);
 const records = (value: unknown): Json[] =>
-  Array.isArray(value)
-    ? value.filter(
-        (entry): entry is Json =>
-          typeof entry === 'object' && entry !== null && !Array.isArray(entry),
-      )
-    : [];
+  Array.isArray(value) ? value.filter((entry): entry is Json => Predicate.isObject(entry)) : [];
 const requiredRecords = (value: unknown, label: string): Json[] => {
   if (!Array.isArray(value) || records(value).length !== value.length)
-    throw new Error(`Invalid TMDB ${label} response`);
+    throw new ProviderIntegrationFailure({
+      provider: 'tmdb',
+      message: `Invalid TMDB ${label} response`,
+    });
   return value as Json[];
 };
-export function createRequest(ctx: ActionCtx, reservationSize = 5) {
+export function createRequestEffect(ctx: ActionCtx, reservationSize = 5) {
   let budgetQueue: Promise<unknown> = Promise.resolve();
   let reserved = 0;
   let limitedUntil = 0;
@@ -76,38 +82,52 @@ export function createRequest(ctx: ActionCtx, reservationSize = 5) {
     budgetQueue = pending.catch(() => undefined);
     return pending;
   };
-  return async (path: string) => {
+  return Effect.fnUntraced(function* (path: string) {
     const token = process.env.TMDB_API_READ_ACCESS_TOKEN;
-    if (!token) throw new Error('TMDB_API_READ_ACCESS_TOKEN is not configured');
-    const response = await providerFetch(
+    if (!token)
+      return yield* Effect.fail(
+        new ProviderIntegrationFailure({
+          provider: 'tmdb',
+          message: 'TMDB_API_READ_ACCESS_TOKEN is not configured',
+        }),
+      );
+    const response = yield* providerFetchEffect(
       `https://api.themoviedb.org/3${path}`,
       { headers: { Authorization: `Bearer ${token}`, accept: 'application/json' } },
-      {
-        provider: 'tmdb',
-        operation: path.split('?')[0],
-        beforeRequest,
-      },
+      { provider: 'tmdb', operation: path.split('?')[0], beforeRequest },
     );
-    if (!response.ok) throw new Error(`TMDB calendar request failed (${response.status})`);
-    return (await response.json()) as Json;
-  };
+    if (!response.ok)
+      return yield* Effect.fail(
+        new ProviderIntegrationFailure({
+          provider: 'tmdb',
+          message: `TMDB calendar request failed (${response.status})`,
+        }),
+      );
+    return yield* decodeProviderObject(response, 'tmdb');
+  });
 }
 
-async function cached<T>(
+// Kept for existing Promise callers; internal calendar composition uses the effect factory.
+export function createRequest(ctx: ActionCtx, reservationSize = 5) {
+  const request = createRequestEffect(ctx, reservationSize);
+  return (path: string) => runProviderEffect(request(path));
+}
+
+const cached = Effect.fnUntraced(function* <T, E>(
   ctx: ActionCtx,
   key: string,
-  load: () => Promise<T>,
+  load: () => Effect.Effect<T, E>,
   onFailure: (error: unknown) => void,
   snapshots: SnapshotMap,
   read: CacheRead,
-) {
-  const stored = snapshots?.has(key)
+): Effect.fn.Return<T, E | ActionCallFailure | MissingSchedule> {
+  const stored: Snapshot | null | undefined = snapshots.has(key)
     ? snapshots.get(key)
-    : await ctx.runQuery(internal.providerSnapshots.get, { key });
+    : yield* attempt(() => ctx.runQuery(internal.providerSnapshots.get, { key }));
   if (
     stored &&
     !isTruncatedSnapshot(stored.value) &&
-    stored.refreshedAt > Date.now() - CALENDAR_TTL_MS
+    stored.refreshedAt > (yield* Clock.currentTimeMillis) - CALENDAR_TTL_MS
   ) {
     read.refreshedAt = Math.min(read.refreshedAt, stored.refreshedAt);
     return stored.value as T;
@@ -118,43 +138,57 @@ async function cached<T>(
       read.refreshedAt = Math.min(read.refreshedAt, stored.refreshedAt);
       return stored.value as T;
     }
-    throw new MissingSchedule();
+    return yield* Effect.fail(new MissingSchedule());
   }
-  try {
-    const value = await load();
-    await putNonFatal(ctx, { key, value, metricKey: 'calendar' });
+  return yield* Effect.gen(function* () {
+    const value = yield* load();
+    yield* attempt(() => putNonFatal(ctx, { key, value, metricKey: 'calendar' }));
     return value;
-  } catch (error) {
-    // Schedule publication can succeed after a best-effort snapshot write fails.
-    // Let the caller retain that saved title/season instead of replacing it with
-    // an older provider snapshot (which may contain no releases at all).
-    if (read.hasSavedSchedule || !stored || isTruncatedSnapshot(stored.value)) throw error;
-    onFailure(error);
-    read.refreshedAt = Math.min(read.refreshedAt, stored.refreshedAt);
-    return stored.value as T;
-  }
-}
-
-async function loadSnapshots(ctx: ActionCtx, keys: string[], snapshots: SnapshotMap) {
-  await Promise.all(
-    Array.from({ length: Math.ceil(keys.length / CALENDAR_SNAPSHOT_BATCH_SIZE) }, async (_, i) => {
-      const batch = keys.slice(
-        i * CALENDAR_SNAPSHOT_BATCH_SIZE,
-        (i + 1) * CALENDAR_SNAPSHOT_BATCH_SIZE,
-      );
-      const stored = await ctx.runQuery(internal.providerSnapshots.getCalendarSnapshots, {
-        keys: batch,
-      });
-      batch.forEach((key, index) => {
-        const snapshot = stored[index];
-        snapshots.set(
-          key,
-          snapshot ? { ...snapshot.entry, refreshedAt: snapshot.refreshedAt } : null,
-        );
-      });
+  }).pipe(
+    Effect.catch((error) => {
+      if (read.hasSavedSchedule || !stored || isTruncatedSnapshot(stored.value))
+        return Effect.fail(error);
+      onFailure(error);
+      read.refreshedAt = Math.min(read.refreshedAt, stored.refreshedAt);
+      return Effect.succeed(stored.value as T);
     }),
   );
+});
+
+function loadSnapshots(
+  ctx: ActionCtx,
+  keys: string[],
+  snapshots: SnapshotMap,
+): Effect.Effect<void, ActionCallFailure> {
+  return Effect.forEach(
+    Array.from({ length: Math.ceil(keys.length / CALENDAR_SNAPSHOT_BATCH_SIZE) }, (_, i) =>
+      keys.slice(i * CALENDAR_SNAPSHOT_BATCH_SIZE, (i + 1) * CALENDAR_SNAPSHOT_BATCH_SIZE),
+    ),
+    (batch) =>
+      attempt(() =>
+        ctx.runQuery(internal.providerSnapshots.getCalendarSnapshots, { keys: batch }),
+      ).pipe(
+        Effect.map((stored) =>
+          batch.forEach((key, index) => {
+            const snapshot = stored[index];
+            snapshots.set(
+              key,
+              snapshot ? { ...snapshot.entry, refreshedAt: snapshot.refreshedAt } : null,
+            );
+          }),
+        ),
+      ),
+    { concurrency: 4, discard: true },
+  );
 }
+
+/** Only explicit provider-validation failures enter the optional fallback channel. */
+const parseCalendar = <A>(parse: () => A) =>
+  Effect.try({ try: parse, catch: (error) => error }).pipe(
+    Effect.catch((error) =>
+      error instanceof ProviderIntegrationFailure ? Effect.fail(error) : Effect.die(error),
+    ),
+  );
 
 function movieDate(
   candidates: { date: string; priority: number }[],
@@ -194,7 +228,10 @@ const normalizedTvSchedule = (payload: Json) => {
   for (const entry of requiredRecords(payload.seasons, 'TV seasons')) {
     const season = number(entry.season_number);
     if (season === undefined || !Number.isInteger(season) || season < 0)
-      throw new Error('Invalid TMDB season number');
+      throw new ProviderIntegrationFailure({
+        provider: 'tmdb',
+        message: 'Invalid TMDB season number',
+      });
     const date = string(entry.air_date);
     const lastDate = string(last?.air_date);
     const completed =
@@ -244,7 +281,10 @@ const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
       !Number.isInteger(season) ||
       season < 0
     )
-      throw new Error('Invalid TMDB episode number');
+      throw new ProviderIntegrationFailure({
+        provider: 'tmdb',
+        message: 'Invalid TMDB episode number',
+      });
     return [
       {
         date,
@@ -258,38 +298,47 @@ const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
 function seasonLoader(
   tmdbId: number,
   missing: number[],
-  request: ReturnType<typeof createRequest>,
+  request: ReturnType<typeof createRequestEffect>,
 ) {
   const batches = new Map<number, number[]>();
-  const pending = new Map<number, Promise<Json>>();
+  // Memoize successes and expected failures without leaving the calling fiber.
+  const completed = new Map<number, ReturnType<ReturnType<typeof createRequestEffect>>>();
   for (let offset = 0; offset < missing.length; offset += 5) {
     const batch = missing.slice(offset, offset + 5);
     for (const season of batch) batches.set(season, batch);
   }
-  return async (season: number) => {
-    const batch = batches.get(season) ?? [season];
-    if (batch.length === 1) return request(`/tv/${tmdbId}/season/${season}`);
-    const key = batch[0];
-    let response = pending.get(key);
-    if (!response) {
-      response = request(
-        `/tv/${tmdbId}?append_to_response=${batch.map((number) => `season/${number}`).join(',')}`,
-      );
-      pending.set(key, response);
-    }
-    const payload = (await response)[`season/${season}`];
-    if (
-      !payload ||
-      typeof payload !== 'object' ||
-      !('episodes' in payload) ||
-      !Array.isArray(payload.episodes)
-    )
-      throw new Error(`TMDB did not return season ${season}`);
-    return payload as Json;
-  };
+  return (season: number) =>
+    Effect.gen(function* () {
+      const batch = batches.get(season) ?? [season];
+      if (batch.length === 1) return yield* request(`/tv/${tmdbId}/season/${season}`);
+      const key = batch[0];
+      let response = completed.get(key);
+      if (!response) {
+        response = yield* Effect.cached(
+          request(
+            `/tv/${tmdbId}?append_to_response=${batch.map((number) => `season/${number}`).join(',')}`,
+          ),
+        );
+        completed.set(key, response);
+      }
+      const payload = (yield* response)[`season/${season}`];
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        !('episodes' in payload) ||
+        !Array.isArray(payload.episodes)
+      )
+        return yield* Effect.fail(
+          new ProviderIntegrationFailure({
+            provider: 'tmdb',
+            message: `TMDB did not return season ${season}`,
+          }),
+        );
+      return payload as Json;
+    });
 }
 
-async function titleEvents(
+const titleEvents = Effect.fnUntraced(function* (
   ctx: ActionCtx,
   item: LibraryTitle,
   startDate: string,
@@ -297,47 +346,53 @@ async function titleEvents(
   region: string,
   snapshots: SnapshotMap,
   onFailure: (error: unknown) => void,
-  request: ReturnType<typeof createRequest>,
+  request: ReturnType<typeof createRequestEffect>,
   read: CacheRead,
   missingSeasons: number[],
-): Promise<CalendarEvent[]> {
+) {
   if (item.mediaType === 'movie') {
-    const releases = await cached(
+    const releases = yield* cached(
       ctx,
       `calendar:movie:${item.tmdbId}:${region}`,
-      async () =>
-        normalizedMovieReleases(await request(`/movie/${item.tmdbId}/release_dates`), region),
+      () =>
+        request(`/movie/${item.tmdbId}/release_dates`).pipe(
+          Effect.flatMap((payload) =>
+            parseCalendar(() => normalizedMovieReleases(payload, region)),
+          ),
+        ),
       onFailure,
       snapshots,
       read,
     );
     const date = movieDate(releases, startDate, endDate, item.releaseDate);
     return date && inRange(date, startDate, endDate)
-      ? [{ ...item, id: `movie:${item.tmdbId}:${date}`, date, kind: 'movie' }]
+      ? [{ ...item, id: `movie:${item.tmdbId}:${date}`, date, kind: 'movie' as const }]
       : [];
   }
-  const seasons = await cached(
+  const seasons = yield* cached(
     ctx,
     `calendar:tv:v2:${item.tmdbId}`,
-    async () => normalizedTvSchedule(await request(`/tv/${item.tmdbId}`)),
+    () =>
+      request(`/tv/${item.tmdbId}`).pipe(
+        Effect.flatMap((payload) => parseCalendar(() => normalizedTvSchedule(payload))),
+      ),
     onFailure,
     snapshots,
     read,
   );
   const relevant = relevantSeasons(seasons, startDate, endDate);
-  await loadSnapshots(
+  yield* loadSnapshots(
     ctx,
     relevant
       .map(({ season }) => `calendar:season:${item.tmdbId}:${season}`)
       .filter((key) => !snapshots.has(key)),
     snapshots,
   );
+  const now = yield* Clock.currentTimeMillis;
   const missing = relevant.filter(({ season }) => {
     const stored = snapshots.get(`calendar:season:${item.tmdbId}:${season}`);
     return (
-      !stored ||
-      isTruncatedSnapshot(stored.value) ||
-      stored.refreshedAt <= Date.now() - CALENDAR_TTL_MS
+      !stored || isTruncatedSnapshot(stored.value) || stored.refreshedAt <= now - CALENDAR_TTL_MS
     );
   });
   const loadSeason = seasonLoader(
@@ -347,19 +402,25 @@ async function titleEvents(
   );
   const seasonEpisodes = [];
   for (const season of relevant) {
-    try {
-      const episodes = await cached(
+    const outcome = yield* providerOutcome(
+      cached(
         ctx,
         `calendar:season:${item.tmdbId}:${season.season}`,
-        async () => normalizedSeasonEpisodes(await loadSeason(season.season), season.season),
+        () =>
+          loadSeason(season.season).pipe(
+            Effect.flatMap((payload) =>
+              parseCalendar(() => normalizedSeasonEpisodes(payload, season.season)),
+            ),
+          ),
         onFailure,
         snapshots,
         read,
-      );
-      seasonEpisodes.push(...episodes);
-    } catch (error) {
+      ),
+    );
+    if (outcome.ok) seasonEpisodes.push(...outcome.value);
+    else {
       missingSeasons.push(season.season);
-      onFailure(error);
+      onFailure(outcome.error);
     }
   }
   return seasonEpisodes.flatMap((episode) => {
@@ -376,7 +437,7 @@ async function titleEvents(
       },
     ];
   });
-}
+});
 
 export async function loadTitleSchedules(
   ctx: ActionCtx,
@@ -386,15 +447,28 @@ export async function loadTitleSchedules(
   region: string,
   cachedOnly: boolean,
 ) {
-  const request = createRequest(ctx, Math.min(5, items.length) || 1);
+  return runProviderEffect(
+    loadTitleSchedulesEffect(ctx, items, startDate, endDate, region, cachedOnly),
+  );
+}
+
+export const loadTitleSchedulesEffect = Effect.fnUntraced(function* (
+  ctx: ActionCtx,
+  items: { item: LibraryTitle; hasSavedSchedule: boolean }[],
+  startDate: string,
+  endDate: string,
+  region: string,
+  cachedOnly: boolean,
+) {
+  const request = createRequestEffect(ctx, Math.min(5, items.length) || 1);
   const snapshots: SnapshotMap = new Map();
   const keys = items.map(({ item }) =>
     item.mediaType === 'movie'
       ? `calendar:movie:${item.tmdbId}:${region}`
       : `calendar:tv:v2:${item.tmdbId}`,
   );
-  await loadSnapshots(ctx, keys, snapshots);
-  await loadSnapshots(
+  yield* loadSnapshots(ctx, keys, snapshots);
+  yield* loadSnapshots(
     ctx,
     [
       ...new Set(
@@ -419,15 +493,20 @@ export async function loadTitleSchedules(
     needsRefresh: boolean;
     refreshedAt: number;
   }[] = [];
-  let cursor = 0;
   let retryAfterMs: number | undefined;
-  await Promise.all(
-    Array.from({ length: Math.min(10, items.length) }, async () => {
-      while (cursor < items.length) {
-        const { item, hasSavedSchedule } = items[cursor++];
-        const read = { cachedOnly, hasSavedSchedule, needsRefresh: false, refreshedAt: Date.now() };
+  yield* Effect.forEach(
+    items,
+    ({ item, hasSavedSchedule }) =>
+      Effect.gen(function* () {
+        const read = {
+          cachedOnly,
+          hasSavedSchedule,
+          needsRefresh: false,
+          refreshedAt: yield* Clock.currentTimeMillis,
+        };
         let failed = false;
-        const onFailure = (error: unknown) => {
+        const onFailure = (failure: unknown) => {
+          const error = providerBoundaryFailure(actionFailureCause(failure));
           if (error instanceof MissingSchedule) return;
           failed = true;
           if (
@@ -440,8 +519,8 @@ export async function loadTitleSchedules(
         let events: CalendarEvent[] = [];
         const missingSeasons: number[] = [];
         let unavailableTitle = false;
-        try {
-          events = await titleEvents(
+        const outcome = yield* providerOutcome(
+          titleEvents(
             ctx,
             item,
             startDate,
@@ -452,10 +531,12 @@ export async function loadTitleSchedules(
             request,
             read,
             missingSeasons,
-          );
-        } catch (error) {
+          ),
+        );
+        if (outcome.ok) events = outcome.value;
+        else {
           unavailableTitle = true;
-          onFailure(error);
+          onFailure(outcome.error);
         }
         results.push({
           item,
@@ -466,8 +547,8 @@ export async function loadTitleSchedules(
           needsRefresh: read.needsRefresh,
           refreshedAt: read.refreshedAt,
         });
-      }
-    }),
+      }),
+    { concurrency: 10, discard: true },
   );
   return { results, retryAfterMs };
-}
+});

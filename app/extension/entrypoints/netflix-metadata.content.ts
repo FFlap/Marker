@@ -1,8 +1,10 @@
+import { createContentLifetime } from "../src/domain/lifecycle";
 export default defineContentScript({
-  matches: ['https://www.netflix.com/*'],
-  world: 'MAIN',
-  runAt: 'document_start',
+  matches: ["https://www.netflix.com/*"],
+  world: "MAIN",
+  runAt: "document_start",
   main() {
+    const lifetime = createContentLifetime(() => undefined);
     const publish = () => {
       const match = /^\/watch\/(\d+)/.exec(location.pathname);
       if (!match?.[1]) return;
@@ -18,7 +20,8 @@ export default defineContentScript({
           };
         }
       ).netflix;
-      const summary = netflixState?.falcorCache?.videos?.[match[1]]?.summary?.value;
+      const summary =
+        netflixState?.falcorCache?.videos?.[match[1]]?.summary?.value;
       if (!summary) return;
       const safeSummary = {
         type: summary.type,
@@ -32,14 +35,17 @@ export default defineContentScript({
         return;
       }
       document.documentElement.dataset.netflixVideoSummary = serialized;
-      window.dispatchEvent(new CustomEvent('marker:metadata'));
+      window.dispatchEvent(new CustomEvent("marker:metadata"));
     };
 
-    new MutationObserver(publish).observe(document.documentElement, {
+    const observer = new MutationObserver(publish);
+    observer.observe(document.documentElement, {
       childList: true,
       subtree: true,
     });
-    window.setInterval(publish, 250);
+    const interval = window.setInterval(publish, 250);
+    lifetime.own(() => observer.disconnect());
+    lifetime.own(() => window.clearInterval(interval));
     publish();
   },
 });

@@ -1,10 +1,14 @@
+import { touchMetadata } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { ExternalLink, RefreshCw } from "lucide-react";
 import {
-  useMutation,
-  useQuery as useConvexQuery,
-} from "convex/react";
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearch,
+} from "@tanstack/react-router";
+import { ExternalLink, RefreshCw } from "lucide-react";
+import { useMutation, useQuery as useConvexQuery } from "convex/react";
 import { api } from "@marker/shared/api";
 import { AddTitleDialog } from "@/components/title-dialog";
 import { titleRuntime, type SearchResult } from "@/lib/catalog";
@@ -27,11 +31,19 @@ function parsePreview(value: string | undefined): SearchResult | undefined {
       id: parsed.id,
       title: parsed.title,
       mediaType: parsed.mediaType,
-      ...(typeof parsed.posterPath === "string" && { posterPath: parsed.posterPath }),
+      ...(typeof parsed.posterPath === "string" && {
+        posterPath: parsed.posterPath,
+      }),
       ...(typeof parsed.overview === "string" && { overview: parsed.overview }),
-      ...(typeof parsed.releaseDate === "string" && { releaseDate: parsed.releaseDate }),
-      ...(typeof parsed.runtime === "number" && Number.isFinite(parsed.runtime) && { runtime: parsed.runtime }),
-      ...(Array.isArray(parsed.genres) && parsed.genres.every((genre) => typeof genre === "string") && { genres: parsed.genres }),
+      ...(typeof parsed.releaseDate === "string" && {
+        releaseDate: parsed.releaseDate,
+      }),
+      ...(typeof parsed.runtime === "number" &&
+        Number.isFinite(parsed.runtime) && { runtime: parsed.runtime }),
+      ...(Array.isArray(parsed.genres) &&
+        parsed.genres.every((genre) => typeof genre === "string") && {
+          genres: parsed.genres,
+        }),
     };
   } catch {
     return undefined;
@@ -39,6 +51,7 @@ function parsePreview(value: string | undefined): SearchResult | undefined {
 }
 
 export function TitleDetailPage() {
+  const runOperation = useOperation();
   const { mediaType: rawMediaType, tmdbId: rawTmdbId } = useParams({
     from: "/app/title/$mediaType/$tmdbId",
   });
@@ -79,25 +92,45 @@ export function TitleDetailPage() {
   const [touchError, setTouchError] = useState(false);
   const refreshGeneration = useRef(0);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
-  const guide = useSeasonGuide({ mediaType, tmdbId: valid ? tmdbId : undefined, title: detail, refreshError: touchError });
+  const guide = useSeasonGuide({
+    mediaType,
+    tmdbId: valid ? tmdbId : undefined,
+    title: detail,
+    refreshError: touchError,
+  });
   const { seasons, season, setSeason, episodes } = guide;
 
   useEffect(() => {
     const generation = ++refreshGeneration.current;
     setTouchError(false);
     if (!mediaType || !valid) return undefined;
-    void touchTitle({
-      mediaType,
-      tmdbId,
-      ...(preview?.title && { title: preview.title }),
-      ...(mediaType === "tv" && { season }),
-    }).catch(() => {
-      if (generation === refreshGeneration.current) setTouchError(true);
-    });
+    void runOperation(
+      touchMetadata(() =>
+        touchTitle({
+          mediaType,
+          tmdbId,
+          ...(preview?.title && { title: preview.title }),
+          ...(mediaType === "tv" && { season }),
+        }),
+      ),
+      {
+        failure: () => {
+          if (generation === refreshGeneration.current) setTouchError(true);
+        },
+      },
+    );
     return () => {
       refreshGeneration.current += 1;
     };
-  }, [mediaType, preview?.title, season, tmdbId, touchTitle, valid]);
+  }, [
+    mediaType,
+    preview?.title,
+    season,
+    tmdbId,
+    touchTitle,
+    valid,
+    runOperation,
+  ]);
 
   if (existing) {
     return (
@@ -156,15 +189,23 @@ export function TitleDetailPage() {
               if (!mediaType) return;
               const generation = ++refreshGeneration.current;
               setTouchError(false);
-              void touchTitle({
-                mediaType,
-                tmdbId,
-                ...(preview?.title && { title: preview.title }),
-                ...(mediaType === "tv" && { season }),
-                force: true,
-              }).catch(() => {
-                if (generation === refreshGeneration.current) setTouchError(true);
-              });
+              void runOperation(
+                touchMetadata(() =>
+                  touchTitle({
+                    mediaType,
+                    tmdbId,
+                    ...(preview?.title && { title: preview.title }),
+                    ...(mediaType === "tv" && { season }),
+                    force: true,
+                  }),
+                ),
+                {
+                  failure: () => {
+                    if (generation === refreshGeneration.current)
+                      setTouchError(true);
+                  },
+                },
+              );
             }}
           >
             <RefreshCw className="size-4" /> Retry
@@ -238,10 +279,11 @@ export function TitleDetailPage() {
                 This title isn’t in your library yet.
               </p>
               {selection && (
-                <AddTitleDialog initialSelection={selection} onAdded={handleAdded}>
-                  <Button variant="outline">
-                    Add Entry
-                  </Button>
+                <AddTitleDialog
+                  initialSelection={selection}
+                  onAdded={handleAdded}
+                >
+                  <Button variant="outline">Add Entry</Button>
                 </AddTitleDialog>
               )}
             </div>
@@ -294,10 +336,11 @@ export function TitleDetailPage() {
                   </select>
                   <div className="mt-4 flex justify-end">
                     {selection && (
-                      <AddTitleDialog initialSelection={selection} onAdded={handleAdded}>
-                        <Button variant="outline">
-                          Add to track
-                        </Button>
+                      <AddTitleDialog
+                        initialSelection={selection}
+                        onAdded={handleAdded}
+                      >
+                        <Button variant="outline">Add to track</Button>
                       </AddTitleDialog>
                     )}
                   </div>
@@ -318,15 +361,23 @@ export function TitleDetailPage() {
                     onClick={() => {
                       const generation = ++refreshGeneration.current;
                       setTouchError(false);
-                      void touchTitle({
-                        mediaType: "tv",
-                        tmdbId,
-                        title: meta.title,
-                        season,
-                        force: true,
-                      }).catch(() => {
-                        if (generation === refreshGeneration.current) setTouchError(true);
-                      });
+                      void runOperation(
+                        touchMetadata(() =>
+                          touchTitle({
+                            mediaType: "tv",
+                            tmdbId,
+                            title: meta.title,
+                            season,
+                            force: true,
+                          }),
+                        ),
+                        {
+                          failure: () => {
+                            if (generation === refreshGeneration.current)
+                              setTouchError(true);
+                          },
+                        },
+                      );
                     }}
                   >
                     <RefreshCw className="size-4" /> Retry
@@ -393,7 +444,10 @@ export function TitleDetailPage() {
                             ) : null}
                           </button>
                           {selection ? (
-                            <AddTitleDialog initialSelection={selection} onAdded={handleAdded}>
+                            <AddTitleDialog
+                              initialSelection={selection}
+                              onAdded={handleAdded}
+                            >
                               <Button
                                 variant="outline"
                                 size="icon"
@@ -420,11 +474,11 @@ export function TitleDetailPage() {
                               episodes watched.
                             </p>
                             {selection && (
-                              <AddTitleDialog initialSelection={selection} onAdded={handleAdded}>
-                                <Button
-                                  variant="outline"
-                                  className="mt-3"
-                                >
+                              <AddTitleDialog
+                                initialSelection={selection}
+                                onAdded={handleAdded}
+                              >
+                                <Button variant="outline" className="mt-3">
                                   Add Entry
                                 </Button>
                               </AddTitleDialog>

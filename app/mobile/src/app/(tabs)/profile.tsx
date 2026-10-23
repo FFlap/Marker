@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveProfile } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
@@ -26,6 +29,7 @@ export default function Profile() {
 }
 
 function ProfileContent() {
+  const runOperation = useOperation();
   const profile = useQuery(api.profiles.me);
   const stats = useQuery(api.stats.profile);
   const publicTags = useQuery(api.tags.myPublic);
@@ -45,16 +49,23 @@ function ProfileContent() {
   const VisibilityIcon = profile.isPublic ? Globe2 : LockKeyhole;
   const handleRequest = async (username: string, accept: boolean) => {
     setRequestPending((current) => new Set(current).add(username));
-    try {
-      await respond({ username, accept });
-    } catch {
-      toast.show('Couldn’t update this request');
-    }
-    setRequestPending((current) => {
-      const next = new Set(current);
-      next.delete(username);
-      return next;
-    });
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveProfile(() => respond({ username, accept }));
+      }),
+      {
+        failure: () => {
+          toast.show('Couldn’t update this request');
+        },
+        settled: () => {
+          setRequestPending((current) => {
+            const next = new Set(current);
+            next.delete(username);
+            return next;
+          });
+        },
+      },
+    );
   };
   return (
     <ScreenView style={s.root}>

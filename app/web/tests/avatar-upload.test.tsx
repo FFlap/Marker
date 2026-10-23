@@ -53,8 +53,8 @@ it("uploads to Convex with the current Clerk session token", async () => {
       method: "POST",
       body: file,
       headers: {
-        "Content-Type": "image/png",
-        Authorization: "Bearer test-token",
+        "content-type": "image/png",
+        authorization: "Bearer test-token",
       },
     }),
   );

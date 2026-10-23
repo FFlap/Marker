@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveProfile } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery } from 'convex/react';
@@ -38,6 +41,7 @@ function detail(entry: Activity) {
 }
 
 export default function NotificationsScreen() {
+  const runOperation = useOperation();
   const requests = useQuery(api.profiles.followRequests);
   const activity = useQuery(api.notifications.feed) as Activity[] | undefined;
   const respond = useMutation(api.profiles.respondToFollow);
@@ -45,16 +49,23 @@ export default function NotificationsScreen() {
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
   const handle = async (username: string, accept: boolean) => {
     setPending((current) => new Set(current).add(username));
-    try {
-      await respond({ username, accept });
-    } catch {
-      toast.show('Couldn’t update this request');
-    }
-    setPending((current) => {
-      const next = new Set(current);
-      next.delete(username);
-      return next;
-    });
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveProfile(() => respond({ username, accept }));
+      }),
+      {
+        failure: () => {
+          toast.show('Couldn’t update this request');
+        },
+        settled: () => {
+          setPending((current) => {
+            const next = new Set(current);
+            next.delete(username);
+            return next;
+          });
+        },
+      },
+    );
   };
   return (
     <ScreenView style={s.root}>

@@ -127,3 +127,9 @@ afterAll(() => {
 afterEach(async () => {
   await cleanup();
 });
+
+jest.mock('../../src/hooks/operation-session', () => {
+  const { ClientWriteSession } = require('@marker/shared/clientOperations');
+  const session = new ClientWriteSession('test-session', () => 'test-session');
+  return { useWriteSession: () => session };
+});

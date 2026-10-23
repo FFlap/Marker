@@ -32,19 +32,21 @@ afterEach(() => {
 it('uploads avatars with the current Clerk session token', async () => {
   mockToken.mockClear();
   mockSetAvatar.mockClear();
-  const fetchMock = jest
-    .fn()
-    .mockResolvedValue({ ok: true, json: async () => ({ storageId: 'image-id' }) });
+  const fetchMock = jest.fn().mockResolvedValue({
+    status: 200,
+    arrayBuffer: async () =>
+      new TextEncoder().encode(JSON.stringify({ storageId: 'image-id' })).buffer,
+  });
   global.fetch = fetchMock;
   const view = await render(<ProfileForm onSaved={jest.fn()} />);
   await fireEvent.press(view.getByLabelText('Add profile photo'));
   await waitFor(() => expect(mockSetAvatar).toHaveBeenCalledWith({ storageId: 'image-id' }));
   expect(mockToken).toHaveBeenCalledWith();
   expect(fetchMock).toHaveBeenCalledWith(
-    'https://example.convex.site/avatar/upload',
+    new URL('https://example.convex.site/avatar/upload'),
     expect.objectContaining({
       method: 'POST',
-      headers: { Authorization: 'Bearer token', 'Content-Type': 'image/jpeg' },
+      headers: { authorization: 'Bearer token', 'content-type': 'image/jpeg' },
       body: mockImage,
     }),
   );

@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { saveProfile } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Plus, Tags, UserRound } from "lucide-react";
@@ -16,13 +19,7 @@ type Filter = "all" | "movie" | "tv" | "people" | "tags";
 type Person = FunctionReturnType<typeof api.profiles.search>[number];
 type PublicTag = FunctionReturnType<typeof api.tags.searchPublic>[number];
 
-function MediaRow({
-  item,
-  itemId,
-}: {
-  item: SearchResult;
-  itemId?: string;
-}) {
+function MediaRow({ item, itemId }: { item: SearchResult; itemId?: string }) {
   const content = (
     <>
       <div className="aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-lg bg-card">
@@ -58,14 +55,16 @@ function MediaRow({
     <Link
       to="/title/$mediaType/$tmdbId"
       params={{ mediaType: item.mediaType, tmdbId: String(item.id) }}
-      search={{ preview: JSON.stringify({
-        id: item.id,
-        mediaType: item.mediaType,
-        title: item.title,
-        posterPath: item.posterPath,
-        overview: item.overview,
-        releaseDate: item.releaseDate,
-      }) }}
+      search={{
+        preview: JSON.stringify({
+          id: item.id,
+          mediaType: item.mediaType,
+          title: item.title,
+          posterPath: item.posterPath,
+          overview: item.overview,
+          releaseDate: item.releaseDate,
+        }),
+      }}
       className={className}
     >
       {content}
@@ -99,7 +98,11 @@ function PersonRow({
       >
         <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-full bg-card text-sm font-bold">
           {person.avatarUrl ? (
-            <img src={person.avatarUrl} alt="" className="size-full object-cover" />
+            <img
+              src={person.avatarUrl}
+              alt=""
+              className="size-full object-cover"
+            />
           ) : (
             <UserRound className="size-5" />
           )}
@@ -162,7 +165,8 @@ function TagRow({ tag }: { tag: PublicTag }) {
         <strong className="block truncate text-sm">{tag.tag}</strong>
         <span className="mt-1 block text-xs text-muted-foreground">
           {tag.entryCount} {tag.entryCount === 1 ? "entry" : "entries"} ·{" "}
-          {tag.contributorCount} {tag.contributorCount === 1 ? "person" : "people"}
+          {tag.contributorCount}{" "}
+          {tag.contributorCount === 1 ? "person" : "people"}
         </span>
       </span>
       <ChevronRight className="size-4 text-muted-foreground" />
@@ -171,11 +175,14 @@ function TagRow({ tag }: { tag: PublicTag }) {
 }
 
 export function ExplorePage() {
+  const runOperation = useOperation();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [followError, setError] = useState("");
-  const [pendingPeople, setPendingPeople] = useState<Set<string>>(() => new Set());
+  const [pendingPeople, setPendingPeople] = useState<Set<string>>(
+    () => new Set(),
+  );
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
   const library = useQuery(api.library.items.listItems, {});
@@ -197,9 +204,14 @@ export function ExplorePage() {
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  const needsMedia = debounced.length >= 2 && filter !== "people" && filter !== "tags";
+  const needsMedia =
+    debounced.length >= 2 && filter !== "people" && filter !== "tags";
 
-  const { results: media, loading: mediaLoading, error: searchError } = useTitleSearch(debounced, needsMedia);
+  const {
+    results: media,
+    loading: mediaLoading,
+    error: searchError,
+  } = useTitleSearch(debounced, needsMedia);
   const error = followError || searchError;
 
   const existingByMedia = useMemo(
@@ -215,9 +227,12 @@ export function ExplorePage() {
   const movies = media.filter((item) => item.mediaType === "movie");
   const shows = media.filter((item) => item.mediaType === "tv");
   const ready = debounced.length >= 2;
-  const visibleMedia = filter === "movie" ? movies : filter === "tv" ? shows : media;
-  const visiblePeople = filter === "all" || filter === "people" ? people ?? [] : [];
-  const visibleTags = filter === "all" || filter === "tags" ? publicTags ?? [] : [];
+  const visibleMedia =
+    filter === "movie" ? movies : filter === "tv" ? shows : media;
+  const visiblePeople =
+    filter === "all" || filter === "people" ? (people ?? []) : [];
+  const visibleTags =
+    filter === "all" || filter === "tags" ? (publicTags ?? []) : [];
   const loading =
     ready &&
     (filter === "people"
@@ -227,24 +242,33 @@ export function ExplorePage() {
         : filter === "all"
           ? mediaLoading || people === undefined || publicTags === undefined
           : mediaLoading);
-  const hasResults = visibleMedia.length || visiblePeople.length || visibleTags.length;
+  const hasResults =
+    visibleMedia.length || visiblePeople.length || visibleTags.length;
 
   const updateFollow = async (person: Person) => {
-    if (person.relationship === "self" || pendingPeople.has(person.username)) return;
+    if (person.relationship === "self" || pendingPeople.has(person.username))
+      return;
     setError("");
     setPendingPeople((current) => new Set(current).add(person.username));
-    try {
-      if (person.relationship === "none") await follow({ username: person.username });
-      else await unfollow({ username: person.username });
-    } catch {
-      setError("Couldn’t update that follow right now.");
-    } finally {
-      setPendingPeople((current) => {
-        const next = new Set(current);
-        next.delete(person.username);
-        return next;
-      });
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        if (person.relationship === "none")
+          yield* saveProfile(() => follow({ username: person.username }));
+        else yield* saveProfile(() => unfollow({ username: person.username }));
+      }),
+      {
+        failure: () => {
+          setError("Couldn’t update that follow right now.");
+        },
+        settled: () => {
+          setPendingPeople((current) => {
+            const next = new Set(current);
+            next.delete(person.username);
+            return next;
+          });
+        },
+      },
+    );
   };
 
   const mediaRow = (item: SearchResult) => (
@@ -275,30 +299,65 @@ export function ExplorePage() {
           placeholder="Movies, TV shows, people, or tags"
           maxLength={TITLE_SEARCH_MAX_LENGTH}
         />
-        <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>
+        <Tabs
+          value={filter}
+          onValueChange={(value) => setFilter(value as Filter)}
+        >
           <TabsList className="mt-[18px] grid h-[46px] w-full grid-cols-5 rounded-none border-x-0 border-t-0 bg-transparent p-0">
-            <TabsTrigger className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground" value="all">All</TabsTrigger>
-            <TabsTrigger className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground" value="movie">Movies</TabsTrigger>
-            <TabsTrigger className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground" value="tv">TV shows</TabsTrigger>
-            <TabsTrigger className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground" value="people">People</TabsTrigger>
-            <TabsTrigger className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground" value="tags">Tags</TabsTrigger>
+            <TabsTrigger
+              className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+              value="all"
+            >
+              All
+            </TabsTrigger>
+            <TabsTrigger
+              className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+              value="movie"
+            >
+              Movies
+            </TabsTrigger>
+            <TabsTrigger
+              className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+              value="tv"
+            >
+              TV shows
+            </TabsTrigger>
+            <TabsTrigger
+              className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+              value="people"
+            >
+              People
+            </TabsTrigger>
+            <TabsTrigger
+              className="h-[46px] rounded-none border-b-2 border-transparent bg-transparent px-1 text-xs data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground"
+              value="tags"
+            >
+              Tags
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
       <div className="mt-8" aria-live="polite">
         {error && hasResults ? (
-          <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>
+          <p role="alert" className="mb-4 text-sm text-destructive">
+            {error}
+          </p>
         ) : null}
         {!ready ? (
           <div className="py-20 text-center">
             <p className="text-sm font-semibold">Search all of Marker</p>
-            <p className="mt-2 text-xs text-muted-foreground">Find movies, TV shows, people, or public tags.</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Find movies, TV shows, people, or public tags.
+            </p>
           </div>
         ) : loading ? (
           <div className="grid gap-2">
             {[0, 1, 2, 3].map((key) => (
-              <div key={key} className="h-24 animate-pulse rounded-xl bg-card" />
+              <div
+                key={key}
+                className="h-24 animate-pulse rounded-xl bg-card"
+              />
             ))}
           </div>
         ) : error && !hasResults ? (
@@ -308,7 +367,9 @@ export function ExplorePage() {
         ) : !hasResults ? (
           <div className="py-20 text-center">
             <p className="text-sm font-semibold">No results</p>
-            <p className="mt-2 text-xs text-muted-foreground">Try a different search.</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Try a different search.
+            </p>
           </div>
         ) : filter === "all" ? (
           <div className="grid gap-10">

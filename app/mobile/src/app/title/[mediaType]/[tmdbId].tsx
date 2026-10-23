@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveLibrary } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import type { Episode } from '@/features/title/libraryItemTypes';
 import { useMemo, useState } from 'react';
 import { FlatList, Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
@@ -76,6 +79,7 @@ export default function TitleDetailScreen() {
 }
 
 function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
+  const runOperation = useOperation();
   const { mediaType, tmdbId, validId } = parseTitleRoute(params);
   const parsedPreview = useMemo(() => parseTitlePreview(params.preview), [params.preview]);
   const preview =
@@ -175,32 +179,43 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const saveEntry = async (draft: LibraryEntryDraft) => {
     if (!mediaType || !validId || entrySaving || !meta.title.trim()) return;
     setEntrySaving(true);
-    try {
-      const addArgs = {
-        tmdbId,
-        mediaType: mediaType as MediaType,
-        title: meta.title,
-        posterPath: meta.posterPath,
-        overview: meta.overview,
-        releaseDate: meta.releaseDate,
-        runtime: averageRuntime,
-        genres: meta.genres,
-        status: draft.status,
-        rating: draft.rating,
-        timesWatched: draft.timesWatched,
-        tags: draft.tags,
-      };
-      const itemId =
-        mediaType === 'tv' && draft.status === 'watched'
-          ? await addItemAndMarkWatched(addArgs)
-          : await addItem(addArgs);
-      setEntryOpen(false);
-      toast.show(`${meta.title} added`);
-      router.replace(`/item/${itemId}`);
-    } catch {
-      toast.show('Couldn’t add this title');
-    }
-    setEntrySaving(false);
+    await runOperation.write(
+      Effect.gen(function* () {
+        const addArgs = {
+          tmdbId,
+          mediaType: mediaType as MediaType,
+          title: meta.title,
+          posterPath: meta.posterPath,
+          overview: meta.overview,
+          releaseDate: meta.releaseDate,
+          runtime: averageRuntime,
+          genres: meta.genres,
+          status: draft.status,
+          rating: draft.rating,
+          timesWatched: draft.timesWatched,
+          tags: draft.tags,
+        };
+        const itemId =
+          mediaType === 'tv' && draft.status === 'watched'
+            ? yield* saveLibrary(() => addItemAndMarkWatched(addArgs))
+            : yield* saveLibrary(() => addItem(addArgs));
+        return itemId;
+      }),
+      {
+        success: (itemId) => {
+          setEntryOpen(false);
+          toast.show(`${meta.title} added`);
+          router.replace(`/item/${itemId}`);
+        },
+
+        failure: () => {
+          toast.show('Couldn’t add this title');
+        },
+        settled: () => {
+          setEntrySaving(false);
+        },
+      },
+    );
   };
 
   const renderEpisode = ({ item: episode }: { item: Episode }) => {

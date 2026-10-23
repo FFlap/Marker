@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as actionEffects from "../actionEffects.js";
 import type * as activityEvents from "../activityEvents.js";
 import type * as avatarUpload from "../avatarUpload.js";
 import type * as calendar from "../calendar.js";
@@ -78,6 +79,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  actionEffects: typeof actionEffects;
   activityEvents: typeof activityEvents;
   avatarUpload: typeof avatarUpload;
   calendar: typeof calendar;

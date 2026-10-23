@@ -1,4 +1,5 @@
 import React from 'react';
+import { ToastProvider } from '@/components/ui/Toast';
 import { act, fireEvent, render, userEvent, waitFor } from '@testing-library/react-native';
 
 const mockReorderTag = jest.fn().mockResolvedValue(1.5);
@@ -304,6 +305,48 @@ describe('Tags screens', () => {
       expect(mockReorderItem).toHaveBeenCalledWith({ itemId: 'b', status: 'watching' }),
     );
     expect(mockReorderTag).toHaveBeenCalledWith({ tag: 'Favorites', itemId: 'b' });
+  });
+
+  it('finishes tag ordering after the accepting screen unmounts', async () => {
+    let finish!: () => void;
+    mockReorderItem.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = await render(<TagDetailScreen />);
+    await act(async () => {
+      fireEvent(view.getByLabelText('2. Second Show'), 'accessibilityAction', {
+        nativeEvent: { actionName: 'moveTo:watching' },
+      });
+    });
+    expect(mockReorderItem).toHaveBeenCalled();
+    expect(mockReorderTag).not.toHaveBeenCalled();
+    await view.unmount();
+    await act(async () => {
+      finish();
+    });
+    expect(mockReorderTag).toHaveBeenCalledWith({ tag: 'Favorites', itemId: 'b' });
+  });
+
+  it('reports partial success when the title moves but tag ordering fails', async () => {
+    mockReorderTag.mockRejectedValueOnce(new Error('Tag ordering failed'));
+    const view = await render(
+      <ToastProvider>
+        <TagDetailScreen />
+      </ToastProvider>,
+    );
+    await act(async () => {
+      fireEvent(view.getByLabelText('2. Second Show'), 'accessibilityAction', {
+        nativeEvent: { actionName: 'moveTo:watching' },
+      });
+    });
+    await waitFor(() =>
+      expect(view.getByText('Title moved, but its tag order couldn’t be saved')).toBeTruthy(),
+    );
+    expect(mockReorderItem).toHaveBeenCalledWith({ itemId: 'b', status: 'watching' });
+    expect(view.queryByText('Couldn’t move this title')).toBeNull();
   });
 
   it('confirms a watched move and marks every episode watched', async () => {

@@ -1,3 +1,4 @@
+import { OperationSessionProvider } from "@/hooks/operation-session";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ClerkProvider, useAuth } from "@clerk/react";
@@ -23,7 +24,9 @@ ReactDOM.createRoot(root).render(
       signUpUrl="/login"
     >
       <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-        <RouterProvider router={router} />
+        <OperationSessionProvider>
+          <RouterProvider router={router} />
+        </OperationSessionProvider>
       </ConvexProviderWithClerk>
     </ClerkProvider>
   </React.StrictMode>,

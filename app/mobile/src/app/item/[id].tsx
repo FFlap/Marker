@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveLibrary } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -53,6 +56,7 @@ export default function ItemDetailScreen() {
   );
 }
 function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
+  const runOperation = useOperation();
   const [selectedSeason, setSeason] = useState(1);
   const episodeApi = api.library.episodes;
   const {
@@ -169,13 +173,23 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const performRemoval = async () => {
     if (removePending) return;
     setRemovePending(true);
-    try {
-      await remove({ itemId });
-      router.replace('/(tabs)');
-    } catch {
-      toast.show('Couldn’t remove this title');
-    }
-    setRemovePending(false);
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() => remove({ itemId }));
+      }),
+      {
+        success: () => {
+          router.replace('/(tabs)');
+        },
+
+        failure: () => {
+          toast.show('Couldn’t remove this title');
+        },
+        settled: () => {
+          setRemovePending(false);
+        },
+      },
+    );
   };
   const requestRemoval = () => {
     if (removePending) return;
@@ -209,16 +223,24 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
           ? { clearRating: true }
           : { rating: value as number }
         : { tags: value as string[] };
-    void setEpisode({ itemId, season: seasonNumber, episode, ...args }).catch(() => {
-      if (fieldVersions.current.get(key) === version) {
-        fieldVersions.current.delete(key);
-        setEpisodeDrafts((current) => {
-          const latest = current[draftKey] ?? { rating: saved?.rating, tags: saved?.tags ?? [] };
-          return { ...current, [draftKey]: { ...latest, [field]: savedValue } };
-        });
-      }
-      toast.show('Couldn’t update this episode');
-    });
+    void runOperation.write(
+      saveLibrary(() => setEpisode({ itemId, season: seasonNumber, episode, ...args })),
+      {
+        failure: () => {
+          if (fieldVersions.current.get(key) === version) {
+            fieldVersions.current.delete(key);
+            setEpisodeDrafts((current) => {
+              const latest = current[draftKey] ?? {
+                rating: saved?.rating,
+                tags: saved?.tags ?? [],
+              };
+              return { ...current, [draftKey]: { ...latest, [field]: savedValue } };
+            });
+          }
+          toast.show('Couldn’t update this episode');
+        },
+      },
+    );
   };
   const meta = {
     title: item.title,
@@ -247,25 +269,39 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const saveEntry = async (entryForm: LibraryEntryDraft) => {
     if (entrySaving) return;
     setEntrySaving(true);
-    try {
-      if (item.mediaType === 'tv' && entryForm.status === 'watched') {
-        await moveItemToWatched({ itemId });
-      }
-      await update({
-        itemId,
-        status:
-          item.mediaType !== 'tv' || entryForm.status !== 'watched' ? entryForm.status : undefined,
-        rating: entryForm.rating,
-        clearRating: entryForm.rating === undefined,
-        timesWatched: entryForm.timesWatched,
-        tags: entryForm.tags,
-      });
-      setEntryOpen(false);
-      toast.show('Entry updated');
-    } catch {
-      toast.show('Couldn’t update this entry');
-    }
-    setEntrySaving(false);
+    await runOperation.write(
+      Effect.gen(function* () {
+        if (item.mediaType === 'tv' && entryForm.status === 'watched') {
+          yield* saveLibrary(() => moveItemToWatched({ itemId }));
+        }
+        yield* saveLibrary(() =>
+          update({
+            itemId,
+            status:
+              item.mediaType !== 'tv' || entryForm.status !== 'watched'
+                ? entryForm.status
+                : undefined,
+            rating: entryForm.rating,
+            clearRating: entryForm.rating === undefined,
+            timesWatched: entryForm.timesWatched,
+            tags: entryForm.tags,
+          }),
+        );
+      }),
+      {
+        success: () => {
+          setEntryOpen(false);
+          toast.show('Entry updated');
+        },
+
+        failure: () => {
+          toast.show('Couldn’t update this entry');
+        },
+        settled: () => {
+          setEntrySaving(false);
+        },
+      },
+    );
   };
   const watchedSeasonCount =
     episodeProgress?.find((summary) => summary.season === season)?.currentWatchedCount ?? 0;
@@ -276,29 +312,35 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     if (pendingEpisodes.has(episodeKey)) return;
     const old = savedByEpisode.get(episodeKey);
     setPendingEpisodes((current) => new Set(current).add(episodeKey));
-    return setEpisode({
-      itemId,
-      season: ep.season,
-      episode: ep.episode,
-      watched: !old?.watched,
-      ...(!old?.watched && { activityDate: localDateKey() }),
-      seasonName:
-        availableSeasons.find((entry) => entry.season === ep.season)?.name ??
-        (ep.season === 0 ? 'Specials' : `Season ${ep.season}`),
-      name: ep.name,
-      ...(ep.overview !== undefined && { overview: ep.overview.slice(0, 400) }),
-      ...(ep.runtime !== undefined && { runtime: ep.runtime }),
-      ...(ep.imageUrl !== undefined && { imageUrl: ep.imageUrl }),
-      ...(ep.airDate !== undefined && { airDate: ep.airDate }),
-    })
-      .catch(() => toast.show('Couldn’t update this episode'))
-      .finally(() => {
-        setPendingEpisodes((current) => {
-          const next = new Set(current);
-          next.delete(episodeKey);
-          return next;
-        });
-      });
+    return runOperation.write(
+      saveLibrary(() =>
+        setEpisode({
+          itemId,
+          season: ep.season,
+          episode: ep.episode,
+          watched: !old?.watched,
+          ...(!old?.watched && { activityDate: localDateKey() }),
+          seasonName:
+            availableSeasons.find((entry) => entry.season === ep.season)?.name ??
+            (ep.season === 0 ? 'Specials' : `Season ${ep.season}`),
+          name: ep.name,
+          ...(ep.overview !== undefined && { overview: ep.overview.slice(0, 400) }),
+          ...(ep.runtime !== undefined && { runtime: ep.runtime }),
+          ...(ep.imageUrl !== undefined && { imageUrl: ep.imageUrl }),
+          ...(ep.airDate !== undefined && { airDate: ep.airDate }),
+        }),
+      ),
+      {
+        settled: () => {
+          setPendingEpisodes((current) => {
+            const next = new Set(current);
+            next.delete(episodeKey);
+            return next;
+          });
+        },
+        failure: () => toast.show('Couldn’t update this episode'),
+      },
+    );
   };
   const renderEpisode = ({ item: episode }: { item: Episode }) => {
     const episodeKey = `${episode.season}:${episode.episode}`;
@@ -482,19 +524,22 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                       onToggle={() => {
                         const watched = !seasonFullyWatched;
                         setSeasonPending(true);
-                        void setSeasonState(season, watched, seasonRow!)
-                          .then(() =>
-                            toast.show(
-                              watched ? 'Season marked watched' : 'Season marked unwatched',
-                            ),
-                          )
-                          .catch((error: unknown) => {
-                            if (isStaleSeasonError(error)) {
-                              toast.show('Season data changed — refreshing');
-                              refresh({ force: true });
-                            } else toast.show('Couldn’t update this season');
-                          })
-                          .finally(() => setSeasonPending(false));
+                        void runOperation.write(
+                          saveLibrary(() => setSeasonState(season, watched, seasonRow!)),
+                          {
+                            settled: () => setSeasonPending(false),
+                            failure: ({ cause: error }: { cause: unknown }) => {
+                              if (isStaleSeasonError(error)) {
+                                toast.show('Season data changed — refreshing');
+                                refresh({ force: true });
+                              } else toast.show('Couldn’t update this season');
+                            },
+                            success: () =>
+                              toast.show(
+                                watched ? 'Season marked watched' : 'Season marked unwatched',
+                              ),
+                          },
+                        );
                       }}
                     />
                     {!seasonRow && !seasonError && <EpisodeSkeletonRows />}

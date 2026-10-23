@@ -1,3 +1,6 @@
+import { Effect } from "effect";
+import { saveLibrary } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
 import { useMemo, useRef, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { EllipsisVertical, Globe2, LockKeyhole, Plus } from "lucide-react";
@@ -19,12 +22,13 @@ import {
 import { SearchField } from "@/components/ui/search-field";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
-import { filterLibraryItems, normalizeTag, uniqueTags, type LibraryFilters } from "@/lib/library-filters";
 import {
-  gridWidth,
-  listType,
-  listWidth,
-} from "@/lib/display-preferences";
+  filterLibraryItems,
+  normalizeTag,
+  uniqueTags,
+  type LibraryFilters,
+} from "@/lib/library-filters";
+import { gridWidth, listType, listWidth } from "@/lib/display-preferences";
 import {
   usePointerSortable,
   type SortableLocation,
@@ -45,6 +49,7 @@ function VisibilityDialog({
   tag: string;
   onError: (message: string) => void;
 }) {
+  const runOperation = useOperation();
   const visibility = useQuery(api.tags.visibility, { tag });
   const setVisibility = useMutation(api.tags.setVisibility);
   const [pending, setPending] = useState(false);
@@ -54,15 +59,21 @@ function VisibilityDialog({
     setPending(true);
     onError("");
     setDialogError("");
-    try {
-      await setVisibility({ tag, isPublic });
-    } catch {
-      const message = "Couldn’t update tag visibility.";
-      onError(message);
-      setDialogError(message);
-    } finally {
-      setPending(false);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() => setVisibility({ tag, isPublic }));
+      }),
+      {
+        failure: () => {
+          const message = "Couldn’t update tag visibility.";
+          onError(message);
+          setDialogError(message);
+        },
+        settled: () => {
+          setPending(false);
+        },
+      },
+    );
   };
   return (
     <Dialog>
@@ -104,7 +115,11 @@ function VisibilityDialog({
               </span>
             </span>
           </button>
-          {dialogError ? <p role="alert" className="text-xs text-destructive">{dialogError}</p> : null}
+          {dialogError ? (
+            <p role="alert" className="text-xs text-destructive">
+              {dialogError}
+            </p>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
@@ -117,12 +132,15 @@ export function TagDetailPage() {
 }
 
 function TagDetail({ tag }: { tag: string }) {
+  const runOperation = useOperation();
   const library = useQuery(api.library.items.listItems, {});
   const rankQuery = useQuery(api.library.items.listTagRanks, { tag });
   const settings = useQuery(api.settings.getSettings, {});
   const reorderTagItem = useMutation(api.library.ordering.reorderTagItem);
   const reorderItem = useMutation(api.library.ordering.reorderItem);
-  const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
+  const moveItemToWatched = useAction(
+    api.library.seasonWatched.moveItemToWatched,
+  );
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>({
     media: "all",
@@ -178,7 +196,8 @@ function TagDetail({ tag }: { tag: string }) {
     };
     return items.toSorted(
       (left, right) =>
-        position(String(left._id)) - position(String(right._id)) || left.rank - right.rank,
+        position(String(left._id)) - position(String(right._id)) ||
+        left.rank - right.rank,
     );
   };
 
@@ -188,7 +207,14 @@ function TagDetail({ tag }: { tag: string }) {
     from: number,
     to: number,
   ) => {
-    if (filtersActive || movePending.current || moving || to < 0 || to >= items.length || from === to)
+    if (
+      filtersActive ||
+      movePending.current ||
+      moving ||
+      to < 0 ||
+      to >= items.length ||
+      from === to
+    )
       return;
     const next = [...items];
     const [moved] = next.splice(from, 1);
@@ -201,55 +227,79 @@ function TagDetail({ tag }: { tag: string }) {
     movePending.current = true;
     setMoving(String(moved._id));
     setError("");
-    try {
-      await reorderTagItem({
-        tag,
-        itemId: moved._id,
-        ...(next[to - 1] && {
-          beforeId: next[to - 1]._id,
-        }),
-        ...(next[to + 1] && {
-          afterId: next[to + 1]._id,
-        }),
-      });
-    } catch {
-      setError("Couldn’t save the tag order.");
-    } finally {
-      setOrders((current) => ({ ...current, [status]: undefined }));
-      movePending.current = false;
-      setMoving(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        yield* saveLibrary(() =>
+          reorderTagItem({
+            tag,
+            itemId: moved._id,
+            ...(next[to - 1] && {
+              beforeId: next[to - 1]._id,
+            }),
+            ...(next[to + 1] && {
+              afterId: next[to + 1]._id,
+            }),
+          }),
+        );
+      }),
+      {
+        failure: () => {
+          setError("Couldn’t save the tag order.");
+        },
+        settled: () => {
+          setOrders((current) => ({ ...current, [status]: undefined }));
+          movePending.current = false;
+          setMoving(undefined);
+        },
+      },
+    );
   };
 
   const moveStatus = async (
     item: RankedItem,
     status: (typeof statuses)[number],
   ) => {
-    if (filtersActive || movePending.current || moving || item.status === status) return;
+    if (
+      filtersActive ||
+      movePending.current ||
+      moving ||
+      item.status === status
+    )
+      return;
     const target = (library ?? [])
       .filter((entry) => entry.status === status && entry._id !== item._id)
       .toSorted((left, right) => left.rank - right.rank);
     movePending.current = true;
     setMoving(String(item._id));
     setError("");
-    try {
-      const placement = {
-        itemId: item._id,
-        ...(target.at(-1) && { beforeId: target.at(-1)!._id }),
-      };
-      if (status === "watched") await moveItemToWatched(placement);
-      else await reorderItem({ ...placement, status });
-      setOrders({});
-    } catch {
-      setError(
-        status === "watched"
-          ? "Couldn’t mark every episode watched."
-          : "Couldn’t move this title.",
-      );
-    } finally {
-      movePending.current = false;
-      setMoving(undefined);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        const placement = {
+          itemId: item._id,
+          ...(target.at(-1) && { beforeId: target.at(-1)!._id }),
+        };
+        if (status === "watched")
+          yield* saveLibrary(() => moveItemToWatched(placement));
+        else yield* saveLibrary(() => reorderItem({ ...placement, status }));
+      }),
+      {
+        success: () => {
+          setOrders({});
+        },
+
+        failure: () => {
+          setError(
+            status === "watched"
+              ? "Couldn’t mark every episode watched."
+              : "Couldn’t move this title.",
+          );
+        },
+        settled: () => {
+          movePending.current = false;
+          setMoving(undefined);
+        },
+      },
+    );
   };
 
   const filtersActive =
@@ -260,8 +310,9 @@ function TagDetail({ tag }: { tag: string }) {
     filters.tags.length > 0;
   const availableTags = useMemo(
     () =>
-      uniqueTags(ranked.flatMap((item) => item.tags))
-        .filter((entry) => normalizeTag(entry) !== normalizeTag(tag)),
+      uniqueTags(ranked.flatMap((item) => item.tags)).filter(
+        (entry) => normalizeTag(entry) !== normalizeTag(tag),
+      ),
     [ranked, tag],
   );
   const loading = library === undefined || rankQuery === undefined;
@@ -349,8 +400,7 @@ function TagDetail({ tag }: { tag: string }) {
                             flexGrow: 0,
                             flexShrink: 0,
                             ...(view === "list" && {
-                              minHeight:
-                                listType(listTextSize).minHeight,
+                              minHeight: listType(listTextSize).minHeight,
                             }),
                           }}
                         >
@@ -368,7 +418,12 @@ function TagDetail({ tag }: { tag: string }) {
                                   filtersActive || Boolean(moving),
                                 )}
                                 onMove={(direction) =>
-                                  void move(status, items, index, index + direction)
+                                  void move(
+                                    status,
+                                    items,
+                                    index,
+                                    index + direction,
+                                  )
                                 }
                               />
                               <SortableItemActions
@@ -401,7 +456,12 @@ function TagDetail({ tag }: { tag: string }) {
                                 filtersActive || Boolean(moving),
                               )}
                               onMove={(direction) =>
-                                void move(status, items, index, index + direction)
+                                void move(
+                                  status,
+                                  items,
+                                  index,
+                                  index + direction,
+                                )
                               }
                             />
                           )}
@@ -411,8 +471,7 @@ function TagDetail({ tag }: { tag: string }) {
                             aria-label={item.title}
                             className={`min-w-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${view === "posters" ? "block rounded-xl" : "flex flex-1 items-center gap-2 overflow-hidden rounded-lg px-1 font-medium"}`}
                             style={{
-                              minHeight:
-                                listType(listTextSize).minHeight,
+                              minHeight: listType(listTextSize).minHeight,
                             }}
                           >
                             {view === "posters" ? (
@@ -442,7 +501,8 @@ function TagDetail({ tag }: { tag: string }) {
                                 style={
                                   view === "list"
                                     ? {
-                                        fontSize: listType(listTextSize).fontSize,
+                                        fontSize:
+                                          listType(listTextSize).fontSize,
                                         lineHeight: `${listType(listTextSize).lineHeight}px`,
                                       }
                                     : undefined

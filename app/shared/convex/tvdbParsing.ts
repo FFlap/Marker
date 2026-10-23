@@ -1,3 +1,4 @@
+import { Predicate } from 'effect';
 import { boundedEpisode } from './seasonStorage';
 
 export type Json = Record<string, unknown>;
@@ -53,10 +54,10 @@ export const validOrders = new Set<SeasonOrder>([
 ]);
 export const records = (value: unknown): Json[] =>
   Array.isArray(value)
-    ? value.filter((entry): entry is Json => typeof entry === 'object' && entry !== null)
+    ? value.filter((entry): entry is Json => Predicate.isObjectOrArray(entry))
     : [];
 export const record = (value: unknown): Json =>
-  typeof value === 'object' && value !== null ? (value as Json) : {};
+  Predicate.isObjectOrArray(value) ? (value as Json) : {};
 export const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 export const integer = (value: unknown) =>
   typeof value === 'number' && Number.isInteger(value) ? value : undefined;

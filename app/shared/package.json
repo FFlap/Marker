@@ -13,7 +13,9 @@
     },
     "./watchActivityStats": "./lib/watchActivityStats.ts",
     "./calendar": "./lib/calendar.ts",
-    "./calendarCache": "./lib/calendarCache.ts"
+    "./calendarCache": "./lib/calendarCache.ts",
+    "./clientOperations": "./lib/clientOperations.ts",
+    "./clientEffects": "./lib/clientEffects.ts"
   },
   "scripts": {
     "dev": "convex dev",
@@ -31,7 +33,8 @@
   "dependencies": {
     "@convex-dev/migrations": "^0.3.6",
     "convex": "1.42.1",
-    "convex-helpers": "0.1.118"
+    "convex-helpers": "0.1.118",
+    "effect": "4.0.5"
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",

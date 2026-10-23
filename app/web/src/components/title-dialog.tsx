@@ -1,14 +1,15 @@
-import {
-  useEffect,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { Effect } from "effect";
+import { touchMetadata, saveLibrary } from "@marker/shared/clientEffects";
+import { useOperation } from "@/hooks/use-operation";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Check, Search } from "lucide-react";
 import { api } from "@marker/shared/api";
 import { Button } from "@/components/ui/button";
-import { LibraryEntryControls, type EntryDraft } from "@/components/library-entry-controls";
+import {
+  LibraryEntryControls,
+  type EntryDraft,
+} from "@/components/library-entry-controls";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { posterUrl } from "@/lib/utils";
-import { TITLE_SEARCH_MAX_LENGTH, titleRuntime, type SearchResult } from "@/lib/catalog";
+import {
+  TITLE_SEARCH_MAX_LENGTH,
+  titleRuntime,
+  type SearchResult,
+} from "@/lib/catalog";
 import { useTitleSearch } from "@/hooks/use-title-search";
 
 const initialDraft: EntryDraft = {
@@ -36,7 +41,10 @@ export function AddTitleDialog({
   initialSelection?: SearchResult;
   onAdded?: (itemId: string) => void;
 }) {
-  const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
+  const runOperation = useOperation();
+  const addItemAndMarkWatched = useAction(
+    api.library.seasonWatched.addItemAndMarkWatched,
+  );
   const addItem = useMutation(api.library.items.addItem);
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const [open, setOpen] = useState(false);
@@ -47,11 +55,18 @@ export function AddTitleDialog({
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState("");
   const { status, rating, timesWatched, tags } = draft;
-  const { results, loading: searching, error: searchError, retry: retrySearch } = useTitleSearch(submittedQuery, open && !selected);
+  const {
+    results,
+    loading: searching,
+    error: searchError,
+    retry: retrySearch,
+  } = useTitleSearch(submittedQuery, open && !selected);
   const error = saveError || searchError;
   const resolvedTitle = useQuery(
     api.resolvedMetadata.reads.getTitle,
-    open && selected ? { mediaType: selected.mediaType, tmdbId: selected.id } : "skip",
+    open && selected
+      ? { mediaType: selected.mediaType, tmdbId: selected.id }
+      : "skip",
   );
   const suggestions = useQuery(
     api.library.items.listTagSuggestions,
@@ -61,12 +76,17 @@ export function AddTitleDialog({
 
   useEffect(() => {
     if (!open || !selected) return;
-    void touchTitle({
-      mediaType: selected.mediaType,
-      tmdbId: selected.id,
-      title: selected.title,
-    }).catch(() => undefined);
-  }, [open, selected, touchTitle]);
+    void runOperation(
+      touchMetadata(() =>
+        touchTitle({
+          mediaType: selected.mediaType,
+          tmdbId: selected.id,
+          title: selected.title,
+        }),
+      ),
+      { failure: () => undefined },
+    );
+  }, [open, selected, touchTitle, runOperation]);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
@@ -78,9 +98,7 @@ export function AddTitleDialog({
     if (!selected) return;
     if (
       rating !== undefined &&
-      (!Number.isFinite(rating) ||
-        rating < 0 ||
-        rating > 5)
+      (!Number.isFinite(rating) || rating < 0 || rating > 5)
     ) {
       setSaveError("Rating must be between 0 and 5.");
       return;
@@ -91,38 +109,48 @@ export function AddTitleDialog({
     }
     setBusy(true);
     setSaveError("");
-    try {
-      const addArgs = {
-        tmdbId: selected.id,
-        mediaType: selected.mediaType,
-        title: selected.title,
-        ...(selected.posterPath && { posterPath: selected.posterPath }),
-        ...(selected.overview && { overview: selected.overview }),
-        ...(selected.releaseDate && { releaseDate: selected.releaseDate }),
-        ...(canonicalRuntime !== undefined && { runtime: canonicalRuntime }),
-        ...((resolvedTitle?.genres ?? selected.genres) && {
-          genres: resolvedTitle?.genres ?? selected.genres,
-        }),
-        status,
-        ...(rating !== undefined && { rating }),
-        timesWatched,
-        tags,
-      };
-      const itemId =
-        selected.mediaType === "tv" && status === "watched"
-          ? await addItemAndMarkWatched(addArgs)
-          : await addItem(addArgs);
-      setOpen(false);
-      onAdded?.(String(itemId));
-    } catch (cause) {
-      setSaveError(
-        cause instanceof Error && /already exists/i.test(cause.message)
-          ? "That title is already in your library."
-          : "Couldn’t add this title. Check the rating and try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
+    await runOperation.write(
+      Effect.gen(function* () {
+        const addArgs = {
+          tmdbId: selected.id,
+          mediaType: selected.mediaType,
+          title: selected.title,
+          ...(selected.posterPath && { posterPath: selected.posterPath }),
+          ...(selected.overview && { overview: selected.overview }),
+          ...(selected.releaseDate && { releaseDate: selected.releaseDate }),
+          ...(canonicalRuntime !== undefined && { runtime: canonicalRuntime }),
+          ...((resolvedTitle?.genres ?? selected.genres) && {
+            genres: resolvedTitle?.genres ?? selected.genres,
+          }),
+          status,
+          ...(rating !== undefined && { rating }),
+          timesWatched,
+          tags,
+        };
+        const itemId =
+          selected.mediaType === "tv" && status === "watched"
+            ? yield* saveLibrary(() => addItemAndMarkWatched(addArgs))
+            : yield* saveLibrary(() => addItem(addArgs));
+        return itemId;
+      }),
+      {
+        success: (itemId) => {
+          setOpen(false);
+          onAdded?.(String(itemId));
+        },
+
+        failure: ({ cause }) => {
+          setSaveError(
+            cause instanceof Error && /already exists/i.test(cause.message)
+              ? "That title is already in your library."
+              : "Couldn’t add this title. Check the rating and try again.",
+          );
+        },
+        settled: () => {
+          setBusy(false);
+        },
+      },
+    );
   };
 
   return (

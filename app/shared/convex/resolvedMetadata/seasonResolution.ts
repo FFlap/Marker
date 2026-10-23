@@ -1,3 +1,5 @@
+import { Effect } from 'effect';
+import { actionFailureCause, attempt, providerOutcome, runActionEffect } from '../actionEffects';
 import { ConvexError, v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -24,8 +26,6 @@ import {
   pause,
   resolveFreshTitle,
   seasonIsFresh,
-  settle,
-  type ProviderOutcome,
 } from './titleResolution';
 import {
   assertMetadataMutationSize,
@@ -44,65 +44,75 @@ export async function resolveFreshSeason(
   force = false,
   preloadedTvdbEpisodes?: ResolvedEpisode[],
 ) {
-  const tmdbPromise = settle(
-    ctx.runAction(internal.tmdb.refreshSeasonDetails, { ...args, force }) as Promise<
-      ResolvedEpisode[]
-    >,
+  return runActionEffect(
+    Effect.gen(function* () {
+      const [tmdbResult, tvdbResult] = yield* Effect.all(
+        [
+          providerOutcome(
+            attempt(
+              () =>
+                ctx.runAction(internal.tmdb.refreshSeasonDetails, { ...args, force }) as Promise<
+                  ResolvedEpisode[]
+                >,
+            ),
+          ),
+          title.metadataProvider === 'tvdb' && title.tvdbId && title.seasonOrder
+            ? providerOutcome(
+                preloadedTvdbEpisodes
+                  ? Effect.succeed(preloadedTvdbEpisodes)
+                  : attempt(
+                      () =>
+                        ctx.runAction(internal.tvdb.refreshSeason, {
+                          tvdbId: title.tvdbId!,
+                          order: title.seasonOrder!,
+                          season: args.season,
+                          force,
+                        }) as Promise<ResolvedEpisode[]>,
+                    ),
+              )
+            : Effect.succeed(null),
+        ],
+        { concurrency: 2 },
+      );
+
+      if (title.metadataProvider === 'tvdb' && tvdbResult && !tvdbResult.ok) {
+        if (current)
+          return {
+            episodes: current.episodes,
+            partial: true,
+            persisted: false,
+            error: actionFailureCause(tvdbResult.error),
+          };
+        return yield* Effect.fail(tvdbResult.error);
+      }
+      if (title.metadataProvider === 'tmdb' && !tmdbResult.ok) {
+        if (current)
+          return {
+            episodes: current.episodes,
+            partial: true,
+            persisted: false,
+            error: actionFailureCause(tmdbResult.error),
+          };
+        return yield* Effect.fail(tmdbResult.error);
+      }
+
+      const tmdbEpisodes = tmdbResult.ok ? tmdbResult.value : [];
+      const tvdbEpisodes = tvdbResult?.ok ? tvdbResult.value : [];
+      const episodes =
+        title.metadataProvider === 'tvdb'
+          ? mergeEpisodes(tvdbEpisodes, tmdbEpisodes)
+          : releasedEpisodes(tmdbEpisodes).map(cleanEpisode);
+      if (episodes.length === 0 && !tmdbResult.ok && current)
+        return {
+          episodes: current.episodes,
+          partial: true,
+          persisted: false,
+          error: actionFailureCause(tmdbResult.error),
+        };
+      const partial = !tmdbResult.ok;
+      return { episodes, partial, persisted: true, error: undefined };
+    }),
   );
-  const tvdbPromise: Promise<ProviderOutcome<ResolvedEpisode[]>> | null =
-    title.metadataProvider === 'tvdb' && title.tvdbId && title.seasonOrder
-      ? preloadedTvdbEpisodes
-        ? Promise.resolve({ ok: true as const, value: preloadedTvdbEpisodes })
-        : settle(
-            ctx.runAction(internal.tvdb.refreshSeason, {
-              tvdbId: title.tvdbId,
-              order: title.seasonOrder,
-              season: args.season,
-              force,
-            }) as Promise<ResolvedEpisode[]>,
-          )
-      : null;
-  const [tmdbResult, tvdbResult] = await Promise.all([
-    tmdbPromise,
-    tvdbPromise ?? Promise.resolve(null),
-  ]);
-
-  if (title.metadataProvider === 'tvdb' && tvdbResult && !tvdbResult.ok) {
-    if (current)
-      return {
-        episodes: current.episodes,
-        partial: true,
-        persisted: false,
-        error: tvdbResult.error,
-      };
-    throw tvdbResult.error;
-  }
-  if (title.metadataProvider === 'tmdb' && !tmdbResult.ok) {
-    if (current)
-      return {
-        episodes: current.episodes,
-        partial: true,
-        persisted: false,
-        error: tmdbResult.error,
-      };
-    throw tmdbResult.error;
-  }
-
-  const tmdbEpisodes = tmdbResult.ok ? tmdbResult.value : [];
-  const tvdbEpisodes = tvdbResult?.ok ? tvdbResult.value : [];
-  const episodes =
-    title.metadataProvider === 'tvdb'
-      ? mergeEpisodes(tvdbEpisodes, tmdbEpisodes)
-      : releasedEpisodes(tmdbEpisodes).map(cleanEpisode);
-  if (episodes.length === 0 && !tmdbResult.ok && current)
-    return {
-      episodes: current.episodes,
-      partial: true,
-      persisted: false,
-      error: tmdbResult.error,
-    };
-  const partial = !tmdbResult.ok;
-  return { episodes, partial, persisted: true, error: undefined };
 }
 
 export function titleWriteForCapturedTitle(
@@ -130,18 +140,29 @@ export async function resolveAndCommitCanonical(
     currentTitle?: Doc<'resolvedTitles'>;
   },
 ) {
-  const [queriedTitle, mapping] = await Promise.all([
-    args.currentTitle
-      ? Promise.resolve(args.currentTitle)
-      : (ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
-          mediaType: args.mediaType,
-          tmdbId: args.tmdbId,
-        }) as Promise<Doc<'resolvedTitles'> | null>),
-    ctx.runQuery(internal.resolvedMetadata.reads.readTitleMapping, {
-      mediaType: args.mediaType,
-      tmdbId: args.tmdbId,
-    }) as Promise<Doc<'titleMappings'> | null>,
-  ]);
+  const [queriedTitle, mapping] = await runActionEffect(
+    Effect.all(
+      [
+        args.currentTitle
+          ? Effect.succeed(args.currentTitle)
+          : attempt(
+              () =>
+                ctx.runQuery(internal.resolvedMetadata.reads.readTitle, {
+                  mediaType: args.mediaType,
+                  tmdbId: args.tmdbId,
+                }) as Promise<Doc<'resolvedTitles'> | null>,
+            ),
+        attempt(
+          () =>
+            ctx.runQuery(internal.resolvedMetadata.reads.readTitleMapping, {
+              mediaType: args.mediaType,
+              tmdbId: args.tmdbId,
+            }) as Promise<Doc<'titleMappings'> | null>,
+        ),
+      ],
+      { concurrency: 2 },
+    ),
+  );
   const currentTitle =
     queriedTitle && queriedTitle.orderEpoch === (mapping?.orderEpoch ?? 0) ? queriedTitle : null;
   const titleResult =

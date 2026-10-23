@@ -1,3 +1,6 @@
+import { runClientEffect } from '@marker/shared/clientOperations';
+import { Effect } from 'effect';
+import { searchTitles } from '@marker/shared/clientEffects';
 import { useEffect, useState } from 'react';
 import { useAction } from 'convex/react';
 import { api } from '@marker/shared/api';
@@ -21,26 +24,32 @@ export function useTitleSearch(
   if (response?.failed && response.query !== normalizedQuery) setResponse(undefined);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(normalizedQuery), delayMs);
-    return () => clearTimeout(timer);
+    const controller = new AbortController();
+    void runClientEffect(
+      Effect.sleep(delayMs).pipe(
+        Effect.andThen(Effect.sync(() => setDebouncedQuery(normalizedQuery))),
+      ),
+      { signal: controller.signal },
+    );
+    return () => controller.abort();
   }, [normalizedQuery, delayMs]);
 
   useEffect(() => {
     if (!enabled || !ready || !settled || response?.query === normalizedQuery) return;
-    let active = true;
-    void search({ query: normalizedQuery })
-      .then((results) => {
-        if (!active) return;
-        setResponse({ query: normalizedQuery, results });
-      })
-      .catch(() => {
-        if (!active) return;
-        setResponse({ query: normalizedQuery, results: [], failed: true });
-        show('Search is unavailable right now');
-      });
-    return () => {
-      active = false;
-    };
+    const controller = new AbortController();
+    void runClientEffect(
+      searchTitles(() => search({ query: normalizedQuery })).pipe(
+        Effect.match({
+          onSuccess: (results) => setResponse({ query: normalizedQuery, results }),
+          onFailure: () => {
+            setResponse({ query: normalizedQuery, results: [], failed: true });
+            show('Search is unavailable right now');
+          },
+        }),
+      ),
+      { signal: controller.signal },
+    );
+    return () => controller.abort();
   }, [enabled, normalizedQuery, ready, response, search, settled, show]);
 
   const current = enabled && ready && response?.query === normalizedQuery;

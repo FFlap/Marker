@@ -1,3 +1,5 @@
+import { Effect } from 'effect';
+import { providerOutcome } from './actionEffects';
 import {
   records,
   selectSeriesMatch,
@@ -7,14 +9,17 @@ import {
 } from './tvdbParsing';
 
 /** Search indexes may still contain deleted series. Exclude only confirmed deletions. */
-export async function findSeries(
-  request: (path: string) => Promise<Json>,
+export const findSeriesEffect = Effect.fnUntraced(function* <E>(
+  request: (path: string) => Effect.Effect<Json, E>,
   tmdbId: number,
   titles: string[],
   excluded: ReadonlySet<number>,
 ) {
-  try {
-    const remote = await request(`/search/remoteid/${encodeURIComponent(String(tmdbId))}`);
+  const remoteResult = yield* providerOutcome(
+    request(`/search/remoteid/${encodeURIComponent(String(tmdbId))}`),
+  );
+  if (remoteResult.ok) {
+    const remote = remoteResult.value;
     const remoteIds = new Set(
       records(remote.data)
         .map((entry) => verifiedTmdbRemoteSeries(entry, titles))
@@ -22,11 +27,12 @@ export async function findSeries(
     );
     if (remoteIds.size > 1) return undefined;
     if (remoteIds.size === 1) return remoteIds.values().next().value;
-  } catch {
-    // Some numeric remote IDs are ambiguous across providers; title search verifies the fallback.
   }
+  // Expected remote lookup failures permit title search; defects and interruption propagate.
   for (const title of titles) {
-    const search = await request(`/search?query=${encodeURIComponent(title)}&type=series&limit=20`);
+    const search = yield* request(
+      `/search?query=${encodeURIComponent(title)}&type=series&limit=20`,
+    );
     const candidates = records(search.data).filter((entry) => {
       const id = seriesId(entry);
       return id !== undefined && !excluded.has(id);
@@ -36,4 +42,21 @@ export async function findSeries(
     if (id) return id;
   }
   return undefined;
+});
+
+/** Compatibility edge for native callers; provider orchestration uses findSeriesEffect. */
+export function findSeries(
+  request: (path: string) => Promise<Json>,
+  tmdbId: number,
+  titles: string[],
+  excluded: ReadonlySet<number>,
+) {
+  return Effect.runPromise(
+    findSeriesEffect(
+      (path) => Effect.tryPromise({ try: () => request(path), catch: (error) => error }),
+      tmdbId,
+      titles,
+      excluded,
+    ),
+  );
 }

@@ -1,4 +1,7 @@
 import { ScreenView } from '@/components/ScreenLayout';
+import { Effect } from 'effect';
+import { saveProfile } from '@marker/shared/clientEffects';
+import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -18,6 +21,7 @@ import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 
 export default function PublicProfile() {
+  const runOperation = useOperation();
   const { username = '' } = useLocalSearchParams<{ username: string }>();
   const result = useQuery(api.profiles.publicProfile, { username });
   const follow = useMutation(api.profiles.follow);
@@ -53,13 +57,21 @@ export default function PublicProfile() {
   const updateFollow = async () => {
     if (!relationship || relationship === 'self') return;
     setPending(true);
-    try {
-      if (relationship === 'none') await follow({ username: result.profile.username });
-      else await unfollow({ username: result.profile.username });
-    } catch {
-      toast.show('Couldn’t update this follow');
-    }
-    setPending(false);
+    await runOperation.write(
+      Effect.gen(function* () {
+        if (relationship === 'none')
+          yield* saveProfile(() => follow({ username: result.profile.username }));
+        else yield* saveProfile(() => unfollow({ username: result.profile.username }));
+      }),
+      {
+        failure: () => {
+          toast.show('Couldn’t update this follow');
+        },
+        settled: () => {
+          setPending(false);
+        },
+      },
+    );
   };
   return (
     <ScreenView style={s.root}>
