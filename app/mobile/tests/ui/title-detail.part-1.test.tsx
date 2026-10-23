@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, waitFor } from '@testing-library/react-native';
 import {
   mockState,
   mockTouchTitle,
@@ -28,61 +28,69 @@ describe('Explore title metadata subscriptions', () => {
   });
 
   it('latches preview hero fields after an initially undefined cold query', async () => {
-    const canonical = mockState.titleView.title;
-    mockState.titleView = undefined;
-    const view = await screen();
-    expect(view.getByTestId('title-detail-initial-placeholder')).toBeTruthy();
-    expect(view.queryByText('Frieren')).toBeNull();
+    jest.useFakeTimers();
+    try {
+      const canonical = mockState.titleView.title;
+      mockState.titleView = undefined;
+      const view = await screen();
+      expect(view.getByTestId('title-detail-initial-placeholder')).toBeTruthy();
+      expect(view.queryByText('Frieren')).toBeNull();
 
-    mockState.titleView = { title: null, requestState: { state: 'inFlight' } };
-    await act(async () =>
-      view.rerender(
-        <ToastProvider>
-          <TitleDetail />
-        </ToastProvider>,
-      ),
-    );
-    const previewTitle = view.getByTestId('title-detail-name');
-    const previewYear = view.getByTestId('title-detail-year');
-    const previewOverview = view.getByTestId('title-detail-overview');
-    const previewPosterSource = view.getByTestId('title-detail-poster').props.source;
-    expect(view.getByLabelText('Loading genres')).toBeTruthy();
-    expect(view.getByLabelText('Loading runtime')).toBeTruthy();
-    expect(view.getByLabelText('Loading rating')).toBeTruthy();
-    expect(view.getByLabelText('Loading cast')).toBeTruthy();
-    expect(view.getByLabelText('Loading seasons')).toBeTruthy();
-    expect(view.getByLabelText('Loading episodes')).toBeTruthy();
-    expect(view.queryByLabelText('Loading full title details')).toBeNull();
+      mockState.titleView = { title: null, requestState: { state: 'inFlight' } };
+      await act(async () =>
+        view.rerender(
+          <ToastProvider>
+            <TitleDetail />
+          </ToastProvider>,
+        ),
+      );
+      const previewTitle = view.getByTestId('title-detail-name');
+      const previewYear = view.getByTestId('title-detail-year');
+      const previewOverview = view.getByTestId('title-detail-overview');
+      const previewPosterSource = view.getByTestId('title-detail-poster').props.source;
+      expect(view.getByLabelText('Loading genres')).toBeTruthy();
+      expect(view.getByLabelText('Loading runtime')).toBeTruthy();
+      expect(view.getByLabelText('Loading rating')).toBeTruthy();
+      expect(view.getByLabelText('Loading cast')).toBeTruthy();
+      expect(view.getByLabelText('Loading seasons')).toBeTruthy();
+      expect(view.getByLabelText('Loading episodes')).toBeTruthy();
+      expect(view.queryByLabelText('Loading full title details')).toBeNull();
 
-    mockState.titleView = {
-      title: canonical,
-      requestState: { state: 'succeeded' },
-    };
-    await act(async () =>
-      view.rerender(
-        <ToastProvider>
-          <TitleDetail />
-        </ToastProvider>,
-      ),
-    );
-    expect(view.getByTestId('title-detail-name')).toBe(previewTitle);
-    expect(view.getByTestId('title-detail-year')).toBe(previewYear);
-    expect(view.getByTestId('title-detail-overview')).toBe(previewOverview);
-    expect(previewTitle.props.children).toBe('Frieren');
-    expect(previewYear.props.children).toBe('2023');
-    expect(previewOverview.props.children).toBe('An elf mage retraces a heroic journey.');
-    expect(previewPosterSource).toBe('https://image.tmdb.org/t/p/w342/preview-poster.jpg');
-    expect(view.getByTestId('title-detail-poster').props.source).toBe(previewPosterSource);
-    expect(view.queryByText('Canonical Frieren')).toBeNull();
-    expect(view.queryByText('2024')).toBeNull();
-    expect(view.queryByText('Canonical overview that must not replace the preview.')).toBeNull();
-    expect(view.getByText('Animation')).toBeTruthy();
-    expect(view.getByText('24 min')).toBeTruthy();
-    expect(view.getByText('8.7')).toBeTruthy();
-    expect(view.getByText('Atsumi Tanezaki')).toBeTruthy();
-    expect(view.getByText('The Journey')).toBeTruthy();
-    expect(view.queryByLabelText('Loading genres')).toBeNull();
-    expect(view.queryByLabelText('Loading episodes')).toBeNull();
+      mockState.titleView = {
+        title: canonical,
+        requestState: { state: 'succeeded' },
+      };
+      await act(async () =>
+        view.rerender(
+          <ToastProvider>
+            <TitleDetail />
+          </ToastProvider>,
+        ),
+      );
+      // Flush deferred list rendering before checking that the preview stayed mounted.
+      await act(async () => jest.runOnlyPendingTimersAsync());
+      expect(view.getByTestId('title-detail-name')).toBe(previewTitle);
+      expect(view.getByTestId('title-detail-year')).toBe(previewYear);
+      expect(view.getByTestId('title-detail-overview')).toBe(previewOverview);
+      expect(previewTitle.props.children).toBe('Frieren');
+      expect(previewYear.props.children).toBe('2023');
+      expect(previewOverview.props.children).toBe('An elf mage retraces a heroic journey.');
+      expect(previewPosterSource).toBe('https://image.tmdb.org/t/p/w342/preview-poster.jpg');
+      expect(view.getByTestId('title-detail-poster').props.source).toBe(previewPosterSource);
+      expect(view.queryByText('Canonical Frieren')).toBeNull();
+      expect(view.queryByText('2024')).toBeNull();
+      expect(view.queryByText('Canonical overview that must not replace the preview.')).toBeNull();
+      expect(view.getByText('Animation')).toBeTruthy();
+      expect(view.getByText('24 min')).toBeTruthy();
+      expect(view.getByText('8.7')).toBeTruthy();
+      expect(view.getByText('Atsumi Tanezaki')).toBeTruthy();
+      expect(view.getByText('The Journey')).toBeTruthy();
+      expect(view.queryByLabelText('Loading genres')).toBeNull();
+      expect(view.queryByLabelText('Loading episodes')).toBeNull();
+    } finally {
+      await cleanup();
+      jest.useRealTimers();
+    }
   });
 
   it('waits for canonical metadata on a cold direct link without a preview and can add it', async () => {
