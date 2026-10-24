@@ -3,6 +3,7 @@ import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useAction, useMutation } from 'convex/react';
 import { api } from '@marker/shared/api';
 import type { NativeGridAutoScroll, NativeGridDragMotion } from '@/components/NativeDraggableGrid';
@@ -37,7 +38,8 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const [rootHeight, setRootHeight] = useState(0);
   const statusMovePendingRef = useRef(false);
   const rootRef = useRef<View>(null);
-  const posterScrollRef = useRef<ScrollView>(null);
+  const posterScrollRef = useAnimatedRef<ScrollView>();
+  const nativeScrollOffset = useScrollOffset(posterScrollRef);
   const scrollContentHeight = useRef(0);
   const scrollViewportHeight = useRef(0);
   const rootWindowY = useRef(0);
@@ -236,13 +238,10 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         bottom: rootWindowY.current + Math.max(TOOLBAR_HEIGHT, rootHeight - MOBILE_NAV_HEIGHT),
       }),
       getMaxOffset: () => Math.max(0, scrollContentHeight.current - scrollViewportHeight.current),
-      getOffset: () => scrollOffset.current,
-      scrollTo: (offset) => {
-        scrollOffset.current = offset;
-        posterScrollRef.current?.scrollTo({ y: offset, animated: false });
-      },
+      offset: nativeScrollOffset,
+      scrollRef: posterScrollRef,
     }),
-    [rootHeight],
+    [nativeScrollOffset, posterScrollRef, rootHeight],
   );
 
   return {
@@ -259,8 +258,8 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
       autoScroll,
       begin: beginDrag,
       cancel: cancelDrag,
-      contentYFromWindow: (absoluteY: number) =>
-        absoluteY - rootWindowY.current + scrollOffset.current,
+      contentYFromWindow: (absoluteY: number, offset: number) =>
+        absoluteY - rootWindowY.current + offset,
       draggedItem,
       dragPreviewLayout,
       finish: finishDrag,
