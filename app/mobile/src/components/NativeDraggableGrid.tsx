@@ -1,16 +1,8 @@
-import {
-  Fragment,
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   type DimensionValue,
   type LayoutRectangle,
+  type ScrollView,
   type StyleProp,
   StyleSheet,
   View,
@@ -20,11 +12,16 @@ import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Easing,
-  LinearTransition,
   ReduceMotion,
   runOnJS,
+  scrollTo,
+  type AnimatedRef,
+  type FrameInfo,
   type SharedValue,
+  useAnimatedStyle,
+  useFrameCallback,
   useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
 import type { NativePosterDragMotion } from '@/components/NativePosterDragPreview';
 
@@ -33,13 +30,12 @@ export type NativeGridDragMotion = NativePosterDragMotion & {
 };
 
 type DragSession<T> = {
-  autoScrollFrame?: number;
+  bounds: { bottom: number; top: number };
   from: number;
   itemKey: string;
-  lastAutoScrollTime?: number;
+  maxOffset: number;
   order: T[];
   over: number;
-  pointer?: { x: number; y: number };
   scrollStart: number;
   slots: Map<number, DragLayout>;
 };
@@ -54,8 +50,8 @@ type DragLayout = {
 export type NativeGridAutoScroll = {
   getBounds: () => { bottom: number; top: number };
   getMaxOffset: () => number;
-  getOffset: () => number;
-  scrollTo: (offset: number) => void;
+  offset: SharedValue<number>;
+  scrollRef: AnimatedRef<ScrollView>;
 };
 
 const AUTO_SCROLL_EDGE_SIZE = 88;
@@ -65,7 +61,9 @@ export function nativeGridAutoScrollVelocity(
   pointerY: number,
   bounds: { bottom: number; top: number },
 ) {
+  'worklet';
   const edgeSize = Math.min(AUTO_SCROLL_EDGE_SIZE, Math.max(0, bounds.bottom - bounds.top) * 0.2);
+  if (edgeSize <= 0) return 0;
   const topDistance = pointerY - bounds.top;
   const bottomDistance = bounds.bottom - pointerY;
   if (topDistance < edgeSize)
@@ -82,6 +80,15 @@ export function moveGridItem<T>(items: readonly T[], from: number, to: number) {
   if (moved === undefined) return [...items];
   next.splice(Math.max(0, Math.min(to, next.length)), 0, moved);
   return next;
+}
+
+export function nativeGridTargetIndex(index: number, from: number, to: number) {
+  'worklet';
+  if (from < 0 || to < 0) return index;
+  if (index === from) return to;
+  if (from < to && index > from && index <= to) return index - 1;
+  if (from > to && index >= to && index < from) return index + 1;
+  return index;
 }
 
 export function nearestGridSlot(
@@ -130,7 +137,7 @@ export function NativeDraggableGrid<T>({
   onDragCancel?: () => void;
   onDragEnd: (event: { data: T[]; from: number; to: number }) => void;
   onDragLayout?: (layout: DragLayout) => void;
-  onDragMove?: (event: { absoluteX: number; absoluteY: number }) => void;
+  onDragMove?: (event: { absoluteX: number; absoluteY: number; scrollOffset: number }) => void;
   onMotionInit?: (motion: NativeGridDragMotion) => void;
   onTouchStateChange?: (touching: boolean) => void;
   renderItem: (event: { index: number; isActive: boolean; item: T }) => ReactNode;
@@ -138,6 +145,15 @@ export function NativeDraggableGrid<T>({
   const horizontalTranslate = useSharedValue(0);
   const touchTranslate = useSharedValue(0);
   const isTouchActiveNative = useSharedValue(false);
+  const pointer = useSharedValue({ x: 0, y: 0 });
+  const scrollPosition = useSharedValue(0);
+  const scrollBounds = useSharedValue({ top: 0, bottom: 0 });
+  const maxScrollOffset = useSharedValue(0);
+  const dragFrom = useSharedValue(-1);
+  const dragOver = useSharedValue(-1);
+  const dragSlots = useSharedValue<(DragLayout | undefined)[]>([]);
+  const nativeScrollOffset = autoScroll?.offset;
+  const scrollRef = autoScroll?.scrollRef;
   const motion = useMemo<NativeGridDragMotion>(
     () => ({ horizontalTranslate, isTouchActiveNative, touchTranslate }),
     [horizontalTranslate, isTouchActiveNative, touchTranslate],
@@ -167,44 +183,42 @@ export function NativeDraggableGrid<T>({
     onMotionInitRef.current?.(motion);
   }, [motion]);
 
-  useEffect(
-    () => () => {
-      const activeFrame = session.current?.autoScrollFrame;
-      if (activeFrame !== undefined) cancelAnimationFrame(activeFrame);
-    },
-    [],
-  );
-
   const clearDrag = useCallback(() => {
-    const activeFrame = session.current?.autoScrollFrame;
-    if (activeFrame !== undefined) cancelAnimationFrame(activeFrame);
     session.current = undefined;
     setActiveKey(undefined);
     setDragOrder(undefined);
+    dragFrom.value = -1;
+    dragOver.value = -1;
     horizontalTranslate.value = 0;
     touchTranslate.value = 0;
     isTouchActiveNative.value = false;
-  }, [horizontalTranslate, isTouchActiveNative, touchTranslate]);
+  }, [dragFrom, dragOver, horizontalTranslate, isTouchActiveNative, touchTranslate]);
 
   const beginDrag = useCallback(
-    (item: T, index: number) => {
+    (item: T, index: number, scrollOffset: number) => {
       if (disabled) return;
       const itemKey = keyExtractor(item);
       const order = [...dataRef.current];
+      const bounds = autoScrollRef.current?.getBounds() ?? { top: 0, bottom: 0 };
+      const maxOffset = autoScrollRef.current?.getMaxOffset() ?? 0;
       session.current = {
+        bounds,
         from: index,
         itemKey,
+        maxOffset,
         order,
         over: index,
-        scrollStart: autoScrollRef.current?.getOffset() ?? 0,
-        // Reading layouts while neighboring cells animate can make the nearest slot oscillate.
+        scrollStart: scrollOffset,
+        // Keep native layout fixed during the drag; neighbors move with transforms.
         slots: new Map(slotLayouts.current),
       };
+      dragSlots.value = order.map((_, slot) => slotLayouts.current.get(slot));
+      dragFrom.value = index;
+      dragOver.value = index;
       setDragOrder(order);
       setActiveKey(itemKey);
-      horizontalTranslate.value = 0;
-      touchTranslate.value = 0;
-      isTouchActiveNative.value = true;
+      scrollBounds.value = bounds;
+      maxScrollOffset.value = maxOffset;
       onDragBegin({ item, index });
       measureGridOrigin();
       cellRefs.current.get(itemKey)?.measureInWindow((x, y, width, height) => {
@@ -213,94 +227,92 @@ export function NativeDraggableGrid<T>({
     },
     [
       disabled,
-      horizontalTranslate,
-      isTouchActiveNative,
+      dragFrom,
+      dragOver,
+      dragSlots,
       keyExtractor,
+      maxScrollOffset,
+      scrollBounds,
       measureGridOrigin,
       onDragBegin,
       onDragLayout,
-      touchTranslate,
     ],
   );
 
   const moveDrag = useCallback(
-    (absoluteX: number, absoluteY: number) => {
+    (absoluteX: number, absoluteY: number, scrollOffset: number) => {
       const current = session.current;
       if (!current) return;
-      current.pointer = { x: absoluteX, y: absoluteY };
-      onDragMove?.({ absoluteX, absoluteY });
+      const config = autoScrollRef.current;
+      if (config) {
+        const bounds = config.getBounds();
+        if (bounds.top !== current.bounds.top || bounds.bottom !== current.bounds.bottom) {
+          current.bounds = bounds;
+          scrollBounds.value = bounds;
+        }
+        const maxOffset = config.getMaxOffset();
+        if (maxOffset !== current.maxOffset) {
+          current.maxOffset = maxOffset;
+          maxScrollOffset.value = maxOffset;
+        }
+      }
+      onDragMove?.({ absoluteX, absoluteY, scrollOffset });
       const localX = absoluteX - gridOrigin.current.x;
-      const scrollDelta =
-        (autoScrollRef.current?.getOffset() ?? current.scrollStart) - current.scrollStart;
+      const scrollDelta = scrollOffset - current.scrollStart;
       const localY = absoluteY - gridOrigin.current.y + scrollDelta;
       const target = nearestGridSlot(current.slots, { x: localX, y: localY }, current.over);
       if (target === current.over) return;
-      const currentIndex = current.order.findIndex(
-        (candidate) => keyExtractor(candidate) === current.itemKey,
-      );
-      if (currentIndex < 0) return;
-      const next = moveGridItem(current.order, currentIndex, target);
-      current.order = next;
       current.over = target;
-      setDragOrder(next);
+      dragOver.value = target;
     },
-    [keyExtractor, onDragMove],
+    [dragOver, maxScrollOffset, onDragMove, scrollBounds],
   );
 
-  const runAutoScroll = useCallback(
-    (timestamp: number) => {
-      const current = session.current;
-      const config = autoScrollRef.current;
-      if (!current || !config || !current.pointer) return;
-      current.autoScrollFrame = undefined;
-      const velocity = nativeGridAutoScrollVelocity(current.pointer.y, config.getBounds());
-      if (!velocity) {
-        current.lastAutoScrollTime = undefined;
-        return;
-      }
-      const elapsed = current.lastAutoScrollTime
-        ? Math.min(32, timestamp - current.lastAutoScrollTime)
-        : 16;
-      current.lastAutoScrollTime = timestamp;
-      const before = config.getOffset();
-      const next = Math.max(
-        0,
-        Math.min(config.getMaxOffset(), before + (velocity * elapsed) / 1000),
-      );
-      if (Math.abs(next - before) < 0.1) {
-        current.lastAutoScrollTime = undefined;
-        return;
-      }
-      config.scrollTo(next);
-      moveDrag(current.pointer.x, current.pointer.y);
-      current.autoScrollFrame = requestAnimationFrame(runAutoScroll);
-    },
-    [moveDrag],
+  const autoScrollFrame = useFrameCallback(
+    useCallback(
+      ({ timeSincePreviousFrame }: FrameInfo) => {
+        'worklet';
+        if (!isTouchActiveNative.value || !scrollRef) return;
+        const velocity = nativeGridAutoScrollVelocity(pointer.value.y, scrollBounds.value);
+        if (!velocity) return;
+        const elapsed = Math.min(32, timeSincePreviousFrame ?? 0);
+        const before = scrollPosition.value;
+        const next = Math.max(
+          0,
+          Math.min(maxScrollOffset.value, before + (velocity * elapsed) / 1000),
+        );
+        if (next === before) return;
+        // Keep the commanded offset on the UI thread. Delayed scroll events must
+        // not rewind the next frame, and JS reorders must not pause scrolling.
+        scrollPosition.value = next;
+        scrollTo(scrollRef, 0, next, false);
+        runOnJS(moveDrag)(pointer.value.x, pointer.value.y, next);
+      },
+      [
+        isTouchActiveNative,
+        maxScrollOffset,
+        moveDrag,
+        pointer,
+        scrollBounds,
+        scrollPosition,
+        scrollRef,
+      ],
+    ),
+    false,
   );
-
-  const moveDragWithAutoScroll = useCallback(
-    (absoluteX: number, absoluteY: number) => {
-      moveDrag(absoluteX, absoluteY);
-      const current = session.current;
-      const config = autoScrollRef.current;
-      if (!current || !config) return;
-      const velocity = nativeGridAutoScrollVelocity(absoluteY, config.getBounds());
-      if (!velocity) {
-        if (current.autoScrollFrame !== undefined) cancelAnimationFrame(current.autoScrollFrame);
-        current.autoScrollFrame = undefined;
-        current.lastAutoScrollTime = undefined;
-        return;
-      }
-      if (current.autoScrollFrame === undefined)
-        current.autoScrollFrame = requestAnimationFrame(runAutoScroll);
-    },
-    [moveDrag, runAutoScroll],
-  );
+  useEffect(() => {
+    autoScrollFrame.setActive(activeKey !== undefined);
+    return () => autoScrollFrame.setActive(false);
+  }, [activeKey, autoScrollFrame]);
 
   const finishDrag = useCallback(() => {
     const current = session.current;
     if (!current) return;
-    const result = { data: current.order, from: current.from, to: current.over };
+    const result = {
+      data: moveGridItem(current.order, current.from, current.over),
+      from: current.from,
+      to: current.over,
+    };
     clearDrag();
     onDragEnd(result);
   }, [clearDrag, onDragEnd]);
@@ -313,9 +325,6 @@ export function NativeDraggableGrid<T>({
 
   const displayed = dragOrder ?? data;
   const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
-  // Reanimated layout transitions can stall when a cell is inserted or removed,
-  // leaving posters stacked unless cells remount when membership changes.
-  const membership = data.map(keyExtractor).sort().join('|');
   return (
     <View
       ref={gridRef}
@@ -325,33 +334,38 @@ export function NativeDraggableGrid<T>({
       }}
       style={[styles.grid, { columnGap: gap }, contentContainerStyle]}
     >
-      <Fragment key={membership}>
-        {displayed.map((item, index) => {
-          const itemKey = keyExtractor(item);
-          return (
-            <NativeGridCell
-              key={itemKey}
-              active={itemKey === activeKey}
-              cellRefs={cellRefs}
-              disabled={disabled}
-              index={index}
-              item={item}
-              itemKey={itemKey}
-              itemWidth={itemWidth}
-              horizontalTranslate={horizontalTranslate}
-              touchTranslate={touchTranslate}
-              onBegin={beginDrag}
-              onCancel={cancelDrag}
-              onFinish={finishDrag}
-              onMove={moveDragWithAutoScroll}
-              onTouchStateChange={onTouchStateChange}
-              renderItem={renderItem}
-              slotLayouts={slotLayouts}
-              slotOwners={slotOwners}
-            />
-          );
-        })}
-      </Fragment>
+      {displayed.map((item, index) => {
+        const itemKey = keyExtractor(item);
+        return (
+          <NativeGridCell
+            key={itemKey}
+            active={itemKey === activeKey}
+            cellRefs={cellRefs}
+            disabled={disabled}
+            dragFrom={dragFrom}
+            dragOver={dragOver}
+            dragSlots={dragSlots}
+            index={index}
+            item={item}
+            itemKey={itemKey}
+            itemWidth={itemWidth}
+            horizontalTranslate={horizontalTranslate}
+            touchTranslate={touchTranslate}
+            isTouchActiveNative={isTouchActiveNative}
+            pointer={pointer}
+            scrollPosition={scrollPosition}
+            nativeScrollOffset={nativeScrollOffset}
+            onBegin={beginDrag}
+            onCancel={cancelDrag}
+            onFinish={finishDrag}
+            onMove={moveDrag}
+            onTouchStateChange={onTouchStateChange}
+            renderItem={renderItem}
+            slotLayouts={slotLayouts}
+            slotOwners={slotOwners}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -360,11 +374,18 @@ function NativeGridCellImpl<T>({
   active,
   cellRefs,
   disabled,
+  dragFrom,
+  dragOver,
+  dragSlots,
   horizontalTranslate,
   index,
   item,
   itemKey,
   itemWidth,
+  isTouchActiveNative,
+  pointer,
+  scrollPosition,
+  nativeScrollOffset,
   onBegin,
   onCancel,
   onFinish,
@@ -378,15 +399,22 @@ function NativeGridCellImpl<T>({
   active: boolean;
   cellRefs: { current: Map<string, View> };
   disabled: boolean;
+  dragFrom: SharedValue<number>;
+  dragOver: SharedValue<number>;
+  dragSlots: SharedValue<(DragLayout | undefined)[]>;
   horizontalTranslate: SharedValue<number>;
   index: number;
   item: T;
   itemKey: string;
   itemWidth: DimensionValue;
-  onBegin: (item: T, index: number) => void;
+  isTouchActiveNative: SharedValue<boolean>;
+  pointer: SharedValue<{ x: number; y: number }>;
+  scrollPosition: SharedValue<number>;
+  nativeScrollOffset?: SharedValue<number>;
+  onBegin: (item: T, index: number, scrollOffset: number) => void;
   onCancel: () => void;
   onFinish: () => void;
-  onMove: (absoluteX: number, absoluteY: number) => void;
+  onMove: (absoluteX: number, absoluteY: number, scrollOffset: number) => void;
   onTouchStateChange?: (touching: boolean) => void;
   renderItem: (event: { index: number; isActive: boolean; item: T }) => ReactNode;
   slotLayouts: { current: Map<number, LayoutRectangle> };
@@ -429,14 +457,28 @@ function NativeGridCellImpl<T>({
         .onBegin(() => {
           if (onTouchStateChange) runOnJS(onTouchStateChange)(true);
         })
-        .onStart(() => runOnJS(onBegin)(item, index))
+        .onStart((event) => {
+          horizontalTranslate.value = 0;
+          touchTranslate.value = 0;
+          isTouchActiveNative.value = true;
+          pointer.value = { x: event.absoluteX, y: event.absoluteY };
+          scrollPosition.value = nativeScrollOffset?.value ?? 0;
+          runOnJS(onBegin)(item, index, scrollPosition.value);
+        })
         .onUpdate((event) => {
           horizontalTranslate.value = event.translationX;
           touchTranslate.value = event.translationY;
-          runOnJS(onMove)(event.absoluteX, event.absoluteY);
+          pointer.value = { x: event.absoluteX, y: event.absoluteY };
+          runOnJS(onMove)(event.absoluteX, event.absoluteY, scrollPosition.value);
         })
-        .onEnd(() => runOnJS(onFinish)())
+        .onEnd((event, success) => {
+          isTouchActiveNative.value = false;
+          if (!success) return;
+          runOnJS(onMove)(event.absoluteX, event.absoluteY, scrollPosition.value);
+          runOnJS(onFinish)();
+        })
         .onFinalize((_event, success) => {
+          isTouchActiveNative.value = false;
           if (onTouchStateChange) runOnJS(onTouchStateChange)(false);
           if (!success) runOnJS(onCancel)();
         }),
@@ -445,6 +487,10 @@ function NativeGridCellImpl<T>({
       horizontalTranslate,
       index,
       item,
+      isTouchActiveNative,
+      nativeScrollOffset,
+      pointer,
+      scrollPosition,
       onBegin,
       onCancel,
       onFinish,
@@ -454,24 +500,43 @@ function NativeGridCellImpl<T>({
     ],
   );
 
+  const positionStyle = useAnimatedStyle(() => {
+    const from = dragFrom.value;
+    const targetIndex = nativeGridTargetIndex(index, from, dragOver.value);
+    const origin = dragSlots.value[index];
+    const target = dragSlots.value[targetIndex];
+    if (from < 0 || !origin || !target)
+      return { transform: [{ translateX: 0 }, { translateY: 0 }] };
+    const config = {
+      duration: 140,
+      easing: Easing.out(Easing.cubic),
+      reduceMotion: ReduceMotion.System,
+    };
+    return {
+      transform: [
+        { translateX: withTiming(target.x - origin.x, config) },
+        { translateY: withTiming(target.y - origin.y, config) },
+      ],
+    };
+  });
+
   return (
-    <Reanimated.View
-      layout={LinearTransition.duration(140)
-        .easing(Easing.out(Easing.cubic))
-        .reduceMotion(ReduceMotion.System)}
+    <View
       onLayout={(event) => saveSlotLayout(event.nativeEvent.layout)}
       style={[styles.cell, { width: itemWidth }]}
     >
-      <GestureDetector gesture={gesture}>
-        <View
-          ref={setCellRef}
-          testID={`native-grid-item-${itemKey}`}
-          style={[styles.cellContent, active && styles.placeholder]}
-        >
-          {renderItem({ item, index, isActive: active })}
-        </View>
-      </GestureDetector>
-    </Reanimated.View>
+      <Reanimated.View style={positionStyle}>
+        <GestureDetector gesture={gesture}>
+          <View
+            ref={setCellRef}
+            testID={`native-grid-item-${itemKey}`}
+            style={[styles.cellContent, active && styles.placeholder]}
+          >
+            {renderItem({ item, index, isActive: active })}
+          </View>
+        </GestureDetector>
+      </Reanimated.View>
+    </View>
   );
 }
 

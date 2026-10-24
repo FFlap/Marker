@@ -3,14 +3,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Effect } from 'effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import {
-  Animated,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  ScrollView,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
+import Reanimated, { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
@@ -83,11 +77,11 @@ export default function TagDetailScreen() {
   });
   const reorderVersions = useRef<Record<string, number>>({});
   const rootRef = useRef<View>(null);
-  const nativePosterScrollRef = useRef<ScrollView>(null);
+  const nativePosterScrollRef = useAnimatedRef<ScrollView>();
+  const nativeScrollOffset = useScrollOffset(nativePosterScrollRef);
   const nativeScrollContentHeight = useRef(0);
   const nativeScrollViewportHeight = useRef(0);
   const rootWindowY = useRef(0);
-  const lastScrollY = useRef(0);
   const nativeDragRef = useRef<{ item: RankedItem; rank?: number; status: Status } | undefined>(
     undefined,
   );
@@ -328,9 +322,6 @@ export default function TagDetailScreen() {
     setNativeDragPreview(undefined);
     setNativeTargetStatus(undefined);
   };
-  const captureScrollOffset = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    lastScrollY.current = Math.max(0, event.nativeEvent.contentOffset.y);
-  };
   const nativePosterAutoScroll = useMemo<NativeGridAutoScroll>(
     () => ({
       getBounds: () => ({
@@ -339,13 +330,10 @@ export default function TagDetailScreen() {
       }),
       getMaxOffset: () =>
         Math.max(0, nativeScrollContentHeight.current - nativeScrollViewportHeight.current),
-      getOffset: () => lastScrollY.current,
-      scrollTo: (offset) => {
-        lastScrollY.current = offset;
-        nativePosterScrollRef.current?.scrollTo({ y: offset, animated: false });
-      },
+      offset: nativeScrollOffset,
+      scrollRef: nativePosterScrollRef,
     }),
-    [rootHeight],
+    [nativePosterScrollRef, nativeScrollOffset, rootHeight],
   );
   return (
     <ScreenView
@@ -379,7 +367,7 @@ export default function TagDetailScreen() {
       {library === undefined || (tagKey && ranks === undefined) ? (
         <TagSkeleton />
       ) : (
-        <Animated.ScrollView
+        <Reanimated.ScrollView
           ref={nativePosterScrollRef}
           testID="tag-scroll"
           contentContainerStyle={s.content}
@@ -390,9 +378,6 @@ export default function TagDetailScreen() {
           onLayout={(event) => {
             nativeScrollViewportHeight.current = event.nativeEvent.layout.height;
           }}
-          onScroll={captureScrollOffset}
-          onScrollEndDrag={captureScrollOffset}
-          onMomentumScrollEnd={captureScrollOffset}
           scrollEnabled={!nativePosterDragActive}
           scrollEventThrottle={16}
         >
@@ -452,10 +437,10 @@ export default function TagDetailScreen() {
                         beginNativePosterDrag(item, index, status === 'watched', status)
                       }
                       onDragLayout={positionNativePosterDrag}
-                      onDragMove={({ absoluteY }) =>
+                      onDragMove={({ absoluteY, scrollOffset }) =>
                         updateNativeDragTarget(
                           status,
-                          absoluteY - rootWindowY.current + lastScrollY.current,
+                          absoluteY - rootWindowY.current + scrollOffset,
                         )
                       }
                       onDragCancel={cancelNativePosterDrag}
@@ -482,7 +467,7 @@ export default function TagDetailScreen() {
               );
             })}
           </PinchDensity>
-        </Animated.ScrollView>
+        </Reanimated.ScrollView>
       )}
       <ConfirmWatchedMove
         item={pendingWatchedMove}

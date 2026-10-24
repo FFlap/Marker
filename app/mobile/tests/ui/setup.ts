@@ -10,7 +10,22 @@ jest.mock(
 );
 
 jest.mock('react-native-reanimated', () => {
-  const { View } = jest.requireActual('react-native');
+  const { useRef } = jest.requireActual('react');
+  const { ScrollView, View } = jest.requireActual('react-native');
+  const useSharedValue = (initialValue: unknown) => {
+    const ref = useRef();
+    if (!ref.current) {
+      const shared = {
+        value: initialValue,
+        get: () => shared.value,
+        set: (value: unknown) => {
+          shared.value = value;
+        },
+      };
+      ref.current = shared;
+    }
+    return ref.current;
+  };
   const chain: Record<string, unknown> = {};
   chain.duration = () => chain;
   chain.delay = () => chain;
@@ -18,7 +33,7 @@ jest.mock('react-native-reanimated', () => {
   chain.reduceMotion = () => chain;
   return {
     __esModule: true,
-    default: { View, createAnimatedComponent: (component: unknown) => component },
+    default: { ScrollView, View, createAnimatedComponent: (component: unknown) => component },
     Easing: {
       bezier: () => (value: number) => value,
       cubic: (value: number) => value,
@@ -29,19 +44,14 @@ jest.mock('react-native-reanimated', () => {
     LinearTransition: chain,
     ReduceMotion: { System: 'system' },
     runOnJS: (callback: (...args: unknown[]) => unknown) => callback,
+    scrollTo: jest.fn(),
     SlideInDown: chain,
     SlideOutDown: chain,
     useAnimatedStyle: (factory: () => unknown) => factory(),
-    useSharedValue: (initialValue: unknown) => {
-      const shared = {
-        value: initialValue,
-        get: () => shared.value,
-        set: (value: unknown) => {
-          shared.value = value;
-        },
-      };
-      return shared;
-    },
+    useAnimatedRef: () => useRef(null),
+    useFrameCallback: () => useRef({ setActive: jest.fn() }).current,
+    useScrollOffset: () => useSharedValue(0),
+    useSharedValue,
     withTiming: (value: unknown) => value,
   };
 });
