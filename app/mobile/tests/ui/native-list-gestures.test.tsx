@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 import * as Reanimated from 'react-native-reanimated';
@@ -258,3 +259,135 @@ it.each([1, 3])(
     }
   },
 );
+
+it.each([1, 3])(
+  'commits a %i-column drop without resetting the old layout first',
+  async (columns) => {
+    const styleSpy = jest.spyOn(Reanimated, 'useAnimatedStyle');
+    let dragStyle: () => unknown = () => undefined;
+    let styleBeforeCommit: unknown;
+    let previewReady: Reanimated.SharedValue<boolean> | undefined;
+    function Grid() {
+      const [data, setData] = useState(['a', 'b', 'c']);
+      return (
+        <NativeDraggableGrid
+          columns={columns}
+          data={data}
+          disabled={false}
+          keyExtractor={(item) => item}
+          onDragBegin={() => {}}
+          onMotionInit={(motion) => {
+            previewReady = motion.previewReady;
+          }}
+          onDragEnd={({ data: next }) => {
+            // React has not committed the new native layout yet. Its outgoing
+            // animated cells must still occupy their preview slots at this point.
+            styleBeforeCommit = dragStyle();
+            setData(next);
+          }}
+          renderItem={({ item }) => <Text>{item}</Text>}
+        />
+      );
+    }
+    try {
+      const screen = await render(<Grid />);
+      for (const [index, item] of ['a', 'b', 'c'].entries()) {
+        await fireEvent(screen.getByTestId(`native-grid-item-${item}`), 'layout', {
+          nativeEvent: {
+            layout: {
+              x: (index % columns) * 100,
+              y: Math.floor(index / columns) * 100,
+              width: 100,
+              height: 100,
+            },
+          },
+        });
+      }
+      const gesture = mockGestures.get('native-grid-item-a')!;
+      await act(() => gesture.onStart({ absoluteX: 50, absoluteY: 50 }));
+      dragStyle = styleSpy.mock.calls.at(-3)![0];
+      const end =
+        columns === 1 ? { absoluteX: 50, absoluteY: 250 } : { absoluteX: 250, absoluteY: 50 };
+      await act(() =>
+        gesture.onUpdate({
+          ...end,
+          translationX: end.absoluteX - 50,
+          translationY: end.absoluteY - 50,
+        }),
+      );
+      expect(dragStyle()).toMatchObject({ opacity: 1 });
+      expect(previewReady?.value).toBe(false);
+      previewReady!.value = true;
+      expect(dragStyle()).toMatchObject({ opacity: 0 });
+      await act(() => {
+        gesture.onEnd(end, true);
+        gesture.onFinalize({}, true);
+      });
+      expect(styleBeforeCommit).toEqual({
+        opacity: 0,
+        transform: [
+          { translateX: columns === 1 ? 0 : 200 },
+          { translateY: columns === 1 ? 200 : 0 },
+        ],
+      });
+      expect(screen.getAllByTestId(/^native-grid-item-/).map((cell) => cell.props.testID)).toEqual([
+        'native-grid-item-b',
+        'native-grid-item-c',
+        'native-grid-item-a',
+      ]);
+      for (const cell of screen.getAllByTestId(/^native-grid-item-/)) {
+        expect(cell.props.style).toEqual([{ width: '100%' }, false]);
+        expect(cell.parent?.children).toHaveLength(2);
+        const copy = cell.parent?.children[1] as { props: { style: unknown[] } };
+        expect(copy.props.style.at(-1)).toEqual({ opacity: 0 });
+      }
+    } finally {
+      styleSpy.mockRestore();
+    }
+  },
+);
+
+it('preserves loaded card instances across repeated drags and cancellation', async () => {
+  const mount = jest.fn();
+  const unmount = jest.fn();
+  function Card({ item }: { item: string }) {
+    useEffect(() => {
+      mount(item);
+      return () => unmount(item);
+    }, [item]);
+    return <Text>{item}</Text>;
+  }
+  function Grid() {
+    const [data, setData] = useState(['a', 'b']);
+    return (
+      <NativeDraggableGrid
+        columns={1}
+        data={data}
+        disabled={false}
+        keyExtractor={(item) => item}
+        onDragBegin={() => {}}
+        onDragEnd={({ data: next }) => setData(next)}
+        renderItem={({ item }) => <Card item={item} />}
+      />
+    );
+  }
+  const screen = await render(<Grid />);
+  expect(mount).toHaveBeenCalledTimes(4);
+  for (const success of [true, false, true]) {
+    const cells = screen.getAllByTestId(/^native-grid-item-/);
+    for (const [index, cell] of cells.entries()) {
+      await fireEvent(cell, 'layout', {
+        nativeEvent: { layout: { x: 0, y: index * 100, width: 100, height: 100 } },
+      });
+    }
+    const gesture = mockGestures.get(cells[0].props.testID)!;
+    await act(() => gesture.onStart({ absoluteX: 50, absoluteY: 50 }));
+    await act(() => {
+      gesture.onUpdate({ absoluteX: 50, absoluteY: 150, translationX: 0, translationY: 100 });
+      gesture.onEnd({ absoluteX: 50, absoluteY: 150 }, success);
+      gesture.onFinalize({}, success);
+    });
+    expect(mount).toHaveBeenCalledTimes(4);
+    expect(unmount).not.toHaveBeenCalled();
+  }
+});

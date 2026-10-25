@@ -349,7 +349,7 @@ describe('Marker library', () => {
     expect(await q.findByText('Couldn’t save order')).toBeTruthy();
   });
 
-  it('releases saved optimistic orders so later server updates remain visible', async () => {
+  it('keeps the dropped order until query acknowledgement, then accepts later server orders', async () => {
     let finish!: () => void;
     mockReorderItem.mockImplementationOnce(
       () =>
@@ -368,6 +368,25 @@ describe('Marker library', () => {
         .filter((label) => ['Avengers: Endgame', 'The Middle', 'Oshi no Ko'].includes(label));
     expect(titles()).toEqual(['The Middle', 'Oshi no Ko', 'Avengers: Endgame']);
     await act(async () => finish());
+    expect(titles()).toEqual(['The Middle', 'Oshi no Ko', 'Avengers: Endgame']);
+    const query = mockUseQuery.getMockImplementation()!;
+    mockUseQuery.mockImplementation((ref) =>
+      String(ref).includes('listItems')
+        ? items.map((item) => ({ ...item, rank: ['d', 'e', 'a'].indexOf(item._id) }))
+        : query(ref),
+    );
+    await q.rerender(
+      <ToastProvider>
+        <Library />
+      </ToastProvider>,
+    );
+    expect(titles()).toEqual(['The Middle', 'Oshi no Ko', 'Avengers: Endgame']);
+    mockUseQuery.mockImplementation(query);
+    await q.rerender(
+      <ToastProvider>
+        <Library />
+      </ToastProvider>,
+    );
     expect(titles()).toEqual(['Avengers: Endgame', 'The Middle', 'Oshi no Ko']);
   });
 

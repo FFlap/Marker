@@ -9,11 +9,15 @@ export function PosterImage({
   title,
   style,
   testID,
+  transition = 150,
+  onDisplay,
 }: {
   path?: string;
   title: string;
   style?: StyleProp<ImageStyle>;
   testID?: string;
+  transition?: number;
+  onDisplay?: () => void;
 }) {
   if (path)
     return (
@@ -21,7 +25,8 @@ export function PosterImage({
         testID={testID}
         source={`https://image.tmdb.org/t/p/w342${path}`}
         contentFit="cover"
-        transition={150}
+        transition={transition}
+        onDisplay={onDisplay}
         style={[styles.poster, style]}
       />
     );

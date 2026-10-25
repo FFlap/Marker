@@ -145,6 +145,8 @@ export function NativeDraggableGrid<T>({
   const horizontalTranslate = useSharedValue(0);
   const touchTranslate = useSharedValue(0);
   const isTouchActiveNative = useSharedValue(false);
+  const previewReady = useSharedValue(false);
+  const dragScrollStart = useSharedValue(0);
   const pointer = useSharedValue({ x: 0, y: 0 });
   const scrollPosition = useSharedValue(0);
   const scrollBounds = useSharedValue({ top: 0, bottom: 0 });
@@ -155,8 +157,8 @@ export function NativeDraggableGrid<T>({
   const nativeScrollOffset = autoScroll?.offset;
   const scrollRef = autoScroll?.scrollRef;
   const motion = useMemo<NativeGridDragMotion>(
-    () => ({ horizontalTranslate, isTouchActiveNative, touchTranslate }),
-    [horizontalTranslate, isTouchActiveNative, touchTranslate],
+    () => ({ horizontalTranslate, isTouchActiveNative, touchTranslate, previewReady }),
+    [horizontalTranslate, isTouchActiveNative, touchTranslate, previewReady],
   );
   const dataRef = useRef(data);
   const gridRef = useRef<View>(null);
@@ -187,12 +189,10 @@ export function NativeDraggableGrid<T>({
     session.current = undefined;
     setActiveKey(undefined);
     setDragOrder(undefined);
-    dragFrom.value = -1;
-    dragOver.value = -1;
-    horizontalTranslate.value = 0;
-    touchTranslate.value = 0;
+    // The same React commit hides the drag copies and reveals the real cells
+    // in their final order, independently of UI-thread transform cleanup.
     isTouchActiveNative.value = false;
-  }, [dragFrom, dragOver, horizontalTranslate, isTouchActiveNative, touchTranslate]);
+  }, [isTouchActiveNative]);
 
   const beginDrag = useCallback(
     (item: T, index: number, scrollOffset: number) => {
@@ -342,6 +342,9 @@ export function NativeDraggableGrid<T>({
             active={itemKey === activeKey}
             cellRefs={cellRefs}
             disabled={disabled}
+            dragging={activeKey !== undefined}
+            previewReady={previewReady}
+            dragScrollStart={dragScrollStart}
             dragFrom={dragFrom}
             dragOver={dragOver}
             dragSlots={dragSlots}
@@ -374,6 +377,9 @@ function NativeGridCellImpl<T>({
   active,
   cellRefs,
   disabled,
+  dragging,
+  previewReady,
+  dragScrollStart,
   dragFrom,
   dragOver,
   dragSlots,
@@ -399,6 +405,9 @@ function NativeGridCellImpl<T>({
   active: boolean;
   cellRefs: { current: Map<string, View> };
   disabled: boolean;
+  dragging: boolean;
+  previewReady: SharedValue<boolean>;
+  dragScrollStart: SharedValue<number>;
   dragFrom: SharedValue<number>;
   dragOver: SharedValue<number>;
   dragSlots: SharedValue<(DragLayout | undefined)[]>;
@@ -461,8 +470,10 @@ function NativeGridCellImpl<T>({
           horizontalTranslate.value = 0;
           touchTranslate.value = 0;
           isTouchActiveNative.value = true;
+          previewReady.value = false;
           pointer.value = { x: event.absoluteX, y: event.absoluteY };
           scrollPosition.value = nativeScrollOffset?.value ?? 0;
+          dragScrollStart.value = scrollPosition.value;
           runOnJS(onBegin)(item, index, scrollPosition.value);
         })
         .onUpdate((event) => {
@@ -484,6 +495,8 @@ function NativeGridCellImpl<T>({
         }),
     [
       disabled,
+      previewReady,
+      dragScrollStart,
       horizontalTranslate,
       index,
       item,
@@ -505,14 +518,26 @@ function NativeGridCellImpl<T>({
     const targetIndex = nativeGridTargetIndex(index, from, dragOver.value);
     const origin = dragSlots.value[index];
     const target = dragSlots.value[targetIndex];
-    if (from < 0 || !origin || !target)
-      return { transform: [{ translateX: 0 }, { translateY: 0 }] };
+    if (!dragging || from < 0 || !origin || !target)
+      return { opacity: 1, transform: [{ translateX: 0 }, { translateY: 0 }] };
+    // Until the floating preview displays its image, carry the already-loaded
+    // copy. Both copies exchange visibility through the same UI-thread value.
+    if (active) {
+      return {
+        opacity: previewReady.value ? 0 : 1,
+        transform: [
+          { translateX: horizontalTranslate.value },
+          { translateY: touchTranslate.value + scrollPosition.value - dragScrollStart.value },
+        ],
+      };
+    }
     const config = {
       duration: 140,
       easing: Easing.out(Easing.cubic),
       reduceMotion: ReduceMotion.System,
     };
     return {
+      opacity: 1,
       transform: [
         { translateX: withTiming(target.x - origin.x, config) },
         { translateY: withTiming(target.y - origin.y, config) },
@@ -523,19 +548,29 @@ function NativeGridCellImpl<T>({
   return (
     <View
       onLayout={(event) => saveSlotLayout(event.nativeEvent.layout)}
-      style={[styles.cell, { width: itemWidth }]}
+      style={[styles.cell, { width: itemWidth }, active && styles.carriedCell]}
     >
-      <Reanimated.View style={positionStyle}>
-        <GestureDetector gesture={gesture}>
-          <View
-            ref={setCellRef}
-            testID={`native-grid-item-${itemKey}`}
-            style={[styles.cellContent, active && styles.placeholder]}
-          >
-            {renderItem({ item, index, isActive: active })}
-          </View>
-        </GestureDetector>
-      </Reanimated.View>
+      <GestureDetector gesture={gesture}>
+        <View
+          ref={setCellRef}
+          testID={`native-grid-item-${itemKey}`}
+          style={[styles.cellContent, dragging && styles.placeholder]}
+        >
+          {renderItem({ item, index, isActive: active })}
+        </View>
+      </GestureDetector>
+      {/* Keep copies mounted so another drag reuses loaded images. Visibility
+          switches with the real cells in the same native React commit. */}
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        pointerEvents="none"
+        style={[styles.dragCell, !dragging && styles.placeholder]}
+      >
+        <Reanimated.View style={positionStyle}>
+          {renderItem({ item, index, isActive: false })}
+        </Reanimated.View>
+      </View>
     </View>
   );
 }
@@ -550,5 +585,7 @@ const styles = StyleSheet.create({
   },
   cell: { minWidth: 0, flexGrow: 0, flexShrink: 0 },
   cellContent: { width: '100%' },
+  dragCell: { position: 'absolute', top: 0, left: 0, width: '100%' },
   placeholder: { opacity: 0 },
+  carriedCell: { zIndex: 10 },
 });

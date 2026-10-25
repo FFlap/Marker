@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import { Text } from 'react-native';
 import { colors } from '@/constants/colors';
@@ -9,6 +9,7 @@ export type NativePosterDragMotion = {
   horizontalTranslate?: SharedValue<number>;
   isTouchActiveNative: SharedValue<boolean>;
   touchTranslate: SharedValue<number>;
+  previewReady?: SharedValue<boolean>;
 };
 
 export type NativePosterDragLayout = {
@@ -55,6 +56,9 @@ export function NativePosterDragPreview({
   posterPath?: string;
   title: string;
 }) {
+  useEffect(() => {
+    if ((children || !posterPath) && motion.previewReady) motion.previewReady.value = true;
+  }, [children, motion.previewReady, posterPath]);
   const motionStyle = useAnimatedStyle(() => {
     const intendedTop = layout.top + motion.touchTranslate.value;
     const visibleTop = bounds
@@ -66,7 +70,9 @@ export function NativePosterDragPreview({
         )
       : intendedTop;
     return {
-      opacity: motion.isTouchActiveNative.value ? 1 : 0,
+      // The owner unmounts this preview with the final cell-order commit.
+      // Hiding on native touch-up would leave a gap before that commit.
+      opacity: motion.previewReady?.value === false ? 0 : 1,
       transform: [
         { translateX: motion.horizontalTranslate?.value ?? 0 },
         { translateY: visibleTop - layout.top },
@@ -87,7 +93,15 @@ export function NativePosterDragPreview({
     >
       {children || (
         <>
-          <PosterImage path={posterPath} title={title} style={styles.poster} />
+          <PosterImage
+            path={posterPath}
+            title={title}
+            style={styles.poster}
+            transition={0}
+            onDisplay={() => {
+              if (motion.previewReady) motion.previewReady.value = true;
+            }}
+          />
           <Text numberOfLines={2} style={styles.title}>
             {layout.rank !== undefined && <Text style={styles.rank}>{layout.rank}. </Text>}
             {title}

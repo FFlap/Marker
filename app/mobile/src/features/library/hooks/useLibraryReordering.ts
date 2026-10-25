@@ -49,6 +49,26 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const draggedItemRef = useRef<typeof draggedItem>(undefined);
   const targetStatusRef = useRef<Status | undefined>(undefined);
 
+  // A completed mutation can precede the query's React render. Keep the local
+  // order until that render contains the same order, avoiding a stale-order flash.
+  const acknowledgedOrders = statusMovePending
+    ? []
+    : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
+        const order = optimisticOrders[status];
+        if (!order) return false;
+        const saved = items
+          .filter((item) => item.status === status)
+          .sort((a, b) => a.rank - b.rank);
+        return (
+          saved.length === order.length && saved.every((item, index) => item._id === order[index])
+        );
+      });
+  if (acknowledgedOrders.length) {
+    const next = { ...optimisticOrders };
+    for (const status of acknowledgedOrders) delete next[status];
+    setOptimisticOrders(next);
+  }
+
   function effectiveStatus(item: LibraryItem) {
     const optimistic = optimisticStatuses[item._id];
     return optimistic && optimistic !== item.status ? optimistic : item.status;
@@ -96,8 +116,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
       {
         failure: () => {
           toast.show('Couldn’t save order');
-        },
-        settled: () => {
           if (reorderVersions.current[status] === version) {
             setOptimisticOrders((current) => {
               const next = { ...current };

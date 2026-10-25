@@ -109,6 +109,24 @@ export default function TagDetailScreen() {
     type,
     visibleStatuses,
   } = collection;
+  const acknowledgedOrders =
+    optimisticState.tagKey !== tagKey || statusMovePending
+      ? []
+      : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
+          const order = optimisticState.orders[status];
+          const saved = members.filter((item) => item.status === status);
+          return (
+            order &&
+            saved.length === order.length &&
+            saved.every((item, index) => String(item._id) === order[index])
+          );
+        });
+  if (acknowledgedOrders.length) {
+    const orders = { ...optimisticState.orders };
+    for (const status of acknowledgedOrders) delete orders[status];
+    setOptimisticState({ tagKey, orders });
+  }
+
   const view = settings?.defaultView ?? 'list';
   const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const listColumns = settings?.listColumns ?? DEFAULT_DISPLAY_PREFERENCES.listColumns;
@@ -144,8 +162,6 @@ export default function TagDetailScreen() {
       {
         failure: () => {
           toast.show('Couldn’t save this tag order');
-        },
-        settled: () => {
           if (reorderVersions.current[versionKey] === version)
             setOptimisticState((current) =>
               current.tagKey === tagKey

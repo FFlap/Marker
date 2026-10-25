@@ -7,6 +7,7 @@ const mockReorderItem = jest.fn().mockResolvedValue(1.5);
 const mockMoveItemToWatched = jest.fn().mockResolvedValue(1.5);
 const mockSetVisibility = jest.fn().mockResolvedValue('collection');
 let mockRouteTag = 'Favorites';
+let mockTagRanks: { itemId: string; rank: number }[] = [];
 let mockDragEnd: ((event: { from: number; to: number }) => void) | undefined;
 let mockTagVisibility: { isPublic: boolean } | undefined = { isPublic: false };
 const mockTagPreviews = [
@@ -86,7 +87,7 @@ jest.mock('expo-router', () => ({
 jest.mock('convex/react', () => ({
   useQuery: (ref: string) => {
     if (ref === 'library/items:listItems') return mockItems;
-    if (ref === 'library/items:listTagRanks') return [];
+    if (ref === 'library/items:listTagRanks') return mockTagRanks;
     if (ref === 'settings.getSettings') return { defaultView: 'list' };
     if (ref === 'tags.visibility') return mockTagVisibility;
     if (ref === 'profiles.me') return { username: 'tester', isPublic: false };
@@ -185,6 +186,7 @@ describe('Tags screens', () => {
     replace: jest.Mock;
   };
   beforeEach(() => {
+    mockTagRanks = [];
     mockRouteTag = 'Favorites';
     mockTagVisibility = { isPublic: false };
     mockDragEnd = undefined;
@@ -272,7 +274,7 @@ describe('Tags screens', () => {
     ).toEqual(['1. First Movie', '2. Second Show']);
   });
 
-  it('releases a saved optimistic order so server changes remain visible', async () => {
+  it('keeps the dropped tag order until query acknowledgement, then accepts later orders', async () => {
     let finish!: () => void;
     mockReorderTag.mockImplementationOnce(
       () =>
@@ -289,6 +291,18 @@ describe('Tags screens', () => {
         .filter((label) => /^\d+\./.test(label ?? ''));
     expect(titles()).toEqual(['1. Second Show', '2. First Movie']);
     await act(async () => finish());
+    expect(titles()).toEqual(['1. Second Show', '2. First Movie']);
+    mockTagRanks = [
+      { itemId: 'b', rank: 1 },
+      { itemId: 'a', rank: 2 },
+    ];
+    await view.rerender(<TagDetailScreen />);
+    expect(titles()).toEqual(['1. Second Show', '2. First Movie']);
+    mockTagRanks = [
+      { itemId: 'a', rank: 1 },
+      { itemId: 'b', rank: 2 },
+    ];
+    await view.rerender(<TagDetailScreen />);
     expect(titles()).toEqual(['1. First Movie', '2. Second Show']);
   });
 
