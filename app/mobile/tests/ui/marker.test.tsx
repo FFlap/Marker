@@ -390,6 +390,67 @@ describe('Marker library', () => {
     expect(titles()).toEqual(['Avengers: Endgame', 'The Middle', 'Oshi no Ko']);
   });
 
+  it.each(['succeeds', 'fails'])(
+    'keeps a rapid reverse reorder until the latest save %s',
+    async (outcome) => {
+      let finishFirst!: () => void;
+      let finishLatest!: () => void;
+      mockReorderItem
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finishFirst = resolve;
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              finishLatest =
+                outcome === 'succeeds' ? resolve : () => reject(new Error('Save failed'));
+            }),
+        );
+      let serverItems = items;
+      const query = mockUseQuery.getMockImplementation()!;
+      mockUseQuery.mockImplementation((ref) =>
+        String(ref).includes('listItems') ? serverItems : query(ref),
+      );
+      const q = await view();
+      const original = ['Avengers: Endgame', 'The Middle', 'Oshi no Ko'];
+      const earlier = ['The Middle', 'Oshi no Ko', 'Avengers: Endgame'];
+      const titles = () =>
+        q
+          .getAllByRole('button')
+          .map((node) => node.props.accessibilityLabel)
+          .filter((label) => original.includes(label));
+      const refresh = () =>
+        q.rerender(
+          <ToastProvider>
+            <Library />
+          </ToastProvider>,
+        );
+      await act(async () => {
+        mockDragEnds.get('a,d,e')?.({ data: [items[3], items[4], items[0]], from: 0, to: 2 });
+      });
+      await act(async () => {
+        mockDragEnds.get('d,e,a')?.({ data: [items[0], items[3], items[4]], from: 2, to: 0 });
+      });
+      expect(titles()).toEqual(original);
+      await act(async () => finishFirst());
+      const firstSaved = items.map((item) => ({ ...item, rank: item._id === 'a' ? 4 : item.rank }));
+      serverItems = firstSaved;
+      await refresh();
+      expect(titles()).toEqual(original);
+      await act(async () => finishLatest());
+      expect(titles()).toEqual(outcome === 'succeeds' ? original : earlier);
+      serverItems = items;
+      await refresh();
+      expect(titles()).toEqual(original);
+      serverItems = firstSaved;
+      await refresh();
+      expect(titles()).toEqual(earlier);
+    },
+  );
+
   it.each(['added', 'removed', 'replaced'])(
     'acknowledges a reorder when a title was %s before the saved query rendered',
     async (change) => {

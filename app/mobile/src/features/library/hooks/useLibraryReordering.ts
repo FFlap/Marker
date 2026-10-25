@@ -20,6 +20,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const toast = useToast();
   const [optimisticOrders, setOptimisticOrders] = useState<Partial<Record<Status, string[]>>>({});
+  const [pendingReorders, setPendingReorders] = useState<Partial<Record<Status, number>>>({});
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});
   const [pendingWatchedMove, setPendingWatchedMove] = useState<LibraryItem>();
   const [statusMovePending, setStatusMovePending] = useState(false);
@@ -50,15 +51,15 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const draggedItemRef = useRef<typeof draggedItem>(undefined);
   const targetStatusRef = useRef<Status | undefined>(undefined);
 
-  // A completed mutation can precede the query's React render. Keep the local
-  // order until that render contains the same order, avoiding a stale-order flash.
+  // Wait for the latest save and its query render. A rapid reverse move can
+  // match a stale query while an earlier save is still in flight.
   const acknowledgedOrders = useMemo(
     () =>
       statusMovePending
         ? []
         : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
             const order = optimisticOrders[status];
-            if (!order) return false;
+            if (!order || pendingReorders[status] !== undefined) return false;
             const saved = items
               .filter((item) => item.status === status)
               .sort((a, b) => a.rank - b.rank);
@@ -67,7 +68,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
               saved.map((item) => item._id),
             );
           }),
-    [items, optimisticOrders, statusMovePending],
+    [items, optimisticOrders, pendingReorders, statusMovePending],
   );
   if (acknowledgedOrders.length) {
     const next = { ...optimisticOrders };
@@ -105,6 +106,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     const status = effectiveStatus(moved);
     const version = (reorderVersions.current[status] ?? 0) + 1;
     reorderVersions.current[status] = version;
+    setPendingReorders((current) => ({ ...current, [status]: version }));
     setOptimisticOrders((current) => ({
       ...current,
       [status]: data.map((item) => item._id),
@@ -129,6 +131,14 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
               return next;
             });
           }
+        },
+        settled: () => {
+          setPendingReorders((current) => {
+            if (current[status] !== version) return current;
+            const next = { ...current };
+            delete next[status];
+            return next;
+          });
         },
       },
     );

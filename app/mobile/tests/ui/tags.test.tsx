@@ -308,6 +308,58 @@ describe('Tags screens', () => {
     expect(titles()).toEqual(['1. First Movie', '2. Second Show']);
   });
 
+  it.each(['succeeds', 'fails'])(
+    'keeps a rapid reverse tag reorder until the latest save %s',
+    async (outcome) => {
+      let finishFirst!: () => void;
+      let finishLatest!: () => void;
+      mockReorderTag
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finishFirst = resolve;
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              finishLatest =
+                outcome === 'succeeds' ? resolve : () => reject(new Error('Save failed'));
+            }),
+        );
+      const view = await render(<TagDetailScreen />);
+      const original = ['1. First Movie', '2. Second Show'];
+      const earlier = ['1. Second Show', '2. First Movie'];
+      const titles = () =>
+        view
+          .getAllByRole('button')
+          .map((node) => node.props.accessibilityLabel)
+          .filter((label) => /^\d+\./.test(label ?? ''));
+      await act(async () => mockDragEnd?.({ from: 0, to: 1 }));
+      await act(async () => mockDragEnd?.({ from: 1, to: 0 }));
+      expect(titles()).toEqual(original);
+      await act(async () => finishFirst());
+      const firstSaved = [
+        { itemId: 'b', rank: 1 },
+        { itemId: 'a', rank: 2 },
+      ];
+      mockTagRanks = firstSaved;
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(original);
+      await act(async () => finishLatest());
+      expect(titles()).toEqual(outcome === 'succeeds' ? original : earlier);
+      mockTagRanks = [
+        { itemId: 'a', rank: 1 },
+        { itemId: 'b', rank: 2 },
+      ];
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(original);
+      mockTagRanks = firstSaved;
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(earlier);
+    },
+  );
+
   it.each(['added', 'removed'])(
     'acknowledges a tag reorder when a member was %s before the saved query rendered',
     async (change) => {

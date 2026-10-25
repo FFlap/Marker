@@ -77,6 +77,7 @@ export default function TagDetailScreen() {
     orders: {},
   });
   const reorderVersions = useRef<Record<string, number>>({});
+  const [pendingReorders, setPendingReorders] = useState<Record<string, number>>({});
   const rootRef = useRef<View>(null);
   const nativePosterScrollRef = useAnimatedRef<ScrollView>();
   const nativeScrollOffset = useScrollOffset(nativePosterScrollRef);
@@ -116,14 +117,14 @@ export default function TagDetailScreen() {
         ? []
         : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
             const order = optimisticState.orders[status];
-            if (!order) return false;
+            if (!order || pendingReorders[`${tagKey}:${status}`] !== undefined) return false;
             const saved = members.filter((item) => item.status === status);
             return isOrderAcknowledged(
               order,
               saved.map((item) => String(item._id)),
             );
           }),
-    [members, optimisticState, statusMovePending, tagKey],
+    [members, optimisticState, pendingReorders, statusMovePending, tagKey],
   );
   if (acknowledgedOrders.length) {
     const orders = { ...optimisticState.orders };
@@ -145,6 +146,7 @@ export default function TagDetailScreen() {
     const versionKey = `${tagKey}:${status}`;
     const version = (reorderVersions.current[versionKey] ?? 0) + 1;
     reorderVersions.current[versionKey] = version;
+    setPendingReorders((current) => ({ ...current, [versionKey]: version }));
     setOptimisticState((current) => {
       const orders = current.tagKey === tagKey ? current.orders : {};
       return {
@@ -172,6 +174,14 @@ export default function TagDetailScreen() {
                 ? { tagKey, orders: { ...current.orders, [status]: undefined } }
                 : current,
             );
+        },
+        settled: () => {
+          setPendingReorders((current) => {
+            if (current[versionKey] !== version) return current;
+            const next = { ...current };
+            delete next[versionKey];
+            return next;
+          });
         },
       },
     );
