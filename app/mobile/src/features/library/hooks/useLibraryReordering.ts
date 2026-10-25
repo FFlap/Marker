@@ -3,12 +3,14 @@ import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
+import { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useAction, useMutation } from 'convex/react';
 import { api } from '@marker/shared/api';
 import type { NativeGridAutoScroll, NativeGridDragMotion } from '@/components/NativeDraggableGrid';
 import type { NativePosterDragLayout } from '@/components/NativePosterDragPreview';
 import { useToast } from '@/components/ui/Toast';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
+import { isOrderAcknowledged } from '@/lib/optimisticOrder';
 import type { LibraryItem, Status } from '@/types';
 import { MOBILE_NAV_HEIGHT, TOOLBAR_HEIGHT } from '../screens/LibraryScreen.styles';
 
@@ -18,6 +20,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const toast = useToast();
   const [optimisticOrders, setOptimisticOrders] = useState<Partial<Record<Status, string[]>>>({});
+  const [pendingReorders, setPendingReorders] = useState<Partial<Record<Status, number>>>({});
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});
   const [pendingWatchedMove, setPendingWatchedMove] = useState<LibraryItem>();
   const [statusMovePending, setStatusMovePending] = useState(false);
@@ -37,7 +40,8 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const [rootHeight, setRootHeight] = useState(0);
   const statusMovePendingRef = useRef(false);
   const rootRef = useRef<View>(null);
-  const posterScrollRef = useRef<ScrollView>(null);
+  const posterScrollRef = useAnimatedRef<ScrollView>();
+  const nativeScrollOffset = useScrollOffset(posterScrollRef);
   const scrollContentHeight = useRef(0);
   const scrollViewportHeight = useRef(0);
   const rootWindowY = useRef(0);
@@ -46,6 +50,31 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const reorderVersions = useRef<Partial<Record<Status, number>>>({});
   const draggedItemRef = useRef<typeof draggedItem>(undefined);
   const targetStatusRef = useRef<Status | undefined>(undefined);
+
+  // Wait for the latest save and its query render. A rapid reverse move can
+  // match a stale query while an earlier save is still in flight.
+  const acknowledgedOrders = useMemo(
+    () =>
+      statusMovePending
+        ? []
+        : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
+            const order = optimisticOrders[status];
+            if (!order || pendingReorders[status] !== undefined) return false;
+            const saved = items
+              .filter((item) => item.status === status)
+              .sort((a, b) => a.rank - b.rank);
+            return isOrderAcknowledged(
+              order,
+              saved.map((item) => item._id),
+            );
+          }),
+    [items, optimisticOrders, pendingReorders, statusMovePending],
+  );
+  if (acknowledgedOrders.length) {
+    const next = { ...optimisticOrders };
+    for (const status of acknowledgedOrders) delete next[status];
+    setOptimisticOrders(next);
+  }
 
   function effectiveStatus(item: LibraryItem) {
     const optimistic = optimisticStatuses[item._id];
@@ -77,6 +106,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     const status = effectiveStatus(moved);
     const version = (reorderVersions.current[status] ?? 0) + 1;
     reorderVersions.current[status] = version;
+    setPendingReorders((current) => ({ ...current, [status]: version }));
     setOptimisticOrders((current) => ({
       ...current,
       [status]: data.map((item) => item._id),
@@ -94,8 +124,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
       {
         failure: () => {
           toast.show('Couldn’t save order');
-        },
-        settled: () => {
           if (reorderVersions.current[status] === version) {
             setOptimisticOrders((current) => {
               const next = { ...current };
@@ -103,6 +131,14 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
               return next;
             });
           }
+        },
+        settled: () => {
+          setPendingReorders((current) => {
+            if (current[status] !== version) return current;
+            const next = { ...current };
+            delete next[status];
+            return next;
+          });
         },
       },
     );
@@ -236,13 +272,10 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         bottom: rootWindowY.current + Math.max(TOOLBAR_HEIGHT, rootHeight - MOBILE_NAV_HEIGHT),
       }),
       getMaxOffset: () => Math.max(0, scrollContentHeight.current - scrollViewportHeight.current),
-      getOffset: () => scrollOffset.current,
-      scrollTo: (offset) => {
-        scrollOffset.current = offset;
-        posterScrollRef.current?.scrollTo({ y: offset, animated: false });
-      },
+      offset: nativeScrollOffset,
+      scrollRef: posterScrollRef,
     }),
-    [rootHeight],
+    [nativeScrollOffset, posterScrollRef, rootHeight],
   );
 
   return {
@@ -259,8 +292,8 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
       autoScroll,
       begin: beginDrag,
       cancel: cancelDrag,
-      contentYFromWindow: (absoluteY: number) =>
-        absoluteY - rootWindowY.current + scrollOffset.current,
+      contentYFromWindow: (absoluteY: number, offset: number) =>
+        absoluteY - rootWindowY.current + offset,
       draggedItem,
       dragPreviewLayout,
       finish: finishDrag,

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import { Text } from 'react-native';
 import { colors } from '@/constants/colors';
@@ -9,6 +9,7 @@ export type NativePosterDragMotion = {
   horizontalTranslate?: SharedValue<number>;
   isTouchActiveNative: SharedValue<boolean>;
   touchTranslate: SharedValue<number>;
+  onPreviewReady?: () => void;
 };
 
 export type NativePosterDragLayout = {
@@ -55,6 +56,21 @@ export function NativePosterDragPreview({
   posterPath?: string;
   title: string;
 }) {
+  const [ready, setReady] = useState(false);
+  const readyRef = useRef(false);
+  const [imageFailed, setImageFailed] = useState(false);
+  const onPreviewReady = motion.onPreviewReady;
+  const onDisplay = useCallback(() => {
+    if (readyRef.current) return;
+    readyRef.current = true;
+    // Batch the preview reveal and the original card placeholder in React.
+    setReady(true);
+    onPreviewReady?.();
+  }, [onPreviewReady]);
+  const onError = useCallback(() => {
+    setImageFailed(true);
+    onDisplay();
+  }, [onDisplay]);
   const motionStyle = useAnimatedStyle(() => {
     const intendedTop = layout.top + motion.touchTranslate.value;
     const visibleTop = bounds
@@ -66,7 +82,8 @@ export function NativePosterDragPreview({
         )
       : intendedTop;
     return {
-      opacity: motion.isTouchActiveNative.value ? 1 : 0,
+      // The owner unmounts this preview with the final cell-order commit.
+      // Hiding on native touch-up would leave a gap before that commit.
       transform: [
         { translateX: motion.horizontalTranslate?.value ?? 0 },
         { translateY: visibleTop - layout.top },
@@ -79,15 +96,23 @@ export function NativePosterDragPreview({
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
+      onLayout={children || !posterPath ? onDisplay : undefined}
       style={[
         styles.preview,
-        { left: layout.left, top: layout.top, width: layout.width },
+        { left: layout.left, top: layout.top, width: layout.width, opacity: ready ? 1 : 0 },
         motionStyle,
       ]}
     >
       {children || (
         <>
-          <PosterImage path={posterPath} title={title} style={styles.poster} />
+          <PosterImage
+            path={imageFailed ? undefined : posterPath}
+            title={title}
+            style={styles.poster}
+            transition={0}
+            onDisplay={onDisplay}
+            onError={onError}
+          />
           <Text numberOfLines={2} style={styles.title}>
             {layout.rank !== undefined && <Text style={styles.rank}>{layout.rank}. </Text>}
             {title}

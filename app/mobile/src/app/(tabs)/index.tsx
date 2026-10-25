@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useQuery } from 'convex/react';
+import Reanimated from 'react-native-reanimated';
 import { useAccountLoading } from '@/hooks/useAccountLoading';
 import { api } from '@marker/shared/api';
 import { router } from 'expo-router';
@@ -235,7 +236,7 @@ function Library() {
           onDrawerChange={setDrawerHandle}
         />
       </Animated.View>
-      <Animated.ScrollView
+      <Reanimated.ScrollView
         ref={nativePosterScrollRef}
         testID="library-scroll"
         contentContainerStyle={s.content}
@@ -315,8 +316,8 @@ function Library() {
                         beginNativePosterDrag(item, status, index, status === 'watched')
                       }
                       onDragLayout={positionNativePosterDrag}
-                      onDragMove={({ absoluteY }) =>
-                        updateNativeDragTarget(status, contentYFromWindow(absoluteY))
+                      onDragMove={({ absoluteY, scrollOffset }) =>
+                        updateNativeDragTarget(status, contentYFromWindow(absoluteY, scrollOffset))
                       }
                       onDragCancel={cancelNativePosterDrag}
                       onDragEnd={({ data: next, from, to }) =>
@@ -351,7 +352,7 @@ function Library() {
             })}
           </PinchDensity>
         )}
-      </Animated.ScrollView>
+      </Reanimated.ScrollView>
       <Drawer
         open={!!pendingWatchedMove}
         onOpenChange={(nextOpen) => {
