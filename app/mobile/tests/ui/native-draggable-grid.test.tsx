@@ -2,7 +2,6 @@ import {
   moveGridItem,
   nearestGridSlot,
   nativeGridAutoScrollVelocity,
-  nativeGridTargetIndex,
 } from '@/components/NativeDraggableGrid';
 
 const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
@@ -23,19 +22,6 @@ describe('NativeDraggableGrid', () => {
     expect(nearestGridSlot(layouts, { x: 170, y: 75 }, 0)).toBe(1);
     expect(nearestGridSlot(layouts, { x: 50, y: 245 }, 0)).toBe(2);
   });
-
-  it.each([
-    [0, 4, [4, 0, 1, 2, 3, 5]],
-    [4, 1, [0, 2, 3, 4, 1, 5]],
-    [-1, -1, [0, 1, 2, 3, 4, 5]],
-  ])(
-    'shifts only the cells between %i and %i while native layout stays fixed',
-    (from, to, expected) => {
-      expect(
-        Array.from({ length: 6 }, (_, index) => nativeGridTargetIndex(index, from, to)),
-      ).toEqual(expected);
-    },
-  );
 
   it('scrolls toward screen edges and rests in the center', () => {
     const bounds = { top: 100, bottom: 700 };
