@@ -10,6 +10,7 @@ import type { NativeGridAutoScroll, NativeGridDragMotion } from '@/components/Na
 import type { NativePosterDragLayout } from '@/components/NativePosterDragPreview';
 import { useToast } from '@/components/ui/Toast';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
+import { isOrderAcknowledged } from '@/lib/optimisticOrder';
 import type { LibraryItem, Status } from '@/types';
 import { MOBILE_NAV_HEIGHT, TOOLBAR_HEIGHT } from '../screens/LibraryScreen.styles';
 
@@ -51,18 +52,23 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
 
   // A completed mutation can precede the query's React render. Keep the local
   // order until that render contains the same order, avoiding a stale-order flash.
-  const acknowledgedOrders = statusMovePending
-    ? []
-    : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
-        const order = optimisticOrders[status];
-        if (!order) return false;
-        const saved = items
-          .filter((item) => item.status === status)
-          .sort((a, b) => a.rank - b.rank);
-        return (
-          saved.length === order.length && saved.every((item, index) => item._id === order[index])
-        );
-      });
+  const acknowledgedOrders = useMemo(
+    () =>
+      statusMovePending
+        ? []
+        : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
+            const order = optimisticOrders[status];
+            if (!order) return false;
+            const saved = items
+              .filter((item) => item.status === status)
+              .sort((a, b) => a.rank - b.rank);
+            return isOrderAcknowledged(
+              order,
+              saved.map((item) => item._id),
+            );
+          }),
+    [items, optimisticOrders, statusMovePending],
+  );
   if (acknowledgedOrders.length) {
     const next = { ...optimisticOrders };
     for (const status of acknowledgedOrders) delete next[status];

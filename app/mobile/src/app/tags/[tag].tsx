@@ -24,6 +24,7 @@ import { useToast } from '@/components/ui/Toast';
 import { DEFAULT_DISPLAY_PREFERENCES } from '@/lib/displayPreferences';
 import type { Status } from '@/types';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
+import { isOrderAcknowledged } from '@/lib/optimisticOrder';
 import { tagDetailStyles as s } from '@/features/tags/screens/TagDetailScreen.styles';
 import { TagHeader } from '@/features/tags/components/TagHeader';
 import {
@@ -109,18 +110,21 @@ export default function TagDetailScreen() {
     type,
     visibleStatuses,
   } = collection;
-  const acknowledgedOrders =
-    optimisticState.tagKey !== tagKey || statusMovePending
-      ? []
-      : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
-          const order = optimisticState.orders[status];
-          const saved = members.filter((item) => item.status === status);
-          return (
-            order &&
-            saved.length === order.length &&
-            saved.every((item, index) => String(item._id) === order[index])
-          );
-        });
+  const acknowledgedOrders = useMemo(
+    () =>
+      optimisticState.tagKey !== tagKey || statusMovePending
+        ? []
+        : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
+            const order = optimisticState.orders[status];
+            if (!order) return false;
+            const saved = members.filter((item) => item.status === status);
+            return isOrderAcknowledged(
+              order,
+              saved.map((item) => String(item._id)),
+            );
+          }),
+    [members, optimisticState, statusMovePending, tagKey],
+  );
   if (acknowledgedOrders.length) {
     const orders = { ...optimisticState.orders };
     for (const status of acknowledgedOrders) delete orders[status];

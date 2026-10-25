@@ -266,6 +266,54 @@ it.each([1, 3])(
   },
 );
 
+it('keeps edge scrolling registered across screen renders and uses the latest move handler', async () => {
+  let frame: (info: Reanimated.FrameInfo) => void = () => {};
+  const frameControl = { setActive: jest.fn(), isActive: false, callbackId: 1 };
+  const frameSpy = jest.spyOn(Reanimated, 'useFrameCallback').mockImplementation((callback) => {
+    frame = callback;
+    return frameControl;
+  });
+  const autoScroll = {
+    getBounds: () => ({ top: 0, bottom: 600 }),
+    getMaxOffset: () => 3000,
+    offset: { value: 0 },
+    scrollRef: jest.fn(),
+  } as unknown as NativeGridAutoScroll;
+  const firstMove = jest.fn();
+  const latestMove = jest.fn();
+  const grid = (onDragMove: typeof firstMove) => (
+    <NativeDraggableGrid
+      autoScroll={autoScroll}
+      columns={1}
+      data={['a', 'b']}
+      disabled={false}
+      keyExtractor={(item) => item}
+      onDragBegin={() => {}}
+      onDragEnd={() => {}}
+      onDragMove={onDragMove}
+      renderItem={({ item }) => <Text>{item}</Text>}
+    />
+  );
+  try {
+    const screen = await render(grid(firstMove));
+    const initialFrame = frame;
+    await act(() =>
+      mockGestures.get('native-grid-item-a')!.onStart({ absoluteX: 50, absoluteY: 600 }),
+    );
+    await screen.rerender(grid(latestMove));
+    expect(frame).toBe(initialFrame);
+    await act(() => frame({ timestamp: 16, timeSincePreviousFrame: 16, timeSinceFirstFrame: 16 }));
+    expect(latestMove).toHaveBeenCalledWith({
+      absoluteX: 50,
+      absoluteY: 600,
+      scrollOffset: 12.16,
+    });
+    expect(firstMove).not.toHaveBeenCalled();
+  } finally {
+    frameSpy.mockRestore();
+  }
+});
+
 it.each([1, 3])('keeps a single card per title through a %i-column drop', async (columns) => {
   let previewLoaded: (() => void) | undefined;
   function Grid() {

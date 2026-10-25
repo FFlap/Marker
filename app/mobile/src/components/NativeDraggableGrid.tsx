@@ -153,13 +153,14 @@ export function NativeDraggableGrid<T>({
   const slotOwners = useRef(new Map<number, string>());
   const session = useRef<DragSession<T> | undefined>(undefined);
   const onMotionInitRef = useRef(onMotionInit);
+  const onDragMoveRef = useRef(onDragMove);
   const autoScrollRef = useRef(autoScroll);
   const [dragOrder, setDragOrder] = useState<T[]>();
   const [activeKey, setActiveKey] = useState<string>();
 
   const onPreviewReady = useCallback(() => {
     const current = session.current;
-    if (!current) return;
+    if (!current || previewReadyRef.current) return;
     previewReadyRef.current = true;
     setPreviewReady(true);
     setDragOrder(moveGridItem(current.order, current.from, current.over));
@@ -172,6 +173,7 @@ export function NativeDraggableGrid<T>({
   dataRef.current = data;
   autoScrollRef.current = autoScroll;
   onMotionInitRef.current = onMotionInit;
+  onDragMoveRef.current = onDragMove;
 
   useEffect(() => {
     onMotionInitRef.current?.(motion);
@@ -244,7 +246,7 @@ export function NativeDraggableGrid<T>({
           maxScrollOffset.value = maxOffset;
         }
       }
-      onDragMove?.({ absoluteX, absoluteY, scrollOffset });
+      onDragMoveRef.current?.({ absoluteX, absoluteY, scrollOffset });
       const localX = absoluteX - gridOrigin.current.x;
       const scrollDelta = scrollOffset - current.scrollStart;
       const localY = absoluteY - gridOrigin.current.y + scrollDelta;
@@ -253,7 +255,7 @@ export function NativeDraggableGrid<T>({
       current.over = target;
       if (previewReadyRef.current) setDragOrder(moveGridItem(current.order, current.from, target));
     },
-    [maxScrollOffset, onDragMove, scrollBounds],
+    [maxScrollOffset, scrollBounds],
   );
 
   const autoScrollFrame = useFrameCallback(
@@ -330,7 +332,7 @@ export function NativeDraggableGrid<T>({
             active={itemKey === activeKey}
             cellRefs={cellRefs}
             disabled={disabled}
-            previewReady={previewReady}
+            previewReady={itemKey === activeKey && previewReady}
             index={index}
             item={item}
             itemKey={itemKey}

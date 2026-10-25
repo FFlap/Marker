@@ -74,6 +74,7 @@ const mockItems = [
     updatedAt: 3,
   },
 ];
+let mockLibraryItems = mockItems;
 
 jest.mock('expo-router', () => ({
   router: {
@@ -86,7 +87,7 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('convex/react', () => ({
   useQuery: (ref: string) => {
-    if (ref === 'library/items:listItems') return mockItems;
+    if (ref === 'library/items:listItems') return mockLibraryItems;
     if (ref === 'library/items:listTagRanks') return mockTagRanks;
     if (ref === 'settings.getSettings') return { defaultView: 'list' };
     if (ref === 'tags.visibility') return mockTagVisibility;
@@ -186,6 +187,7 @@ describe('Tags screens', () => {
     replace: jest.Mock;
   };
   beforeEach(() => {
+    mockLibraryItems = mockItems;
     mockTagRanks = [];
     mockRouteTag = 'Favorites';
     mockTagVisibility = { isPublic: false };
@@ -305,6 +307,45 @@ describe('Tags screens', () => {
     await view.rerender(<TagDetailScreen />);
     expect(titles()).toEqual(['1. First Movie', '2. Second Show']);
   });
+
+  it.each(['added', 'removed'])(
+    'acknowledges a tag reorder when a member was %s before the saved query rendered',
+    async (change) => {
+      const view = await render(<TagDetailScreen />);
+      await act(async () => mockDragEnd?.({ from: 0, to: 1 }));
+      mockTagRanks = [
+        { itemId: 'b', rank: 1 },
+        { itemId: 'a', rank: 2 },
+        { itemId: 'c', rank: 0 },
+      ];
+      mockLibraryItems =
+        change === 'removed'
+          ? mockItems.filter((item) => item._id !== 'a')
+          : mockItems.map((item) => ({
+              ...item,
+              status: 'watched' as const,
+              tags: ['Favorites'],
+            }));
+      const titles = () =>
+        view
+          .getAllByRole('button')
+          .map((node) => node.props.accessibilityLabel)
+          .filter((label) => /^\d+\./.test(label ?? ''));
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(
+        change === 'removed'
+          ? ['1. Second Show']
+          : ['1. Weekend Movie', '2. Second Show', '3. First Movie'],
+      );
+      mockLibraryItems = mockItems;
+      mockTagRanks = [
+        { itemId: 'a', rank: 1 },
+        { itemId: 'b', rank: 2 },
+      ];
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(['1. First Movie', '2. Second Show']);
+    },
+  );
 
   it('moves a tagged title into another library status', async () => {
     const view = await render(<TagDetailScreen />);

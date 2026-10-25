@@ -390,6 +390,54 @@ describe('Marker library', () => {
     expect(titles()).toEqual(['Avengers: Endgame', 'The Middle', 'Oshi no Ko']);
   });
 
+  it.each(['added', 'removed', 'replaced'])(
+    'acknowledges a reorder when a title was %s before the saved query rendered',
+    async (change) => {
+      mockReorderItem.mockResolvedValueOnce(4);
+      let serverItems = items;
+      const query = mockUseQuery.getMockImplementation()!;
+      mockUseQuery.mockImplementation((ref) =>
+        String(ref).includes('listItems') ? serverItems : query(ref),
+      );
+      const q = await view();
+      await act(async () => {
+        mockDragEnds.get('a,d,e')?.({ data: [items[3], items[4], items[0]], from: 0, to: 2 });
+      });
+      serverItems = items
+        .filter((item) => change === 'added' || item._id !== 'e')
+        .map((item) => ({
+          ...item,
+          status: item._id === 'b' && change !== 'removed' ? 'watched' : item.status,
+          rank: item._id === 'a' ? 4 : item.rank,
+        }));
+      const titles = () => {
+        const watched = new Set(
+          serverItems.filter((item) => item.status === 'watched').map((item) => item.title),
+        );
+        return q
+          .getAllByRole('button')
+          .map((node) => node.props.accessibilityLabel)
+          .filter((label) => watched.has(label));
+      };
+      const savedTitles = () =>
+        serverItems
+          .filter((item) => item.status === 'watched')
+          .sort((left, right) => left.rank - right.rank)
+          .map((item) => item.title);
+      const refresh = () =>
+        q.rerender(
+          <ToastProvider>
+            <Library />
+          </ToastProvider>,
+        );
+      await refresh();
+      expect(titles()).toEqual(savedTitles());
+      serverItems = serverItems.map((item) => ({ ...item, rank: -item.rank }));
+      await refresh();
+      expect(titles()).toEqual(savedTitles());
+    },
+  );
+
   it('reorders with accessibility move actions using exact neighbors', async () => {
     mockReorderItem.mockImplementationOnce(() => new Promise(() => {}));
     const q = await view();

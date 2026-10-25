@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 import { Text } from 'react-native';
 import { colors } from '@/constants/colors';
@@ -57,12 +57,20 @@ export function NativePosterDragPreview({
   title: string;
 }) {
   const [ready, setReady] = useState(false);
+  const readyRef = useRef(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const onPreviewReady = motion.onPreviewReady;
   const onDisplay = useCallback(() => {
+    if (readyRef.current) return;
+    readyRef.current = true;
     // Batch the preview reveal and the original card placeholder in React.
     setReady(true);
     onPreviewReady?.();
   }, [onPreviewReady]);
+  const onError = useCallback(() => {
+    setImageFailed(true);
+    onDisplay();
+  }, [onDisplay]);
   const motionStyle = useAnimatedStyle(() => {
     const intendedTop = layout.top + motion.touchTranslate.value;
     const visibleTop = bounds
@@ -98,11 +106,12 @@ export function NativePosterDragPreview({
       {children || (
         <>
           <PosterImage
-            path={posterPath}
+            path={imageFailed ? undefined : posterPath}
             title={title}
             style={styles.poster}
             transition={0}
             onDisplay={onDisplay}
+            onError={onError}
           />
           <Text numberOfLines={2} style={styles.title}>
             {layout.rank !== undefined && <Text style={styles.rank}>{layout.rank}. </Text>}

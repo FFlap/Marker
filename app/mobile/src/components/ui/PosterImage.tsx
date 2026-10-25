@@ -11,6 +11,7 @@ export function PosterImage({
   testID,
   transition = 150,
   onDisplay,
+  onError,
 }: {
   path?: string;
   title: string;
@@ -18,6 +19,7 @@ export function PosterImage({
   testID?: string;
   transition?: number;
   onDisplay?: () => void;
+  onError?: () => void;
 }) {
   if (path)
     return (
@@ -27,6 +29,7 @@ export function PosterImage({
         contentFit="cover"
         transition={transition}
         onDisplay={onDisplay}
+        onError={onError}
         style={[styles.poster, style]}
       />
     );
