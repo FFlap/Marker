@@ -1,14 +1,8 @@
-import { createPopupClient, parseLastResult } from "../../src/domain/popup";
+import { createPopupClient } from "../../src/domain/popup";
+import { createPopupStore } from "../../src/domain/popup-store";
 import React from "react";
 import ReactDOM from "react-dom/client";
-import {
-  BOOKMARKS_STORAGE_KEY,
-  normalizeBookmarkStore,
-  sortBookmarks,
-  validatedProviderUrl,
-} from "../../src/domain/bookmarks";
-import type { EpisodeBookmark } from "../../src/domain/types";
-import { SYNC_LAST_RESULT_KEY } from "../../src/domain/sync";
+import { validatedProviderUrl } from "../../src/domain/bookmarks";
 import { App } from "./App";
 import "./style.css";
 
@@ -20,126 +14,43 @@ export function openPersistedWatchUrl(url: string) {
   return true;
 }
 
-type LastSyncResult = NonNullable<
-  React.ComponentProps<typeof App>["sync"]
->["lastResult"];
-
 export function Popup() {
-  const client = React.useMemo(
-    () =>
-      createPopupClient(browser.storage.local, (message) =>
-        browser.runtime.sendMessage(message),
-      ),
-    [],
+  const [client] = React.useState(() =>
+    createPopupClient(browser.storage.local, (message) =>
+      browser.runtime.sendMessage(message),
+    ),
   );
-  const hydrationRevision = React.useRef(0);
-  const [bookmarks, setBookmarks] = React.useState<EpisodeBookmark[]>([]);
-  const [bookmarkError, setBookmarkError] = React.useState<string>();
-  const [sync, setSync] = React.useState({
-    signedIn: false,
-    accountLabel: undefined as string | undefined,
-    lastResult: undefined as LastSyncResult,
-  });
-  const [syncError, setSyncError] = React.useState<string>();
+  const [store] = React.useState(() =>
+    createPopupStore(client, browser.storage.onChanged),
+  );
+  const { bookmarks, bookmarkError, syncError, ...sync } =
+    React.useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [syncNotice, setSyncNotice] = React.useState<string>();
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    const revision = ++hydrationRevision.current;
-    let active = true;
-    let bookmarksChanged = false;
-    let lastResultChanged = false;
-    void client
-      .bookmarks(controller.signal)
-      .then((next) => {
-        if (active && !bookmarksChanged) setBookmarks(next);
-      })
-      .catch(() => {
-        if (active && !bookmarksChanged)
-          setBookmarkError("Couldn’t read saved episodes");
-      });
-    void client
-      .lastResult(controller.signal)
-      .then((lastResult) => {
-        if (active && !lastResultChanged) {
-          setSync((current) => ({ ...current, lastResult }));
-        }
-      })
-      .catch(() => {
-        if (active && !lastResultChanged)
-          setSyncError("Couldn’t read the last sync result");
-      });
-    void client
-      .status("sync/status", controller.signal)
-      .then((status: { signedIn: boolean; accountLabel?: string }) => {
-        if (active && hydrationRevision.current === revision) {
-          setSync((current) => ({
-            ...current,
-            signedIn: status.signedIn,
-            accountLabel: status.accountLabel,
-          }));
-        }
-      })
-      .catch(() => {
-        if (active && hydrationRevision.current === revision)
-          setSyncError("Couldn’t check sign-in status");
-      });
-    const onStorageChanged = (
-      changes: Record<string, Browser.storage.StorageChange>,
-      areaName: string,
-    ) => {
-      if (areaName !== "local") return;
-      if (changes[BOOKMARKS_STORAGE_KEY]) {
-        bookmarksChanged = true;
-        setBookmarks(
-          sortBookmarks(
-            normalizeBookmarkStore(changes[BOOKMARKS_STORAGE_KEY].newValue)
-              .bookmarks,
-          ),
-        );
-      }
-      const lastResultChange = changes[SYNC_LAST_RESULT_KEY];
-      if (lastResultChange) {
-        lastResultChanged = true;
-        setSync((current) => ({
-          ...current,
-          lastResult: parseLastResult(lastResultChange.newValue),
-        }));
-      }
-    };
-    browser.storage.onChanged.addListener(onStorageChanged);
-    return () => {
-      active = false;
-      controller.abort();
-      hydrationRevision.current += 1;
-      browser.storage.onChanged.removeListener(onStorageChanged);
-    };
-  }, [client]);
 
   return (
     <App
       bookmarks={bookmarks}
       bookmarkError={bookmarkError}
       onOpen={(url) => {
-        setBookmarkError(undefined);
+        store.update({ bookmarkError: undefined });
         if (!openPersistedWatchUrl(url)) {
-          setBookmarkError("Saved episode link is invalid");
+          store.update({ bookmarkError: "Saved episode link is invalid" });
         }
       }}
       onRemove={async (key) => {
-        setBookmarkError(undefined);
+        store.update({ bookmarkError: undefined });
         try {
           await client.mutate({ type: "bookmark/remove", key });
         } catch {
-          setBookmarkError("Couldn’t remove the saved episode");
+          store.update({ bookmarkError: "Couldn’t remove the saved episode" });
         }
       }}
       onClear={async () => {
-        setBookmarkError(undefined);
+        store.update({ bookmarkError: undefined });
         try {
           await client.mutate({ type: "bookmark/clear" });
         } catch {
-          setBookmarkError("Couldn’t clear saved episodes");
+          store.update({ bookmarkError: "Couldn’t clear saved episodes" });
         }
       }}
       sync={{
@@ -147,8 +58,7 @@ export function Popup() {
         error: syncError,
         notice: syncNotice,
         onConnect: async () => {
-          hydrationRevision.current += 1;
-          setSyncError(undefined);
+          store.startAuthChange();
           setSyncNotice(undefined);
           try {
             const status = await client.status("sync/connect");
@@ -158,28 +68,31 @@ export function Popup() {
                   "Finish signing in on the Marker website, then reopen this popup.",
                 );
               } else {
-                setSyncError("Couldn’t connect Marker. Try again.");
+                store.update({
+                  syncError: "Couldn’t connect Marker. Try again.",
+                });
               }
               return;
             }
-            setSync((current) => ({ ...current, ...status }));
+            store.update({
+              signedIn: status.signedIn,
+              accountLabel: status.accountLabel,
+            });
           } catch {
-            setSyncError("Couldn’t connect Marker. Try again.");
+            store.update({ syncError: "Couldn’t connect Marker. Try again." });
           }
         },
         onSignOut: async () => {
-          hydrationRevision.current += 1;
-          setSyncError(undefined);
+          store.startAuthChange();
           try {
             const status = await client.status("sync/signOut");
             if (status?.signedIn !== false) throw new Error("Sign-out failed");
-            setSync((current) => ({
-              ...current,
+            store.update({
               signedIn: false,
               accountLabel: undefined,
-            }));
+            });
           } catch {
-            setSyncError("Couldn’t sign out. Please try again.");
+            store.update({ syncError: "Couldn’t sign out. Please try again." });
           }
         },
       }}

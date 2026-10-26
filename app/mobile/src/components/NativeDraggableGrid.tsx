@@ -152,7 +152,6 @@ export function NativeDraggableGrid<T>({
   const slotLayouts = useRef(new Map<number, LayoutRectangle>());
   const slotOwners = useRef(new Map<number, string>());
   const session = useRef<DragSession<T> | undefined>(undefined);
-  const onMotionInitRef = useRef(onMotionInit);
   const onDragMoveRef = useRef(onDragMove);
   const autoScrollRef = useRef(autoScroll);
   const [dragOrder, setDragOrder] = useState<T[]>();
@@ -172,12 +171,7 @@ export function NativeDraggableGrid<T>({
 
   dataRef.current = data;
   autoScrollRef.current = autoScroll;
-  onMotionInitRef.current = onMotionInit;
   onDragMoveRef.current = onDragMove;
-
-  useEffect(() => {
-    onMotionInitRef.current?.(motion);
-  }, [motion]);
 
   const clearDrag = useCallback(() => {
     session.current = undefined;
@@ -206,12 +200,15 @@ export function NativeDraggableGrid<T>({
         // Hit-test against the original slots as the keyed cards change order.
         slots: new Map(slotLayouts.current),
       };
-      previewReadyRef.current = !onMotionInitRef.current;
+      previewReadyRef.current = !onMotionInit;
       setPreviewReady(false);
       setDragOrder(order);
       setActiveKey(itemKey);
       scrollBounds.value = bounds;
       maxScrollOffset.value = maxOffset;
+      // Publish motion together with the drag so the preview receives both in
+      // the same render, without notifying the parent for every idle grid.
+      onMotionInit?.(motion);
       onDragBegin({ item, index });
       measureGridOrigin();
       cellRefs.current.get(itemKey)?.measureInWindow((x, y, width, height) => {
@@ -226,6 +223,8 @@ export function NativeDraggableGrid<T>({
       measureGridOrigin,
       onDragBegin,
       onDragLayout,
+      onMotionInit,
+      motion,
     ],
   );
 

@@ -334,6 +334,7 @@ it.each([1, 3])('keeps a single card per title through a %i-column drop', async 
     );
   }
   const screen = await render(<Grid />);
+  expect(previewLoaded).toBeUndefined();
   for (const [index, item] of ['a', 'b', 'c'].entries()) {
     await fireEvent(screen.getByTestId(`native-grid-item-${item}`), 'layout', {
       nativeEvent: {
@@ -349,6 +350,7 @@ it.each([1, 3])('keeps a single card per title through a %i-column drop', async 
   const order = () => screen.getAllByTestId(/^native-grid-item-/).map((cell) => cell.props.testID);
   const gesture = mockGestures.get('native-grid-item-a')!;
   await act(() => gesture.onStart({ absoluteX: 50, absoluteY: 50 }));
+  expect(previewLoaded).toEqual(expect.any(Function));
   const end = columns === 1 ? { absoluteX: 50, absoluteY: 250 } : { absoluteX: 250, absoluteY: 50 };
   await act(() =>
     gesture.onUpdate({

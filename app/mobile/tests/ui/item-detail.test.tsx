@@ -205,9 +205,9 @@ jest.mock('../../src/components/ui/drawer', () => {
     </DrawerContext.Provider>
   );
   const container = ({ children }: { children: React.ReactNode }) => <View>{children}</View>;
-  const content = ({ children }: { children: React.ReactNode }) =>
+  const Content = ({ children }: { children: React.ReactNode }) =>
     React.useContext(DrawerContext).open ? <View>{children}</View> : null;
-  const trigger = ({ children }: { children: React.ReactElement }) => {
+  const Trigger = ({ children }: { children: React.ReactElement }) => {
     const context = React.useContext(DrawerContext);
     return React.cloneElement(children, {
       onPress: () => context.onOpenChange?.(!context.open),
@@ -217,10 +217,10 @@ jest.mock('../../src/components/ui/drawer', () => {
   return {
     Drawer: drawer,
     DrawerClose: container,
-    DrawerContent: content,
+    DrawerContent: Content,
     DrawerHeader: container,
     DrawerTitle: label,
-    DrawerTrigger: trigger,
+    DrawerTrigger: Trigger,
   };
 });
 
@@ -516,6 +516,140 @@ describe('item detail metadata subscriptions', () => {
       ),
     );
     expect(view.getByLabelText('Episode 1 options')).toBeTruthy();
+  });
+
+  describe('optimistic episode fields', () => {
+    const screen = () => (
+      <React.StrictMode>
+        <ToastProvider>
+          <ItemDetail />
+        </ToastProvider>
+      </React.StrictMode>
+    );
+    const setup = async () => {
+      savedEpisodes = [{ season: 1, episode: 1, watched: true, rating: 2, tags: [] }];
+      const requests: { reject: (error: Error) => void; resolve: () => void }[] = [];
+      mockSetEpisodeState.mockImplementation(
+        () => new Promise<void>((resolve, reject) => requests.push({ resolve, reject })),
+      );
+      const view = await render(screen());
+      const card = () => {
+        let node: any = view.getByTestId('episode-list');
+        while (node && !Array.isArray(node.props?.data)) node = node.parent;
+        return node.props.renderItem({ item: node.props.data[0] });
+      };
+      const patch = async (field: 'rating' | 'tags', value: number | undefined | string[]) => {
+        await act(async () => card().props.onPatch(field, value));
+      };
+      const publish = async (rating: number | undefined, tags: string[] = []) => {
+        savedEpisodes = [{ season: 1, episode: 1, watched: true, rating, tags }];
+        await view.rerender(screen());
+      };
+      const fail = async (index: number) => {
+        await act(async () => requests[index].reject(new Error('offline')));
+      };
+      return { view, card, patch, publish, requests, fail };
+    };
+
+    it('ignores an old failure after acknowledgment and a new edit', async () => {
+      const { card, patch, publish, fail } = await setup();
+      await patch('rating', 3);
+      await publish(3);
+      await patch('rating', 4);
+      await fail(0);
+      expect(card().props.draft.rating).toBe(4);
+      await fail(1);
+      expect(card().props.draft.rating).toBe(3);
+      await publish(5);
+      expect(card().props.draft.rating).toBe(5);
+    });
+
+    it('preserves rapid edits and clears while earlier mutations fail out of order', async () => {
+      const { card, publish, fail } = await setup();
+      await act(async () => {
+        const onPatch = card().props.onPatch;
+        onPatch('rating', 3);
+        onPatch('rating', 4);
+        onPatch('rating', undefined);
+      });
+      expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
+        itemId: 'item',
+        season: 1,
+        episode: 1,
+        clearRating: true,
+      });
+      await fail(1);
+      await fail(0);
+      expect(card().props.draft.rating).toBeUndefined();
+      await publish(undefined);
+      await publish(5);
+      expect(card().props.draft.rating).toBe(5);
+    });
+
+    it('keeps the latest draft through older server updates and mutation completion', async () => {
+      const { card, patch, publish, requests } = await setup();
+      await patch('rating', 3);
+      await patch('rating', 4);
+      await act(async () => requests[0].resolve());
+      await publish(3);
+      expect(card().props.draft.rating).toBe(4);
+      await act(async () => requests[1].resolve());
+      expect(card().props.draft.rating).toBe(4);
+      await publish(4);
+      await publish(1);
+      expect(card().props.draft.rating).toBe(1);
+    });
+
+    it('releases acknowledged fields independently while another field is pending', async () => {
+      const { card, patch, publish, fail } = await setup();
+      await patch('rating', 4);
+      await patch('tags', ['favorite']);
+      await publish(4);
+      await publish(3, ['external']);
+      expect(card().props.draft).toEqual({ rating: 3, tags: ['favorite'] });
+      await fail(1);
+      expect(card().props.draft).toEqual({ rating: 3, tags: ['external'] });
+      await patch('tags', ['new']);
+      await publish(3, ['new']);
+      await publish(1, ['remote']);
+      expect(card().props.draft).toEqual({ rating: 1, tags: ['remote'] });
+    });
+
+    it('retains drafts across season switches and reconciles on returning', async () => {
+      const { view, card, patch, publish } = await setup();
+      mockSeasonView[2] = { season: seasonTwo, requestState: { state: 'succeeded' } };
+      await patch('rating', 4);
+      const user = userEvent.setup();
+      savedEpisodes = [{ season: 2, episode: 1, watched: true, rating: 1, tags: [] }];
+      await user.press(view.getByLabelText('Choose season, current Season 1'));
+      await user.press(view.getByLabelText('Select Season 2'));
+      expect(card().props.draft.rating).toBe(1);
+      await user.press(view.getByLabelText('Dismiss drawer'));
+      savedEpisodes = [{ season: 1, episode: 1, watched: true, rating: 2, tags: [] }];
+      await user.press(view.getByLabelText('Choose season, current Season 2'));
+      await user.press(view.getByLabelText('Select Season 1'));
+      expect(card().props.draft.rating).toBe(4);
+      await publish(4);
+      await publish(5);
+      expect(card().props.draft.rating).toBe(5);
+    });
+
+    it('does not apply old route completions to a new item', async () => {
+      const { view, card, patch, fail } = await setup();
+      // Accepted writes report failures after their view's observers are disposed.
+      const report = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      await patch('rating', 4);
+      mockParams = { id: 'item-b' };
+      itemView = { ...itemView, item: { ...item, _id: 'item-b' } };
+      await view.rerender(screen());
+      await patch('rating', 5);
+      await fail(0);
+      expect(card().props.draft.rating).toBe(5);
+      await view.unmount();
+      await fail(1);
+      expect(report).toHaveBeenCalledTimes(2);
+      expect(report).toHaveBeenCalledWith('Unexpected client operation failure');
+    });
   });
 
   it('resets the selected season before touching a cold item on route reuse', async () => {

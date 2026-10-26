@@ -1,4 +1,5 @@
 import React from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 const mockReorderItem = jest.fn();
@@ -309,6 +310,43 @@ describe('Marker library', () => {
     await fireEvent.changeText(q.getByTestId('library-search'), 'Dare');
     expect(q.getByText('Daredevil')).toBeTruthy();
     expect(q.queryByText('Avengers: Endgame')).toBeNull();
+  });
+
+  it('resets hidden controls when reduced motion toggles before the next scroll', async () => {
+    let emit: (enabled: boolean) => void = () => undefined;
+    const originalSubscribe = jest
+      .mocked(AccessibilityInfo.addEventListener)
+      .getMockImplementation();
+    const originalRead = jest
+      .mocked(AccessibilityInfo.isReduceMotionEnabled)
+      .getMockImplementation();
+    const subscription = jest
+      .spyOn(AccessibilityInfo, 'addEventListener')
+      .mockImplementation((_event, listener) => {
+        emit = listener;
+        return { remove: jest.fn() };
+      });
+    const initial = jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    try {
+      const q = await view();
+      await fireEvent.scroll(q.getByTestId('library-scroll'), {
+        nativeEvent: { contentOffset: { y: 80 } },
+      });
+      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('none');
+      await act(() => emit(true));
+      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('auto');
+      await act(() => emit(false));
+      await fireEvent.scroll(q.getByTestId('library-scroll'), {
+        nativeEvent: { contentOffset: { y: 81 } },
+      });
+      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('auto');
+      await q.unmount();
+    } finally {
+      subscription.mockRestore();
+      initial.mockRestore();
+      if (originalSubscribe) subscription.mockImplementation(originalSubscribe);
+      if (originalRead) initial.mockImplementation(originalRead);
+    }
   });
 
   it('disables the add button while scrolled away from the top', async () => {

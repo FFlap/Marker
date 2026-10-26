@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import {
   ControlSection,
@@ -38,7 +38,18 @@ type EntryContentProps = {
   onTagPrefixChange?: (prefix: string) => void;
 };
 
-export function LibraryEntryDrawer({
+type LibraryEntryDrawerProps = EntryContentProps & {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function LibraryEntryDrawer(props: LibraryEntryDrawerProps) {
+  // Each opening owns a fresh draft and submission guard. Prop refreshes while
+  // editing must not discard unsaved changes.
+  return <LibraryEntryDrawerSession key={props.open ? 'open' : 'closed'} {...props} />;
+}
+
+function LibraryEntryDrawerSession({
   mode,
   initial,
   suggestions,
@@ -50,31 +61,15 @@ export function LibraryEntryDrawer({
   onTagPrefixChange,
   open,
   onOpenChange,
-}: EntryContentProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+}: LibraryEntryDrawerProps) {
   const [editor, setEditor] = useState<{
     draft: LibraryEntryDraft;
     dirty: boolean;
-    wasOpen: boolean;
   }>(() => ({
     draft: { ...initial, tags: [...initial.tags] },
     dirty: false,
-    wasOpen: open,
   }));
   const submitted = useRef(false);
-  useEffect(() => {
-    if (open) submitted.current = false;
-  }, [open]);
-  if (open !== editor.wasOpen) {
-    setEditor(
-      open
-        ? {
-            draft: { ...initial, tags: [...initial.tags] },
-            dirty: false,
-            wasOpen: true,
-          }
-        : { ...editor, wasOpen: false },
-    );
-  }
   const { draft } = editor;
 
   const title = mode === 'add' ? 'Add to library' : 'Edit entry';
