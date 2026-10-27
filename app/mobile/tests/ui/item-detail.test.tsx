@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, userEvent, waitFor } from '@testing-library/react-native';
+import { act, cleanup, render, userEvent, waitFor } from '@testing-library/react-native';
 
 const mockTouchItemView = jest.fn().mockResolvedValue(undefined);
 const mockTouchTitle = jest.fn().mockResolvedValue(undefined);
@@ -489,6 +489,10 @@ describe('item detail metadata subscriptions', () => {
       }),
     );
     expect(view.getByText('Edit episode 1')).toBeTruthy();
+    let resolveRating!: () => void;
+    mockSetEpisodeState.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolveRating = resolve)),
+    );
     await user.press(view.getByLabelText('Rate 3.5 stars'));
     expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
       itemId: 'item',
@@ -499,6 +503,8 @@ describe('item detail metadata subscriptions', () => {
     expect(view.getByLabelText('Current rating').props.accessibilityValue.text).toBe(
       '3.5 out of 5 stars',
     );
+    savedEpisodes = [{ season: 1, episode: 1, watched: true, rating: 3.5, tags: [] }];
+    await act(async () => resolveRating());
     await user.press(view.getByLabelText('Clear rating'));
     expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
       itemId: 'item',
@@ -519,6 +525,12 @@ describe('item detail metadata subscriptions', () => {
   });
 
   describe('optimistic episode fields', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(async () => {
+      await cleanup();
+      jest.useRealTimers();
+    });
+
     const screen = () => (
       <React.StrictMode>
         <ToastProvider>
@@ -551,6 +563,38 @@ describe('item detail metadata subscriptions', () => {
       return { view, card, patch, publish, requests, fail };
     };
 
+    it('releases a successful no-op write before later remote changes', async () => {
+      const { card, patch, publish, requests } = await setup();
+      await patch('rating', 2);
+      await act(async () => requests[0].resolve());
+      await publish(5);
+      expect(card().props.draft.rating).toBe(5);
+    });
+
+    it('releases a successful tag write after the backend normalizes it', async () => {
+      const { card, patch, publish, requests } = await setup();
+      await patch('tags', [' favorite ', 'favorite']);
+      await publish(2, ['favorite']);
+      await act(async () => requests[0].resolve());
+      expect(card().props.draft.tags).toEqual(['favorite']);
+      await publish(2, ['remote']);
+      expect(card().props.draft.tags).toEqual(['remote']);
+    });
+
+    it('keeps a reverse edit pending when an unrelated snapshot matches its value', async () => {
+      const { card, patch, publish, requests } = await setup();
+      await patch('rating', 3);
+      await patch('rating', 2);
+      await publish(2, ['remote']);
+      await publish(3, ['remote']);
+      await act(async () => requests[0].resolve());
+      expect(card().props.draft.rating).toBe(2);
+      await publish(2, ['remote']);
+      await act(async () => requests[1].resolve());
+      await publish(5);
+      expect(card().props.draft.rating).toBe(5);
+    });
+
     it('ignores an old failure after acknowledgment and a new edit', async () => {
       const { card, patch, publish, fail } = await setup();
       await patch('rating', 3);
@@ -565,7 +609,7 @@ describe('item detail metadata subscriptions', () => {
     });
 
     it('preserves rapid edits and clears while earlier mutations fail out of order', async () => {
-      const { card, publish, fail } = await setup();
+      const { card, publish, fail, requests } = await setup();
       await act(async () => {
         const onPatch = card().props.onPatch;
         onPatch('rating', 3);
@@ -582,6 +626,7 @@ describe('item detail metadata subscriptions', () => {
       await fail(0);
       expect(card().props.draft.rating).toBeUndefined();
       await publish(undefined);
+      await act(async () => requests[2].resolve());
       await publish(5);
       expect(card().props.draft.rating).toBe(5);
     });
@@ -593,30 +638,32 @@ describe('item detail metadata subscriptions', () => {
       await act(async () => requests[0].resolve());
       await publish(3);
       expect(card().props.draft.rating).toBe(4);
+      await publish(4);
       await act(async () => requests[1].resolve());
       expect(card().props.draft.rating).toBe(4);
-      await publish(4);
       await publish(1);
       expect(card().props.draft.rating).toBe(1);
     });
 
     it('releases acknowledged fields independently while another field is pending', async () => {
-      const { card, patch, publish, fail } = await setup();
+      const { card, patch, publish, fail, requests } = await setup();
       await patch('rating', 4);
       await patch('tags', ['favorite']);
       await publish(4);
+      await act(async () => requests[0].resolve());
       await publish(3, ['external']);
       expect(card().props.draft).toEqual({ rating: 3, tags: ['favorite'] });
       await fail(1);
       expect(card().props.draft).toEqual({ rating: 3, tags: ['external'] });
       await patch('tags', ['new']);
       await publish(3, ['new']);
+      await act(async () => requests[2].resolve());
       await publish(1, ['remote']);
       expect(card().props.draft).toEqual({ rating: 1, tags: ['remote'] });
     });
 
     it('retains drafts across season switches and reconciles on returning', async () => {
-      const { view, card, patch, publish } = await setup();
+      const { view, card, patch, publish, requests } = await setup();
       mockSeasonView[2] = { season: seasonTwo, requestState: { state: 'succeeded' } };
       await patch('rating', 4);
       const user = userEvent.setup();
@@ -630,6 +677,7 @@ describe('item detail metadata subscriptions', () => {
       await user.press(view.getByLabelText('Select Season 1'));
       expect(card().props.draft.rating).toBe(4);
       await publish(4);
+      await act(async () => requests[0].resolve());
       await publish(5);
       expect(card().props.draft.rating).toBe(5);
     });

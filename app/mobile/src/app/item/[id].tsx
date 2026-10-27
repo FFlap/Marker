@@ -43,7 +43,6 @@ import {
   type Episode,
   type EpisodeDraft,
   isStaleSeasonError,
-  sameValue,
   type SeasonRow,
 } from '@/features/title/libraryItemTypes';
 type PendingEpisodeDraft = {
@@ -98,30 +97,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [entrySaving, setEntrySaving] = useState(false);
   const [seasonPending, setSeasonPending] = useState(false);
   const draft = item;
-  const [episodeEdits, setEpisodeEdits] = useState({
-    savedEpisodes,
-    drafts: {} as Record<string, PendingEpisodeDraft>,
-  });
+  const [episodeDrafts, setEpisodeDrafts] = useState<Record<string, PendingEpisodeDraft>>({});
   // IDs are allocated only in event handlers and never reused after acknowledgment.
   const nextEditVersion = useRef(0);
-  if (episodeEdits.savedEpisodes !== savedEpisodes) {
-    const drafts = { ...episodeEdits.drafts };
-    for (const saved of savedEpisodes ?? []) {
-      const key = `${saved.season}:${saved.episode}`;
-      const pending = drafts[key];
-      if (!pending) continue;
-      const remaining = { ...pending };
-      for (const field of ['rating', 'tags'] as const) {
-        if (pending[field] && sameValue(saved[field], pending[field].value)) {
-          delete remaining[field];
-        }
-      }
-      if (remaining.rating || remaining.tags) drafts[key] = remaining;
-      else delete drafts[key];
-    }
-    // Pure, guarded same-component adjustment: children never commit stale drafts.
-    setEpisodeEdits({ savedEpisodes, drafts });
-  }
   const detail = title;
   const returnedSeasonRow = seasonView.season;
   const seasonRow = returnedSeasonRow?.season === season ? returnedSeasonRow : undefined;
@@ -203,13 +181,21 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   ) => {
     const draftKey = `${seasonNumber}:${episode}`;
     const version = ++nextEditVersion.current;
-    setEpisodeEdits((current) => ({
+    setEpisodeDrafts((current) => ({
       ...current,
-      drafts: {
-        ...current.drafts,
-        [draftKey]: { ...current.drafts[draftKey], [field]: { version, value } },
-      },
+      [draftKey]: { ...current[draftKey], [field]: { version, value } },
     }));
+    const releaseDraft = () => {
+      setEpisodeDrafts((current) => {
+        if (current[draftKey]?.[field]?.version !== version) return current;
+        const remaining = { ...current[draftKey] };
+        delete remaining[field];
+        const drafts = { ...current };
+        if (remaining.rating || remaining.tags) drafts[draftKey] = remaining;
+        else delete drafts[draftKey];
+        return drafts;
+      });
+    };
     const args =
       field === 'rating'
         ? value === undefined
@@ -219,16 +205,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     void runOperation.write(
       saveLibrary(() => setEpisode({ itemId, season: seasonNumber, episode, ...args })),
       {
+        // Convex resolves mutations after subscribed queries reflect the write.
+        // Equal snapshots alone cannot acknowledge a newer, still-pending edit.
+        success: releaseDraft,
         failure: () => {
-          setEpisodeEdits((current) => {
-            if (current.drafts[draftKey]?.[field]?.version !== version) return current;
-            const remaining = { ...current.drafts[draftKey] };
-            delete remaining[field];
-            const drafts = { ...current.drafts };
-            if (remaining.rating || remaining.tags) drafts[draftKey] = remaining;
-            else delete drafts[draftKey];
-            return { ...current, drafts };
-          });
+          releaseDraft();
           toast.show('Couldn’t update this episode');
         },
       },
@@ -337,7 +318,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const renderEpisode = ({ item: episode }: { item: Episode }) => {
     const episodeKey = `${episode.season}:${episode.episode}`;
     const saved = savedByEpisode.get(episodeKey);
-    const pendingDraft = episodeEdits.drafts[episodeKey];
+    const pendingDraft = episodeDrafts[episodeKey];
     const episodeDraft: EpisodeDraft = {
       rating: pendingDraft?.rating ? pendingDraft.rating.value : saved?.rating,
       tags: pendingDraft?.tags ? pendingDraft.tags.value : (saved?.tags ?? []),
