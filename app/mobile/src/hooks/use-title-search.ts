@@ -1,7 +1,7 @@
 import { runClientEffect } from '@marker/shared/clientOperations';
 import { Effect } from 'effect';
 import { searchTitles } from '@marker/shared/clientEffects';
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { useAction } from 'convex/react';
 import { api } from '@marker/shared/api';
 import { useToast } from '@/components/ui/Toast';
@@ -21,36 +21,33 @@ export function useTitleSearch(
   const [response, setResponse] = useState<SearchResponse>();
   const ready = normalizedQuery.length >= 2;
   const settled = normalizedQuery === debouncedQuery;
-  if (response?.failed && response.query !== normalizedQuery) setResponse(undefined);
+  const runSearch = useEffectEvent((searchQuery: string) => {
+    if (!enabled || searchQuery.length < 2 || (response?.query === searchQuery && !response.failed))
+      return Effect.void;
+    setResponse(undefined);
+    return searchTitles(() => search({ query: searchQuery })).pipe(
+      Effect.match({
+        onSuccess: (results) => setResponse({ query: searchQuery, results }),
+        onFailure: () => {
+          setResponse({ query: searchQuery, results: [], failed: true });
+          show('Search is unavailable right now');
+        },
+      }),
+    );
+  });
 
   useEffect(() => {
+    // A query change cancels both the debounce and any obsolete request.
     const controller = new AbortController();
     void runClientEffect(
       Effect.sleep(delayMs).pipe(
         Effect.andThen(Effect.sync(() => setDebouncedQuery(normalizedQuery))),
+        Effect.andThen(() => runSearch(normalizedQuery)),
       ),
       { signal: controller.signal },
     );
     return () => controller.abort();
-  }, [normalizedQuery, delayMs]);
-
-  useEffect(() => {
-    if (!enabled || !ready || !settled || response?.query === normalizedQuery) return;
-    const controller = new AbortController();
-    void runClientEffect(
-      searchTitles(() => search({ query: normalizedQuery })).pipe(
-        Effect.match({
-          onSuccess: (results) => setResponse({ query: normalizedQuery, results }),
-          onFailure: () => {
-            setResponse({ query: normalizedQuery, results: [], failed: true });
-            show('Search is unavailable right now');
-          },
-        }),
-      ),
-      { signal: controller.signal },
-    );
-    return () => controller.abort();
-  }, [enabled, normalizedQuery, ready, response, search, settled, show]);
+  }, [normalizedQuery, delayMs, enabled]);
 
   const current = enabled && ready && response?.query === normalizedQuery;
   return {

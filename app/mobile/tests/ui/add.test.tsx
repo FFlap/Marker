@@ -58,6 +58,43 @@ describe('add flow', () => {
     expect(mockTouchTitle).not.toHaveBeenCalled();
   });
 
+  it('resets the form and prewarms the new title when the route prefill changes', async () => {
+    mockParams = { prefill: JSON.stringify({ id: 1, title: 'First', mediaType: 'movie' }) };
+    const view = await render(
+      <ToastProvider>
+        <Add />
+      </ToastProvider>,
+    );
+    await fireEvent.press(view.getByText('Watched'));
+    mockParams = { prefill: JSON.stringify({ id: 2, title: 'Second', mediaType: 'tv' }) };
+    await view.rerender(
+      <ToastProvider>
+        <Add />
+      </ToastProvider>,
+    );
+    expect(view.getByTestId('tmdb-search').props.value).toBe('Second');
+    expect(mockTouchTitle).toHaveBeenLastCalledWith({
+      mediaType: 'tv',
+      tmdbId: 2,
+      title: 'Second',
+    });
+    mockResolvedTitle = { runtime: 45, genres: [] };
+    mockAddItem.mockResolvedValue('new-item');
+    await view.rerender(
+      <ToastProvider>
+        <Add />
+      </ToastProvider>,
+    );
+    await fireEvent.press(view.getByTestId('add-submit'));
+    expect(mockAddItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tmdbId: 2,
+        status: 'watchlist',
+        timesWatched: 0,
+      }),
+    );
+  });
+
   it('filters search results by movies and TV shows', async () => {
     mockSearch.mockResolvedValue([
       { id: 1, mediaType: 'movie', title: 'Rambo' },

@@ -2,7 +2,7 @@ import { ScreenView } from '@/components/ScreenLayout';
 import { Effect } from 'effect';
 import { touchMetadata, saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -32,9 +32,13 @@ const mediaLabel = (mediaType: SearchResult['mediaType'], genres?: string[]) => 
   return mediaType === 'movie' ? 'Movie' : 'TV Show';
 };
 export default function Add() {
-  const runOperation = useOperation();
   const { prefill } = useLocalSearchParams<{ prefill?: string }>();
   const initialResult = useMemo(() => parseTitlePreview(prefill), [prefill]);
+  return <AddForm key={prefill ?? ''} initialResult={initialResult} />;
+}
+
+function AddForm({ initialResult }: { initialResult?: SearchResult }) {
+  const runOperation = useOperation();
   const addItemAndMarkWatched = useAction(api.library.seasonWatched.addItemAndMarkWatched);
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const add = useMutation(api.library.items.addItem);
@@ -78,10 +82,8 @@ export default function Add() {
     },
     [touchTitle, runOperation],
   );
-  const prefillStarted = useRef(false);
   useEffect(() => {
-    if (!initialResult || prefillStarted.current) return;
-    prefillStarted.current = true;
+    if (!initialResult) return;
     void runOperation(
       touchMetadata(() =>
         touchTitle({

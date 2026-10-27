@@ -1,9 +1,7 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -31,12 +29,10 @@ function CalendarDay({
   active: boolean;
   onSelect: () => void;
 }) {
-  const ref = useRef<HTMLButtonElement>(null);
   const [height, setHeight] = useState(0);
 
-  useLayoutEffect(() => {
-    const element = ref.current;
-    if (!element) return () => undefined;
+  const observeDay = useCallback((element: HTMLButtonElement | null) => {
+    if (!element) return undefined;
     const update = () => {
       const nextHeight = element.getBoundingClientRect().height;
       setHeight((current) =>
@@ -58,7 +54,7 @@ function CalendarDay({
 
   return (
     <button
-      ref={ref}
+      ref={observeDay}
       type="button"
       aria-pressed={active}
       aria-label={`${day.toLocaleDateString()}, ${events.length} release${events.length === 1 ? "" : "s"}`}
