@@ -1,3 +1,4 @@
+import { seedCalendarCatalog } from './calendar-fixtures';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
@@ -16,7 +17,7 @@ const seedCatalog = async (
   await t.run(async (ctx) => {
     for (const month of ['2026-08', '2026-09', '2026-10'])
       for (const mediaType of ['tv', 'movie'] as const)
-        await ctx.db.insert('calendarMonths', {
+        await seedCalendarCatalog(ctx, {
           month,
           region: catalogRegion('US', mediaType),
           candidates: candidates.filter((candidate) => candidate.mediaType === mediaType),

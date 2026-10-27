@@ -76,33 +76,43 @@ describe('TVDB anime metadata mapping', () => {
     expect(
       mergeSeasonDisplayNames(
         [
-          { season: 12, name: 'Amazon Lily', episodeCount: 14 },
-          { season: 13, name: 'Season 13', episodeCount: 101 },
-          { season: 21, name: 'ワノ国編', episodeCount: 197 },
+          { episodeCountVerified: true, season: 12, name: 'Amazon Lily', episodeCount: 14 },
+          { episodeCountVerified: true, season: 13, name: 'Season 13', episodeCount: 101 },
+          { episodeCountVerified: true, season: 21, name: 'ワノ国編', episodeCount: 197 },
         ],
         [
-          { season: 12, name: 'Amazon Lily', episodeCount: 14 },
-          { season: 13, name: 'Impel Down & Marineford', episodeCount: 101 },
-          { season: 21, name: 'Wano Country Arc', episodeCount: 197 },
+          { episodeCountVerified: true, season: 12, name: 'Amazon Lily', episodeCount: 14 },
+          {
+            episodeCountVerified: true,
+            season: 13,
+            name: 'Impel Down & Marineford',
+            episodeCount: 101,
+          },
+          { episodeCountVerified: true, season: 21, name: 'Wano Country Arc', episodeCount: 197 },
         ],
       ),
     ).toEqual([
-      { season: 12, name: 'Amazon Lily', episodeCount: 14 },
-      { season: 13, name: 'Impel Down & Marineford', episodeCount: 101 },
-      { season: 21, name: 'Wano Country Arc', episodeCount: 197 },
+      { episodeCountVerified: true, season: 12, name: 'Amazon Lily', episodeCount: 14 },
+      {
+        episodeCountVerified: true,
+        season: 13,
+        name: 'Impel Down & Marineford',
+        episodeCount: 101,
+      },
+      { episodeCountVerified: true, season: 21, name: 'Wano Country Arc', episodeCount: 197 },
     ]);
   });
 
   it('does not replace TVDB ordering or counts while merging display names', () => {
     expect(
       mergeSeasonDisplayNames(
-        [{ season: 4, name: 'Season 4', episodeCount: 39 }],
+        [{ episodeCountVerified: true, season: 4, name: 'Season 4', episodeCount: 39 }],
         [
-          { season: 3, name: 'Drum Island', episodeCount: 14 },
-          { season: 4, name: 'Alabasta', episodeCount: 99 },
+          { episodeCountVerified: true, season: 3, name: 'Drum Island', episodeCount: 14 },
+          { episodeCountVerified: true, season: 4, name: 'Alabasta', episodeCount: 99 },
         ],
       ),
-    ).toEqual([{ season: 4, name: 'Alabasta', episodeCount: 39 }]);
+    ).toEqual([{ episodeCountVerified: true, season: 4, name: 'Alabasta', episodeCount: 39 }]);
   });
 
   it('hides future and undated placeholder episodes until they are released', () => {

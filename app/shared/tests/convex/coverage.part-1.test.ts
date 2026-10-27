@@ -257,7 +257,7 @@ describe('TMDB mappers', () => {
     ).toMatchObject({
       posterPath: '/daredevil.jpg',
       episodeRunTime: [52],
-      seasons: [{ season: 1, name: 'Season 1', episodeCount: 13 }],
+      seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 13 }],
       cast: [{ name: 'Charlie Cox', character: 'Matt Murdock' }],
     });
     expect(

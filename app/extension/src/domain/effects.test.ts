@@ -33,6 +33,7 @@ describe("Effect extension boundaries", () => {
   it("releases the bookmark queue after storage failure", async () => {
     const error = new Error("read failed");
     const storage = {
+      remove: async () => {},
       get: vi.fn().mockRejectedValueOnce(error).mockResolvedValue({}),
       set: vi.fn(async () => undefined),
     };
@@ -172,6 +173,7 @@ describe("Effect extension boundaries", () => {
       [SYNC_RETRY_KEY]: { attempt: NaN, nextRetryAt: Infinity },
     };
     const storage = {
+      remove: async (key: string) => { delete values[key]; },
       get: async () => ({ ...values }),
       set: async (next: Record<string, unknown>) => {
         Object.assign(values, next);
@@ -180,7 +182,7 @@ describe("Effect extension boundaries", () => {
     const schedule = vi.fn();
     const outbox = createOutboxManager(
       storage,
-      async () => ({ ok: false, retryable: true }),
+      () => Effect.succeed({ ok: false, retryable: true }),
       { now: () => 100, alarms: { schedule, clear: vi.fn() } },
     );
     await Promise.all(
@@ -277,7 +279,7 @@ it.each([false, true])(
   "preserves outbox FIFO across a fresh caller (clear queued: %s)",
   async (clearQueued) => {
     const x = blockedStorage();
-    const manager = createOutboxManager(x.storage, async () => ({
+    const manager = createOutboxManager(x.storage, () => Effect.succeed({
       ok: true,
       retryable: false,
     }));
@@ -303,15 +305,15 @@ it.each([false, true])(
   },
 );
 
-it.each([false, true])(
-  "retains undelivered events across full background composition (legacy Promise: %s)",
-  async (legacy) => {
+it(
+  "retains undelivered events across full background composition after a defect",
+  async () => {
     const defect = new Error("programming defect");
     const x = blockedStorage({ [SYNC_OUTBOX_KEY]: [payload] });
     x.gate.resolve();
     const schedule = vi.fn();
     const record = vi.fn<AuthClient["record"]>(() =>
-      legacy ? runExtension(Effect.die(defect)) : Effect.die(defect),
+      Effect.die(defect),
     );
     const background = createMessageHandler(
       x.storage,
@@ -328,8 +330,7 @@ it.each([false, true])(
       },
       { now: () => 100, alarms: { schedule, clear: vi.fn() } },
     );
-    if (legacy) await expect(background.flush()).resolves.toBe(false);
-    else await expect(background.flush()).rejects.toBe(defect);
+    await expect(background.flush()).rejects.toBe(defect);
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
     expect(x.values[SYNC_RETRY_KEY]).toEqual({
       attempt: 1,
@@ -356,12 +357,12 @@ it("bounds stalled auth preparation and fences its late result after sign-out", 
     }>();
     const x = blockedStorage({ [SYNC_OUTBOX_KEY]: [payload] });
     x.gate.resolve();
-    const getSession = vi.fn(() => session.promise);
+    const getSession = vi.fn(() => external("test", () => session.promise));
     const background = createMessageHandler(x.storage, {
       getSession,
-      connect: async () => {},
-      signOut: async () => {},
-      record: async () => ({ ok: true }),
+      connect: () => Effect.void,
+      signOut: () => Effect.void,
+      record: () => Effect.succeed({ ok: true }),
     });
     const flush = background.flush();
     const failed = expect(flush).rejects.toBeDefined();
@@ -392,10 +393,10 @@ it("bounds delivery-time authentication and releases all shared flush callers fo
     const lateSession = deferred<typeof identity>();
     const getSession = vi
       .fn<AuthClient["getSession"]>()
-      .mockResolvedValueOnce(identity)
-      .mockImplementationOnce(() => lateSession.promise)
-      .mockResolvedValue(identity);
-    const record = vi.fn<AuthClient["record"]>(async () => ({ ok: true }));
+      .mockReturnValueOnce(Effect.succeed(identity))
+      .mockImplementationOnce(() => external("auth.session", () => lateSession.promise))
+      .mockReturnValue(Effect.succeed(identity));
+    const record = vi.fn<AuthClient["record"]>(() => Effect.succeed({ ok: true }));
     const x = blockedStorage({ [SYNC_OUTBOX_KEY]: [payload] });
     x.gate.resolve();
     const schedule = vi.fn();
@@ -403,8 +404,8 @@ it("bounds delivery-time authentication and releases all shared flush callers fo
       x.storage,
       {
         getSession,
-        connect: async () => {},
-        signOut: async () => {},
+        connect: () => Effect.void,
+        signOut: () => Effect.void,
         record,
       },
       { now: () => 100, alarms: { schedule, clear: vi.fn() } },

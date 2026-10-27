@@ -85,11 +85,6 @@ export const mergeEpisodes = (structure: ResolvedEpisode[], artwork: ResolvedEpi
   );
   return releasedEpisodes(structure).map((episode) => {
     const image = byNumber.get(`${episode.season}:${episode.episode}`);
-    const providerEpisodeId =
-      episode.providerEpisodeId ??
-      (typeof (episode as unknown as { id?: unknown }).id === 'number'
-        ? (episode as unknown as { id: number }).id
-        : undefined);
     return cleanEpisode({
       ...episode,
       ...(!episode.imageUrl &&
@@ -97,7 +92,6 @@ export const mergeEpisodes = (structure: ResolvedEpisode[], artwork: ResolvedEpi
         sameEpisodeContent(episode, image) && {
           imageUrl: image.imageUrl,
         }),
-      ...(providerEpisodeId !== undefined && { providerEpisodeId }),
     });
   });
 };

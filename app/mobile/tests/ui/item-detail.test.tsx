@@ -42,8 +42,8 @@ const title = {
   genres: ['Drama'],
   cast: [{ name: 'Charlie Cox', character: 'Matt Murdock' }],
   seasons: [
-    { season: 1, name: 'Season 1', episodeCount: 1 },
-    { season: 2, name: 'Season 2', episodeCount: 1 },
+    { season: 1, name: 'Season 1', episodeCount: 1, episodeCountVerified: true },
+    { season: 2, name: 'Season 2', episodeCount: 1, episodeCountVerified: true },
   ],
 };
 const seasonOne = {
@@ -267,11 +267,11 @@ describe('item detail metadata subscriptions', () => {
       title: {
         ...title,
         seasons: [
-          { season: 5, name: 'Season 5', episodeCount: 1 },
-          { season: 0, name: 'Specials', episodeCount: 1 },
+          { season: 5, name: 'Season 5', episodeCount: 1, episodeCountVerified: true },
+          { season: 0, name: 'Specials', episodeCount: 1, episodeCountVerified: true },
           { season: 1, name: 'Season 1', episodeCount: 0, episodeCountVerified: true },
           { season: 2, name: 'Season 2', episodeCount: 0, episodeCountVerified: false },
-          { season: 3, name: 'Season 3', episodeCount: 0 },
+          { season: 3, name: 'Season 3', episodeCount: 0, episodeCountVerified: true },
         ],
       },
     };
@@ -703,7 +703,10 @@ describe('item detail metadata subscriptions', () => {
   it('resets the selected season before touching a cold item on route reuse', async () => {
     const titleWithSeasonFive = {
       ...title,
-      seasons: [...title.seasons, { season: 5, name: 'Season 5', episodeCount: 1 }],
+      seasons: [
+        ...title.seasons,
+        { season: 5, name: 'Season 5', episodeCount: 1, episodeCountVerified: true },
+      ],
     };
     itemView = {
       item,

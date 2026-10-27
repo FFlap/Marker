@@ -1,5 +1,7 @@
+import { Effect } from "effect";
+import { external, ExtensionFailure } from "./effects";
 import { describe, expect, it, vi } from "vitest";
-import { classifyDeliveryError, createMessageHandler } from "./background";
+import { classifyDeliveryError, createMessageHandler, type AuthClient } from "./background";
 import { SYNC_OUTBOX_KEY } from "./sync";
 import { BOOKMARKS_STORAGE_KEY, normalizeBookmarkStore } from "./bookmarks";
 import { persistDetectedEpisode } from "./tracking";
@@ -32,16 +34,16 @@ const setup = () => {
     }),
   };
   const client = {
-    getSession: vi.fn(
-      async (): Promise<{ token: string; accountId: string; accountLabel: string } | null> => ({
+    getSession: vi.fn<AuthClient["getSession"]>(
+      () => Effect.succeed({
         token,
         accountId: "viewer",
         accountLabel: "@viewer",
       }),
     ),
-    connect: vi.fn(),
-    signOut: vi.fn(),
-    record: vi.fn(),
+    connect: vi.fn<AuthClient["connect"]>(() => Effect.void),
+    signOut: vi.fn<AuthClient["signOut"]>(() => Effect.void),
+    record: vi.fn<AuthClient["record"]>(() => Effect.succeed<unknown>({ ok: true })),
   };
   return {
     values,
@@ -75,7 +77,7 @@ describe("background delivery classification", () => {
 
   it("records terminal delivery failures and removes them from the queue", async () => {
     const x = setup();
-    x.client.record.mockRejectedValue({ status: 400 });
+    x.client.record.mockReturnValue(Effect.fail(new ExtensionFailure({ operation: "test", cause: { status: 400 } })));
     x.values[SYNC_OUTBOX_KEY] = [payload];
     await x.background.flush();
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([]);
@@ -89,7 +91,7 @@ describe("background delivery classification", () => {
     const error = Object.assign(new Error("upstream"), {
       status: 503,
     });
-    x.client.record.mockRejectedValue(error);
+    x.client.record.mockReturnValue(Effect.fail(new ExtensionFailure({ operation: "test", cause: error })));
     x.values[SYNC_OUTBOX_KEY] = [payload];
     await x.background.flush();
     expect(x.client.record).toHaveBeenCalledOnce();
@@ -129,15 +131,15 @@ describe("background sign-out cleanup", () => {
     await expect(background.handler({ type: "sync/signOut" })).resolves.toEqual({
       signedIn: false,
     });
-    expect(x.values["sync.outbox"]).toBeUndefined();
-    expect(x.values["sync.outboxRetry"]).toBeUndefined();
-    expect(x.values["sync.lastResult"]).toBeUndefined();
+    expect(x.values).not.toHaveProperty(["sync.outbox"]);
+    expect(x.values).not.toHaveProperty(["sync.outboxRetry"]);
+    expect(x.values).not.toHaveProperty(["sync.lastResult"]);
     expect(alarms.clear).toHaveBeenCalledWith("sync.outboxRetry");
   });
   it("keeps the outbox cleared when sign-out waits for an in-flight flush", async () => {
     const x = setup();
     const gate = deferred<unknown>();
-    x.client.record.mockReturnValue(gate.promise);
+    x.client.record.mockReturnValue(external("test", () => gate.promise));
 
     const enqueue = x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
     await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
@@ -145,7 +147,7 @@ describe("background sign-out cleanup", () => {
     gate.resolve({ ok: true });
     await Promise.all([enqueue, signOut]);
 
-    expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
+    expect(x.values).not.toHaveProperty([SYNC_OUTBOX_KEY]);
   });
 });
 
@@ -191,7 +193,7 @@ describe("background bookmark serialization", () => {
 describe("background website connection", () => {
   it("returns a structured response when website connection fails", async () => {
     const x = setup();
-    x.client.connect.mockRejectedValue(new Error("Connection cancelled"));
+    x.client.connect.mockReturnValue(Effect.fail(new ExtensionFailure({ operation: "test", cause: new Error("Connection cancelled") })));
     await expect(
       x.background.handler({ type: "sync/connect" }),
     ).resolves.toEqual({ signedIn: false, reason: "Connection cancelled" });
@@ -201,11 +203,11 @@ describe("background website connection", () => {
 describe("background queue behavior", () => {
   it.each([401, 409, 429])("HTTP %s pauses the queued event and later flushes skip delivery without a Clerk session", async (status) => {
     const x = setup();
-    x.client.record.mockRejectedValue({ status });
+    x.client.record.mockReturnValue(Effect.fail(new ExtensionFailure({ operation: "test", cause: { status } })));
     await x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
     await x.background.flush();
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
-    x.client.getSession.mockResolvedValue(null);
+    x.client.getSession.mockReturnValue(Effect.succeed(null));
     x.client.record.mockClear();
     await x.background.flush();
     expect(x.client.record).not.toHaveBeenCalled();
@@ -213,7 +215,7 @@ describe("background queue behavior", () => {
   });
   it("retains unknown server failures for retry", async () => {
     const x = setup();
-    x.client.record.mockRejectedValue(new Error("bad response"));
+    x.client.record.mockReturnValue(Effect.fail(new ExtensionFailure({ operation: "test", cause: new Error("bad response") })));
     await x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
     await x.background.flush();
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
@@ -224,7 +226,7 @@ describe("background queue behavior", () => {
     const x = setup();
     x.values[SYNC_OUTBOX_KEY] = [payload];
     x.values["sync.outboxRetry"] = { attempt: 1, nextRetryAt: 1_000 };
-    x.client.getSession.mockResolvedValue(null);
+    x.client.getSession.mockReturnValue(Effect.succeed(null));
     const alarms = { schedule: vi.fn(), clear: vi.fn() };
     const background = createMessageHandler(x.storage, x.client, {
       now: () => 1_000,
@@ -242,10 +244,10 @@ describe("background queue behavior", () => {
 describe("outbox account ownership", () => {
   it("never sends a previous account's queued history after a worker restart", async () => {
     const x = setup();
-    x.client.record.mockRejectedValue({ status: 503 });
+    x.client.record.mockReturnValue(Effect.fail(new ExtensionFailure({ operation: "test", cause: { status: 503 } })));
     await x.background.handler({ type: "bookmark/save", bookmark: trackedBookmark });
     await x.background.flush();
-    x.client.getSession.mockResolvedValue({ token: "other-token", accountId: "other", accountLabel: "Other" });
+    x.client.getSession.mockReturnValue(Effect.succeed({ token: "other-token", accountId: "other", accountLabel: "Other" }));
     x.client.record.mockClear();
     const restarted = createMessageHandler(x.storage, x.client);
     await restarted.flush();
@@ -259,10 +261,10 @@ describe("outbox account ownership", () => {
   it("stops an in-flight batch if the account switches between deliveries", async () => {
     const x = setup();
     x.values[SYNC_OUTBOX_KEY] = [payload, { ...payload, episodeNumber: 3 }];
-    x.client.record.mockImplementation(async () => {
-      x.client.getSession.mockResolvedValue({ token: "other-token", accountId: "other", accountLabel: "Other" });
+    x.client.record.mockImplementation(() => external("test", async () => {
+      x.client.getSession.mockReturnValue(Effect.succeed({ token: "other-token", accountId: "other", accountLabel: "Other" }));
       return { ok: true };
-    });
+    }));
     await x.background.flush();
     expect(x.client.record).toHaveBeenCalledOnce();
     await x.background.flush();
@@ -286,7 +288,7 @@ const trackedBookmark = {
 
 it('durably queues an unchanged bookmark after its first enqueue failed', async () => {
   const x = setup();
-  x.client.getSession.mockResolvedValue(null);
+  x.client.getSession.mockReturnValue(Effect.succeed(null));
   let failOnce = true;
   x.storage.set.mockImplementation(async (items) => {
     if (SYNC_OUTBOX_KEY in items && failOnce) {
@@ -317,7 +319,7 @@ it('durably queues an unchanged bookmark after its first enqueue failed', async 
 it('acknowledges and preserves new saves while a previous delivery is in flight', async () => {
   const x = setup();
   const gate = deferred<unknown>();
-  x.client.record.mockReturnValue(gate.promise);
+  x.client.record.mockReturnValue(external("test", () => gate.promise));
   await x.background.handler({ type: 'bookmark/save', bookmark: trackedBookmark });
   await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
   const inFlight = x.background.flush();
@@ -336,10 +338,10 @@ it('keeps the new account queue when an old account delivery finishes', async ()
   x.values[SYNC_OUTBOX_KEY] = [{ ...payload, episodeNumber: 1 }, payload];
   x.values['sync.accountId'] = 'viewer';
   const gate = deferred<unknown>();
-  x.client.record.mockReturnValue(gate.promise);
+  x.client.record.mockReturnValue(external("test", () => gate.promise));
   const inFlight = x.background.flush();
   await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
-  x.client.getSession.mockResolvedValue({ token: 'other-token', accountId: 'other', accountLabel: 'Other' });
+  x.client.getSession.mockReturnValue(Effect.succeed({ token: 'other-token', accountId: 'other', accountLabel: 'Other' }));
   await x.background.handler({ type: 'bookmark/save', bookmark: trackedBookmark });
   gate.resolve({ ok: true });
   await inFlight;
@@ -353,8 +355,8 @@ it('keeps the new account queue when an old account delivery finishes', async ()
 it('waits to bind an unowned batch when sign-in finishes after its snapshot', async () => {
   const x = setup();
   x.values[SYNC_OUTBOX_KEY] = [payload];
-  x.client.getSession.mockResolvedValueOnce(null);
-  x.client.record.mockResolvedValue({ ok: true });
+  x.client.getSession.mockReturnValueOnce(Effect.succeed(null));
+  x.client.record.mockReturnValue(Effect.succeed({ ok: true }));
 
   await x.background.flush();
   expect(x.client.record).not.toHaveBeenCalled();
@@ -373,7 +375,7 @@ it.each(['sign-out', 'account switch'] as const)(
     const x = setup();
     x.values[SYNC_OUTBOX_KEY] = [payload];
     x.values['sync.accountId'] = 'viewer';
-    x.client.record.mockResolvedValue({ ok: true });
+    x.client.record.mockReturnValue(Effect.succeed({ ok: true }));
     const resultWrite = deferred<void>();
     const writeStarted = deferred<void>();
     x.storage.set.mockImplementation(async (items) => {
@@ -385,10 +387,10 @@ it.each(['sign-out', 'account switch'] as const)(
     });
     const flushing = x.background.flush();
     await writeStarted.promise;
-    x.client.getSession.mockResolvedValue(
-      transition === 'sign-out'
+    x.client.getSession.mockReturnValue(
+      Effect.succeed(transition === 'sign-out'
         ? null
-        : { token: 'other-token', accountId: 'other', accountLabel: 'Other' },
+        : { token: 'other-token', accountId: 'other', accountLabel: 'Other' }),
     );
     const changing = x.background.handler(
       transition === 'sign-out'
@@ -407,9 +409,9 @@ it('does not start deliveries while sign-out is pending', async () => {
   const x = setup();
   x.values[SYNC_OUTBOX_KEY] = [payload];
   x.values['sync.accountId'] = 'viewer';
-  x.client.record.mockResolvedValue({ ok: true });
+  x.client.record.mockReturnValue(Effect.succeed({ ok: true }));
   const signOut = deferred<void>();
-  x.client.signOut.mockReturnValue(signOut.promise);
+  x.client.signOut.mockReturnValue(external("test", () => signOut.promise));
   const signingOut = x.background.handler({ type: 'sync/signOut' });
   await vi.waitFor(() => expect(x.client.signOut).toHaveBeenCalledOnce());
   await x.background.flush();
@@ -424,7 +426,7 @@ it.each([{}, { reason: 'unknown response' }])(
   async (response) => {
     const x = setup();
     x.values[SYNC_OUTBOX_KEY] = [payload];
-    x.client.record.mockResolvedValue(response);
+    x.client.record.mockReturnValue(Effect.succeed(response));
     await x.background.flush();
     expect(x.values[SYNC_OUTBOX_KEY]).toEqual([payload]);
     expect(x.values['sync.lastResult']).not.toHaveProperty('reason', 'rejected');
@@ -436,13 +438,13 @@ it('prepares the new account when its notification joins an in-flight flush', as
   x.values[SYNC_OUTBOX_KEY] = [payload];
   x.values['sync.accountId'] = 'viewer';
   const delivery = deferred<unknown>();
-  x.client.record.mockReturnValue(delivery.promise);
+  x.client.record.mockReturnValue(external("test", () => delivery.promise));
   const flushing = x.background.flush();
   await vi.waitFor(() => expect(x.client.record).toHaveBeenCalledOnce());
 
-  x.client.getSession.mockResolvedValue({
+  x.client.getSession.mockReturnValue(Effect.succeed({
     token: 'other-token', accountId: 'other', accountLabel: 'Other',
-  });
+  }));
   const accountChanged = x.background.flush();
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   delivery.resolve({ ok: true });

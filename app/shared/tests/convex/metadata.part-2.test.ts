@@ -127,7 +127,7 @@ describe('metadata pipeline', () => {
           seasonOrder: 'dvd',
           orderEpoch: 2,
           episodeRunTime: [24],
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+          seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }],
         }),
         mediaType: 'tv',
       });
@@ -244,7 +244,7 @@ describe('metadata pipeline', () => {
         tmdbId: 88,
         mediaType: 'tv',
         title: 'Versioned show',
-        seasons: [{ season: 1, name: 'Season 1', episodeCount: 121 }],
+        seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 121 }],
         orderEpoch: 0,
       }),
       mediaType: 'tv' as const,

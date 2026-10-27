@@ -1,3 +1,4 @@
+import { seedCalendarCatalog, seedCalendarSchedule } from './calendar-fixtures';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
@@ -46,7 +47,7 @@ async function fixture(count = 1, candidateCount = count) {
     const userId = await ctx.db.insert('users', { clerkId: 'calendar-index' });
     for (let id = 1; id <= count; id++) await ctx.db.insert('items', item(userId, id));
     for (const month of ['2026-10', '2026-11']) {
-      await ctx.db.insert('calendarMonths', {
+      await seedCalendarCatalog(ctx, {
         month,
         region: 'tv',
         version: 'complete',
@@ -57,7 +58,7 @@ async function fixture(count = 1, candidateCount = count) {
         })),
       });
       for (let id = 1; id <= candidateCount; id++)
-        await ctx.db.insert('calendarSchedules', {
+        await seedCalendarSchedule(ctx, {
           month,
           key: `CA:${month}:tv:${id}:`,
           events: [event(id, month)],
@@ -161,14 +162,18 @@ describe('date-first release discovery', () => {
         .query('calendarMonths')
         .withIndex('by_region_month', (q) => q.eq('region', 'tv').eq('month', '2026-10'))
         .unique();
-      await ctx.db.patch(catalog!._id, {
-        candidates: Array.from({ length: 1501 }, (_, i) => ({
-          tmdbId: 100 + i,
-          mediaType: 'tv' as const,
-        })),
-      });
+      await ctx.db.patch(catalog!._id, { candidateCount: 1501 });
+      for (let ordinal = 0; ordinal < 1501; ordinal++)
+        await ctx.db.insert('calendarCandidates', {
+          month: catalog!.month,
+          region: catalog!.region,
+          version: catalog!.version,
+          ordinal,
+          tmdbId: 100 + ordinal,
+          mediaType: 'tv',
+        });
       await ctx.db.insert('items', item(userId, 1600));
-      await ctx.db.insert('calendarSchedules', {
+      await seedCalendarSchedule(ctx, {
         month: '2026-10',
         key: 'CA:2026-10:tv:1600:',
         events: [event(1600)],
@@ -230,14 +235,14 @@ describe('date-first release discovery', () => {
     const { t } = await fixture();
     await t.run(async (ctx) => {
       for (const month of ['2026-08', '2026-09']) {
-        await ctx.db.insert('calendarMonths', {
+        await seedCalendarCatalog(ctx, {
           month,
           region: 'tv',
           candidates: [],
           version: 'saved',
           refreshedAt: 1,
         });
-        await ctx.db.insert('calendarSchedules', {
+        await seedCalendarSchedule(ctx, {
           month,
           key: `CA:${month}:tv:1:`,
           events: [],

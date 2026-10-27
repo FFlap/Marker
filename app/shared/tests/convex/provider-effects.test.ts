@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { attempt, providerOutcome, runActionEffect } from '../../convex/actionEffects';
 import {
   decodeProviderObject,
-  providerFetch,
+  runProviderEffect,
   providerFetchEffect,
 } from '../../convex/providerHttp';
 
@@ -29,10 +29,8 @@ it('honors Retry-After and caps its delay', async () => {
     .mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'retry-after': '60' } }))
     .mockResolvedValueOnce(new Response('{}'));
   vi.stubGlobal('fetch', fetch);
-  const pending = providerFetch(
-    'https://example.test',
-    {},
-    { provider: 'tmdb', operation: '/test' },
+  const pending = runProviderEffect(
+    providerFetchEffect('https://example.test', {}, { provider: 'tmdb', operation: '/test' }),
   );
   await vi.advanceTimersByTimeAsync(1999);
   expect(fetch).toHaveBeenCalledTimes(1);
@@ -56,7 +54,13 @@ it('does not replace HTTP errors with body cleanup errors', async () => {
     ),
   );
   await expect(
-    providerFetch('https://example.test', {}, { provider: 'tmdb', operation: '/test', retries: 0 }),
+    runProviderEffect(
+      providerFetchEffect(
+        'https://example.test',
+        {},
+        { provider: 'tmdb', operation: '/test', retries: 0 },
+      ),
+    ),
   ).rejects.toMatchObject({ data: { code: 'upstream', status: 503 } });
 });
 
@@ -71,10 +75,12 @@ it('enforces the deadline even if fetch ignores AbortSignal', async () => {
     }),
   );
   const pending = expect(
-    providerFetch(
-      'https://example.test',
-      {},
-      { provider: 'tmdb', operation: '/test', timeoutMs: 20, retries: 0 },
+    runProviderEffect(
+      providerFetchEffect(
+        'https://example.test',
+        {},
+        { provider: 'tmdb', operation: '/test', timeoutMs: 20, retries: 0 },
+      ),
     ),
   ).rejects.toMatchObject({ data: { code: 'timeout' } });
   await vi.advanceTimersByTimeAsync(20);
@@ -113,14 +119,16 @@ it('never reserves budget for an already cancelled request', async () => {
   const fetch = vi.fn();
   vi.stubGlobal('fetch', fetch);
   await expect(
-    providerFetch(
-      'https://example.test',
-      { signal: controller.signal },
-      {
-        provider: 'tmdb',
-        operation: '/test',
-        beforeRequest,
-      },
+    runProviderEffect(
+      providerFetchEffect(
+        'https://example.test',
+        { signal: controller.signal },
+        {
+          provider: 'tmdb',
+          operation: '/test',
+          beforeRequest,
+        },
+      ),
     ),
   ).rejects.toMatchObject({ data: { code: 'upstream' } });
   expect(beforeRequest).not.toHaveBeenCalled();
@@ -164,14 +172,16 @@ it('preserves arbitrary budget failures without HTTP retries or network-error lo
   vi.stubGlobal('fetch', fetch);
   try {
     await expect(
-      providerFetch(
-        'https://example.test',
-        {},
-        {
-          provider: 'tmdb',
-          operation: '/test',
-          beforeRequest,
-        },
+      runProviderEffect(
+        providerFetchEffect(
+          'https://example.test',
+          {},
+          {
+            provider: 'tmdb',
+            operation: '/test',
+            beforeRequest,
+          },
+        ),
       ),
     ).rejects.toBe(cause);
     expect(beforeRequest).toHaveBeenCalledTimes(1);
@@ -198,14 +208,16 @@ it('preserves the original budget conflict after its bounded retry is exhausted'
   const fetch = vi.fn();
   vi.stubGlobal('fetch', fetch);
   const assertion = expect(
-    providerFetch(
-      'https://example.test',
-      {},
-      {
-        provider: 'tmdb',
-        operation: '/test',
-        beforeRequest,
-      },
+    runProviderEffect(
+      providerFetchEffect(
+        'https://example.test',
+        {},
+        {
+          provider: 'tmdb',
+          operation: '/test',
+          beforeRequest,
+        },
+      ),
     ),
   ).rejects.toBe(cause);
   await vi.runAllTimersAsync();
@@ -225,15 +237,17 @@ it('keeps the deadline and abort active while consuming the response body', asyn
     }),
   );
   const assertion = expect(
-    providerFetch(
-      'https://example.test',
-      {},
-      {
-        provider: 'tmdb',
-        operation: '/test',
-        timeoutMs: 20,
-        retries: 0,
-      },
+    runProviderEffect(
+      providerFetchEffect(
+        'https://example.test',
+        {},
+        {
+          provider: 'tmdb',
+          operation: '/test',
+          timeoutMs: 20,
+          retries: 0,
+        },
+      ),
     ),
   ).rejects.toMatchObject({ data: { code: 'timeout' } });
   await vi.advanceTimersByTimeAsync(20);
@@ -261,13 +275,15 @@ it('propagates caller abort during the body and removes its listener without ret
   );
   vi.stubGlobal('fetch', fetch);
   const assertion = expect(
-    providerFetch(
-      'https://example.test',
-      { signal: caller.signal },
-      {
-        provider: 'tvdb',
-        operation: '/test',
-      },
+    runProviderEffect(
+      providerFetchEffect(
+        'https://example.test',
+        { signal: caller.signal },
+        {
+          provider: 'tvdb',
+          operation: '/test',
+        },
+      ),
     ),
   ).rejects.toMatchObject({ data: { code: 'timeout' } });
   await started;
@@ -287,15 +303,17 @@ it('preserves request options and response details without adding propagation he
       }),
   );
   vi.stubGlobal('fetch', fetch);
-  const response = await providerFetch(
-    'https://example.test/path?q=1',
-    {
-      method: 'POST',
-      body: 'request',
-      redirect: 'manual',
-      headers: { authorization: 'Bearer test', 'content-type': 'text/plain' },
-    },
-    { provider: 'tvdb', operation: '/test' },
+  const response = await runProviderEffect(
+    providerFetchEffect(
+      'https://example.test/path?q=1',
+      {
+        method: 'POST',
+        body: 'request',
+        redirect: 'manual',
+        headers: { authorization: 'Bearer test', 'content-type': 'text/plain' },
+      },
+      { provider: 'tvdb', operation: '/test' },
+    ),
   );
   expect(fetch).toHaveBeenCalledWith(
     'https://example.test/path?q=1',
@@ -323,15 +341,17 @@ it('does not retry POST even when a retry count is supplied', async () => {
   const beforeRequest = vi.fn(async () => true);
   vi.stubGlobal('fetch', fetch);
   await expect(
-    providerFetch(
-      'https://example.test',
-      { method: 'POST', body: '{}' },
-      {
-        provider: 'tvdb',
-        operation: '/login',
-        retries: 3,
-        beforeRequest,
-      },
+    runProviderEffect(
+      providerFetchEffect(
+        'https://example.test',
+        { method: 'POST', body: '{}' },
+        {
+          provider: 'tvdb',
+          operation: '/login',
+          retries: 3,
+          beforeRequest,
+        },
+      ),
     ),
   ).rejects.toMatchObject({ data: { status: 503 } });
   expect(fetch).toHaveBeenCalledTimes(1);
@@ -343,14 +363,16 @@ it.each([null, undefined, 'failure', { message: 'opaque' }])(
   async (cause) => {
     await expect(runActionEffect(attempt(() => Promise.reject(cause)))).rejects.toBe(cause);
     await expect(
-      providerFetch(
-        'https://example.test',
-        {},
-        {
-          provider: 'tmdb',
-          operation: '/test',
-          beforeRequest: () => Promise.reject(cause),
-        },
+      runProviderEffect(
+        providerFetchEffect(
+          'https://example.test',
+          {},
+          {
+            provider: 'tmdb',
+            operation: '/test',
+            beforeRequest: () => Promise.reject(cause),
+          },
+        ),
       ),
     ).rejects.toBe(cause);
   },

@@ -36,7 +36,7 @@ vi.mock("convex/react", async () => {
       const name = getFunctionName(ref);
       const title = {
         title: "Example", tmdbId: mocks.tmdbId, mediaType: "tv",
-        seasons: [1, 2].map((season) => ({ season, name: `Season ${season}`, episodeCount: 2 })),
+        seasons: [1, 2].map((season) => ({ season, name: `Season ${season}`, episodeCount: 2, episodeCountVerified: true })),
         genres: [], cast: [], episodeRunTime: [],
       };
       if (name === "resolvedMetadata/reads:getItemView") return mocks.itemRemoved ? null : {

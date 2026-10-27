@@ -117,12 +117,6 @@ export function createRequestEffect(ctx: ActionCtx, reservationSize = 5) {
   });
 }
 
-// Kept for existing Promise callers; internal calendar composition uses the effect factory.
-export function createRequest(ctx: ActionCtx, reservationSize = 5) {
-  const request = createRequestEffect(ctx, reservationSize);
-  return (path: string) => runProviderEffect(request(path));
-}
-
 const cached = Effect.fnUntraced(function* <T, E>(
   ctx: ActionCtx,
   key: string,
