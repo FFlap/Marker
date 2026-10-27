@@ -131,9 +131,9 @@ describe("background sign-out cleanup", () => {
     await expect(background.handler({ type: "sync/signOut" })).resolves.toEqual({
       signedIn: false,
     });
-    expect(x.values["sync.outbox"]).toBeUndefined();
-    expect(x.values["sync.outboxRetry"]).toBeUndefined();
-    expect(x.values["sync.lastResult"]).toBeUndefined();
+    expect(x.values).not.toHaveProperty(["sync.outbox"]);
+    expect(x.values).not.toHaveProperty(["sync.outboxRetry"]);
+    expect(x.values).not.toHaveProperty(["sync.lastResult"]);
     expect(alarms.clear).toHaveBeenCalledWith("sync.outboxRetry");
   });
   it("keeps the outbox cleared when sign-out waits for an in-flight flush", async () => {
@@ -147,7 +147,7 @@ describe("background sign-out cleanup", () => {
     gate.resolve({ ok: true });
     await Promise.all([enqueue, signOut]);
 
-    expect(x.values[SYNC_OUTBOX_KEY]).toBeUndefined();
+    expect(x.values).not.toHaveProperty([SYNC_OUTBOX_KEY]);
   });
 });
 

@@ -416,6 +416,39 @@ describe('Explore title metadata subscriptions', () => {
     }
   });
 
+  it('re-arms a title retry interrupted by a season change', async () => {
+    jest.useFakeTimers();
+    try {
+      mockState.titleView.requestState = { state: 'failed', delayMs: 5_000 };
+      let finishInterrupted!: (result: { scheduled: boolean }) => void;
+      mockTouchTitle
+        .mockResolvedValueOnce({ scheduled: true })
+        .mockImplementationOnce(() => new Promise((resolve) => (finishInterrupted = resolve)))
+        .mockResolvedValue({ scheduled: false, reason: 'backoff', delayMs: 10_000 });
+      const view = await screen();
+      await act(async () => jest.advanceTimersByTime(5_000));
+      expect(mockTouchTitle).toHaveBeenCalledTimes(2);
+
+      await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
+      await fireEvent.press(view.getByLabelText('Select Season 2'));
+      expect(mockTouchTitle).toHaveBeenCalledTimes(3);
+      await act(async () => finishInterrupted({ scheduled: true }));
+
+      await act(async () => jest.advanceTimersByTime(9_999));
+      expect(mockTouchTitle).toHaveBeenCalledTimes(3);
+      await act(async () => jest.advanceTimersByTime(1));
+      expect(mockTouchTitle).toHaveBeenCalledTimes(4);
+      expect(mockTouchTitle).toHaveBeenLastCalledWith(expect.objectContaining({ season: 2 }));
+
+      await view.unmount();
+      await act(async () => jest.advanceTimersByTime(60_000));
+      expect(mockTouchTitle).toHaveBeenCalledTimes(4);
+    } finally {
+      await cleanup();
+      jest.useRealTimers();
+    }
+  });
+
   it('ignores a late season-A touch rejection after season B owns the request', async () => {
     let rejectSeasonOne!: (error: unknown) => void;
     mockState.mockSeasonView = {};

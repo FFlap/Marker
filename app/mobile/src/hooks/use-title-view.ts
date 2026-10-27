@@ -75,8 +75,7 @@ function useMetadataExpiryTimer(
         Effect.andThen(touchMetadata(() => Promise.resolve(onRetouch()))),
         Effect.match({
           onSuccess: (value) => {
-            if (value === undefined) return;
-            if ('mutationRejected' in value) {
+            if (value === undefined || 'mutationRejected' in value) {
               rearmFailure();
               return;
             }
