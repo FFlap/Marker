@@ -31,9 +31,7 @@
     "audit:prod": "npm audit --omit=dev --audit-level=high"
   },
   "dependencies": {
-    "@convex-dev/migrations": "^0.3.6",
     "convex": "1.42.1",
-    "convex-helpers": "0.1.118",
     "effect": "4.0.5"
   },
   "devDependencies": {

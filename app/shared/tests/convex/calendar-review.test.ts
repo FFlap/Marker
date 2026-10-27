@@ -1,3 +1,4 @@
+import { seedCalendarSchedule } from './calendar-fixtures';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../convex/_generated/api';
@@ -48,7 +49,7 @@ async function setup(mediaType: 'tv' | 'movie' = 'tv', saved = false) {
       updatedAt: now,
     });
     if (saved)
-      await ctx.db.insert('calendarSchedules', {
+      await seedCalendarSchedule(ctx, {
         key: `CA:2026-10:${mediaType}:42:${mediaType === 'movie' ? '2026-10-20' : ''}`,
         month: '2026-10',
         refreshedAt: now - 7 * 60 * 60_000,

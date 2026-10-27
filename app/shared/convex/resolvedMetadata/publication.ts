@@ -304,8 +304,7 @@ export const commitRefresh = internalMutation({
         }),
       ),
     ),
-    keys: v.optional(v.array(v.string())),
-    outcomes: v.optional(v.array(refreshOutcomeValidator)),
+    outcomes: v.array(refreshOutcomeValidator),
     attemptToken: v.string(),
     leaseKey: v.string(),
     leaseToken: v.string(),
@@ -319,8 +318,7 @@ export const commitRefresh = internalMutation({
       .withIndex('by_key', (query) => query.eq('key', args.leaseKey))
       .unique();
     if (!lease || lease.token !== args.leaseToken || lease.expiresAt <= now) return false;
-    const outcomes: RefreshOutcome[] =
-      args.outcomes ?? (args.keys ?? []).map((key) => ({ key, state: 'succeeded' as const }));
+    const outcomes = args.outcomes;
     const currentMapping = await ctx.db
       .query('titleMappings')
       .withIndex('by_tmdb', (q) =>

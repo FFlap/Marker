@@ -134,7 +134,6 @@ async function insertItem(ctx: MutationCtx, userId: Id<'users'>, args: AddItemAr
   const { timesWatched = 0, tags: _tags = [], genres: _genres, ...rest } = args;
   const itemId = await ctx.db.insert('items', {
     ...rest,
-    ratingScale: 5,
     userId,
     title,
     normalizedTitle: title.toLocaleLowerCase(),
@@ -201,7 +200,6 @@ export const updateItem = mutation({
     if (args.status !== undefined) patch.status = args.status;
     if (args.clearRating) patch.rating = undefined;
     else if (args.rating !== undefined) patch.rating = args.rating;
-    if (args.clearRating || args.rating !== undefined) patch.ratingScale = 5;
     const nextTags = args.tags === undefined ? undefined : normalizeTags(args.tags);
     if (nextTags !== undefined) patch.tags = nextTags;
     if (args.timesWatched !== undefined) patch.timesWatched = args.timesWatched;

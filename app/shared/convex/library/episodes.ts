@@ -103,7 +103,6 @@ export async function setEpisode(
   };
   const values = {
     watched,
-    ...((args.clearRating || args.rating !== undefined) && { ratingScale: 5 as const }),
     ...(args.clearRating
       ? { rating: undefined }
       : args.rating !== undefined && { rating: args.rating }),

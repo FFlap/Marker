@@ -225,7 +225,6 @@ export default defineSchema({
     season: v.optional(v.number()),
     episode: v.optional(v.number()),
     rating: v.optional(v.number()),
-    ratingScale: v.optional(v.literal(5)),
     status: v.optional(statusValidator),
     createdAt: v.number(),
   }).index('by_actor_time', ['userId', 'createdAt']),
@@ -237,7 +236,6 @@ export default defineSchema({
   calendarMonths: defineTable({
     month: v.string(),
     region: v.string(),
-    candidates: v.array(candidateValidator),
     version: v.string(),
     refreshedAt: v.number(),
     leaseToken: v.optional(v.string()),
@@ -249,7 +247,7 @@ export default defineSchema({
     discoveryFailures: v.optional(v.number()),
     discoveryError: v.optional(v.string()),
     discoveryRetryAt: v.optional(v.number()),
-    candidateCount: v.optional(v.number()),
+    candidateCount: v.number(),
   })
     .index('by_region_month', ['region', 'month'])
     .index('by_month', ['month']),
@@ -275,9 +273,8 @@ export default defineSchema({
   calendarSchedules: defineTable({
     key: v.string(),
     month: v.string(),
-    events: v.array(releaseValidator),
     version: v.optional(v.string()),
-    eventCount: v.optional(v.number()),
+    eventCount: v.number(),
     stagingVersion: v.optional(v.string()),
     stagingNextChunk: v.optional(v.number()),
     stagingRefreshedAt: v.optional(v.number()),

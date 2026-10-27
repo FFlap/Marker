@@ -64,7 +64,6 @@ const lookup = v.object({
   authoritativeNames: v.array(v.string()),
 });
 const calendarMovie = v.array(v.object({ date: v.string(), priority: v.number() }));
-const calendarTv = v.object({ airDate: v.string(), season: v.number() });
 const calendarTvSchedule = v.array(
   v.object({
     season: v.number(),
@@ -85,7 +84,6 @@ const truncated = v.object({
   originalBytes: v.number(),
 });
 export const providerSnapshotEntryValidator = v.union(
-  v.object({ kind: v.literal('tmdbSearch'), value: providerSearchResultsValidator }),
   v.object({ kind: v.literal('tmdbMovie'), value: providerMovieValidator }),
   v.object({ kind: v.literal('tmdbTv'), value: providerTvValidator }),
   v.object({
@@ -95,7 +93,6 @@ export const providerSnapshotEntryValidator = v.union(
   v.object({ kind: v.literal('tvdbGuide'), value: v.union(v.null(), animeGuideValidator) }),
   v.object({ kind: v.literal('tvdbLookup'), value: lookup }),
   v.object({ kind: v.literal('calendarMovie'), value: calendarMovie }),
-  v.object({ kind: v.literal('calendarTv'), value: v.union(v.null(), calendarTv) }),
   v.object({ kind: v.literal('calendarTvSchedule'), value: calendarTvSchedule }),
   v.object({ kind: v.literal('calendarSeason'), value: calendarSeason }),
   v.object({ kind: v.literal('truncated'), value: truncated }),

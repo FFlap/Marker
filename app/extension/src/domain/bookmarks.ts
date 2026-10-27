@@ -143,6 +143,7 @@ export function sortBookmarks(
 }
 
 export type BookmarkStorage = {
+  remove(key: string): Promise<void>;
   get(key: string): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
 };

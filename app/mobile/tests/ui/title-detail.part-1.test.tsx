@@ -135,7 +135,7 @@ describe('Explore title metadata subscriptions', () => {
       title: {
         ...mockState.titleView.title,
         title: 'Frieren: Beyond Journey’s End',
-        seasons: [{ season: 0, name: 'Specials', episodeCount: 1 }],
+        seasons: [{ season: 0, name: 'Specials', episodeCount: 1, episodeCountVerified: true }],
       },
     };
     mockState.mockSeasonView[0] = {

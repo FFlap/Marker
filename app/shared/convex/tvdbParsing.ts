@@ -35,7 +35,7 @@ export type AnimeDetails = {
     season: number;
     name: string;
     episodeCount: number;
-    episodeCountVerified?: boolean;
+    episodeCountVerified: boolean;
   }[];
   selectedSeason?: number;
   selectedEpisodes?: AnimeEpisode[];

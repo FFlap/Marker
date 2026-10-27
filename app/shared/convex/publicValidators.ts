@@ -28,13 +28,12 @@ export const resolvedSeasonValidator = v.object({
   season: v.number(),
   name: v.string(),
   episodeCount: v.number(),
-  // Older snapshots contain verified counts without an explicit marker.
-  episodeCountVerified: v.optional(v.boolean()),
+  episodeCountVerified: v.boolean(),
 });
 const nextEpisodeValidator = v.object({
   season: v.number(),
   episode: v.number(),
-  chunkIndex: v.optional(v.number()),
+  chunkIndex: v.number(),
   seasonName: v.optional(v.string()),
   name: v.optional(v.string()),
   overview: v.optional(v.string()),
@@ -83,7 +82,6 @@ export const itemValidator = v.object({
   isAnime: v.boolean(),
   status: statusValidator,
   rating: v.optional(v.number()),
-  ratingScale: v.optional(v.literal(5)),
   timesWatched: v.number(),
   tags: v.array(v.string()),
   rank: v.number(),
@@ -108,7 +106,6 @@ export const episodeValidator = v.object({
   unverified: v.optional(v.boolean()),
   watched: v.boolean(),
   rating: v.optional(v.number()),
-  ratingScale: v.optional(v.literal(5)),
   tags: v.array(v.string()),
   watchedAt: v.optional(v.number()),
   activityDate: v.optional(v.string()),

@@ -34,8 +34,7 @@ async function savedTitle(ctx: QueryCtx, item: Doc<'items'>, month: string, regi
       ...(item.posterPath && { posterPath: item.posterPath }),
       ...(item.releaseDate && { releaseDate: item.releaseDate }),
     },
-    saved:
-      saved && (saved.version || saved.refreshedAt) ? { refreshedAt: saved.refreshedAt } : null,
+    saved: saved?.version ? { refreshedAt: saved.refreshedAt } : null,
   };
 }
 
@@ -89,7 +88,7 @@ export const claim = internalMutation({
       await ctx.db.insert('calendarMonths', {
         month,
         region,
-        candidates: [],
+        candidateCount: 0,
         version: '',
         refreshedAt: 0,
         ...lease,
@@ -181,26 +180,23 @@ export const page = internalQuery({
       };
     if (version && version !== catalog.version)
       throw new Error('Release dates changed. Please retry the calendar.');
-    const candidateCount = catalog.candidateCount ?? catalog.candidates.length;
+    const candidateCount = catalog.candidateCount;
     if (offset > candidateCount) throw new Error('Invalid calendar cursor');
     const matches = [];
     let consumed = 0;
     const scanLimit = Math.min(1500, candidateCount - offset);
     while (consumed < scanLimit && matches.length < 100) {
       const size = Math.min(100 - matches.length, scanLimit - consumed);
-      const batch =
-        catalog.candidateCount !== undefined
-          ? await ctx.db
-              .query('calendarCandidates')
-              .withIndex('by_catalog_ordinal', (q) =>
-                q
-                  .eq('region', catalog.region)
-                  .eq('month', month)
-                  .eq('version', catalog.version)
-                  .gte('ordinal', offset + consumed),
-              )
-              .take(size)
-          : catalog.candidates.slice(offset + consumed, offset + consumed + size);
+      const batch = await ctx.db
+        .query('calendarCandidates')
+        .withIndex('by_catalog_ordinal', (q) =>
+          q
+            .eq('region', catalog.region)
+            .eq('month', month)
+            .eq('version', catalog.version)
+            .gte('ordinal', offset + consumed),
+        )
+        .take(size);
       if (!batch.length) throw new Error('Release catalog is incomplete. Please retry.');
       const found = await Promise.all(
         batch.map(async (candidate) => {

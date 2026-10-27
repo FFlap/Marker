@@ -42,8 +42,8 @@ const title = {
   genres: ['Drama'],
   cast: [{ name: 'Charlie Cox', character: 'Matt Murdock' }],
   seasons: [
-    { season: 1, name: 'Season 1', episodeCount: 1 },
-    { season: 2, name: 'Season 2', episodeCount: 1 },
+    { season: 1, name: 'Season 1', episodeCount: 1, episodeCountVerified: true },
+    { season: 2, name: 'Season 2', episodeCount: 1, episodeCountVerified: true },
   ],
 };
 const seasonOne = {
@@ -205,9 +205,9 @@ jest.mock('../../src/components/ui/drawer', () => {
     </DrawerContext.Provider>
   );
   const container = ({ children }: { children: React.ReactNode }) => <View>{children}</View>;
-  const content = ({ children }: { children: React.ReactNode }) =>
+  const Content = ({ children }: { children: React.ReactNode }) =>
     React.useContext(DrawerContext).open ? <View>{children}</View> : null;
-  const trigger = ({ children }: { children: React.ReactElement }) => {
+  const Trigger = ({ children }: { children: React.ReactElement }) => {
     const context = React.useContext(DrawerContext);
     return React.cloneElement(children, {
       onPress: () => context.onOpenChange?.(!context.open),
@@ -217,10 +217,10 @@ jest.mock('../../src/components/ui/drawer', () => {
   return {
     Drawer: drawer,
     DrawerClose: container,
-    DrawerContent: content,
+    DrawerContent: Content,
     DrawerHeader: container,
     DrawerTitle: label,
-    DrawerTrigger: trigger,
+    DrawerTrigger: Trigger,
   };
 });
 
@@ -267,11 +267,11 @@ describe('item detail metadata subscriptions', () => {
       title: {
         ...title,
         seasons: [
-          { season: 5, name: 'Season 5', episodeCount: 1 },
-          { season: 0, name: 'Specials', episodeCount: 1 },
+          { season: 5, name: 'Season 5', episodeCount: 1, episodeCountVerified: true },
+          { season: 0, name: 'Specials', episodeCount: 1, episodeCountVerified: true },
           { season: 1, name: 'Season 1', episodeCount: 0, episodeCountVerified: true },
           { season: 2, name: 'Season 2', episodeCount: 0, episodeCountVerified: false },
-          { season: 3, name: 'Season 3', episodeCount: 0 },
+          { season: 3, name: 'Season 3', episodeCount: 0, episodeCountVerified: true },
         ],
       },
     };
@@ -521,7 +521,10 @@ describe('item detail metadata subscriptions', () => {
   it('resets the selected season before touching a cold item on route reuse', async () => {
     const titleWithSeasonFive = {
       ...title,
-      seasons: [...title.seasons, { season: 5, name: 'Season 5', episodeCount: 1 }],
+      seasons: [
+        ...title.seasons,
+        { season: 5, name: 'Season 5', episodeCount: 1, episodeCountVerified: true },
+      ],
     };
     itemView = {
       item,

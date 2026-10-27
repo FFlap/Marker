@@ -118,9 +118,9 @@ jest.mock('../../src/components/ui/drawer', () => {
     </DrawerContext.Provider>
   );
   const container = ({ children }: { children: React.ReactNode }) => <View>{children}</View>;
-  const content = ({ children }: { children: React.ReactNode }) =>
+  const Content = ({ children }: { children: React.ReactNode }) =>
     React.useContext(DrawerContext).open ? <View>{children}</View> : null;
-  const trigger = ({ children }: { children: React.ReactElement }) => {
+  const Trigger = ({ children }: { children: React.ReactElement }) => {
     const context = React.useContext(DrawerContext);
     return React.cloneElement(children, {
       onPress: () => context.onOpenChange?.(!context.open),
@@ -130,10 +130,10 @@ jest.mock('../../src/components/ui/drawer', () => {
   return {
     Drawer: drawer,
     DrawerClose: container,
-    DrawerContent: content,
+    DrawerContent: Content,
     DrawerHeader: container,
     DrawerTitle: label,
-    DrawerTrigger: trigger,
+    DrawerTrigger: Trigger,
   };
 });
 
@@ -166,8 +166,8 @@ beforeEach(() => {
       genres: ['Animation'],
       cast: [{ name: 'Atsumi Tanezaki', character: 'Frieren' }],
       seasons: [
-        { season: 1, name: 'Season 1', episodeCount: 1 },
-        { season: 2, name: 'Season 2', episodeCount: 1 },
+        { season: 1, name: 'Season 1', episodeCount: 1, episodeCountVerified: true },
+        { season: 2, name: 'Season 2', episodeCount: 1, episodeCountVerified: true },
       ],
     },
     requestState: { state: 'succeeded' },
