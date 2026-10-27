@@ -1,24 +1,12 @@
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useEffect, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Animated,
-  Easing,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 export function SkeletonShimmer() {
   const [progress] = useState(() => new Animated.Value(0));
   const { width } = useWindowDimensions();
   const travelWidth = Math.min(width, 760);
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => subscription.remove();
-  }, []);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     progress.setValue(0);

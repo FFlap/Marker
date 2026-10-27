@@ -2,7 +2,7 @@ import { ScreenView } from '@/components/ScreenLayout';
 import { Effect } from 'effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -43,9 +43,12 @@ import {
   type Episode,
   type EpisodeDraft,
   isStaleSeasonError,
-  sameValue,
   type SeasonRow,
 } from '@/features/title/libraryItemTypes';
+type PendingEpisodeDraft = {
+  [Field in keyof EpisodeDraft]?: { version: number; value: EpisodeDraft[Field] };
+};
+
 export default function ItemDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const itemId = id as Id<'items'>;
@@ -94,38 +97,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [entrySaving, setEntrySaving] = useState(false);
   const [seasonPending, setSeasonPending] = useState(false);
   const draft = item;
-  const [episodeDrafts, setEpisodeDrafts] = useState<Record<string, EpisodeDraft>>({});
-  const fieldVersions = useRef(new Map<string, number>());
-  useEffect(() => {
-    if (!savedEpisodes) return;
-    setEpisodeDrafts((current) => {
-      let next = current;
-      for (const [draftKey, episodeDraft] of Object.entries(current)) {
-        const [seasonNumber, episodeNumber] = draftKey.split(':').map(Number);
-        const saved = savedEpisodes.find(
-          (entry) => entry.season === seasonNumber && entry.episode === episodeNumber,
-        );
-        if (!saved) continue;
-        let acknowledged = false;
-        for (const field of ['rating', 'tags'] as const) {
-          const key = `episode:${draftKey}:${field}`;
-          if (fieldVersions.current.has(key) && sameValue(saved[field], episodeDraft[field])) {
-            fieldVersions.current.delete(key);
-            acknowledged = true;
-          }
-        }
-        if (
-          acknowledged &&
-          !fieldVersions.current.has(`episode:${draftKey}:rating`) &&
-          !fieldVersions.current.has(`episode:${draftKey}:tags`)
-        ) {
-          if (next === current) next = { ...current };
-          delete next[draftKey];
-        }
-      }
-      return next;
-    });
-  }, [savedEpisodes]);
+  const [episodeDrafts, setEpisodeDrafts] = useState<Record<string, PendingEpisodeDraft>>({});
+  // IDs are allocated only in event handlers and never reused after acknowledgment.
+  const nextEditVersion = useRef(0);
   const detail = title;
   const returnedSeasonRow = seasonView.season;
   const seasonRow = returnedSeasonRow?.season === season ? returnedSeasonRow : undefined;
@@ -205,18 +179,23 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     field: keyof EpisodeDraft,
     value: number | undefined | string[],
   ) => {
-    const saved = savedEpisodes?.find(
-      (entry) => entry.season === seasonNumber && entry.episode === episode,
-    );
     const draftKey = `${seasonNumber}:${episode}`;
-    const savedValue = field === 'rating' ? saved?.rating : (saved?.tags ?? []);
-    const key = `episode:${seasonNumber}:${episode}:${field}`;
-    const version = (fieldVersions.current.get(key) ?? 0) + 1;
-    fieldVersions.current.set(key, version);
-    setEpisodeDrafts((current) => {
-      const previous = current[draftKey] ?? { rating: saved?.rating, tags: saved?.tags ?? [] };
-      return { ...current, [draftKey]: { ...previous, [field]: value } };
-    });
+    const version = ++nextEditVersion.current;
+    setEpisodeDrafts((current) => ({
+      ...current,
+      [draftKey]: { ...current[draftKey], [field]: { version, value } },
+    }));
+    const releaseDraft = () => {
+      setEpisodeDrafts((current) => {
+        if (current[draftKey]?.[field]?.version !== version) return current;
+        const remaining = { ...current[draftKey] };
+        delete remaining[field];
+        const drafts = { ...current };
+        if (remaining.rating || remaining.tags) drafts[draftKey] = remaining;
+        else delete drafts[draftKey];
+        return drafts;
+      });
+    };
     const args =
       field === 'rating'
         ? value === undefined
@@ -226,17 +205,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     void runOperation.write(
       saveLibrary(() => setEpisode({ itemId, season: seasonNumber, episode, ...args })),
       {
+        // Convex resolves mutations after subscribed queries reflect the write.
+        // Equal snapshots alone cannot acknowledge a newer, still-pending edit.
+        success: releaseDraft,
         failure: () => {
-          if (fieldVersions.current.get(key) === version) {
-            fieldVersions.current.delete(key);
-            setEpisodeDrafts((current) => {
-              const latest = current[draftKey] ?? {
-                rating: saved?.rating,
-                tags: saved?.tags ?? [],
-              };
-              return { ...current, [draftKey]: { ...latest, [field]: savedValue } };
-            });
-          }
+          releaseDraft();
           toast.show('Couldn’t update this episode');
         },
       },
@@ -345,9 +318,10 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const renderEpisode = ({ item: episode }: { item: Episode }) => {
     const episodeKey = `${episode.season}:${episode.episode}`;
     const saved = savedByEpisode.get(episodeKey);
-    const episodeDraft = episodeDrafts[episodeKey] ?? {
-      rating: saved?.rating,
-      tags: saved?.tags ?? [],
+    const pendingDraft = episodeDrafts[episodeKey];
+    const episodeDraft: EpisodeDraft = {
+      rating: pendingDraft?.rating ? pendingDraft.rating.value : saved?.rating,
+      tags: pendingDraft?.tags ? pendingDraft.tags.value : (saved?.tags ?? []),
     };
     return (
       <EpisodeCard

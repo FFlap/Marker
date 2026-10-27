@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import {
   act,
   cleanup,
@@ -111,4 +112,20 @@ it("keeps a usable tab stop after resize or midnight removes the selected day", 
   ).toBe(0);
   view.unmount();
   expect(disconnect).toHaveBeenCalledOnce();
+});
+
+it("owns the observer for the mounted node through Strict Mode replay", () => {
+  const view = render(
+    <StrictMode><WatchHeatmap days={[]} today="2026-10-10" /></StrictMode>,
+  );
+  expect(disconnect).toHaveBeenCalledTimes(1);
+  view.rerender(
+    <StrictMode><WatchHeatmap days={[]} today="2026-10-11" /></StrictMode>,
+  );
+  expect(disconnect).toHaveBeenCalledTimes(1);
+  width = 13;
+  act(() => onResize());
+  expect(screen.getByText("0 episodes in the last 1 week")).toBeInTheDocument();
+  view.unmount();
+  expect(disconnect).toHaveBeenCalledTimes(2);
 });

@@ -1,13 +1,7 @@
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Animated,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  Text,
-  View,
-} from 'react-native';
+import { Animated, NativeScrollEvent, NativeSyntheticEvent, Text, View } from 'react-native';
 import { useQuery } from 'convex/react';
 import Reanimated from 'react-native-reanimated';
 import { useAccountLoading } from '@/hooks/useAccountLoading';
@@ -66,8 +60,9 @@ function Library() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [min, setMin] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
+  const motionReduced = useReducedMotion();
   const [addButtonHidden, setAddButtonHidden] = useState(false);
-  const [motionReduced, setMotionReduced] = useState(false);
+  if (motionReduced && addButtonHidden) setAddButtonHidden(false);
   const [scrollY] = useState(() => new Animated.Value(0));
   const toolbarY = useMemo(
     () => Animated.multiply(Animated.diffClamp(scrollY, 0, TOOLBAR_HEIGHT), -1),
@@ -75,23 +70,11 @@ function Library() {
   );
   const [drawerHandle, setDrawerHandle] = useState<AppDrawerHandle | null>(null);
   const toolbarPosition = useRef(0);
-  const reduceMotion = useRef(false);
+  // Keep per-frame scroll bookkeeping out of React state, and reset it even
+  // when motion is re-enabled before the next scroll event.
   useEffect(() => {
-    const setReducedMotion = (enabled: boolean) => {
-      reduceMotion.current = enabled;
-      setMotionReduced(enabled);
-      if (enabled) {
-        toolbarPosition.current = 0;
-        setAddButtonHidden(false);
-      }
-    };
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      setReducedMotion,
-    );
-    return () => subscription.remove();
-  }, []);
+    if (motionReduced) toolbarPosition.current = 0;
+  }, [motionReduced]);
   const allTags = useMemo(
     () =>
       [
@@ -171,13 +154,13 @@ function Library() {
       const y = Math.max(0, event.nativeEvent.contentOffset.y);
       const delta = y - lastScrollY.current;
       lastScrollY.current = y;
-      if (reduceMotion.current) return;
+      if (motionReduced) return;
       const next =
         y === 0 ? 0 : Math.max(-TOOLBAR_HEIGHT, Math.min(0, toolbarPosition.current - delta));
       toolbarPosition.current = next;
       setAddButtonHidden(next <= -TOOLBAR_HEIGHT + 1);
     },
-    [lastScrollY],
+    [lastScrollY, motionReduced],
   );
   const handleScroll = useMemo(
     () =>
