@@ -74,7 +74,11 @@ Commit regenerated Convex API types alongside backend changes (`npm run codegen 
 
 ## Preparing existing deployments
 
-The backend accepts only the current storage contracts. Before deploying this cleanup to an existing database, prepare its data while the previous schema is still available:
+The backend accepts only the current storage contracts. Existing databases require a staged migration; this commit is the final schema, not the migration. Merging the PR runs checks and does not deploy Convex.
+
+Take a backup and rehearse the migration on a separate deployment first. While the previous rating migration component is still installed, normalize ratings and refresh profile aggregates. Then prepare an intermediate schema that accepts both old and new record shapes: make the retiring `calendarMonths.candidates` and `calendarSchedules.events` fields optional, keep the retiring rating fields and snapshot kinds, and leave newly required fields optional. Deploy that intermediate schema before removing fields from existing records. The previous schema requires the inline calendar arrays, so deleting them against it fails validation.
+
+Pause client writes, scheduled refreshes, and in-flight jobs for the data cleanup and final deployment, or use transitional writers that produce only the new records. Previous writers recreate the retiring fields, so running a cleanup once while those writers remain active is insufficient. With those prerequisites in place:
 
 - Normalize ratings in `items`, `episodes`, and `activityEvents` to the five-star scale before removing their `ratingScale` fields. Preserve ratings already marked as five-star and refresh affected profile aggregates after conversion.
 - Populate accurate `items.nextEpisode.chunkIndex` values, or clear stale optional `nextEpisode` coordinates so they can be recomputed.
@@ -82,4 +86,4 @@ The backend accepts only the current storage contracts. Before deploying this cl
 - Convert or invalidate old calendar caches. `calendarMonths` requires `candidateCount` and stores candidates in `calendarCandidates`; `calendarSchedules` requires `eventCount` and stores releases in `calendarReleaseChunks`. Remove inline `candidates`/`events` fields and ensure published versions match their candidate or chunk rows.
 - Remove retired `calendarTv` and `tmdbSearch` provider snapshots.
 
-These data changes must finish before the stricter schema is deployed. Then regenerate the Convex API types against the intended deployment and validate the coordinated backend and client release.
+Audit every affected table and nested provider snapshot after cleanup, and drain jobs queued with retired function names or arguments before removing those APIs. Deploy this stricter schema only after the audit passes; it removes the rating migration component and must not be used to run that earlier migration. Regenerate the Convex API types against the intended deployment, validate the coordinated backend and client release, and resume writes and scheduled refreshes.
