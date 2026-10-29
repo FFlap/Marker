@@ -4,7 +4,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import { EPISODES_PER_CHUNK } from './seasonStorage';
 import { refreshNextEpisode } from './nextEpisode';
-import { requestProfileStatsRefresh } from './profileStatsRefresh';
+import { applyProfileStatsDelta } from './profileStatsRefresh';
 
 type EpisodeSummaryDelta = {
   userId: Id<'users'>;
@@ -176,7 +176,14 @@ async function applyEpisodeSummaryDelta(ctx: MutationCtx, delta: EpisodeSummaryD
     delta.tagDeltas.length === 0
   )
     return;
-  await requestProfileStatsRefresh(ctx, delta.userId);
+  const item = await ctx.db.get(delta.itemId);
+  if (item && item.deletingAt === undefined)
+    await applyProfileStatsDelta(ctx, delta.userId, {
+      episodesWatched: delta.watchedCount,
+      totalWatchMinutes:
+        delta.watchedRuntimeMinutes + delta.watchedRuntimeFallbackCount * (item.runtime ?? 30),
+      tagDeltas: delta.tagDeltas,
+    });
   const summary = await ctx.db
     .query('episodeSummaries')
     .withIndex('by_item', (query) => query.eq('itemId', delta.itemId).eq('season', delta.season))
@@ -446,7 +453,7 @@ export const reconcileSeasonSummaries = internalMutation({
       await ctx.scheduler.runAfter(
         0,
         internal.episodeProjectionRepair.startEpisodeProjectionRepair,
-        { itemId: item._id },
+        { itemId: item._id, season: args.season },
       );
       const summary = await ctx.db
         .query('episodeSummaries')

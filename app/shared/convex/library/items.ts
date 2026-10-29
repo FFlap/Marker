@@ -15,7 +15,7 @@ import {
   statusValidator as status,
 } from '../publicValidators';
 import { refreshNextEpisode } from '../nextEpisode';
-import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { updateProfileStatsForItem } from '../profileStatsRefresh';
 import { recordWatchActivity } from '../watchActivity';
 import { validateTmdbId } from '../providerValidation';
 import { bumpCalendarRevision } from '../calendarLibrary';
@@ -148,7 +148,7 @@ async function insertItem(ctx: MutationCtx, userId: Id<'users'>, args: AddItemAr
   const item = await ctx.db.get(itemId);
   if (item) {
     await bumpCalendarRevision(ctx, userId);
-    await requestProfileStatsRefresh(ctx, userId);
+    await updateProfileStatsForItem(ctx, null, item);
     await syncItemTagMemberships(ctx, item, normalizedTags);
     const events: ActivityEventWrite[] = [];
     if (item.rating !== undefined)
@@ -206,10 +206,18 @@ export const updateItem = mutation({
     if (args.status !== undefined && args.status !== item.status) {
       patch.rank = await rankAtEnd(ctx, userId, args.status);
     }
+    if (
+      !Object.entries(patch).some(
+        ([key, value]) =>
+          key !== 'updatedAt' &&
+          JSON.stringify(item[key as keyof Doc<'items'>]) !== JSON.stringify(value),
+      )
+    )
+      return null;
     await ctx.db.patch(args.itemId, patch);
     if (args.status !== undefined && args.status !== item.status)
       await bumpCalendarRevision(ctx, userId);
-    await requestProfileStatsRefresh(ctx, userId);
+    await updateProfileStatsForItem(ctx, item, { ...item, ...patch });
     if (nextTags !== undefined) await syncItemTagMemberships(ctx, item, nextTags);
     const nextRating = args.clearRating
       ? undefined
@@ -257,10 +265,10 @@ export const addTagToItems = mutation({
     const collectionDeltas: TagCollectionDeltas = new Map();
     for (const update of updates) {
       await ctx.db.patch(update.item._id, { tags: update.tags, updatedAt });
+      await updateProfileStatsForItem(ctx, update.item, { ...update.item, tags: update.tags });
       await syncItemTagMemberships(ctx, update.item, update.tags, collectionDeltas);
     }
     await refreshChangedTagCollections(ctx, collectionDeltas);
-    await requestProfileStatsRefresh(ctx, userId);
     return { updated: updates.length };
   },
 });
@@ -276,7 +284,7 @@ export const removeItem = mutation({
     if (item.deletingAt === undefined) {
       await ctx.db.patch(itemId, { deletingAt: Date.now() });
       await bumpCalendarRevision(ctx, userId);
-      await requestProfileStatsRefresh(ctx, userId);
+      await updateProfileStatsForItem(ctx, item, null);
     }
     await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
   },
@@ -344,18 +352,20 @@ export const continueRemoveItem = internalMutation({
       await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: profileFavorites.length, done: false };
     }
-    const [coordinateRefresh, projectionRepair] = await Promise.all([
-      ctx.db
-        .query('nextEpisodeRefreshes')
-        .withIndex('by_item', (query) => query.eq('itemId', itemId))
-        .unique(),
-      ctx.db
-        .query('episodeProjectionRepairs')
-        .withIndex('by_item', (query) => query.eq('itemId', itemId))
-        .unique(),
-    ]);
+    const projectionRepairs = await ctx.db
+      .query('episodeProjectionRepairs')
+      .withIndex('by_item', (query) => query.eq('itemId', itemId))
+      .take(REMOVE_BATCH_SIZE);
+    if (projectionRepairs.length) {
+      for (const repair of projectionRepairs) await ctx.db.delete(repair._id);
+      await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
+      return { deleted: projectionRepairs.length, done: false };
+    }
+    const coordinateRefresh = await ctx.db
+      .query('nextEpisodeRefreshes')
+      .withIndex('by_item', (query) => query.eq('itemId', itemId))
+      .unique();
     if (coordinateRefresh) await ctx.db.delete(coordinateRefresh._id);
-    if (projectionRepair) await ctx.db.delete(projectionRepair._id);
     await ctx.db.delete(itemId);
     return { deleted: 1, done: true };
   },

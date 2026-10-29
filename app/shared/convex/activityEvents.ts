@@ -28,12 +28,35 @@ export async function writeActivityEvents(ctx: MutationCtx, events: ActivityEven
     const { createdAt = now + index / 1_000, ...value } = event;
     await ctx.db.insert('activityEvents', { ...value, createdAt });
   }
-  const retained = await ctx.db
-    .query('activityEvents')
-    .withIndex('by_actor_time', (query) => query.eq('userId', userId))
-    .order('desc')
-    .take(HISTORY_LIMIT + MAX_WRITE_BATCH);
-  for (const stale of retained.slice(HISTORY_LIMIT)) await ctx.db.delete(stale._id);
+  const counter = await ctx.db
+    .query('activityEventCounts')
+    .withIndex('by_user', (q) => q.eq('userId', userId))
+    .unique();
+  if (!counter) {
+    // Bootstrap existing histories once; subsequent writes read only evicted events.
+    const retained = await ctx.db
+      .query('activityEvents')
+      .withIndex('by_actor_time', (q) => q.eq('userId', userId))
+      .order('desc')
+      .take(HISTORY_LIMIT + MAX_WRITE_BATCH);
+    for (const stale of retained.slice(HISTORY_LIMIT)) await ctx.db.delete(stale._id);
+    await ctx.db.insert('activityEventCounts', {
+      userId,
+      count: Math.min(retained.length, HISTORY_LIMIT),
+    });
+    return;
+  }
+  const count = counter.count + events.length;
+  if (count > HISTORY_LIMIT) {
+    const stale = await ctx.db
+      .query('activityEvents')
+      .withIndex('by_actor_time', (q) => q.eq('userId', userId))
+      .order('asc')
+      .take(count - HISTORY_LIMIT);
+    for (const event of stale) await ctx.db.delete(event._id);
+  }
+  const retainedCount = Math.min(count, HISTORY_LIMIT);
+  if (retainedCount !== counter.count) await ctx.db.patch(counter._id, { count: retainedCount });
 }
 
 export const itemActivityBase = (item: Doc<'items'>) => ({
