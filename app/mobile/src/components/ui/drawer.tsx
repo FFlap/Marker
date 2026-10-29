@@ -64,6 +64,7 @@ function Drawer({
   const [closing, setClosing] = React.useState(false);
   const progress = useSharedValue(0);
   const effectiveRequestedOpen = isControlled ? Boolean(openProp) : uncontrolledOpen;
+  const previousOpen = React.useRef(false);
 
   const clearCloseTimer = React.useCallback(() => {
     if (closeTimer.current) {
@@ -73,6 +74,9 @@ function Drawer({
   }, []);
 
   React.useEffect(() => {
+    // A closed drawer already starts at zero; don't schedule an invisible animation.
+    if (previousOpen.current === effectiveRequestedOpen) return;
+    previousOpen.current = effectiveRequestedOpen;
     progress.set(
       withTiming(effectiveRequestedOpen ? 1 : 0, {
         duration: effectiveRequestedOpen ? enterDuration : exitDuration,
@@ -240,15 +244,24 @@ function DrawerOverlay({
     </FullWindowOverlay>
   );
 }
-function DrawerContent({
+type DrawerContentProps = React.ComponentProps<typeof DialogPrimitive.Content> & {
+  portalHost?: string;
+};
+
+function DrawerContent(props: DrawerContentProps) {
+  const { open } = DialogPrimitive.useRootContext();
+  // Avoid measuring, subscribing, and merging styles before the portal is visible.
+  // The root stays open during its exit animation, and forceMount remains supported.
+  return open || props.forceMount ? <MountedDrawerContent {...props} /> : null;
+}
+
+function MountedDrawerContent({
   className,
   portalHost,
   children,
   style,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & {
-  portalHost?: string;
-}) {
+}: DrawerContentProps) {
   const motion = useDrawerMotion();
   const { height: windowHeight } = useWindowDimensions();
   const { bottom: bottomInset } = useSafeAreaInsets();

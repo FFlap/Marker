@@ -1,5 +1,6 @@
 import { Text, View } from 'react-native';
-import { ChartNoAxesColumn, Library } from 'lucide-react-native';
+import ChartNoAxesColumn from 'lucide-react-native/icons/chart-no-axes-column';
+import Library from 'lucide-react-native/icons/library';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';

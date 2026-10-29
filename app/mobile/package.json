@@ -13,8 +13,10 @@
     "effect": "4.0.5",
     "expo": "~57.0.12",
     "expo-auth-session": "~57.0.6",
+    "expo-build-properties": "~57.0.22",
     "expo-constants": "~57.0.9",
     "expo-crypto": "~57.0.1",
+    "expo-file-system": "57.0.2",
     "expo-font": "~57.0.0",
     "expo-image": "~57.0.2",
     "expo-image-picker": "~57.0.9",
@@ -97,8 +99,20 @@
       "<rootDir>/tests/ui/setup.ts"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!(effect|((jest-)?react-native|@react-native|@rn-primitives/.*|expo|expo-.*|@expo/.*|expo-router|standard-navigation|@react-navigation/.*|react-native-svg|react-native-safe-area-context|react-native-reanimated|react-native-keyboard-controller|react-native-worklets|react-native-css-interop|nativewind|lucide-react-native.*))/)"
-    ]
+      "node_modules/(?!(effect|((jest-)?react-native|@react-native|@rn-primitives/.*|expo|expo-.*|@expo/.*|@expo-google-fonts/.*|expo-router|standard-navigation|@react-navigation/.*|react-native-svg|react-native-safe-area-context|react-native-reanimated|react-native-keyboard-controller|react-native-worklets|react-native-css-interop|nativewind|lucide-react-native.*))/)"
+    ],
+    "moduleNameMapper": {
+      "^lucide-react-native/icons/.+$": "<rootDir>/tests/ui/icon-mock.ts"
+    }
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "autolinking": {
+      "android": {
+        "exclude": [
+          "@clerk/expo"
+        ]
+      }
+    }
+  }
 }

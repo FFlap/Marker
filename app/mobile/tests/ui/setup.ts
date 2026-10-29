@@ -1,4 +1,11 @@
 import { cleanup } from '@testing-library/react-native';
+jest.mock('../../src/lib/startupSnapshotStorage', () => ({
+  startupSnapshotStore: {
+    read: jest.fn().mockResolvedValue(null),
+    save: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 
 jest.mock('react-native-keyboard-controller', () =>
   jest.requireActual('react-native-keyboard-controller/jest'),
@@ -48,6 +55,7 @@ jest.mock('react-native-reanimated', () => {
     SlideInDown: chain,
     SlideOutDown: chain,
     useAnimatedStyle: (factory: () => unknown) => factory(),
+    useAnimatedReaction: jest.fn(),
     useAnimatedRef: () => useRef(null),
     useFrameCallback: () => useRef({ setActive: jest.fn() }).current,
     useScrollOffset: () => useSharedValue(0),
@@ -68,53 +76,6 @@ jest.mock('react-native-gesture-handler', () => {
     Gesture: { Pan: () => gesture, Pinch: () => gesture },
     GestureDetector: ({ children }: { children: React.ReactNode }) =>
       React.createElement(React.Fragment, null, children),
-  };
-});
-
-jest.mock('lucide-react-native', () => {
-  const Icon = () => null;
-  return {
-    __esModule: true,
-    ArrowLeft: Icon,
-    BookOpen: Icon,
-    Bell: Icon,
-    Bookmark: Icon,
-    Ban: Icon,
-    CalendarDays: Icon,
-    Camera: Icon,
-    ChartNoAxesColumn: Icon,
-    Check: Icon,
-    ChevronDown: Icon,
-    ChevronRight: Icon,
-    ChevronLeft: Icon,
-    Compass: Icon,
-    Clock3: Icon,
-    EllipsisVertical: Icon,
-    Globe2: Icon,
-    GripVertical: Icon,
-    LayoutGrid: Icon,
-    Library: Icon,
-    List: Icon,
-    ListVideo: Icon,
-    LockKeyhole: Icon,
-    LogIn: Icon,
-    Minus: Icon,
-    Pencil: Icon,
-    RotateCcw: Icon,
-    Plus: Icon,
-    Search: Icon,
-    Eye: Icon,
-    Film: Icon,
-    Square: Icon,
-    Settings: Icon,
-    SlidersHorizontal: Icon,
-    Star: Icon,
-    Tags: Icon,
-    Tv2: Icon,
-    UserPlus: Icon,
-    UserRound: Icon,
-    Trash2: Icon,
-    X: Icon,
   };
 });
 

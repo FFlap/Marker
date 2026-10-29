@@ -1,11 +1,5 @@
 import { StyleSheet, TextStyle } from 'react-native';
-
-const fonts = {
-  regular: 'AlbertSans_400Regular',
-  medium: 'AlbertSans_500Medium',
-  semibold: 'AlbertSans_600SemiBold',
-  bold: 'AlbertSans_700Bold',
-} as const;
+import { fontFamilies as fonts } from './fonts';
 
 const FONT_SIZE_COMPENSATION = 1.08;
 

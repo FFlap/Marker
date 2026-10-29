@@ -1,4 +1,7 @@
-import { Ban, Bookmark, Clock3, Eye } from 'lucide-react-native';
+import Ban from 'lucide-react-native/icons/ban';
+import Bookmark from 'lucide-react-native/icons/bookmark';
+import Clock3 from 'lucide-react-native/icons/clock-3';
+import Eye from 'lucide-react-native/icons/eye';
 import type { Status } from '@/types';
 
 const ICON_SIZE = 17;

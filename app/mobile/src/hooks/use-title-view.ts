@@ -1,5 +1,5 @@
 import { runClientEffect } from '@marker/shared/clientOperations';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { touchMetadata } from '@marker/shared/clientEffects';
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';

@@ -3,6 +3,7 @@ import { AccessibilityInfo } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 const mockReorderItem = jest.fn();
+const mockUseMutation = jest.fn(() => mockReorderItem);
 const mockMoveItemToWatched = jest.fn();
 let mockQueryShouldThrow = false;
 const mockUseQuery = jest.fn((ref: unknown) =>
@@ -149,7 +150,7 @@ const mockDragEnds = new Map<
 >();
 jest.mock('convex/react', () => ({
   useQuery: (...args: [unknown]) => mockUseQuery(...args),
-  useMutation: () => mockReorderItem,
+  useMutation: () => mockUseMutation(),
   useAction: (ref: unknown) =>
     String(ref).includes('moveItemToWatched') ? mockMoveItemToWatched : jest.fn(),
 }));
@@ -640,6 +641,7 @@ describe('Marker library', () => {
 });
 
 it('loads navigation, profile, and library in place without querying before auth is ready', async () => {
+  mockUseMutation.mockClear();
   mockUseQuery.mockImplementation((ref: unknown, args: unknown) => {
     if (args === 'skip') return undefined;
     if (String(ref).includes('getSettings')) return { defaultView: 'list' };
@@ -658,10 +660,20 @@ it('loads navigation, profile, and library in place without querying before auth
   expect(q.getByLabelText('Loading profile')).toBeTruthy();
   expect(q.getByTestId('library-loading')).toBeTruthy();
   expect(q.queryByText('Avengers: Endgame')).toBeNull();
+  expect(mockUseMutation).not.toHaveBeenCalled();
+  expect(q.getByLabelText('Add title')).toBeDisabled();
+  await fireEvent.changeText(q.getByTestId('library-search'), 'Avengers');
+  await fireEvent.press(q.getByLabelText('Movies type'));
   await q.rerender(screen(true, false));
   expect(q.queryByLabelText('Loading profile')).toBeNull();
   expect(q.getByTestId('library-loading')).toBeTruthy();
+  expect(mockUseMutation).not.toHaveBeenCalled();
   await q.rerender(screen(true, true));
   expect(q.queryByTestId('library-loading')).toBeNull();
   expect(q.getByText('Avengers: Endgame')).toBeTruthy();
+  expect(q.getByTestId('library-search').props.value).toBe('Avengers');
+  expect(q.getByLabelText('Movies type').props.accessibilityState.selected).toBe(true);
+  expect(q.queryByText('Daredevil')).toBeNull();
+  expect(mockUseMutation).toHaveBeenCalled();
+  expect(q.getByLabelText('Add title')).not.toBeDisabled();
 });

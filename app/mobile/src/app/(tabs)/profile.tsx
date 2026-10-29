@@ -1,12 +1,16 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { useMutation, useQuery } from 'convex/react';
-import { Globe2, LockKeyhole, Pencil } from 'lucide-react-native';
+import { useMutation } from 'convex/react';
+import { useStartupQuery as useQuery } from '@/hooks/useStartupQuery';
+import { StartupSyncStatus } from '@/components/StartupSyncStatus';
+import Globe2 from 'lucide-react-native/icons/earth';
+import LockKeyhole from 'lucide-react-native/icons/lock-keyhole';
+import Pencil from 'lucide-react-native/icons/pencil';
 import { api } from '@marker/shared/api';
 import { useToast } from '@/components/ui/Toast';
 import { NativePressable } from '@/components/ui/NativePressable';
@@ -160,6 +164,7 @@ function ProfileContent() {
           <ProfileMetrics stats={stats} />
         )}
       </ScrollView>
+      <StartupSyncStatus />
     </ScreenView>
   );
 }
