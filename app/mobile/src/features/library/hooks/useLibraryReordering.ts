@@ -1,3 +1,4 @@
+import { localDateKey } from '@/hooks/use-local-today';
 import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
@@ -160,7 +161,13 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     await runOperation.write(
       Effect.gen(function* () {
         const placement = { itemId: item._id, beforeId: targetItems.at(-1)?._id };
-        if (target === 'watched') yield* saveLibrary(() => moveItemToWatched(placement));
+        if (target === 'watched')
+          yield* saveLibrary(() =>
+            moveItemToWatched({
+              ...placement,
+              activityDate: localDateKey(),
+            }),
+          );
         else yield* saveLibrary(() => reorderItem({ ...placement, status: target }));
       }),
       {

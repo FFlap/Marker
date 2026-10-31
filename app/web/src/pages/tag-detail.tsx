@@ -1,3 +1,4 @@
+import { localDateKey } from "@/hooks/use-local-today";
 import { Effect } from "effect";
 import { saveLibrary } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
@@ -279,7 +280,12 @@ function TagDetail({ tag }: { tag: string }) {
           ...(target.at(-1) && { beforeId: target.at(-1)!._id }),
         };
         if (status === "watched")
-          yield* saveLibrary(() => moveItemToWatched(placement));
+          yield* saveLibrary(() =>
+            moveItemToWatched({
+              ...placement,
+              activityDate: localDateKey(),
+            }),
+          );
         else yield* saveLibrary(() => reorderItem({ ...placement, status }));
       }),
       {

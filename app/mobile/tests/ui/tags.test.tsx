@@ -1,3 +1,4 @@
+import { localDateKey } from '@/hooks/use-local-today';
 import React from 'react';
 import { ToastProvider } from '@/components/ui/Toast';
 import { act, fireEvent, render, userEvent, waitFor } from '@testing-library/react-native';
@@ -471,7 +472,11 @@ describe('Tags screens', () => {
       await Promise.resolve();
     });
     await waitFor(() =>
-      expect(mockMoveItemToWatched).toHaveBeenCalledWith({ itemId: 'c', beforeId: 'b' }),
+      expect(mockMoveItemToWatched).toHaveBeenCalledWith({
+        itemId: 'c',
+        beforeId: 'b',
+        activityDate: localDateKey(),
+      }),
     );
     expect(mockReorderTag).toHaveBeenCalledWith({
       tag: 'Weekend',

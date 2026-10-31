@@ -1,3 +1,4 @@
+import { localDateKey } from '@/hooks/use-local-today';
 import React from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
@@ -581,6 +582,7 @@ describe('Marker library', () => {
       await Promise.resolve();
     });
     expect(mockMoveItemToWatched).toHaveBeenCalledWith({
+      activityDate: localDateKey(),
       itemId: 'b',
       beforeId: 'e',
     });

@@ -1,3 +1,4 @@
+import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as Effect from 'effect/Effect';
@@ -217,7 +218,13 @@ export default function TagDetailScreen() {
           itemId: item._id,
           beforeId: targetLibraryItems.at(-1)?._id,
         };
-        if (targetStatus === 'watched') yield* saveLibrary(() => moveItemToWatched(placement));
+        if (targetStatus === 'watched')
+          yield* saveLibrary(() =>
+            moveItemToWatched({
+              ...placement,
+              activityDate: localDateKey(),
+            }),
+          );
         else yield* saveLibrary(() => reorderItem({ ...placement, status: targetStatus }));
         return yield* saveLibrary(() =>
           reorderTagItem({ tag, itemId: item._id, beforeId: targetItems.at(-1)?._id }),

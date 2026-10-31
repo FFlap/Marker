@@ -1,3 +1,4 @@
+import { localDateKey } from "@/hooks/use-local-today";
 import { Effect } from "effect";
 import { touchMetadata, saveLibrary } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
@@ -128,7 +129,12 @@ export function AddTitleDialog({
         };
         const itemId =
           selected.mediaType === "tv" && status === "watched"
-            ? yield* saveLibrary(() => addItemAndMarkWatched(addArgs))
+            ? yield* saveLibrary(() =>
+                  addItemAndMarkWatched({
+                    ...addArgs,
+                    activityDate: localDateKey(),
+                  }),
+              )
             : yield* saveLibrary(() => addItem(addArgs));
         return itemId;
       }),
