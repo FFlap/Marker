@@ -1,5 +1,5 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import { Pencil } from 'lucide-react-native';
+import Pencil from 'lucide-react-native/icons/pencil';
 import { api } from '@marker/shared/api';
 import type { Id } from '@marker/shared/dataModel';
 import { Button, EmptyState } from '@/components/ui/primitives';

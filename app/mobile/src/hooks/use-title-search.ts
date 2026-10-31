@@ -1,5 +1,5 @@
 import { runClientEffect } from '@marker/shared/clientOperations';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { searchTitles } from '@marker/shared/clientEffects';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useAction } from 'convex/react';

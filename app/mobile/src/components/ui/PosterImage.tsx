@@ -3,13 +3,14 @@ import { Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
+import { useStartupData } from '@/hooks/useStartupQuery';
 
 export function PosterImage({
   path,
   title,
   style,
   testID,
-  transition = 150,
+  transition,
   onDisplay,
   onError,
 }: {
@@ -21,13 +22,16 @@ export function PosterImage({
   onDisplay?: () => void;
   onError?: () => void;
 }) {
+  // Restored artwork appears with the saved screen; newly fetched content keeps its fade.
+  const saved = useStartupData()?.cached;
+  const duration = transition ?? (saved ? 0 : 150);
   if (path)
     return (
       <Image
         testID={testID}
         source={`https://image.tmdb.org/t/p/w342${path}`}
         contentFit="cover"
-        transition={transition}
+        transition={duration}
         onDisplay={onDisplay}
         onError={onError}
         style={[styles.poster, style]}

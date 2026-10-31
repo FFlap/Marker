@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
-import { Check, RotateCcw } from 'lucide-react-native';
+import Check from 'lucide-react-native/icons/check';
+import RotateCcw from 'lucide-react-native/icons/rotate-ccw';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';

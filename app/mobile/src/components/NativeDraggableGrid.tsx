@@ -16,6 +16,7 @@ import {
   type AnimatedRef,
   type FrameInfo,
   type SharedValue,
+  useAnimatedReaction,
   useFrameCallback,
   useSharedValue,
 } from 'react-native-reanimated';
@@ -32,7 +33,7 @@ type DragSession<T> = {
   maxOffset: number;
   order: T[];
   over: number;
-  scrollStart: number;
+  origin?: { x: number; y: number; scrollOffset: number };
   slots: Map<number, DragLayout>;
 };
 
@@ -98,6 +99,14 @@ export function nearestGridSlot(
   return target;
 }
 
+/** Keep one viewport of rows on either side, without mounting the entire library. */
+export function nativeRowWindow(count: number, height: number, top: number, bottom: number) {
+  const overscan = Math.max(4, Math.ceil((bottom - top) / height));
+  const start = Math.min(count, Math.max(0, Math.floor(top / height) - overscan));
+  const end = Math.max(start, Math.min(count, Math.ceil(bottom / height) + overscan));
+  return { start, end };
+}
+
 export function NativeDraggableGrid<T>({
   autoScroll,
   contentContainerStyle,
@@ -113,6 +122,7 @@ export function NativeDraggableGrid<T>({
   onMotionInit,
   onTouchStateChange,
   renderItem,
+  rowHeight,
 }: {
   autoScroll?: NativeGridAutoScroll;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -128,6 +138,8 @@ export function NativeDraggableGrid<T>({
   onMotionInit?: (motion: NativeGridDragMotion) => void;
   onTouchStateChange?: (touching: boolean) => void;
   renderItem: (event: { index: number; isActive: boolean; item: T }) => ReactNode;
+  /** Uniform single-column rows can be windowed within the existing parent scroll view. */
+  rowHeight?: number;
 }) {
   const horizontalTranslate = useSharedValue(0);
   const touchTranslate = useSharedValue(0);
@@ -142,12 +154,43 @@ export function NativeDraggableGrid<T>({
   const scrollRef = autoScroll?.scrollRef;
   const dataRef = useRef(data);
   const gridRef = useRef<View>(null);
-  const gridOrigin = useRef({ x: 0, y: 0 });
+  const contentTop = useRef<number | null>(null);
+  const windowed = !!autoScroll && columns === 1 && !!rowHeight && data.length > 40;
+  // Measure the full-height container before mounting rows, including distant sections.
+  const [rowWindow, setRowWindow] = useState<{ start: number; end: number } | null>(null);
+  const updateRowWindow = useCallback(
+    (offset: number) => {
+      if (!windowed || !rowHeight || !autoScroll || contentTop.current === null) return;
+      const bounds = autoScroll.getBounds();
+      if (bounds.bottom <= bounds.top) return;
+      const next = nativeRowWindow(
+        data.length,
+        rowHeight,
+        offset + bounds.top - contentTop.current,
+        offset + bounds.bottom - contentTop.current,
+      );
+      setRowWindow((current) =>
+        current?.start === next.start && current?.end === next.end ? current : next,
+      );
+    },
+    [autoScroll, data.length, rowHeight, windowed],
+  );
   const measureGridOrigin = useCallback(() => {
-    gridRef.current?.measureInWindow((x, y) => {
-      gridOrigin.current = { x, y };
+    gridRef.current?.measureInWindow((_x, y, width, height) => {
+      if (width <= 0 || height <= 0) return;
+      const offset = nativeScrollOffset?.value ?? 0;
+      contentTop.current = y + offset;
+      updateRowWindow(offset);
     });
-  }, []);
+  }, [nativeScrollOffset, updateRowWindow]);
+  useAnimatedReaction(
+    () => (windowed ? (nativeScrollOffset?.value ?? 0) : 0),
+    (offset, previous) => {
+      if (windowed && offset !== previous) runOnJS(updateRowWindow)(offset);
+    },
+    [windowed, updateRowWindow],
+  );
+  useEffect(measureGridOrigin, [measureGridOrigin]);
   const cellRefs = useRef(new Map<string, View>());
   const slotLayouts = useRef(new Map<number, LayoutRectangle>());
   const slotOwners = useRef(new Map<number, string>());
@@ -183,23 +226,36 @@ export function NativeDraggableGrid<T>({
   }, [isTouchActiveNative]);
 
   const beginDrag = useCallback(
-    (item: T, index: number, scrollOffset: number) => {
+    (item: T, index: number) => {
       if (disabled) return;
       const itemKey = keyExtractor(item);
       const order = [...dataRef.current];
       const bounds = autoScrollRef.current?.getBounds() ?? { top: 0, bottom: 0 };
       const maxOffset = autoScrollRef.current?.getMaxOffset() ?? 0;
-      session.current = {
+      const current: DragSession<T> = {
         bounds,
         from: index,
         itemKey,
         maxOffset,
         order,
         over: index,
-        scrollStart: scrollOffset,
         // Hit-test against the original slots as the keyed cards change order.
-        slots: new Map(slotLayouts.current),
+        slots:
+          windowed && rowHeight
+            ? new Map(
+                order.map((_, slot) => [
+                  slot,
+                  {
+                    x: 0,
+                    y: slot * rowHeight,
+                    width: slotLayouts.current.get(index)?.width ?? 0,
+                    height: rowHeight,
+                  },
+                ]),
+              )
+            : new Map(slotLayouts.current),
       };
+      session.current = current;
       previewReadyRef.current = !onMotionInit;
       setPreviewReady(false);
       setDragOrder(order);
@@ -210,9 +266,14 @@ export function NativeDraggableGrid<T>({
       // the same render, without notifying the parent for every idle grid.
       onMotionInit?.(motion);
       onDragBegin({ item, index });
-      measureGridOrigin();
+      // Measurements are async. Ignore hit tests until this drag has its own origin,
+      // and ignore late callbacks from a completed or cancelled drag.
+      gridRef.current?.measureInWindow((x, y, width, height) => {
+        if (session.current !== current || width <= 0 || height <= 0) return;
+        current.origin = { x, y, scrollOffset: scrollPosition.value };
+      });
       cellRefs.current.get(itemKey)?.measureInWindow((x, y, width, height) => {
-        if (session.current?.itemKey === itemKey) onDragLayout?.({ x, y, width, height });
+        if (session.current === current) onDragLayout?.({ x, y, width, height });
       });
     },
     [
@@ -220,11 +281,13 @@ export function NativeDraggableGrid<T>({
       keyExtractor,
       maxScrollOffset,
       scrollBounds,
-      measureGridOrigin,
+      scrollPosition,
       onDragBegin,
       onDragLayout,
       onMotionInit,
       motion,
+      rowHeight,
+      windowed,
     ],
   );
 
@@ -246,9 +309,10 @@ export function NativeDraggableGrid<T>({
         }
       }
       onDragMoveRef.current?.({ absoluteX, absoluteY, scrollOffset });
-      const localX = absoluteX - gridOrigin.current.x;
-      const scrollDelta = scrollOffset - current.scrollStart;
-      const localY = absoluteY - gridOrigin.current.y + scrollDelta;
+      if (!current.origin) return;
+      const localX = absoluteX - current.origin.x;
+      const scrollDelta = scrollOffset - current.origin.scrollOffset;
+      const localY = absoluteY - current.origin.y + scrollDelta;
       const target = nearestGridSlot(current.slots, { x: localX, y: localY }, current.over);
       if (target === current.over) return;
       current.over = target;
@@ -313,17 +377,31 @@ export function NativeDraggableGrid<T>({
   }, [clearDrag, onDragCancel]);
 
   const displayed = dragOrder ?? data;
+  const visible = windowed
+    ? displayed.flatMap((item, index) =>
+        (rowWindow && index >= rowWindow.start && index < rowWindow.end) ||
+        keyExtractor(item) === activeKey
+          ? [{ item, index }]
+          : [],
+      )
+    : displayed.map((item, index) => ({ item, index }));
   const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
   return (
     <View
       ref={gridRef}
+      testID="native-grid"
       onLayout={(event) => {
         onGridLayout(event);
         measureGridOrigin();
       }}
-      style={[styles.grid, { columnGap: gap }, contentContainerStyle]}
+      style={[
+        styles.grid,
+        { columnGap: gap },
+        contentContainerStyle,
+        windowed && { height: displayed.length * rowHeight! },
+      ]}
     >
-      {displayed.map((item, index) => {
+      {visible.map(({ item, index }) => {
         const itemKey = keyExtractor(item);
         return (
           <NativeGridCell
@@ -336,6 +414,11 @@ export function NativeDraggableGrid<T>({
             item={item}
             itemKey={itemKey}
             itemWidth={itemWidth}
+            position={
+              windowed
+                ? { position: 'absolute', left: 0, top: index * rowHeight!, height: rowHeight }
+                : undefined
+            }
             horizontalTranslate={horizontalTranslate}
             touchTranslate={touchTranslate}
             isTouchActiveNative={isTouchActiveNative}
@@ -367,6 +450,7 @@ function NativeGridCellImpl<T>({
   item,
   itemKey,
   itemWidth,
+  position,
   isTouchActiveNative,
   pointer,
   scrollPosition,
@@ -390,6 +474,7 @@ function NativeGridCellImpl<T>({
   item: T;
   itemKey: string;
   itemWidth: DimensionValue;
+  position?: ViewStyle;
   isTouchActiveNative: SharedValue<boolean>;
   pointer: SharedValue<{ x: number; y: number }>;
   scrollPosition: SharedValue<number>;
@@ -486,7 +571,7 @@ function NativeGridCellImpl<T>({
   return (
     <View
       onLayout={(event) => saveSlotLayout(event.nativeEvent.layout)}
-      style={[styles.cell, { width: itemWidth }]}
+      style={[styles.cell, { width: itemWidth }, position]}
     >
       <GestureDetector gesture={gesture}>
         <View

@@ -1,4 +1,5 @@
-import { Globe2, LockKeyhole } from 'lucide-react-native';
+import Globe2 from 'lucide-react-native/icons/earth';
+import LockKeyhole from 'lucide-react-native/icons/lock-keyhole';
 import { Text, View } from 'react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';

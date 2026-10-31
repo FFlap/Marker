@@ -1,11 +1,12 @@
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { useOperation } from '@/hooks/use-operation';
 import { AvatarError, avatarStep, uploadAvatar, saveProfile } from '@marker/shared/clientEffects';
 import { useRef, useState } from 'react';
 import { useAuth } from '@clerk/expo';
 import { ActivityIndicator, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, Trash2 } from 'lucide-react-native';
+import Camera from 'lucide-react-native/icons/camera';
+import Trash2 from 'lucide-react-native/icons/trash-2';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
 import type { Id } from '@marker/shared/dataModel';

@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
-import { Check, EllipsisVertical } from 'lucide-react-native';
+import Check from 'lucide-react-native/icons/check';
+import EllipsisVertical from 'lucide-react-native/icons/ellipsis-vertical';
 import { Pressable, Text, View } from 'react-native';
 import { RatingControl, TagEditor } from '@/components/ui/library-controls';
 import {
