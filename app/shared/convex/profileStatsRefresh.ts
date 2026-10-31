@@ -269,6 +269,7 @@ export async function updateProfileStatsForItem(
   for (const key of Object.keys(previous) as (keyof typeof previous)[])
     delta[key] = next[key] - previous[key];
   const tags = new Map<string, { tag: string; count: number }>();
+  let tagSpellingChanged = false;
   for (const [row, direction] of [
     [activeBefore, -1],
     [activeAfter, 1],
@@ -276,8 +277,12 @@ export async function updateProfileStatsForItem(
     for (const tag of row?.tags ?? []) {
       const key = tag.toLocaleLowerCase();
       const current = tags.get(key);
+      if (direction === 1 && current && current.tag !== tag) tagSpellingChanged = true;
       tags.set(key, { tag: current?.tag ?? tag, count: (current?.count ?? 0) + direction });
     }
+  // The full rebuild chooses the spelling of the first contributing item. A rare
+  // case-only edit needs that same ordering, even though its numeric delta is zero.
+  if (tagSpellingChanged) return requestProfileStatsRefresh(ctx, item.userId);
   delta.tagDeltas = [...tags.values()].filter((t) => t.count !== 0);
   // Only removals and runtime corrections need this title's season summaries.
   if (activeBefore && (!activeAfter || activeBefore.runtime !== activeAfter.runtime)) {

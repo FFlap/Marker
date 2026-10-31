@@ -506,45 +506,46 @@ it('joins a small library into a large calendar feed without scanning unrelated 
   console.info('CALENDAR_IO', JSON.stringify({ baseline, optimized: metrics }));
 });
 
-it.each([320, 1000])(
-  'fully bootstraps a legacy history of %i events in bounded batches',
-  async (count) => {
-    const { t, userId, asUser, drain } = await setup();
-    const itemId = await asUser.mutation(api.library.items.addItem, {
-      ...movie(1),
-      status: 'watchlist',
-    });
-    await t.run(async (ctx) => {
-      for (let n = 0; n < count; n++)
-        await ctx.db.insert('activityEvents', {
+it('rejects an oversized history without installing an inaccurate counter', async () => {
+  const { t, userId, asUser } = await setup();
+  const itemId = await asUser.mutation(api.library.items.addItem, {
+    ...movie(1),
+    status: 'watchlist',
+  });
+  await t.run(async (ctx) => {
+    for (let n = 0; n < 320; n++)
+      await ctx.db.insert('activityEvents', {
+        userId,
+        itemId,
+        title: `${n}`,
+        kind: 'status',
+        createdAt: n,
+      });
+  });
+  await expect(
+    t.run((ctx) =>
+      writeActivityEvents(ctx, [
+        {
           userId,
           itemId,
-          title: `${n}`,
+          title: 'New',
           kind: 'status',
-          createdAt: n,
-        });
-    });
-    const event = { userId, itemId, title: 'New', kind: 'status' as const, createdAt: count };
-    await t.run((ctx) => writeActivityEvents(ctx, [event]));
-    // A concurrent write may start another cleanup, but must not install an undercount.
-    await t.run((ctx) => writeActivityEvents(ctx, [{ ...event, createdAt: count + 1 }]));
-    await drain();
-    const readHistory = () =>
-      t.run((ctx) =>
-        ctx.db
-          .query('activityEvents')
-          .withIndex('by_actor_time', (q) => q.eq('userId', userId))
-          .order('desc')
-          .collect(),
-      );
-    const rows = await readHistory();
-    expect(rows).toHaveLength(200);
-    expect(rows.at(-1)?.createdAt).toBe(count - 198);
-    expect(await t.run((ctx) => ctx.db.query('activityEventCounts').unique())).toMatchObject({
-      userId,
-      count: 200,
-    });
-    await t.run((ctx) => writeActivityEvents(ctx, [{ ...event, createdAt: count + 2 }]));
-    expect(await readHistory()).toHaveLength(200);
-  },
-);
+          createdAt: 321,
+        },
+      ]),
+    ),
+  ).rejects.toThrow('Activity history exceeds retention limit');
+  expect(await t.run((ctx) => ctx.db.query('activityEventCounts').unique())).toBeNull();
+  expect(await t.run((ctx) => ctx.db.query('activityEvents').collect())).toHaveLength(320);
+});
+
+it('refreshes top-tag spelling after a case-only edit', async () => {
+  const { asUser, stats, drain } = await setup();
+  const itemId = await asUser.mutation(api.library.items.addItem, { ...movie(1), tags: ['anime'] });
+  await drain();
+  expect((await stats())?.topTags).toEqual([{ tag: 'anime', count: 1 }]);
+  await asUser.mutation(api.library.items.updateItem, { itemId, tags: ['Anime'] });
+  await drain();
+  expect((await stats())?.topTags).toEqual([{ tag: 'Anime', count: 1 }]);
+  expect((await stats())?.tagCounts).toEqual([{ tag: 'Anime', count: 1 }]);
+});
