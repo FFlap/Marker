@@ -365,7 +365,11 @@ describe('Tags screens', () => {
       await Promise.resolve();
     });
     await waitFor(() =>
-      expect(mockMoveItemToWatched).toHaveBeenCalledWith({ itemId: 'c', beforeId: 'b', activityDate: localDateKey() }),
+      expect(mockMoveItemToWatched).toHaveBeenCalledWith({
+        itemId: 'c',
+        beforeId: 'b',
+        activityDate: localDateKey(),
+      }),
     );
     expect(mockReorderTag).toHaveBeenCalledWith({
       tag: 'Weekend',

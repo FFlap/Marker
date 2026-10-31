@@ -334,7 +334,12 @@ it.each(['move', 'add'] as const)(
         episodeRunTime: [],
         genres: [],
         cast: [],
-        seasons: [1, 2].map((season) => ({ season, name: `Season ${season}`, episodeCount: 2 })),
+        seasons: [1, 2].map((season) => ({
+          season,
+          name: `Season ${season}`,
+          episodeCount: 2,
+          episodeCountVerified: true,
+        })),
         metadataProvider: 'tmdb',
         orderEpoch: 0,
         refreshedAt: Date.now(),

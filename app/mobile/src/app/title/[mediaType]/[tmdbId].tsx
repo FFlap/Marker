@@ -199,10 +199,10 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         const itemId =
           mediaType === 'tv' && draft.status === 'watched'
             ? yield* saveLibrary(() =>
-                  addItemAndMarkWatched({
-                    ...addArgs,
-                    activityDate: localDateKey(),
-                  }),
+                addItemAndMarkWatched({
+                  ...addArgs,
+                  activityDate: localDateKey(),
+                }),
               )
             : yield* saveLibrary(() => addItem(addArgs));
         return itemId;

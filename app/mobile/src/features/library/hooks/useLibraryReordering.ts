@@ -125,12 +125,13 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     await runOperation.write(
       Effect.gen(function* () {
         const placement = { itemId: item._id, beforeId: targetItems.at(-1)?._id };
-        if (target === 'watched') yield* saveLibrary(() =>
-          moveItemToWatched({
-            ...placement,
-            activityDate: localDateKey(),
-          }),
-        );
+        if (target === 'watched')
+          yield* saveLibrary(() =>
+            moveItemToWatched({
+              ...placement,
+              activityDate: localDateKey(),
+            }),
+          );
         else yield* saveLibrary(() => reorderItem({ ...placement, status: target }));
       }),
       {

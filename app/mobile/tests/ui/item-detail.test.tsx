@@ -304,7 +304,12 @@ describe('item detail metadata subscriptions', () => {
     await user.press(view.getByLabelText('Increase times watched'));
     await user.press(view.getByRole('button', { name: 'Dismiss drawer' }));
 
-    await waitFor(() => expect(mockMoveItemToWatched).toHaveBeenCalledWith({ itemId: 'item', activityDate: localDateKey() }));
+    await waitFor(() =>
+      expect(mockMoveItemToWatched).toHaveBeenCalledWith({
+        itemId: 'item',
+        activityDate: localDateKey(),
+      }),
+    );
     expect(mockSetSeasonWatched).not.toHaveBeenCalled();
     expect(mockUpdateItem).toHaveBeenCalledWith(
       expect.not.objectContaining({ status: expect.anything() }),
