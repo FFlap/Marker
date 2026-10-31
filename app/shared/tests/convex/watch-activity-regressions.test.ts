@@ -265,3 +265,160 @@ it('rejects anonymous or foreign episode writes, bulk unmarks, deletions, and pr
     { date: '2026-10-10', episodes: 1 },
   ]);
 });
+
+it('logs season marks across chunks and restarted batches exactly once on the local day', async () => {
+  const { t, userId, user, itemId } = await setup();
+  const count = EPISODES_PER_CHUNK * 2 + 1;
+  await putSeason(t, {
+    tmdbId: 42,
+    season: 1,
+    metadataProvider: 'tmdb',
+    orderEpoch: 0,
+    refreshedAt: Date.now(),
+    refreshAfter: Date.now() + 60_000,
+    episodes: Array.from({ length: count }, (_, index) => ({
+      season: 1,
+      episode: index + 1,
+      name: `Episode ${index + 1}`,
+    })),
+  });
+  await user.mutation(api.library.episodes.setEpisodeState, {
+    itemId,
+    season: 1,
+    episode: 1,
+    watched: true,
+    activityDate: '2026-10-10',
+  });
+  // Imported history must keep its unknown watch day even during bulk retries.
+  await t.mutation(internal.sync.recordWatchInternal, { userId, itemId, season: 1, episode: 2 });
+  const restart = {
+    userId,
+    itemId,
+    season: 1,
+    watched: true,
+    activityDate: '2026-10-09',
+    offset: EPISODES_PER_CHUNK,
+    expectedRefreshedAt: Date.now() - 1,
+    expectedOrderEpoch: 0,
+    expectedMetadataProvider: 'tmdb' as const,
+  };
+  for (let retry = 0; retry < 2; retry += 1)
+    await t.mutation(internal.library.seasonWatched.setSeasonWatchedBatch, restart);
+  for (let retry = 0; retry < 2; retry += 1)
+    await user.action(api.library.seasonWatched.setSeasonWatched, {
+      itemId,
+      season: 1,
+      activityDate: '2026-10-09',
+    });
+  expect((await user.query(api.stats.profile, {})).watchActivity).toEqual([
+    { date: '2026-10-09', episodes: count - 2 },
+    { date: '2026-10-10', episodes: 1 },
+  ]);
+  await user.action(api.library.seasonWatched.setSeasonWatched, {
+    itemId,
+    season: 1,
+    watched: false,
+  });
+  expect((await user.query(api.stats.profile, {})).watchActivity).toEqual([]);
+});
+
+it.each(['move', 'add'] as const)(
+  'logs all remaining episodes when using the %s watched action',
+  async (operation) => {
+    const { t, user, itemId } = await setup();
+    await t.run((ctx) =>
+      ctx.db.insert('resolvedTitles', {
+        tmdbId: 42,
+        mediaType: 'tv',
+        title: 'Watched show',
+        episodeRunTime: [],
+        genres: [],
+        cast: [],
+        seasons: [1, 2].map((season) => ({ season, name: `Season ${season}`, episodeCount: 2 })),
+        metadataProvider: 'tmdb',
+        orderEpoch: 0,
+        refreshedAt: Date.now(),
+        refreshAfter: Date.now() + 60_000,
+      }),
+    );
+    for (const season of [1, 2])
+      await putSeason(t, {
+        tmdbId: 42,
+        season,
+        metadataProvider: 'tmdb',
+        orderEpoch: 0,
+        refreshedAt: Date.now(),
+        refreshAfter: Date.now() + 60_000,
+        episodes: [1, 2].map((episode) => ({ season, episode, name: `Episode ${episode}` })),
+      });
+    let watchedItemId = itemId;
+    if (operation === 'move') {
+      await user.mutation(api.library.episodes.setEpisodeState, {
+        itemId,
+        season: 1,
+        episode: 1,
+        watched: true,
+        activityDate: '2026-10-10',
+      });
+      await user.action(api.library.seasonWatched.moveItemToWatched, {
+        itemId,
+        activityDate: '2026-10-09',
+      });
+    } else {
+      await user.mutation(api.library.items.removeItem, { itemId });
+      await t.mutation(internal.library.items.continueRemoveItem, { itemId });
+      watchedItemId = await user.action(api.library.seasonWatched.addItemAndMarkWatched, {
+        title: 'Watched show',
+        tmdbId: 42,
+        mediaType: 'tv',
+        status: 'watched',
+        activityDate: '2026-10-09',
+      });
+    }
+    const expected =
+      operation === 'move'
+        ? [
+            { date: '2026-10-09', episodes: 3 },
+            { date: '2026-10-10', episodes: 1 },
+          ]
+        : [{ date: '2026-10-09', episodes: 4 }];
+    expect((await user.query(api.stats.profile, {})).watchActivity).toEqual(expected);
+    vi.setSystemTime(new Date('2026-10-11T12:00:00Z'));
+    await user.action(api.library.seasonWatched.moveItemToWatched, {
+      itemId: watchedItemId,
+      activityDate: '2026-10-11',
+    });
+    expect((await user.query(api.stats.profile, {})).watchActivity).toEqual(expected);
+    for (const season of [1, 2])
+      await user.action(api.library.seasonWatched.setSeasonWatched, {
+        itemId: watchedItemId,
+        season,
+        watched: false,
+      });
+    expect((await user.query(api.stats.profile, {})).watchActivity).toEqual([]);
+  },
+);
+
+it.each([undefined, 'not-a-date', '2020-01-01'])(
+  'falls back to today for bulk date %s',
+  async (activityDate) => {
+    const { t, user, itemId } = await setup();
+    await putSeason(t, {
+      tmdbId: 42,
+      season: 1,
+      metadataProvider: 'tmdb',
+      orderEpoch: 0,
+      refreshedAt: Date.now(),
+      refreshAfter: Date.now() + 60_000,
+      episodes: [{ season: 1, episode: 1, name: 'First' }],
+    });
+    await user.action(api.library.seasonWatched.setSeasonWatched, {
+      itemId,
+      season: 1,
+      activityDate,
+    });
+    expect((await user.query(api.stats.profile, {})).watchActivity).toEqual([
+      { date: '2026-10-10', episodes: 1 },
+    ]);
+  },
+);

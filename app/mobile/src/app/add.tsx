@@ -1,3 +1,4 @@
+import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import { Effect } from 'effect';
 import { touchMetadata, saveLibrary } from '@marker/shared/clientEffects';
@@ -127,7 +128,12 @@ export default function Add() {
           tags,
         };
         if (picked.mediaType === 'tv' && status === 'watched') {
-          yield* saveLibrary(() => addItemAndMarkWatched(addArgs));
+          yield* saveLibrary(() =>
+            addItemAndMarkWatched({
+              ...addArgs,
+              activityDate: localDateKey(),
+            }),
+          );
         } else {
           yield* saveLibrary(() => add(addArgs));
         }

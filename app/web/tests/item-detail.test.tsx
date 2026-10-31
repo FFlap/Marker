@@ -1,3 +1,4 @@
+import { localDateKey } from "@/hooks/use-local-today";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SeasonPage } from "@/lib/catalog";
@@ -64,6 +65,7 @@ beforeEach(() => {
   mocks.tmdbId = 1;
   mocks.touch.mockReset().mockResolvedValue(undefined);
   mocks.episode.mockReset().mockResolvedValue(undefined);
+  mocks.mutation.mockReset().mockResolvedValue(undefined);
   mocks.request = null;
   mocks.pages = [];
 });
@@ -157,6 +159,9 @@ describe("item detail metadata lifecycle", () => {
     const second = screen.getByRole("button", { name: "Mark episode 2 watched" });
     fireEvent.click(first);
     fireEvent.click(second);
+    expect(mocks.episode).toHaveBeenCalledWith(expect.objectContaining({
+      season: 1, episode: 1, watched: true, activityDate: localDateKey(),
+    }));
     expect(first).toBeDisabled();
     expect(second).toBeDisabled();
     await act(async () => { finishFirst(); });
@@ -165,4 +170,17 @@ describe("item detail metadata lifecycle", () => {
     await act(async () => { finishSecond(); });
     expect(second).toBeEnabled();
   });
+});
+
+
+it("passes the local watch date when marking a season watched from title details", async () => {
+  mocks.pages = [{ season: 1, totalCount: 1, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, seasonVersion: "current", episodes: [
+    { season: 1, episode: 1, name: "First" },
+  ] }];
+  render(<ItemDetailPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Mark watched" }));
+  await waitFor(() => expect(mocks.mutation).toHaveBeenCalledWith({
+    itemId: "owned-item", season: 1, watched: true,
+    activityDate: localDateKey(), orderEpoch: 1, metadataProvider: "tmdb",
+  }));
 });

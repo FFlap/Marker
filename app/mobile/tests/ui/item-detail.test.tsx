@@ -1,3 +1,4 @@
+import { localDateKey } from '@/hooks/use-local-today';
 import React from 'react';
 import { act, render, userEvent, waitFor } from '@testing-library/react-native';
 
@@ -303,7 +304,7 @@ describe('item detail metadata subscriptions', () => {
     await user.press(view.getByLabelText('Increase times watched'));
     await user.press(view.getByRole('button', { name: 'Dismiss drawer' }));
 
-    await waitFor(() => expect(mockMoveItemToWatched).toHaveBeenCalledWith({ itemId: 'item' }));
+    await waitFor(() => expect(mockMoveItemToWatched).toHaveBeenCalledWith({ itemId: 'item', activityDate: localDateKey() }));
     expect(mockSetSeasonWatched).not.toHaveBeenCalled();
     expect(mockUpdateItem).toHaveBeenCalledWith(
       expect.not.objectContaining({ status: expect.anything() }),
@@ -422,6 +423,7 @@ describe('item detail metadata subscriptions', () => {
     await user.press(view.getByText('Mark watched'));
     await waitFor(() =>
       expect(mockSetSeasonWatched).toHaveBeenCalledWith({
+        activityDate: localDateKey(),
         itemId: 'item',
         season: 1,
         watched: true,
@@ -485,6 +487,7 @@ describe('item detail metadata subscriptions', () => {
         season: 1,
         episode: 1,
         watched: true,
+        activityDate: localDateKey(),
         overview: 'x'.repeat(400),
       }),
     );

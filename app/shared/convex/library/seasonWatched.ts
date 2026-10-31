@@ -17,7 +17,7 @@ import { requestProfileStatsRefresh } from '../profileStatsRefresh';
 import { bumpCalendarRevision } from '../calendarLibrary';
 import { addItemFields, ownedItem, requireUser } from './shared';
 import { setEpisode } from './episodes';
-import { recordWatchActivity } from '../watchActivity';
+import { recordWatchActivity, resolveActivityDate } from '../watchActivity';
 
 const SEASON_WATCH_BATCH_SIZE = EPISODES_PER_CHUNK;
 const MAX_SEASON_WATCH_RESTARTS = 4;
@@ -142,6 +142,7 @@ export const getSeasonWatchedPlan = internalQuery({
 export const setSeasonWatchedBatch = internalMutation({
   args: {
     ...seasonWatchIdentity,
+    activityDate: v.optional(v.string()),
     offset: v.number(),
     expectedRefreshedAt: v.number(),
     expectedOrderEpoch: v.number(),
@@ -187,6 +188,7 @@ export const setSeasonWatchedBatch = internalMutation({
           .unique(),
       ),
     );
+    const activityDate = args.activityDate ?? resolveActivityDate(undefined);
     const activityEvents: ActivityEventWrite[] = [];
     const watchActivityDeltas = new Map<string, number>();
     for (const [index, episode] of batch.entries())
@@ -197,6 +199,7 @@ export const setSeasonWatchedBatch = internalMutation({
           itemId: args.itemId,
           ...episode,
           watched: args.watched,
+          activityDate,
           ...(identityAvailable && {
             stamp: {
               metadataProvider: resolved.metadataProvider,
@@ -244,13 +247,22 @@ type SeasonWatchedActionArgs = {
   itemId: Id<'items'>;
   season: number;
   watched: boolean;
+  activityDate: string;
   orderEpoch?: number;
   metadataProvider?: 'tmdb' | 'tvdb';
 };
 
 async function applySeasonWatched(
   ctx: ActionCtx,
-  { userId, itemId, season, watched, orderEpoch, metadataProvider }: SeasonWatchedActionArgs,
+  {
+    userId,
+    itemId,
+    season,
+    watched,
+    activityDate,
+    orderEpoch,
+    metadataProvider,
+  }: SeasonWatchedActionArgs,
 ) {
   if (!Number.isInteger(season) || season < 0 || season > 10_000)
     throw new Error('Season must be an integer between 0 and 10000');
@@ -262,6 +274,7 @@ async function applySeasonWatched(
     orderEpoch,
     metadataProvider,
   });
+  // Keep one watch day across chunks, metadata restarts, and midnight.
   let processed = 0;
   let batches = 0;
   let restarts = 0;
@@ -292,6 +305,7 @@ async function applySeasonWatched(
       itemId,
       season,
       watched,
+      activityDate,
       offset: processed,
       expectedRefreshedAt: refreshedAt,
       expectedOrderEpoch: plan.orderEpoch,
@@ -314,17 +328,22 @@ export const setSeasonWatched = action({
     itemId: v.id('items'),
     season: v.number(),
     watched: v.optional(v.boolean()),
+    activityDate: v.optional(v.string()),
     orderEpoch: v.optional(v.number()),
     metadataProvider: v.optional(v.union(v.literal('tmdb'), v.literal('tvdb'))),
   },
   returns: v.object({ processed: v.number() }),
-  handler: async (ctx, { itemId, season, watched = true, orderEpoch, metadataProvider }) => {
+  handler: async (
+    ctx,
+    { itemId, season, watched = true, activityDate, orderEpoch, metadataProvider },
+  ) => {
     const userId = await requireUser(ctx);
     return applySeasonWatched(ctx, {
       userId,
       itemId,
       season,
       watched,
+      activityDate: resolveActivityDate(activityDate),
       orderEpoch,
       metadataProvider,
     });
@@ -336,6 +355,7 @@ async function moveItemToWatchedForUser(
   userId: Id<'users'>,
   args: {
     itemId: Id<'items'>;
+    activityDate: string;
     beforeId?: Id<'items'>;
     afterId?: Id<'items'>;
   },
@@ -388,6 +408,7 @@ async function moveItemToWatchedForUser(
           itemId: item._id,
           season,
           watched: true,
+          activityDate: args.activityDate,
           orderEpoch: currentTitle.orderEpoch,
           metadataProvider: currentTitle.metadataProvider,
         });
@@ -416,30 +437,38 @@ async function moveItemToWatchedForUser(
 export const moveItemToWatched = action({
   args: {
     itemId: v.id('items'),
+    activityDate: v.optional(v.string()),
     beforeId: v.optional(v.id('items')),
     afterId: v.optional(v.id('items')),
   },
   returns: v.number(),
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
-    return moveItemToWatchedForUser(ctx, userId, args);
+    return moveItemToWatchedForUser(ctx, userId, {
+      ...args,
+      activityDate: resolveActivityDate(args.activityDate),
+    });
   },
 });
 
 export const addItemAndMarkWatched = action({
-  args: addItemFields,
+  args: { ...addItemFields, activityDate: v.optional(v.string()) },
   returns: v.id('items'),
-  handler: async (ctx, args): Promise<Id<'items'>> => {
+  handler: async (ctx, { activityDate, ...args }): Promise<Id<'items'>> => {
     if (args.mediaType !== 'tv' || args.status !== 'watched')
       throw new Error('This action only adds watched TV shows');
     const userId = await requireUser(ctx);
+    const watchDate = resolveActivityDate(activityDate);
     const itemId: Id<'items'> = await ctx.runMutation(internal.library.items.addItemInternal, {
       userId,
       ...args,
       status: 'watchlist',
     });
     try {
-      await moveItemToWatchedForUser(ctx, userId, { itemId });
+      await moveItemToWatchedForUser(ctx, userId, {
+        itemId,
+        activityDate: watchDate,
+      });
     } catch (error) {
       await ctx
         .runMutation(internal.library.seasonWatched.discardAddedItem, { userId, itemId })

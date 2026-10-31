@@ -1,3 +1,4 @@
+import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import { Effect } from 'effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
@@ -197,7 +198,12 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         };
         const itemId =
           mediaType === 'tv' && draft.status === 'watched'
-            ? yield* saveLibrary(() => addItemAndMarkWatched(addArgs))
+            ? yield* saveLibrary(() =>
+                  addItemAndMarkWatched({
+                    ...addArgs,
+                    activityDate: localDateKey(),
+                  }),
+              )
             : yield* saveLibrary(() => addItem(addArgs));
         return itemId;
       }),

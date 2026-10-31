@@ -1,3 +1,4 @@
+import { localDateKey } from "@/hooks/use-local-today";
 import {
   cleanup,
   fireEvent,
@@ -80,6 +81,7 @@ describe("add title dialog", () => {
           mediaType: "tv",
           status: "watched",
           timesWatched: 1,
+          activityDate: localDateKey(),
         }),
       ),
     );

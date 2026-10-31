@@ -259,6 +259,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     identity: Pick<SeasonRow, 'metadataProvider' | 'orderEpoch'>,
   ) => {
     await setSeasonWatched({
+      activityDate: localDateKey(),
       itemId,
       season: seasonNumber,
       watched,
@@ -272,7 +273,12 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     await runOperation.write(
       Effect.gen(function* () {
         if (item.mediaType === 'tv' && entryForm.status === 'watched') {
-          yield* saveLibrary(() => moveItemToWatched({ itemId }));
+          yield* saveLibrary(() =>
+            moveItemToWatched({
+              itemId,
+              activityDate: localDateKey(),
+            }),
+          );
         }
         yield* saveLibrary(() =>
           update({
