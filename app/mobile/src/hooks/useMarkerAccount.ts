@@ -1,5 +1,5 @@
 import { runClientEffect } from '@marker/shared/clientOperations';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { linkAccount } from '@marker/shared/clientEffects';
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth, useUser } from '@clerk/expo';

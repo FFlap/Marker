@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
+import { useStartupData } from '@/hooks/useStartupQuery';
 
 export function ProfileAvatar({
   username,
@@ -12,6 +13,7 @@ export function ProfileAvatar({
   avatarUrl?: string;
   size?: number;
 }) {
+  const duration = useStartupData()?.cached ? 0 : 120;
   const frame = { width: size, height: size, borderRadius: size / 2 };
   return (
     <View
@@ -22,7 +24,7 @@ export function ProfileAvatar({
         <Image
           source={avatarUrl}
           contentFit="cover"
-          transition={120}
+          transition={duration}
           recyclingKey={avatarUrl}
           style={frame}
         />

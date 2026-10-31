@@ -1,8 +1,10 @@
 import { localDateKey } from '@/hooks/use-local-today';
 import React from 'react';
+import { AccessibilityInfo } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 
 const mockReorderItem = jest.fn();
+const mockUseMutation = jest.fn(() => mockReorderItem);
 const mockMoveItemToWatched = jest.fn();
 let mockQueryShouldThrow = false;
 const mockUseQuery = jest.fn((ref: unknown) =>
@@ -149,7 +151,7 @@ const mockDragEnds = new Map<
 >();
 jest.mock('convex/react', () => ({
   useQuery: (...args: [unknown]) => mockUseQuery(...args),
-  useMutation: () => mockReorderItem,
+  useMutation: () => mockUseMutation(),
   useAction: (ref: unknown) =>
     String(ref).includes('moveItemToWatched') ? mockMoveItemToWatched : jest.fn(),
 }));
@@ -312,6 +314,43 @@ describe('Marker library', () => {
     expect(q.queryByText('Avengers: Endgame')).toBeNull();
   });
 
+  it('resets hidden controls when reduced motion toggles before the next scroll', async () => {
+    let emit: (enabled: boolean) => void = () => undefined;
+    const originalSubscribe = jest
+      .mocked(AccessibilityInfo.addEventListener)
+      .getMockImplementation();
+    const originalRead = jest
+      .mocked(AccessibilityInfo.isReduceMotionEnabled)
+      .getMockImplementation();
+    const subscription = jest
+      .spyOn(AccessibilityInfo, 'addEventListener')
+      .mockImplementation((_event, listener) => {
+        emit = listener;
+        return { remove: jest.fn() };
+      });
+    const initial = jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    try {
+      const q = await view();
+      await fireEvent.scroll(q.getByTestId('library-scroll'), {
+        nativeEvent: { contentOffset: { y: 80 } },
+      });
+      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('none');
+      await act(() => emit(true));
+      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('auto');
+      await act(() => emit(false));
+      await fireEvent.scroll(q.getByTestId('library-scroll'), {
+        nativeEvent: { contentOffset: { y: 81 } },
+      });
+      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('auto');
+      await q.unmount();
+    } finally {
+      subscription.mockRestore();
+      initial.mockRestore();
+      if (originalSubscribe) subscription.mockImplementation(originalSubscribe);
+      if (originalRead) initial.mockImplementation(originalRead);
+    }
+  });
+
   it('disables the add button while scrolled away from the top', async () => {
     const q = await view();
     const scroll = q.getByTestId('library-scroll');
@@ -350,7 +389,7 @@ describe('Marker library', () => {
     expect(await q.findByText('Couldn’t save order')).toBeTruthy();
   });
 
-  it('releases saved optimistic orders so later server updates remain visible', async () => {
+  it('keeps the dropped order until query acknowledgement, then accepts later server orders', async () => {
     let finish!: () => void;
     mockReorderItem.mockImplementationOnce(
       () =>
@@ -369,8 +408,136 @@ describe('Marker library', () => {
         .filter((label) => ['Avengers: Endgame', 'The Middle', 'Oshi no Ko'].includes(label));
     expect(titles()).toEqual(['The Middle', 'Oshi no Ko', 'Avengers: Endgame']);
     await act(async () => finish());
+    expect(titles()).toEqual(['The Middle', 'Oshi no Ko', 'Avengers: Endgame']);
+    const query = mockUseQuery.getMockImplementation()!;
+    mockUseQuery.mockImplementation((ref) =>
+      String(ref).includes('listItems')
+        ? items.map((item) => ({ ...item, rank: ['d', 'e', 'a'].indexOf(item._id) }))
+        : query(ref),
+    );
+    await q.rerender(
+      <ToastProvider>
+        <Library />
+      </ToastProvider>,
+    );
+    expect(titles()).toEqual(['The Middle', 'Oshi no Ko', 'Avengers: Endgame']);
+    mockUseQuery.mockImplementation(query);
+    await q.rerender(
+      <ToastProvider>
+        <Library />
+      </ToastProvider>,
+    );
     expect(titles()).toEqual(['Avengers: Endgame', 'The Middle', 'Oshi no Ko']);
   });
+
+  it.each(['succeeds', 'fails'])(
+    'keeps a rapid reverse reorder until the latest save %s',
+    async (outcome) => {
+      let finishFirst!: () => void;
+      let finishLatest!: () => void;
+      mockReorderItem
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finishFirst = resolve;
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              finishLatest =
+                outcome === 'succeeds' ? resolve : () => reject(new Error('Save failed'));
+            }),
+        );
+      let serverItems = items;
+      const query = mockUseQuery.getMockImplementation()!;
+      mockUseQuery.mockImplementation((ref) =>
+        String(ref).includes('listItems') ? serverItems : query(ref),
+      );
+      const q = await view();
+      const original = ['Avengers: Endgame', 'The Middle', 'Oshi no Ko'];
+      const earlier = ['The Middle', 'Oshi no Ko', 'Avengers: Endgame'];
+      const titles = () =>
+        q
+          .getAllByRole('button')
+          .map((node) => node.props.accessibilityLabel)
+          .filter((label) => original.includes(label));
+      const refresh = () =>
+        q.rerender(
+          <ToastProvider>
+            <Library />
+          </ToastProvider>,
+        );
+      await act(async () => {
+        mockDragEnds.get('a,d,e')?.({ data: [items[3], items[4], items[0]], from: 0, to: 2 });
+      });
+      await act(async () => {
+        mockDragEnds.get('d,e,a')?.({ data: [items[0], items[3], items[4]], from: 2, to: 0 });
+      });
+      expect(titles()).toEqual(original);
+      await act(async () => finishFirst());
+      const firstSaved = items.map((item) => ({ ...item, rank: item._id === 'a' ? 4 : item.rank }));
+      serverItems = firstSaved;
+      await refresh();
+      expect(titles()).toEqual(original);
+      await act(async () => finishLatest());
+      expect(titles()).toEqual(outcome === 'succeeds' ? original : earlier);
+      serverItems = items;
+      await refresh();
+      expect(titles()).toEqual(original);
+      serverItems = firstSaved;
+      await refresh();
+      expect(titles()).toEqual(earlier);
+    },
+  );
+
+  it.each(['added', 'removed', 'replaced'])(
+    'acknowledges a reorder when a title was %s before the saved query rendered',
+    async (change) => {
+      mockReorderItem.mockResolvedValueOnce(4);
+      let serverItems = items;
+      const query = mockUseQuery.getMockImplementation()!;
+      mockUseQuery.mockImplementation((ref) =>
+        String(ref).includes('listItems') ? serverItems : query(ref),
+      );
+      const q = await view();
+      await act(async () => {
+        mockDragEnds.get('a,d,e')?.({ data: [items[3], items[4], items[0]], from: 0, to: 2 });
+      });
+      serverItems = items
+        .filter((item) => change === 'added' || item._id !== 'e')
+        .map((item) => ({
+          ...item,
+          status: item._id === 'b' && change !== 'removed' ? 'watched' : item.status,
+          rank: item._id === 'a' ? 4 : item.rank,
+        }));
+      const titles = () => {
+        const watched = new Set(
+          serverItems.filter((item) => item.status === 'watched').map((item) => item.title),
+        );
+        return q
+          .getAllByRole('button')
+          .map((node) => node.props.accessibilityLabel)
+          .filter((label) => watched.has(label));
+      };
+      const savedTitles = () =>
+        serverItems
+          .filter((item) => item.status === 'watched')
+          .sort((left, right) => left.rank - right.rank)
+          .map((item) => item.title);
+      const refresh = () =>
+        q.rerender(
+          <ToastProvider>
+            <Library />
+          </ToastProvider>,
+        );
+      await refresh();
+      expect(titles()).toEqual(savedTitles());
+      serverItems = serverItems.map((item) => ({ ...item, rank: -item.rank }));
+      await refresh();
+      expect(titles()).toEqual(savedTitles());
+    },
+  );
 
   it('reorders with accessibility move actions using exact neighbors', async () => {
     mockReorderItem.mockImplementationOnce(() => new Promise(() => {}));
@@ -476,6 +643,7 @@ describe('Marker library', () => {
 });
 
 it('loads navigation, profile, and library in place without querying before auth is ready', async () => {
+  mockUseMutation.mockClear();
   mockUseQuery.mockImplementation((ref: unknown, args: unknown) => {
     if (args === 'skip') return undefined;
     if (String(ref).includes('getSettings')) return { defaultView: 'list' };
@@ -494,10 +662,20 @@ it('loads navigation, profile, and library in place without querying before auth
   expect(q.getByLabelText('Loading profile')).toBeTruthy();
   expect(q.getByTestId('library-loading')).toBeTruthy();
   expect(q.queryByText('Avengers: Endgame')).toBeNull();
+  expect(mockUseMutation).not.toHaveBeenCalled();
+  expect(q.getByLabelText('Add title')).toBeDisabled();
+  await fireEvent.changeText(q.getByTestId('library-search'), 'Avengers');
+  await fireEvent.press(q.getByLabelText('Movies type'));
   await q.rerender(screen(true, false));
   expect(q.queryByLabelText('Loading profile')).toBeNull();
   expect(q.getByTestId('library-loading')).toBeTruthy();
+  expect(mockUseMutation).not.toHaveBeenCalled();
   await q.rerender(screen(true, true));
   expect(q.queryByTestId('library-loading')).toBeNull();
   expect(q.getByText('Avengers: Endgame')).toBeTruthy();
+  expect(q.getByTestId('library-search').props.value).toBe('Avengers');
+  expect(q.getByLabelText('Movies type').props.accessibilityState.selected).toBe(true);
+  expect(q.queryByText('Daredevil')).toBeNull();
+  expect(mockUseMutation).toHaveBeenCalled();
+  expect(q.getByLabelText('Add title')).not.toBeDisabled();
 });

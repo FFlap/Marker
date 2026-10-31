@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 
 const mocks = vi.hoisted(() => ({
   addItem: vi.fn<(args: Record<string, unknown>) => Promise<string>>(),
@@ -60,6 +61,49 @@ describe("add title dialog", () => {
     mocks.addItemAndMarkWatched.mockReset().mockResolvedValue("new-item");
     mocks.searchTitles.mockReset().mockResolvedValue([]);
     mocks.touchTitle.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("refreshes metadata once per opening and resets the draft on reopen", async () => {
+    const { rerender } = render(
+      <StrictMode>
+        <AddTitleDialog initialSelection={{ id: 1, mediaType: "movie", title: "Arrival" }}>
+          <button type="button">Open</button>
+        </AddTitleDialog>
+      </StrictMode>,
+    );
+    expect(mocks.touchTitle).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() => expect(mocks.touchTitle).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("radio", { name: "Watched" }));
+    rerender(
+      <StrictMode>
+        <AddTitleDialog initialSelection={{ id: 2, mediaType: "movie", title: "Dune" }}>
+          <button type="button">Open</button>
+        </AddTitleDialog>
+      </StrictMode>,
+    );
+    expect(mocks.touchTitle).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() => expect(mocks.touchTitle).toHaveBeenCalledTimes(2));
+    expect(mocks.touchTitle).toHaveBeenLastCalledWith({ mediaType: "movie", tmdbId: 2, title: "Dune" });
+    fireEvent.click(screen.getByRole("button", { name: "Add to library" }));
+    await waitFor(() => expect(mocks.addItem).toHaveBeenCalledWith(expect.objectContaining({ tmdbId: 2, status: "watchlist", timesWatched: 0 })));
+  });
+
+  it("refreshes each search selection, including selecting again after Back", async () => {
+    mocks.searchTitles.mockResolvedValue([{ id: 1, mediaType: "movie", title: "Arrival" }]);
+    render(<AddTitleDialog><button type="button">Open</button></AddTitleDialog>);
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(mocks.touchTitle).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search TMDB" }), { target: { value: "Arrival" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Arrival/ }));
+    await waitFor(() => expect(mocks.touchTitle).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Arrival/ }));
+    await waitFor(() => expect(mocks.touchTitle).toHaveBeenCalledTimes(2));
+    expect(mocks.touchTitle).toHaveBeenLastCalledWith({ mediaType: "movie", tmdbId: 1, title: "Arrival" });
   });
 
   it("marks every episode watched when a TV show is added as Watched", async () => {

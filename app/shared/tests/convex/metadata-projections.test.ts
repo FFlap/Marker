@@ -173,7 +173,7 @@ it.each([35, undefined])(
         episodeRunTime: [30],
         genres: [],
         cast: [],
-        seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+        seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }],
         metadataProvider: 'tmdb',
         orderEpoch: 0,
         refreshedAt: Date.now(),

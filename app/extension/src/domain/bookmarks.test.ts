@@ -186,6 +186,7 @@ describe("bookmark operations", () => {
   it("refreshes unchanged bookmarks while reporting no episode change", async () => {
     let value: unknown = { version: 1, bookmarks: {} };
     const storage = {
+      remove: async () => {},
       get: async () => ({ bookmarks: value }),
       set: async (items: Record<string, unknown>) => {
         value = items.bookmarks;
@@ -206,7 +207,7 @@ describe("bookmark operations", () => {
   it("rejects an invalid bookmark without writing", async () => {
     const set = vi.fn(async () => undefined);
     const operations = createBookmarkOperations(
-      { get: async () => ({ bookmarks: { version: 1, bookmarks: {} } }), set },
+      { remove: async () => {}, get: async () => ({ bookmarks: { version: 1, bookmarks: {} } }), set },
       "bookmarks",
     );
 
@@ -224,6 +225,7 @@ describe("bookmark operations", () => {
       },
     };
     const storage = {
+      remove: async () => {},
       get: async () => ({ bookmarks: value }),
       set: async (items: Record<string, unknown>) => {
         await Promise.resolve();

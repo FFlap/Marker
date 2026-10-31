@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import { Tags as TagsIcon } from 'lucide-react-native';
+import TagsIcon from 'lucide-react-native/icons/tags';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';

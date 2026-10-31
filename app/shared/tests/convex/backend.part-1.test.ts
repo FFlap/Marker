@@ -72,16 +72,17 @@ describe('Marker backend', () => {
       }),
     ).rejects.toThrow('non-negative integer');
   });
-  it('rejects duplicate additions and negative ratings while preserving updated watch counts', async () => {
+  it('rejects duplicate additions and out-of-range ratings while preserving updated watch counts', async () => {
     const { asUser } = await setup();
     const movie = add('Avengers: Endgame', 299534, 'movie');
     const itemId = await asUser.mutation(api.library.items.addItem, movie);
     await expect(asUser.mutation(api.library.items.addItem, movie)).rejects.toThrow(
       'already exists',
     );
-    await expect(
-      asUser.mutation(api.library.items.updateItem, { itemId, rating: -1 }),
-    ).rejects.toThrow('between 0 and 5');
+    for (const rating of [-1, 5.5, 10])
+      await expect(
+        asUser.mutation(api.library.items.updateItem, { itemId, rating }),
+      ).rejects.toThrow('between 0 and 5');
     await asUser.mutation(api.library.items.updateItem, {
       itemId,
       status: 'watched',

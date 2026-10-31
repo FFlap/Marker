@@ -1,24 +1,12 @@
-import { useEffect, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Animated,
-  Easing,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Animated, Easing, StyleSheet, useWindowDimensions, View } from 'react-native';
 
-export function SkeletonShimmer() {
+function useShimmerAnimation() {
   const [progress] = useState(() => new Animated.Value(0));
   const { width } = useWindowDimensions();
   const travelWidth = Math.min(width, 760);
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => subscription.remove();
-  }, []);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     progress.setValue(0);
@@ -38,31 +26,53 @@ export function SkeletonShimmer() {
     return () => animation.stop();
   }, [progress, reduceMotion]);
 
-  if (reduceMotion) return null;
+  const style = useMemo(
+    () => [
+      styles.band,
+      {
+        transform: [
+          {
+            translateX: progress.interpolate({
+              inputRange: [0, 1],
+              outputRange: [-120, travelWidth + 120],
+            }),
+          },
+          { rotate: '12deg' as const },
+        ],
+      },
+    ],
+    [progress, travelWidth],
+  );
+  return useMemo(() => ({ style, reduceMotion }), [style, reduceMotion]);
+}
+
+const ShimmerContext = createContext<ReturnType<typeof useShimmerAnimation> | null>(null);
+
+/** A loading screen's blocks share one native animation and interpolation graph. */
+export function SkeletonShimmerGroup({ children }: { children: ReactNode }) {
+  const animation = useShimmerAnimation();
+  return <ShimmerContext value={animation}>{children}</ShimmerContext>;
+}
+
+function ShimmerBand({ animation }: { animation: ReturnType<typeof useShimmerAnimation> }) {
+  if (animation.reduceMotion) return null;
 
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.band,
-        {
-          transform: [
-            {
-              translateX: progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [-120, travelWidth + 120],
-              }),
-            },
-            { rotate: '12deg' },
-          ],
-        },
-      ]}
-    >
+    <Animated.View pointerEvents="none" style={animation.style}>
       <View style={styles.edge} />
       <View style={styles.core} />
       <View style={styles.edge} />
     </Animated.View>
   );
+}
+
+function StandaloneShimmer() {
+  return <ShimmerBand animation={useShimmerAnimation()} />;
+}
+
+export function SkeletonShimmer() {
+  const animation = useContext(ShimmerContext);
+  return animation ? <ShimmerBand animation={animation} /> : <StandaloneShimmer />;
 }
 
 const styles = StyleSheet.create({

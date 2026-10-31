@@ -124,7 +124,7 @@ describe('metadata pipeline', () => {
   it('publishes a replacement title when a season refresh captured an older mapping epoch', async () => {
     const { t, asUser } = await setup();
     const now = Date.now();
-    const seasons = [{ season: 1, name: 'Season 1', episodeCount: 1 }];
+    const seasons = [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }];
     const attemptToken = 'season-mapping-change';
     const leaseKey = 'metadata:tv:88';
     const currentTitle = await t.run(async (ctx) => {
@@ -313,7 +313,7 @@ describe('metadata pipeline', () => {
           tmdbId: 88,
           mediaType: 'tv',
           title: 'Before staging',
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+          seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }],
         }),
         mediaType: 'tv',
       });
@@ -330,7 +330,7 @@ describe('metadata pipeline', () => {
             tmdbId: 88,
             mediaType: 'tv',
             title: 'Published staging',
-            seasons: [{ season: 1, name: 'Season 1', episodeCount: 2 }],
+            seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 2 }],
           }),
           mediaType: 'tv',
         },
@@ -491,7 +491,7 @@ describe('metadata pipeline', () => {
           tmdbId: 88,
           mediaType: 'tv',
           title: 'One-season show',
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 12 }],
+          seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 12 }],
           refreshedAt: now,
           refreshAfter: now + 60_000,
         }),

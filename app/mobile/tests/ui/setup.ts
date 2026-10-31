@@ -1,4 +1,11 @@
 import { cleanup } from '@testing-library/react-native';
+jest.mock('../../src/lib/startupSnapshotStorage', () => ({
+  startupSnapshotStore: {
+    read: jest.fn().mockResolvedValue(null),
+    save: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 
 jest.mock('react-native-keyboard-controller', () =>
   jest.requireActual('react-native-keyboard-controller/jest'),
@@ -10,7 +17,22 @@ jest.mock(
 );
 
 jest.mock('react-native-reanimated', () => {
-  const { View } = jest.requireActual('react-native');
+  const { useRef } = jest.requireActual('react');
+  const { ScrollView, View } = jest.requireActual('react-native');
+  const useSharedValue = (initialValue: unknown) => {
+    const ref = useRef();
+    if (!ref.current) {
+      const shared = {
+        value: initialValue,
+        get: () => shared.value,
+        set: (value: unknown) => {
+          shared.value = value;
+        },
+      };
+      ref.current = shared;
+    }
+    return ref.current;
+  };
   const chain: Record<string, unknown> = {};
   chain.duration = () => chain;
   chain.delay = () => chain;
@@ -18,7 +40,7 @@ jest.mock('react-native-reanimated', () => {
   chain.reduceMotion = () => chain;
   return {
     __esModule: true,
-    default: { View, createAnimatedComponent: (component: unknown) => component },
+    default: { ScrollView, View, createAnimatedComponent: (component: unknown) => component },
     Easing: {
       bezier: () => (value: number) => value,
       cubic: (value: number) => value,
@@ -29,19 +51,15 @@ jest.mock('react-native-reanimated', () => {
     LinearTransition: chain,
     ReduceMotion: { System: 'system' },
     runOnJS: (callback: (...args: unknown[]) => unknown) => callback,
+    scrollTo: jest.fn(),
     SlideInDown: chain,
     SlideOutDown: chain,
     useAnimatedStyle: (factory: () => unknown) => factory(),
-    useSharedValue: (initialValue: unknown) => {
-      const shared = {
-        value: initialValue,
-        get: () => shared.value,
-        set: (value: unknown) => {
-          shared.value = value;
-        },
-      };
-      return shared;
-    },
+    useAnimatedReaction: jest.fn(),
+    useAnimatedRef: () => useRef(null),
+    useFrameCallback: () => useRef({ setActive: jest.fn() }).current,
+    useScrollOffset: () => useSharedValue(0),
+    useSharedValue,
     withTiming: (value: unknown) => value,
   };
 });
@@ -58,53 +76,6 @@ jest.mock('react-native-gesture-handler', () => {
     Gesture: { Pan: () => gesture, Pinch: () => gesture },
     GestureDetector: ({ children }: { children: React.ReactNode }) =>
       React.createElement(React.Fragment, null, children),
-  };
-});
-
-jest.mock('lucide-react-native', () => {
-  const Icon = () => null;
-  return {
-    __esModule: true,
-    ArrowLeft: Icon,
-    BookOpen: Icon,
-    Bell: Icon,
-    Bookmark: Icon,
-    Ban: Icon,
-    CalendarDays: Icon,
-    Camera: Icon,
-    ChartNoAxesColumn: Icon,
-    Check: Icon,
-    ChevronDown: Icon,
-    ChevronRight: Icon,
-    ChevronLeft: Icon,
-    Compass: Icon,
-    Clock3: Icon,
-    EllipsisVertical: Icon,
-    Globe2: Icon,
-    GripVertical: Icon,
-    LayoutGrid: Icon,
-    Library: Icon,
-    List: Icon,
-    ListVideo: Icon,
-    LockKeyhole: Icon,
-    LogIn: Icon,
-    Minus: Icon,
-    Pencil: Icon,
-    RotateCcw: Icon,
-    Plus: Icon,
-    Search: Icon,
-    Eye: Icon,
-    Film: Icon,
-    Square: Icon,
-    Settings: Icon,
-    SlidersHorizontal: Icon,
-    Star: Icon,
-    Tags: Icon,
-    Tv2: Icon,
-    UserPlus: Icon,
-    UserRound: Icon,
-    Trash2: Icon,
-    X: Icon,
   };
 });
 

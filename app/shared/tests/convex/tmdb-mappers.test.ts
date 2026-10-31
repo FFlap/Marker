@@ -69,7 +69,9 @@ describe('TMDB mapper contracts', () => {
         { season_number: 0, name: 'Specials', episode_count: 2 },
       ],
     });
-    expect(tv.seasons).toEqual([{ season: 0, name: 'Specials', episodeCount: 2 }]);
+    expect(tv.seasons).toEqual([
+      { episodeCountVerified: true, season: 0, name: 'Specials', episodeCount: 2 },
+    ]);
     expect(
       mapSeasonDetails({
         season_number: 0,

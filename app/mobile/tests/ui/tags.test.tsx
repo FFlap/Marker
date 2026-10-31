@@ -8,6 +8,7 @@ const mockReorderItem = jest.fn().mockResolvedValue(1.5);
 const mockMoveItemToWatched = jest.fn().mockResolvedValue(1.5);
 const mockSetVisibility = jest.fn().mockResolvedValue('collection');
 let mockRouteTag = 'Favorites';
+let mockTagRanks: { itemId: string; rank: number }[] = [];
 let mockDragEnd: ((event: { from: number; to: number }) => void) | undefined;
 let mockTagVisibility: { isPublic: boolean } | undefined = { isPublic: false };
 const mockTagPreviews = [
@@ -74,6 +75,7 @@ const mockItems = [
     updatedAt: 3,
   },
 ];
+let mockLibraryItems = mockItems;
 
 jest.mock('expo-router', () => ({
   router: {
@@ -86,8 +88,8 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('convex/react', () => ({
   useQuery: (ref: string) => {
-    if (ref === 'library/items:listItems') return mockItems;
-    if (ref === 'library/items:listTagRanks') return [];
+    if (ref === 'library/items:listItems') return mockLibraryItems;
+    if (ref === 'library/items:listTagRanks') return mockTagRanks;
     if (ref === 'settings.getSettings') return { defaultView: 'list' };
     if (ref === 'tags.visibility') return mockTagVisibility;
     if (ref === 'profiles.me') return { username: 'tester', isPublic: false };
@@ -186,6 +188,8 @@ describe('Tags screens', () => {
     replace: jest.Mock;
   };
   beforeEach(() => {
+    mockLibraryItems = mockItems;
+    mockTagRanks = [];
     mockRouteTag = 'Favorites';
     mockTagVisibility = { isPublic: false };
     mockDragEnd = undefined;
@@ -273,7 +277,7 @@ describe('Tags screens', () => {
     ).toEqual(['1. First Movie', '2. Second Show']);
   });
 
-  it('releases a saved optimistic order so server changes remain visible', async () => {
+  it('keeps the dropped tag order until query acknowledgement, then accepts later orders', async () => {
     let finish!: () => void;
     mockReorderTag.mockImplementationOnce(
       () =>
@@ -290,8 +294,111 @@ describe('Tags screens', () => {
         .filter((label) => /^\d+\./.test(label ?? ''));
     expect(titles()).toEqual(['1. Second Show', '2. First Movie']);
     await act(async () => finish());
+    expect(titles()).toEqual(['1. Second Show', '2. First Movie']);
+    mockTagRanks = [
+      { itemId: 'b', rank: 1 },
+      { itemId: 'a', rank: 2 },
+    ];
+    await view.rerender(<TagDetailScreen />);
+    expect(titles()).toEqual(['1. Second Show', '2. First Movie']);
+    mockTagRanks = [
+      { itemId: 'a', rank: 1 },
+      { itemId: 'b', rank: 2 },
+    ];
+    await view.rerender(<TagDetailScreen />);
     expect(titles()).toEqual(['1. First Movie', '2. Second Show']);
   });
+
+  it.each(['succeeds', 'fails'])(
+    'keeps a rapid reverse tag reorder until the latest save %s',
+    async (outcome) => {
+      let finishFirst!: () => void;
+      let finishLatest!: () => void;
+      mockReorderTag
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finishFirst = resolve;
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve, reject) => {
+              finishLatest =
+                outcome === 'succeeds' ? resolve : () => reject(new Error('Save failed'));
+            }),
+        );
+      const view = await render(<TagDetailScreen />);
+      const original = ['1. First Movie', '2. Second Show'];
+      const earlier = ['1. Second Show', '2. First Movie'];
+      const titles = () =>
+        view
+          .getAllByRole('button')
+          .map((node) => node.props.accessibilityLabel)
+          .filter((label) => /^\d+\./.test(label ?? ''));
+      await act(async () => mockDragEnd?.({ from: 0, to: 1 }));
+      await act(async () => mockDragEnd?.({ from: 1, to: 0 }));
+      expect(titles()).toEqual(original);
+      await act(async () => finishFirst());
+      const firstSaved = [
+        { itemId: 'b', rank: 1 },
+        { itemId: 'a', rank: 2 },
+      ];
+      mockTagRanks = firstSaved;
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(original);
+      await act(async () => finishLatest());
+      expect(titles()).toEqual(outcome === 'succeeds' ? original : earlier);
+      mockTagRanks = [
+        { itemId: 'a', rank: 1 },
+        { itemId: 'b', rank: 2 },
+      ];
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(original);
+      mockTagRanks = firstSaved;
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(earlier);
+    },
+  );
+
+  it.each(['added', 'removed'])(
+    'acknowledges a tag reorder when a member was %s before the saved query rendered',
+    async (change) => {
+      const view = await render(<TagDetailScreen />);
+      await act(async () => mockDragEnd?.({ from: 0, to: 1 }));
+      mockTagRanks = [
+        { itemId: 'b', rank: 1 },
+        { itemId: 'a', rank: 2 },
+        { itemId: 'c', rank: 0 },
+      ];
+      mockLibraryItems =
+        change === 'removed'
+          ? mockItems.filter((item) => item._id !== 'a')
+          : mockItems.map((item) => ({
+              ...item,
+              status: 'watched' as const,
+              tags: ['Favorites'],
+            }));
+      const titles = () =>
+        view
+          .getAllByRole('button')
+          .map((node) => node.props.accessibilityLabel)
+          .filter((label) => /^\d+\./.test(label ?? ''));
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(
+        change === 'removed'
+          ? ['1. Second Show']
+          : ['1. Weekend Movie', '2. Second Show', '3. First Movie'],
+      );
+      mockLibraryItems = mockItems;
+      mockTagRanks = [
+        { itemId: 'a', rank: 1 },
+        { itemId: 'b', rank: 2 },
+      ];
+      await view.rerender(<TagDetailScreen />);
+      expect(titles()).toEqual(['1. First Movie', '2. Second Show']);
+    },
+  );
 
   it('moves a tagged title into another library status', async () => {
     const view = await render(<TagDetailScreen />);

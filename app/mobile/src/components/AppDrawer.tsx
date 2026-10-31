@@ -1,17 +1,12 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import {
-  AccessibilityInfo,
-  Animated,
-  Easing,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
+import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
-import { Bell, CalendarDays, Compass, Settings } from 'lucide-react-native';
-import { useQuery } from 'convex/react';
+import Bell from 'lucide-react-native/icons/bell';
+import CalendarDays from 'lucide-react-native/icons/calendar-days';
+import Compass from 'lucide-react-native/icons/compass';
+import Settings from 'lucide-react-native/icons/settings';
+import { useStartupQuery as useQuery } from '@/hooks/useStartupQuery';
 import { useAccountLoading } from '@/hooks/useAccountLoading';
 import { SkeletonShimmer } from './SkeletonShimmer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -40,22 +35,13 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   ref,
 ) {
   const [visible, setVisible] = useState(false);
-  const [motionReduced, setMotionReduced] = useState(false);
+  const motionReduced = useReducedMotion();
   const [progress] = useState(() => new Animated.Value(0));
   const pendingClose = useRef<(() => void) | undefined>(undefined);
   const { profileReady } = useAccountLoading();
   const profile = useQuery(api.profiles.me, profileReady ? {} : 'skip');
   const canOpen = !!profile;
   const insets = useSafeAreaInsets();
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setMotionReduced);
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      setMotionReduced,
-    );
-    return () => subscription.remove();
-  }, []);
 
   const openDrawer = useCallback(() => {
     if (!canOpen) return;

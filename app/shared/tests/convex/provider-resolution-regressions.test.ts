@@ -21,7 +21,7 @@ const title = (overrides: Partial<ResolvedTitle> = {}): ResolvedTitle => ({
   episodeRunTime: [],
   genres: [],
   cast: [],
-  seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+  seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }],
   metadataProvider: 'tmdb',
   orderEpoch: 0,
   refreshedAt: 1,
@@ -196,7 +196,9 @@ it('lets a newer title restore a season hidden by an older empty canonical count
   const view = await t
     .withIdentity({ subject: 'new-count' })
     .query(api.resolvedMetadata.reads.getTitle, { mediaType: 'tv', tmdbId: 88 });
-  expect(view?.seasons).toEqual([{ season: 1, name: 'Season 1', episodeCount: 1 }]);
+  expect(view?.seasons).toEqual([
+    { episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 },
+  ]);
 });
 
 it('keeps confirmed empty seasons in storage so later refreshes can target them', async () => {
@@ -362,7 +364,7 @@ it.each(['missing', 'stale', 'incomplete'])(
           seasonOrder: 'official',
           seasons: [
             { season: 1, name: 'Unknown', episodeCount: 0, episodeCountVerified: false },
-            { season: 2, name: 'Loaded', episodeCount: 2 },
+            { episodeCountVerified: true, season: 2, name: 'Loaded', episodeCount: 2 },
           ],
         }),
       );
@@ -415,7 +417,7 @@ it.each(['missing', 'stale', 'incomplete'])(
       });
     const savedId = await t.run(async (ctx) => {
       await ctx.db.patch(itemId, {
-        nextEpisode: { season: 2, episode: 2, providerEpisodeId: 202 },
+        nextEpisode: { chunkIndex: 0, season: 2, episode: 2, providerEpisodeId: 202 },
       });
       return ctx.db.insert('episodes', {
         userId,

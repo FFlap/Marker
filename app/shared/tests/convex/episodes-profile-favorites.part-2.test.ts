@@ -52,7 +52,9 @@ describe('episode hub and profile favorites', () => {
         episodeRunTime: [25],
         genres: [],
         cast: [],
-        seasons: [{ season: 1, name: 'Corrected Arc', episodeCount: 101 }],
+        seasons: [
+          { episodeCountVerified: true, season: 1, name: 'Corrected Arc', episodeCount: 101 },
+        ],
         metadataProvider: 'tmdb',
         refreshedAt: now,
         refreshAfter: now + 60_000,
@@ -187,7 +189,9 @@ describe('episode hub and profile favorites', () => {
         episodeRunTime: [24],
         genres: ['Anime'],
         cast: [],
-        seasons: [{ season: 1, name: 'East Blue Arc', episodeCount: 2 }],
+        seasons: [
+          { episodeCountVerified: true, season: 1, name: 'East Blue Arc', episodeCount: 2 },
+        ],
         metadataProvider: 'tvdb',
         tvdbId: 81797,
         seasonOrder: 'alttwo',
@@ -308,7 +312,9 @@ describe('episode hub and profile favorites', () => {
         episodeRunTime: [24],
         genres: ['Anime'],
         cast: [],
-        seasons: [{ season: 1, name: 'Official Order', episodeCount: 1 }],
+        seasons: [
+          { episodeCountVerified: true, season: 1, name: 'Official Order', episodeCount: 1 },
+        ],
         metadataProvider: 'tvdb',
         tvdbId: 81797,
         seasonOrder: 'official',

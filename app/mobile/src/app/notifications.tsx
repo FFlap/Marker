@@ -1,12 +1,16 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
-import { Check, Clock3, Eye, Star, X } from 'lucide-react-native';
+import Check from 'lucide-react-native/icons/check';
+import Clock3 from 'lucide-react-native/icons/clock-3';
+import Eye from 'lucide-react-native/icons/eye';
+import Star from 'lucide-react-native/icons/star';
+import X from 'lucide-react-native/icons/x';
 import { Image } from 'expo-image';
 import { api } from '@marker/shared/api';
 import { SecondaryHeader } from '@/components/BackButton';

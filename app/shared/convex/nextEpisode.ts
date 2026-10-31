@@ -104,67 +104,15 @@ function seasonNeedsCoordinate(context: RefreshContext, season: RefreshContext['
   );
 }
 
-async function currentCoordinateCursor(
-  ctx: MutationCtx,
-  context: RefreshContext,
-  item: Doc<'items'>,
-  hint: WatchedEpisodeHint,
-) {
+function currentCoordinateCursor(item: Doc<'items'>, hint: WatchedEpisodeHint) {
   const coordinate = item.nextEpisode;
   if (coordinate?.season !== hint.season || coordinate.episode !== hint.episode) return undefined;
-  if (coordinate.chunkIndex !== undefined)
-    return { season: coordinate.season, chunkIndex: coordinate.chunkIndex };
-
-  // Legacy coordinates lack chunkIndex; 50 chunks require at most six binary-search reads.
-  const season = await ctx.db
-    .query('resolvedSeasons')
-    .withIndex('by_tmdb_season', (query) =>
-      query.eq('tmdbId', item.tmdbId).eq('season', coordinate.season),
-    )
-    .unique();
-  if (
-    !season ||
-    season.chunksComplete !== true ||
-    season.chunkCount === undefined ||
-    season.seasonVersion === undefined ||
-    season.orderEpoch !== context.title.orderEpoch ||
-    (context.mapping && season.orderEpoch !== context.mapping.orderEpoch)
-  )
-    return undefined;
-  let low = 0;
-  let high = season.chunkCount - 1;
-  while (low <= high) {
-    const chunkIndex = Math.floor((low + high) / 2);
-    const chunk = await ctx.db
-      .query('resolvedSeasonChunks')
-      .withIndex('by_tmdb_season_version_chunk', (query) =>
-        query
-          .eq('tmdbId', item.tmdbId)
-          .eq('season', coordinate.season)
-          .eq('seasonVersion', season.seasonVersion!)
-          .eq('chunkIndex', chunkIndex),
-      )
-      .unique();
-    if (!chunk?.episodes.length) return undefined;
-    const firstEpisode = Math.min(...chunk.episodes.map((episode) => episode.episode));
-    const lastEpisode = Math.max(...chunk.episodes.map((episode) => episode.episode));
-    if (coordinate.episode < firstEpisode) high = chunkIndex - 1;
-    else if (coordinate.episode > lastEpisode) low = chunkIndex + 1;
-    else if (chunk.episodes.some((episode) => episode.episode === coordinate.episode))
-      return { season: coordinate.season, chunkIndex };
-    else return undefined;
-  }
-  return undefined;
+  return { season: coordinate.season, chunkIndex: coordinate.chunkIndex };
 }
 
-async function firstCursor(
-  ctx: MutationCtx,
-  context: RefreshContext,
-  item: Doc<'items'>,
-  hint?: WatchedEpisodeHint,
-) {
+function firstCursor(context: RefreshContext, item: Doc<'items'>, hint?: WatchedEpisodeHint) {
   if (hint) {
-    const fastCursor = await currentCoordinateCursor(ctx, context, item, hint);
+    const fastCursor = currentCoordinateCursor(item, hint);
     if (fastCursor) return fastCursor;
   }
   const season = context.seasons.find((candidate) => seasonNeedsCoordinate(context, candidate));
@@ -347,7 +295,7 @@ export async function refreshNextEpisode(
     return { state: 'skipped', chunkPairsRead: 0 };
   const context = await loadRefreshContext(ctx, item);
   if (!context || context.title.refreshAfter <= Date.now()) await loadMissingMetadata(ctx, item);
-  const cursor = context ? await firstCursor(ctx, context, item, watchedEpisode) : undefined;
+  const cursor = context ? firstCursor(context, item, watchedEpisode) : undefined;
   const existing = await activeRefresh(ctx, item._id);
   if (!cursor) {
     if (existing) await ctx.db.delete(existing._id);

@@ -52,7 +52,7 @@ export const begin = internalMutation({
       await ctx.db.insert('calendarSchedules', {
         key,
         month,
-        events: [],
+        eventCount: 0,
         refreshedAt: 0,
         ...staging,
       });
@@ -82,7 +82,6 @@ export const writeChunk = internalMutation({
       done
         ? {
             version: token,
-            events: [],
             eventCount: chunk * CHUNK_SIZE + events.length,
             refreshedAt,
             stagingVersion: undefined,
@@ -120,17 +119,16 @@ async function read(ctx: QueryCtx, key: string, offset: number, limit: number) {
     .query('calendarSchedules')
     .withIndex('by_key', (q) => q.eq('key', key))
     .unique();
-  if (!row) return { events: [], count: 0, version: '' };
-  const count = row.eventCount ?? row.events.length;
-  const version = row.version ?? `${row._id}:${row.refreshedAt}`;
+  if (!row?.version) return { events: [], count: 0, version: '' };
+  const count = row.eventCount;
+  const version = row.version;
   if (limit <= 0 || offset >= count) return { events: [], count, version };
-  if (!row.version) return { events: row.events.slice(offset, offset + limit), count, version };
   const chunks = await ctx.db
     .query('calendarReleaseChunks')
     .withIndex('by_key_version_chunk', (q) =>
       q
         .eq('key', key)
-        .eq('version', row.version!)
+        .eq('version', version)
         .gte('chunk', Math.floor(offset / CHUNK_SIZE)),
     )
     .take(Math.ceil(limit / CHUNK_SIZE) + 1);

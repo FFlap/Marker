@@ -1,17 +1,11 @@
 import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import {
-  Animated,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  ScrollView,
-  Text,
-  View,
-} from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
+import Reanimated, { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
@@ -31,6 +25,7 @@ import { useToast } from '@/components/ui/Toast';
 import { DEFAULT_DISPLAY_PREFERENCES } from '@/lib/displayPreferences';
 import type { Status } from '@/types';
 import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
+import { isOrderAcknowledged } from '@/lib/optimisticOrder';
 import { tagDetailStyles as s } from '@/features/tags/screens/TagDetailScreen.styles';
 import { TagHeader } from '@/features/tags/components/TagHeader';
 import {
@@ -83,12 +78,13 @@ export default function TagDetailScreen() {
     orders: {},
   });
   const reorderVersions = useRef<Record<string, number>>({});
+  const [pendingReorders, setPendingReorders] = useState<Record<string, number>>({});
   const rootRef = useRef<View>(null);
-  const nativePosterScrollRef = useRef<ScrollView>(null);
+  const nativePosterScrollRef = useAnimatedRef<ScrollView>();
+  const nativeScrollOffset = useScrollOffset(nativePosterScrollRef);
   const nativeScrollContentHeight = useRef(0);
   const nativeScrollViewportHeight = useRef(0);
   const rootWindowY = useRef(0);
-  const lastScrollY = useRef(0);
   const nativeDragRef = useRef<{ item: RankedItem; rank?: number; status: Status } | undefined>(
     undefined,
   );
@@ -116,6 +112,27 @@ export default function TagDetailScreen() {
     type,
     visibleStatuses,
   } = collection;
+  const acknowledgedOrders = useMemo(
+    () =>
+      optimisticState.tagKey !== tagKey || statusMovePending
+        ? []
+        : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
+            const order = optimisticState.orders[status];
+            if (!order || pendingReorders[`${tagKey}:${status}`] !== undefined) return false;
+            const saved = members.filter((item) => item.status === status);
+            return isOrderAcknowledged(
+              order,
+              saved.map((item) => String(item._id)),
+            );
+          }),
+    [members, optimisticState, pendingReorders, statusMovePending, tagKey],
+  );
+  if (acknowledgedOrders.length) {
+    const orders = { ...optimisticState.orders };
+    for (const status of acknowledgedOrders) delete orders[status];
+    setOptimisticState({ tagKey, orders });
+  }
+
   const view = settings?.defaultView ?? 'list';
   const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const listColumns = settings?.listColumns ?? DEFAULT_DISPLAY_PREFERENCES.listColumns;
@@ -130,6 +147,7 @@ export default function TagDetailScreen() {
     const versionKey = `${tagKey}:${status}`;
     const version = (reorderVersions.current[versionKey] ?? 0) + 1;
     reorderVersions.current[versionKey] = version;
+    setPendingReorders((current) => ({ ...current, [versionKey]: version }));
     setOptimisticState((current) => {
       const orders = current.tagKey === tagKey ? current.orders : {};
       return {
@@ -151,14 +169,20 @@ export default function TagDetailScreen() {
       {
         failure: () => {
           toast.show('Couldn’t save this tag order');
-        },
-        settled: () => {
           if (reorderVersions.current[versionKey] === version)
             setOptimisticState((current) =>
               current.tagKey === tagKey
                 ? { tagKey, orders: { ...current.orders, [status]: undefined } }
                 : current,
             );
+        },
+        settled: () => {
+          setPendingReorders((current) => {
+            if (current[versionKey] !== version) return current;
+            const next = { ...current };
+            delete next[versionKey];
+            return next;
+          });
         },
       },
     );
@@ -335,9 +359,6 @@ export default function TagDetailScreen() {
     setNativeDragPreview(undefined);
     setNativeTargetStatus(undefined);
   };
-  const captureScrollOffset = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    lastScrollY.current = Math.max(0, event.nativeEvent.contentOffset.y);
-  };
   const nativePosterAutoScroll = useMemo<NativeGridAutoScroll>(
     () => ({
       getBounds: () => ({
@@ -346,13 +367,10 @@ export default function TagDetailScreen() {
       }),
       getMaxOffset: () =>
         Math.max(0, nativeScrollContentHeight.current - nativeScrollViewportHeight.current),
-      getOffset: () => lastScrollY.current,
-      scrollTo: (offset) => {
-        lastScrollY.current = offset;
-        nativePosterScrollRef.current?.scrollTo({ y: offset, animated: false });
-      },
+      offset: nativeScrollOffset,
+      scrollRef: nativePosterScrollRef,
     }),
-    [rootHeight],
+    [nativePosterScrollRef, nativeScrollOffset, rootHeight],
   );
   return (
     <ScreenView
@@ -386,7 +404,7 @@ export default function TagDetailScreen() {
       {library === undefined || (tagKey && ranks === undefined) ? (
         <TagSkeleton />
       ) : (
-        <Animated.ScrollView
+        <Reanimated.ScrollView
           ref={nativePosterScrollRef}
           testID="tag-scroll"
           contentContainerStyle={s.content}
@@ -397,9 +415,6 @@ export default function TagDetailScreen() {
           onLayout={(event) => {
             nativeScrollViewportHeight.current = event.nativeEvent.layout.height;
           }}
-          onScroll={captureScrollOffset}
-          onScrollEndDrag={captureScrollOffset}
-          onMomentumScrollEnd={captureScrollOffset}
           scrollEnabled={!nativePosterDragActive}
           scrollEventThrottle={16}
         >
@@ -459,10 +474,10 @@ export default function TagDetailScreen() {
                         beginNativePosterDrag(item, index, status === 'watched', status)
                       }
                       onDragLayout={positionNativePosterDrag}
-                      onDragMove={({ absoluteY }) =>
+                      onDragMove={({ absoluteY, scrollOffset }) =>
                         updateNativeDragTarget(
                           status,
-                          absoluteY - rootWindowY.current + lastScrollY.current,
+                          absoluteY - rootWindowY.current + scrollOffset,
                         )
                       }
                       onDragCancel={cancelNativePosterDrag}
@@ -489,7 +504,7 @@ export default function TagDetailScreen() {
               );
             })}
           </PinchDensity>
-        </Animated.ScrollView>
+        </Reanimated.ScrollView>
       )}
       <ConfirmWatchedMove
         item={pendingWatchedMove}

@@ -69,7 +69,6 @@ export const checkpoint = internalMutation({
       row._id,
       done
         ? {
-            candidates: [],
             version: row.stagingVersion,
             candidateCount: count,
             refreshedAt: Date.now(),

@@ -1,5 +1,6 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import { startupSnapshotStore } from '@/lib/startupSnapshotStorage';
+import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
@@ -74,7 +75,11 @@ export default function Settings() {
     setPending((current) => new Set(current).add('signout'));
     await runOperation(
       Effect.gen(function* () {
-        yield* saveProfile(() => signOut());
+        yield* saveProfile(async () => {
+          await startupSnapshotStore.clear();
+          await signOut();
+          await startupSnapshotStore.clear();
+        });
       }),
       {
         failure: () => {

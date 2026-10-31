@@ -2,7 +2,7 @@ import { localDateKey } from "@/hooks/use-local-today";
 import { Effect } from "effect";
 import { touchMetadata, saveLibrary } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { Check, Search } from "lucide-react";
 import { api } from "@marker/shared/api";
@@ -75,19 +75,18 @@ export function AddTitleDialog({
   );
   const canonicalRuntime = titleRuntime(resolvedTitle, selected?.runtime);
 
-  useEffect(() => {
-    if (!open || !selected) return;
+  const refreshSelection = (selection: SearchResult) => {
     void runOperation(
       touchMetadata(() =>
         touchTitle({
-          mediaType: selected.mediaType,
-          tmdbId: selected.id,
-          title: selected.title,
+          mediaType: selection.mediaType,
+          tmdbId: selection.id,
+          title: selection.title,
         }),
       ),
       { failure: () => undefined },
     );
-  }, [open, selected, touchTitle, runOperation]);
+  };
 
   const search = (event: FormEvent) => {
     event.preventDefault();
@@ -168,6 +167,7 @@ export function AddTitleDialog({
         setQuery("");
         setSubmittedQuery("");
         setSelected(next ? initialSelection : undefined);
+        if (next && initialSelection) refreshSelection(initialSelection);
         setDraft(initialDraft);
         setSaveError("");
       }}
@@ -261,6 +261,7 @@ export function AddTitleDialog({
                     key={`${result.mediaType}:${result.id}`}
                     onClick={() => {
                       setSelected(result);
+                      refreshSelection(result);
                       setDraft(initialDraft);
                       setSaveError("");
                     }}
