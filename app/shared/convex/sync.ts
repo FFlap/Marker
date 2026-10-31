@@ -15,6 +15,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { seasonSummaryIdentityKey, updateSummaryForEpisodeUpsert } from './episodeSummaries';
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from './activityEvents';
 import { refreshNextEpisode } from './nextEpisode';
+import { updateProfileStatsForItem } from './profileStatsRefresh';
 import { bumpCalendarRevision } from './calendarLibrary';
 
 const resolvedTvArgs = {
@@ -57,6 +58,7 @@ async function getOrCreateResolvedTv(ctx: MutationCtx, a: ResolvedTvCandidate) {
     updatedAt: now,
   });
   const item = (await ctx.db.get(id))!;
+  await updateProfileStatsForItem(ctx, null, item);
   await bumpCalendarRevision(ctx, a.userId);
   await writeActivityEvents(ctx, [
     { ...itemActivityBase(item), kind: 'status', status: 'watching' },

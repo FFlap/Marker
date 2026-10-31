@@ -13,7 +13,7 @@ import { EPISODES_PER_CHUNK, MAX_SEASON_EPISODES } from '../seasonStorage';
 import { seasonSummaryIdentityKey } from '../episodeSummaries';
 import { writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
 import { refreshNextEpisode } from '../nextEpisode';
-import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { updateProfileStatsForItem } from '../profileStatsRefresh';
 import { bumpCalendarRevision } from '../calendarLibrary';
 import { addItemFields, ownedItem, requireUser } from './shared';
 import { setEpisode } from './episodes';
@@ -458,7 +458,7 @@ export const discardAddedItem = internalMutation({
     if (item.deletingAt === undefined) {
       await ctx.db.patch(itemId, { deletingAt: Date.now() });
       await bumpCalendarRevision(ctx, userId);
-      await requestProfileStatsRefresh(ctx, userId);
+      await updateProfileStatsForItem(ctx, item, null);
     }
     await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
   },
