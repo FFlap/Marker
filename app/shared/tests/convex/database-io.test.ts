@@ -505,3 +505,46 @@ it('joins a small library into a large calendar feed without scanning unrelated 
   expect(tail.titles.map((row) => row.item.tmdbId)).toEqual([1]);
   console.info('CALENDAR_IO', JSON.stringify({ baseline, optimized: metrics }));
 });
+
+it.each([320, 1000])(
+  'fully bootstraps a legacy history of %i events in bounded batches',
+  async (count) => {
+    const { t, userId, asUser, drain } = await setup();
+    const itemId = await asUser.mutation(api.library.items.addItem, {
+      ...movie(1),
+      status: 'watchlist',
+    });
+    await t.run(async (ctx) => {
+      for (let n = 0; n < count; n++)
+        await ctx.db.insert('activityEvents', {
+          userId,
+          itemId,
+          title: `${n}`,
+          kind: 'status',
+          createdAt: n,
+        });
+    });
+    const event = { userId, itemId, title: 'New', kind: 'status' as const, createdAt: count };
+    await t.run((ctx) => writeActivityEvents(ctx, [event]));
+    // A concurrent write may start another cleanup, but must not install an undercount.
+    await t.run((ctx) => writeActivityEvents(ctx, [{ ...event, createdAt: count + 1 }]));
+    await drain();
+    const readHistory = () =>
+      t.run((ctx) =>
+        ctx.db
+          .query('activityEvents')
+          .withIndex('by_actor_time', (q) => q.eq('userId', userId))
+          .order('desc')
+          .collect(),
+      );
+    const rows = await readHistory();
+    expect(rows).toHaveLength(200);
+    expect(rows.at(-1)?.createdAt).toBe(count - 198);
+    expect(await t.run((ctx) => ctx.db.query('activityEventCounts').unique())).toMatchObject({
+      userId,
+      count: 200,
+    });
+    await t.run((ctx) => writeActivityEvents(ctx, [{ ...event, createdAt: count + 2 }]));
+    expect(await readHistory()).toHaveLength(200);
+  },
+);

@@ -1,5 +1,7 @@
 import type { Doc, Id } from './_generated/dataModel';
-import type { MutationCtx } from './_generated/server';
+import { internalMutation, type MutationCtx } from './_generated/server';
+import { internal } from './_generated/api';
+import { v } from 'convex/values';
 
 export type ActivityEventWrite = {
   userId: Id<'users'>;
@@ -32,20 +34,7 @@ export async function writeActivityEvents(ctx: MutationCtx, events: ActivityEven
     .query('activityEventCounts')
     .withIndex('by_user', (q) => q.eq('userId', userId))
     .unique();
-  if (!counter) {
-    // Bootstrap existing histories once; subsequent writes read only evicted events.
-    const retained = await ctx.db
-      .query('activityEvents')
-      .withIndex('by_actor_time', (q) => q.eq('userId', userId))
-      .order('desc')
-      .take(HISTORY_LIMIT + MAX_WRITE_BATCH);
-    for (const stale of retained.slice(HISTORY_LIMIT)) await ctx.db.delete(stale._id);
-    await ctx.db.insert('activityEventCounts', {
-      userId,
-      count: Math.min(retained.length, HISTORY_LIMIT),
-    });
-    return;
-  }
+  if (!counter) return bootstrapActivityHistory(ctx, userId);
   const count = counter.count + events.length;
   if (count > HISTORY_LIMIT) {
     const stale = await ctx.db
@@ -64,4 +53,37 @@ export const itemActivityBase = (item: Doc<'items'>) => ({
   itemId: item._id,
   title: item.title,
   ...(item.posterPath !== undefined && { posterPath: item.posterPath }),
+});
+
+/** Only install a counter once every legacy row is accounted for. */
+async function bootstrapActivityHistory(ctx: MutationCtx, userId: Id<'users'>) {
+  const batchSize = HISTORY_LIMIT + MAX_WRITE_BATCH + 1;
+  const retained = await ctx.db
+    .query('activityEvents')
+    .withIndex('by_actor_time', (q) => q.eq('userId', userId))
+    .order('desc')
+    .take(batchSize);
+  for (const stale of retained.slice(HISTORY_LIMIT)) await ctx.db.delete(stale._id);
+  if (retained.length === batchSize) {
+    // A full batch may hide older rows. Continue even if no further user writes arrive.
+    await ctx.scheduler.runAfter(0, internal.activityEvents.pruneLegacyHistory, { userId });
+  } else {
+    await ctx.db.insert('activityEventCounts', {
+      userId,
+      count: Math.min(retained.length, HISTORY_LIMIT),
+    });
+  }
+}
+
+export const pruneLegacyHistory = internalMutation({
+  args: { userId: v.id('users') },
+  returns: v.null(),
+  handler: async (ctx, { userId }) => {
+    const counter = await ctx.db
+      .query('activityEventCounts')
+      .withIndex('by_user', (q) => q.eq('userId', userId))
+      .unique();
+    if (!counter) await bootstrapActivityHistory(ctx, userId);
+    return null;
+  },
 });
