@@ -112,7 +112,8 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
   const listTextSize = settings?.listTextSize ?? DEFAULT_DISPLAY_PREFERENCES.listTextSize;
   const { fontScale } = useWindowDimensions();
   const typography = listTypography(listTextSize);
-  // Single-line rows have a uniform extent. Leave room for scaled Android font padding.
+  // Window only unscaled rows. Accessibility scaling can wrap the fixed-width
+  // rating, so those rows must retain their natural measured height.
   const rowHeight = Math.max(
     typography.minHeight,
     Math.ceil((Math.max(22, typography.lineHeight) + typography.fontSize / 2) * fontScale),
@@ -337,7 +338,11 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                       data={data}
                       disabled={active || statusMovePending}
                       columns={view === 'posters' ? gridColumns : listColumns}
-                      rowHeight={view === 'list' && listColumns === 1 ? rowHeight : undefined}
+                      rowHeight={
+                        view === 'list' && listColumns === 1 && fontScale <= 1
+                          ? rowHeight
+                          : undefined
+                      }
                       keyExtractor={(item) => item._id}
                       onMotionInit={(motion) =>
                         setNativePosterMotion((current) => ({ ...current, [status]: motion }))
