@@ -94,6 +94,7 @@ export default defineSchema({
     ratingTotal: v.number(),
     ratingCount: v.number(),
     topTags: v.array(watchedTagCount),
+    tagCounts: v.optional(v.array(watchedTagCount)),
     updatedAt: v.number(),
   }).index('by_user', ['userId']),
   watchActivityDays: defineTable({
@@ -113,6 +114,8 @@ export default defineSchema({
     ratingTotal: v.number(),
     ratingCount: v.number(),
     tagCounts: v.array(watchedTagCount),
+    tagCountsComplete: v.optional(v.boolean()),
+    hasStarted: v.optional(v.boolean()),
     restartRequested: v.boolean(),
     lastProgressAt: v.optional(v.number()),
   }).index('by_user', ['userId']),
@@ -186,11 +189,14 @@ export default defineSchema({
   }).index('by_item', ['itemId']),
   episodeProjectionRepairs: defineTable({
     itemId: v.id('items'),
+    targetSeason: v.optional(v.number()),
     token: v.string(),
     season: v.number(),
     chunkIndex: v.number(),
     afterEpisode: v.optional(v.number()),
-  }).index('by_item', ['itemId']),
+  })
+    .index('by_item', ['itemId'])
+    .index('by_item_season', ['itemId', 'targetSeason']),
   settings: defineTable({
     userId: v.id('users'),
     defaultView: v.union(v.literal('list'), v.literal('posters')),
@@ -211,6 +217,10 @@ export default defineSchema({
     .index('by_pair', ['followerId', 'followingId'])
     .index('by_follower_status', ['followerId', 'status'])
     .index('by_following_status', ['followingId', 'status']),
+  activityEventCounts: defineTable({
+    userId: v.id('users'),
+    count: v.number(),
+  }).index('by_user', ['userId']),
   activityEvents: defineTable({
     userId: v.id('users'),
     kind: v.union(

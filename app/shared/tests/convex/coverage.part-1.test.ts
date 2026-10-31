@@ -10,6 +10,7 @@ import {
 } from '../../convex/tmdb';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
+afterEach(() => vi.useRealTimers());
 
 async function setup() {
   const t = convexTest(schema, modules);
@@ -174,6 +175,7 @@ describe('rating clearing and stats', () => {
   });
 
   it('uses runtime fallbacks, ignores unrated items, and orders tied tags alphabetically', async () => {
+    vi.useFakeTimers();
     const { t, userId, asUser } = await setup();
     const show = await asUser.mutation(
       api.library.items.addItem,
@@ -206,6 +208,7 @@ describe('rating clearing and stats', () => {
         metadataProvider: 'tmdb',
       }),
     );
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
     const stats = await asUser.query(api.stats.profile, {});
     expect(stats.totalWatchMinutes).toBe(75);
     expect(stats.episodesWatched).toBe(2);
