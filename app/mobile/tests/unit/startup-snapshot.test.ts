@@ -4,6 +4,7 @@ import {
   snapshotMatches,
   StartupSnapshotStore,
   SNAPSHOT_MAX_AGE_MS,
+  SNAPSHOT_MAX_BYTES,
   type SnapshotScope,
   type StartupData,
 } from '../../src/lib/startupSnapshot';
@@ -42,6 +43,24 @@ describe('startup snapshots', () => {
     ]) {
       expect(parseStartupSnapshot(text)).toBeNull();
     }
+  });
+
+  it('applies the disk byte limit to multibyte snapshots when saving and parsing', async () => {
+    const large = {
+      ...data,
+      profile: { ...data.profile, username: '語'.repeat(Math.ceil(SNAPSHOT_MAX_BYTES / 3)) },
+    };
+    const text = JSON.stringify({ ...envelope(), data: large });
+    expect(text.length).toBeLessThan(SNAPSHOT_MAX_BYTES);
+    expect(parseStartupSnapshot(text)).toBeNull();
+    const storage = {
+      read: async () => null,
+      write: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(undefined),
+    };
+    await new StartupSnapshotStore(storage).save(scope, large);
+    expect(storage.write).not.toHaveBeenCalled();
+    expect(storage.remove).toHaveBeenCalledOnce();
   });
 
   it('cannot resurrect a snapshot when its disk read finishes after sign-out', async () => {

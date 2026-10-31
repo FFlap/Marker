@@ -17,16 +17,23 @@ export function StartupQueries({
   enabled,
   scope,
   allowCache = false,
+  invalidateCache = false,
   children,
 }: {
   enabled: boolean;
   scope?: SnapshotScope;
   allowCache?: boolean;
+  invalidateCache?: boolean;
   children?: ReactNode;
 }) {
   const [snapshot, setSnapshot] = useState<StartupSnapshot | null>(null);
+  if (invalidateCache && snapshot) setSnapshot(null);
   const scopeKey = scope ? JSON.stringify(scope) : undefined;
   useEffect(() => {
+    if (invalidateCache) {
+      void startupSnapshotStore.clear();
+      return;
+    }
     let active = true;
     void startupSnapshotStore.read().then((value) => {
       if (active) setSnapshot(value);
@@ -34,7 +41,7 @@ export function StartupQueries({
     return () => {
       active = false;
     };
-  }, [scopeKey]);
+  }, [scopeKey, invalidateCache]);
   useEffect(() => {
     if (!snapshot) return;
     const timer = setTimeout(
@@ -53,7 +60,10 @@ export function StartupQueries({
   const ready =
     enabled &&
     [profile, items, settings, stats, tags, requests].every((value) => value !== undefined);
-  const cached = allowCache && !ready && snapshotMatches(snapshot, scope) ? snapshot.data : null;
+  const cached =
+    allowCache && !invalidateCache && !ready && snapshotMatches(snapshot, scope)
+      ? snapshot.data
+      : null;
   useEffect(() => {
     if (
       !enabled ||

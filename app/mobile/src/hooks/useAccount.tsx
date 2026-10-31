@@ -1,10 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useAuth, useClerk } from '@clerk/expo';
 import { api } from '@marker/shared/api';
 import { useMarkerAccount } from './useMarkerAccount';
 import { StartupQueries } from '@/components/StartupQueries';
 import { useStartupData, useStartupQuery } from './useStartupQuery';
-import { startupSnapshotStore } from '@/lib/startupSnapshotStorage';
 
 function useAccountState(account: ReturnType<typeof useMarkerAccount>) {
   const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
@@ -43,19 +42,15 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   );
   const allowCache =
     !!scope && !account.accountError && (account.isLoading || account.isAuthenticated);
-  useEffect(() => {
-    if (
-      isLoaded &&
-      (!isSignedIn || account.accountError || (!account.isLoading && !account.isAuthenticated))
-    ) {
-      void startupSnapshotStore.clear();
-    }
-  }, [isLoaded, isSignedIn, account.accountError, account.isLoading, account.isAuthenticated]);
+  const invalidateCache =
+    isLoaded &&
+    (!isSignedIn || !!account.accountError || (!account.isLoading && !account.isAuthenticated));
   return (
     <StartupQueries
       enabled={isLoaded && !!isSignedIn && account.isAuthenticated && account.accountReady}
       scope={scope}
       allowCache={allowCache}
+      invalidateCache={invalidateCache}
     >
       <AccountStateProvider account={account}>{children}</AccountStateProvider>
     </StartupQueries>

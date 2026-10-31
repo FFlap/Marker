@@ -180,3 +180,24 @@ it('prefetches profile artwork once it arrives while keeping account queries liv
   await view.rerender(<StartupQueries enabled={false} />);
   expect(mockQuery.mock.calls.every(([, args]) => args === 'skip')).toBe(true);
 });
+
+it('clears retained content after an account error before retrying the same session', async () => {
+  jest.mocked(startupSnapshotStore.read).mockResolvedValue(saved());
+  const tree = (invalidateCache: boolean) => (
+    <StartupQueries
+      enabled={false}
+      scope={scope}
+      allowCache={!invalidateCache}
+      invalidateCache={invalidateCache}
+    >
+      <Probe />
+    </StartupQueries>
+  );
+  const view = await render(tree(false));
+  expect(view.getByText('saved:Saved title:waiting')).toBeTruthy();
+  await view.rerender(tree(true));
+  expect(startupSnapshotStore.clear).toHaveBeenCalledTimes(1);
+  jest.mocked(startupSnapshotStore.read).mockResolvedValue(null);
+  await view.rerender(tree(false));
+  expect(view.getByText('loading:empty:waiting')).toBeTruthy();
+});

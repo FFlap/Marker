@@ -33,7 +33,7 @@ type DragSession<T> = {
   maxOffset: number;
   order: T[];
   over: number;
-  scrollStart: number;
+  origin?: { x: number; y: number; scrollOffset: number };
   slots: Map<number, DragLayout>;
 };
 
@@ -154,7 +154,6 @@ export function NativeDraggableGrid<T>({
   const scrollRef = autoScroll?.scrollRef;
   const dataRef = useRef(data);
   const gridRef = useRef<View>(null);
-  const gridOrigin = useRef({ x: 0, y: 0 });
   const contentTop = useRef<number | null>(null);
   const windowed = !!autoScroll && columns === 1 && !!rowHeight && data.length > 40;
   // Measure the full-height container before mounting rows, including distant sections.
@@ -177,9 +176,8 @@ export function NativeDraggableGrid<T>({
     [autoScroll, data.length, rowHeight, windowed],
   );
   const measureGridOrigin = useCallback(() => {
-    gridRef.current?.measureInWindow((x, y, width, height) => {
+    gridRef.current?.measureInWindow((_x, y, width, height) => {
       if (width <= 0 || height <= 0) return;
-      gridOrigin.current = { x, y };
       const offset = nativeScrollOffset?.value ?? 0;
       contentTop.current = y + offset;
       updateRowWindow(offset);
@@ -228,20 +226,19 @@ export function NativeDraggableGrid<T>({
   }, [isTouchActiveNative]);
 
   const beginDrag = useCallback(
-    (item: T, index: number, scrollOffset: number) => {
+    (item: T, index: number) => {
       if (disabled) return;
       const itemKey = keyExtractor(item);
       const order = [...dataRef.current];
       const bounds = autoScrollRef.current?.getBounds() ?? { top: 0, bottom: 0 };
       const maxOffset = autoScrollRef.current?.getMaxOffset() ?? 0;
-      session.current = {
+      const current: DragSession<T> = {
         bounds,
         from: index,
         itemKey,
         maxOffset,
         order,
         over: index,
-        scrollStart: scrollOffset,
         // Hit-test against the original slots as the keyed cards change order.
         slots:
           windowed && rowHeight
@@ -258,6 +255,7 @@ export function NativeDraggableGrid<T>({
               )
             : new Map(slotLayouts.current),
       };
+      session.current = current;
       previewReadyRef.current = !onMotionInit;
       setPreviewReady(false);
       setDragOrder(order);
@@ -268,9 +266,14 @@ export function NativeDraggableGrid<T>({
       // the same render, without notifying the parent for every idle grid.
       onMotionInit?.(motion);
       onDragBegin({ item, index });
-      measureGridOrigin();
+      // Measurements are async. Ignore hit tests until this drag has its own origin,
+      // and ignore late callbacks from a completed or cancelled drag.
+      gridRef.current?.measureInWindow((x, y, width, height) => {
+        if (session.current !== current || width <= 0 || height <= 0) return;
+        current.origin = { x, y, scrollOffset: scrollPosition.value };
+      });
       cellRefs.current.get(itemKey)?.measureInWindow((x, y, width, height) => {
-        if (session.current?.itemKey === itemKey) onDragLayout?.({ x, y, width, height });
+        if (session.current === current) onDragLayout?.({ x, y, width, height });
       });
     },
     [
@@ -278,7 +281,7 @@ export function NativeDraggableGrid<T>({
       keyExtractor,
       maxScrollOffset,
       scrollBounds,
-      measureGridOrigin,
+      scrollPosition,
       onDragBegin,
       onDragLayout,
       onMotionInit,
@@ -306,9 +309,10 @@ export function NativeDraggableGrid<T>({
         }
       }
       onDragMoveRef.current?.({ absoluteX, absoluteY, scrollOffset });
-      const localX = absoluteX - gridOrigin.current.x;
-      const scrollDelta = scrollOffset - current.scrollStart;
-      const localY = absoluteY - gridOrigin.current.y + scrollDelta;
+      if (!current.origin) return;
+      const localX = absoluteX - current.origin.x;
+      const scrollDelta = scrollOffset - current.origin.scrollOffset;
+      const localY = absoluteY - current.origin.y + scrollDelta;
       const target = nearestGridSlot(current.slots, { x: localX, y: localY }, current.over);
       if (target === current.over) return;
       current.over = target;

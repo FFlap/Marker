@@ -25,7 +25,7 @@ const record = (value: unknown): value is Record<string, unknown> =>
 
 export function parseStartupSnapshot(text: string): StartupSnapshot | null {
   try {
-    if (text.length > SNAPSHOT_MAX_BYTES) return null;
+    if (new TextEncoder().encode(text).byteLength > SNAPSHOT_MAX_BYTES) return null;
     const snapshot: unknown = JSON.parse(text);
     if (!record(snapshot) || snapshot.version !== 1 || !record(snapshot.scope)) return null;
     if (
@@ -114,7 +114,7 @@ export class StartupSnapshotStore {
       .then(async () => {
         if (generation !== this.generation) return;
         const text = JSON.stringify(snapshot);
-        if (text.length > SNAPSHOT_MAX_BYTES) {
+        if (new TextEncoder().encode(text).byteLength > SNAPSHOT_MAX_BYTES) {
           await this.storage.remove();
           return;
         }

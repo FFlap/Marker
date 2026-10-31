@@ -79,7 +79,7 @@ function LibraryLoadingScreen({ controls }: { controls: LibraryFilterControls })
       <ScrollView testID="library-scroll" contentContainerStyle={s.content}>
         {controls.filters.active && (
           <Text accessibilityLiveRegion="polite" style={s.hint}>
-            0 results · Clear filters to reorder
+            Clear filters to reorder
           </Text>
         )}
         <LibraryPageSkeleton list />

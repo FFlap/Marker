@@ -4,6 +4,33 @@ import { Text } from 'react-native';
 import * as Reanimated from 'react-native-reanimated';
 import { NativeDraggableGrid, type NativeGridAutoScroll } from '@/components/NativeDraggableGrid';
 
+let mockGridY = 0;
+let mockDeferGridMeasurement = false;
+const mockGridMeasurements: (() => void)[] = [];
+jest.mock('react-native', () => {
+  const native = jest.requireActual('react-native');
+  const React = jest.requireActual('react');
+  return Object.defineProperty(Object.create(native), 'View', {
+    value: React.forwardRef((props: Record<string, unknown>, ref: unknown) => {
+      React.useImperativeHandle(ref, () => ({
+        measureInWindow: (callback: (...values: number[]) => void) => {
+          const measuredY = mockGridY;
+          const finish = () => callback(0, measuredY, 400, 22000);
+          if (props.testID === 'native-grid' && mockDeferGridMeasurement)
+            mockGridMeasurements.push(finish);
+          else finish();
+        },
+      }));
+      return <native.View {...props} />;
+    }),
+  });
+});
+beforeEach(() => {
+  mockGridY = 0;
+  mockDeferGridMeasurement = false;
+  mockGridMeasurements.length = 0;
+});
+
 type GestureCallbacks = {
   onBegin: () => void;
   onStart: (event: { absoluteX: number; absoluteY: number }) => void;
@@ -421,4 +448,48 @@ it('preserves loaded card instances across repeated drags and cancellation', asy
     expect(mount).toHaveBeenCalledTimes(2);
     expect(unmount).not.toHaveBeenCalled();
   }
+});
+
+it('does not jump to an old slot while a scrolled grid is being measured', async () => {
+  const onDragEnd = jest.fn();
+  const autoScroll = {
+    getBounds: () => ({ top: 0, bottom: 704 }),
+    getMaxOffset: () => 22000,
+    offset: { value: 4400 },
+    scrollRef: jest.fn(),
+  } as unknown as NativeGridAutoScroll;
+  mockGridY = -4400;
+  await render(
+    <NativeDraggableGrid
+      autoScroll={autoScroll}
+      columns={1}
+      rowHeight={44}
+      data={Array.from({ length: 500 }, (_, index) => String(index))}
+      disabled={false}
+      keyExtractor={(item) => item}
+      onDragBegin={jest.fn()}
+      onDragEnd={onDragEnd}
+      renderItem={({ item }) => <Text>{item}</Text>}
+    />,
+  );
+  // Scroll another row after layout, then start dragging before the new measurement returns.
+  autoScroll.offset.value = 4444;
+  mockGridY = -4444;
+  mockDeferGridMeasurement = true;
+  const gesture = mockGestures.get('native-grid-item-101')!;
+  await act(() => gesture.onStart({ absoluteX: 150, absoluteY: 22 }));
+  await act(() =>
+    gesture.onUpdate({ absoluteX: 150, absoluteY: 110, translationX: 0, translationY: 88 }),
+  );
+  await act(() => gesture.onEnd({ absoluteX: 150, absoluteY: 110 }, true));
+  expect(onDragEnd).toHaveBeenLastCalledWith(expect.objectContaining({ from: 101, to: 101 }));
+  // A completed drag's delayed measurement must not initialize the next drag.
+  await act(() => gesture.onStart({ absoluteX: 150, absoluteY: 22 }));
+  await act(() => mockGridMeasurements.shift()!());
+  await act(() =>
+    gesture.onUpdate({ absoluteX: 150, absoluteY: 110, translationX: 0, translationY: 88 }),
+  );
+  await act(() => mockGridMeasurements.shift()!());
+  await act(() => gesture.onEnd({ absoluteX: 150, absoluteY: 66 }, true));
+  expect(onDragEnd).toHaveBeenLastCalledWith(expect.objectContaining({ from: 101, to: 102 }));
 });
