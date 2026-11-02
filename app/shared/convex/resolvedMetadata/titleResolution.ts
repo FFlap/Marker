@@ -6,6 +6,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getClerkUserId } from '../clerkAuth';
 import { releasedEpisodes } from '../episodeAvailability';
+import { withCharacterArtwork, type CharacterArtwork } from '../characterArtwork';
 import { validateTmdbId } from '../providerValidation';
 import { refreshLeaseKey, requestKey } from './requests';
 import { resolveAndCommitCanonical } from './seasonResolution';
@@ -146,6 +147,42 @@ export async function resolveFreshTitle(
         partialError ??= tmdbSeasonResult.error;
       }
       const tmdbEpisodes = tmdbSeasonResult.ok ? tmdbSeasonResult.value : [];
+      const animated = [...tmdb.genres, ...(anime?.genres ?? [])].some((genre) =>
+        /^(animation|anime)$/i.test(genre),
+      );
+      if (animated && tmdb.cast?.length) {
+        const artwork = yield* providerOutcome(
+          animeResult.ok && animeResult.value?.characters !== undefined
+            ? Effect.succeed(animeResult.value.characters)
+            : attempt(
+                () =>
+                  ctx.runAction(internal.tvdb.getCharacterArtwork, {
+                    tmdbId: args.tmdbId,
+                    mediaType: args.mediaType,
+                    title: tmdb.title,
+                    ...(tmdb.originalTitle && { originalTitle: tmdb.originalTitle }),
+                    ...(anime?.tvdbId && { tvdbId: anime.tvdbId }),
+                  }) as Promise<CharacterArtwork[]>,
+              ),
+        );
+        // Missing optional artwork must never prevent title/episode metadata from loading.
+        tmdb.cast = withCharacterArtwork(
+          tmdb.cast,
+          artwork.ok
+            ? artwork.value
+            : (current?.cast ?? []).flatMap((member) =>
+                member.characterImageUrl
+                  ? [
+                      {
+                        name: member.character,
+                        personName: member.name,
+                        imageUrl: member.characterImageUrl,
+                      },
+                    ]
+                  : [],
+              ),
+        );
+      }
       const refreshedAt = Date.now();
       const value = mergeTitle(
         args.tmdbId,

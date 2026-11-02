@@ -11,6 +11,7 @@ import { releasedEpisodes } from '../episodeAvailability';
 import { mergeGenres } from '../mergePolicy';
 import { mergeSeasonDisplayNames } from '../seasonNames';
 import { type ResolvedEpisode } from '../seasonStorage';
+import type { CharacterArtwork } from '../characterArtwork';
 
 export const TITLE_FRESH_MS = 24 * 60 * 60 * 1000;
 export const SEASON_FRESH_MS = 6 * 60 * 60 * 1000;
@@ -50,6 +51,7 @@ export type ProviderTitle = Partial<ResolvedTitle> & {
   episodeRunTime?: number[];
 };
 export type ProviderAnime = {
+  characters?: CharacterArtwork[];
   tvdbId: number;
   firstAirDate?: string;
   episodeRunTime: number[];

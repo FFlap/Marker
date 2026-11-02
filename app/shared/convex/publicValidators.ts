@@ -12,6 +12,7 @@ export const castMemberValidator = v.object({
   name: v.string(),
   character: v.string(),
   profilePath: v.optional(v.string()),
+  characterImageUrl: v.optional(v.string()),
 });
 export const resolvedEpisodeValidator = v.object({
   season: v.number(),

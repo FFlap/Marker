@@ -1,3 +1,4 @@
+import { castForDisplay } from '@marker/shared/castPresentation';
 import { ScreenView } from '@/components/ScreenLayout';
 import { Effect } from 'effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
@@ -475,10 +476,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
               <>
                 <SectionHeader title="Cast" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {meta.cast?.map((c) => (
+                  {castForDisplay(meta.cast ?? [], meta.genres).map((c) => (
                     <View key={`${c.name}-${c.character}`} style={s.cast}>
                       <PosterImage
                         path={c.profilePath}
+                        imageUrl={c.characterImageUrl}
                         title={c.name}
                         style={{ width: 72, height: 96 }}
                       />

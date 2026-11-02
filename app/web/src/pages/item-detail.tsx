@@ -1,3 +1,5 @@
+import { castForDisplay } from "@marker/shared/castPresentation";
+import { CastPortrait } from "@/components/cast-portrait";
 import { Effect } from "effect";
 import { touchMetadata, saveLibrary } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
@@ -449,20 +451,12 @@ export function ItemDetailPage() {
         <section className="mt-12">
           <SectionHeader title="Cast" />
           <div className="mt-5 flex gap-5 overflow-x-auto pb-3">
-            {meta.cast.map((person) => (
+            {castForDisplay(meta.cast, meta.genres).map((person) => (
               <div
                 key={`${person.name}:${person.character}`}
                 className="w-24 shrink-0"
               >
-                <div className="aspect-[3/4] overflow-hidden rounded-xl bg-card">
-                  {person.profilePath && (
-                    <img
-                      src={posterUrl(person.profilePath)}
-                      alt=""
-                      className="size-full object-cover"
-                    />
-                  )}
-                </div>
+                <CastPortrait person={person} />
                 <strong className="mt-2.5 block truncate text-sm">
                   {person.name}
                 </strong>

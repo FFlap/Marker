@@ -1,3 +1,4 @@
+import { castForDisplay } from '@marker/shared/castPresentation';
 import { ScreenView } from '@/components/ScreenLayout';
 import { Effect } from 'effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
@@ -441,10 +442,11 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               <>
                 <SectionHeader title="Cast" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {meta.cast.map((member) => (
+                  {castForDisplay(meta.cast, meta.genres).map((member) => (
                     <View key={`${member.name}-${member.character}`} style={s.cast}>
                       <PosterImage
                         path={member.profilePath}
+                        imageUrl={member.characterImageUrl}
                         title={member.name}
                         style={s.castImage}
                       />

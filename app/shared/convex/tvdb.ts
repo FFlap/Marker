@@ -11,7 +11,14 @@ import {
   providerRecords,
   type ProviderTransportFailure,
 } from './providerHttp';
-import { animeEpisodeValidator, animeGuideValidator } from './providerValidators';
+import {
+  animeEpisodeValidator,
+  animeGuideValidator,
+  characterArtworkValidator,
+} from './providerValidators';
+import { mapCharacterArtwork } from './characterArtwork';
+import { validateTmdbId } from './providerValidation';
+import { mediaTypeValidator } from './publicValidators';
 import { findSeriesEffect } from './tvdbSeriesLookup';
 import { isAnime } from './mergePolicy';
 import { releasedEpisodes } from './episodeAvailability';
@@ -31,6 +38,8 @@ import {
   seasonDisplayName,
   seasonTranslationLimit,
   selectSeasonOrder,
+  selectTitleMatch,
+  seriesId,
   text,
   validateOrder,
   validOrders,
@@ -70,6 +79,52 @@ const MAX_SEASON_COUNT_REQUESTS = 64;
 const SEASON_COUNT_DEADLINE_MS = 20_000;
 
 let credentials: { token: string; expiresAt: number } | undefined;
+
+// Artwork enrichment is independent of anime season ordering and also supports movies.
+export const getCharacterArtwork = internalAction({
+  args: {
+    tmdbId: v.number(),
+    mediaType: mediaTypeValidator,
+    title: v.string(),
+    originalTitle: v.optional(v.string()),
+    tvdbId: v.optional(v.number()),
+  },
+  returns: v.array(characterArtworkValidator),
+  handler: (ctx, args) =>
+    runTvdbEffect(
+      Effect.gen(function* () {
+        validateTmdbId(args.tmdbId);
+        const titles = authoritativeNames(args.title, args.originalTitle);
+        let id = args.tvdbId;
+        if (!id && args.mediaType === 'tv') {
+          id = yield* findSeriesEffect(
+            (path) => requestEffect(ctx, path, true),
+            args.tmdbId,
+            titles,
+            new Set(),
+          );
+        } else if (!id) {
+          for (const title of titles) {
+            const search = yield* requestEffect(
+              ctx,
+              `/search?query=${encodeURIComponent(title)}&type=movie&limit=20`,
+              true,
+            );
+            id = seriesId(
+              selectTitleMatch(records(search.data), args.tmdbId, titles, 'movie') ?? {},
+            );
+            if (id) break;
+          }
+        }
+        if (!id) return [];
+        const payload = yield* requestEffect(
+          ctx,
+          `/${args.mediaType === 'tv' ? 'series' : 'movies'}/${id}/extended`,
+        );
+        return mapCharacterArtwork(record(payload.data));
+      }),
+    ),
+});
 
 class TvdbNotFoundError extends Schema.TaggedError<TvdbNotFoundError>()('TvdbNotFoundError', {
   message: Schema.String,
@@ -384,6 +439,7 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
     { concurrency: 3 },
   );
   const details: AnimeDetails = {
+    characters: mapCharacterArtwork(data),
     tvdbId,
     title: text(data.name) || titles[0] || `TVDB ${tvdbId}`,
     ...(text(data.firstAired) && { firstAirDate: text(data.firstAired) }),

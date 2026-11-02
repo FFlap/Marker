@@ -15,7 +15,7 @@ Web and mobile depend on the local `@marker/shared` package. They import the gen
 
 Apps may consume shared code only through its explicit package exports and must not import another app. Shared code must not depend on an app. Helpers in `app/shared/lib` may be used by both the backend and clients, so they must not import Convex functions, Node built-ins, or native dependencies.
 
-All three apps use the same backend. The extension connects through the authenticated `/extension/watch` HTTP endpoint and does not need the Convex client SDK. TMDB supplies search and base title metadata; TVDB supplies matched anime season ordering and episode identities. Provider calls stay in the backend.
+All three apps use the same backend. The extension connects through the authenticated `/extension/watch` HTTP endpoint and does not need the Convex client SDK. TMDB supplies search and base title metadata; TVDB supplies matched anime season ordering, episode identities, and character artwork for animated titles. Animated cast cards show the character name above the voice actor and use matching character artwork, leaving a placeholder when artwork is unavailable. Provider calls stay in the backend.
 
 ## Development
 

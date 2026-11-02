@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   mutation: vi.fn<() => Promise<void>>(),
   request: null as { state: "inFlight" | "succeeded" | "failed" } | null,
   pages: [] as SeasonPage[],
+  cast: [] as { name: string; character: string; profilePath?: string; characterImageUrl?: string }[],
+  genres: [] as string[],
   loadMore: vi.fn<(count: number) => void>(),
 }));
 vi.mock("@tanstack/react-router", () => ({
@@ -37,7 +39,7 @@ vi.mock("convex/react", async () => {
       const title = {
         title: "Example", tmdbId: mocks.tmdbId, mediaType: "tv",
         seasons: [1, 2].map((season) => ({ season, name: `Season ${season}`, episodeCount: 2 })),
-        genres: [], cast: [], episodeRunTime: [],
+        genres: mocks.genres, cast: mocks.cast, episodeRunTime: [],
       };
       if (name === "resolvedMetadata/reads:getItemView") return mocks.itemRemoved ? null : {
         item: { _id: mocks.itemId, title: "Example", tmdbId: mocks.tmdbId, mediaType: "tv", status: "watching", tags: [], timesWatched: 0 },
@@ -66,12 +68,37 @@ beforeEach(() => {
   mocks.episode.mockReset().mockResolvedValue(undefined);
   mocks.request = null;
   mocks.pages = [];
+  mocks.cast = [];
+  mocks.genres = [];
 });
 
 describe.each([
   ["library item", ItemDetailPage],
   ["catalog title", TitleDetailPage],
 ] as const)("%s retry scope", (_name, DetailPage) => {
+  it("shows animated characters above voice actors without falling back to actor photos", () => {
+    mocks.genres = ["Animation"];
+    mocks.cast = [
+      { name: "Voice actor", character: "Animated character (voice)", profilePath: "/actor.jpg", characterImageUrl: "https://artworks.thetvdb.com/character.jpg" },
+      { name: "Other actor", character: "Other character", profilePath: "/other-actor.jpg" },
+    ];
+    const { container } = render(<DetailPage />);
+    const sources = Array.from(container.querySelectorAll("img")).map((image) => image.getAttribute("src"));
+    expect(sources).toContain("https://artworks.thetvdb.com/character.jpg");
+    expect(sources).not.toContain("https://image.tmdb.org/t/p/w500/other-actor.jpg");
+    expect(sources).not.toContain("https://image.tmdb.org/t/p/w500/actor.jpg");
+    expect(screen.getByText("Animated character").tagName).toBe("STRONG");
+    expect(screen.getByText("Voice actor").tagName).toBe("SPAN");
+    expect(screen.getByText("Other character").tagName).toBe("STRONG");
+    expect(screen.getByText("Other actor").tagName).toBe("SPAN");
+  });
+  it("keeps actor portraits and actor-first labels for live-action titles", () => {
+    mocks.cast = [{ name: "Actor", character: "Role", profilePath: "/actor.jpg" }];
+    const { container } = render(<DetailPage />);
+    expect(container.querySelector('img[src="https://image.tmdb.org/t/p/w500/actor.jpg"]')).not.toBeNull();
+    expect(screen.getByText("Actor").tagName).toBe("STRONG");
+    expect(screen.getByText("Role").tagName).toBe("SPAN");
+  });
   it.each(["season", "title", "leave and return"])("ignores a late retry failure after changing %s", async (change) => {
     let rejectRetry!: (error: Error) => void;
     mocks.touch.mockRejectedValueOnce(new Error("Initial failure"))

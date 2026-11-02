@@ -1,5 +1,6 @@
 import { Option, Schema, flow } from 'effect';
 import { boundedEpisode } from './seasonStorage';
+import type { CharacterArtwork } from './characterArtwork';
 
 export type Json = Record<string, unknown>;
 export type SeasonOrder =
@@ -25,6 +26,7 @@ export type SeasonRecord = {
   episodeCount?: number;
 };
 export type AnimeDetails = {
+  characters?: CharacterArtwork[];
   tvdbId: number;
   title: string;
   firstAirDate?: string;
@@ -177,11 +179,16 @@ const titleMatches = (entry: Json, titles: string[]) => {
 const tmdbRemoteSources = new Set(['tmdb', 'the movie database', 'themoviedb', 'themoviedb com']);
 
 // Search relevance can put a spinoff first whose aliases include the parent title.
-export function selectSeriesMatch(entries: Json[], tmdbId: number, titles: string[]) {
+export function selectTitleMatch(
+  entries: Json[],
+  tmdbId: number,
+  titles: string[],
+  type: 'series' | 'movie',
+) {
   const targets = new Set(normalizedNames(titles));
   const ranked = entries
     .flatMap((entry) => {
-      if (text(entry.type) !== 'series' || !seriesId(entry)) return [];
+      if (text(entry.type) !== type || !seriesId(entry)) return [];
       const tmdbIds = records(entry.remote_ids).filter((remote) =>
         tmdbRemoteSources.has(normalize(text(remote.sourceName))),
       );
@@ -208,6 +215,8 @@ export function selectSeriesMatch(entries: Json[], tmdbId: number, titles: strin
     return undefined;
   return ranked[0].entry;
 }
+export const selectSeriesMatch = (entries: Json[], tmdbId: number, titles: string[]) =>
+  selectTitleMatch(entries, tmdbId, titles, 'series');
 const remoteIdSource = (entry: Json) => {
   const remote = record(entry.remote_id ?? entry.remoteId);
   return normalize(

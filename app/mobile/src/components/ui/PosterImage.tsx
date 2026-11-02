@@ -6,20 +6,22 @@ import { createAppStyles } from '@/lib/typography';
 
 export function PosterImage({
   path,
+  imageUrl,
   title,
   style,
   testID,
 }: {
   path?: string;
+  imageUrl?: string;
   title: string;
   style?: StyleProp<ImageStyle>;
   testID?: string;
 }) {
-  if (path)
+  if (imageUrl || path)
     return (
       <Image
         testID={testID}
-        source={`https://image.tmdb.org/t/p/w342${path}`}
+        source={imageUrl || `https://image.tmdb.org/t/p/w342${path}`}
         contentFit="cover"
         transition={150}
         style={[styles.poster, style]}
