@@ -229,6 +229,7 @@ import ItemDetail from '../../src/app/item/[id]';
 import { ToastProvider } from '../../src/components/ui/Toast';
 
 describe('item detail metadata subscriptions', () => {
+  afterEach(() => jest.useRealTimers());
   beforeEach(() => {
     itemView = { item, title, requestState: { title: { state: 'succeeded' } } };
     mockParams = { id: 'item' };
@@ -242,6 +243,7 @@ describe('item detail metadata subscriptions', () => {
     mockTouchItemView.mockClear();
     mockTouchTitle.mockClear();
     mockUpdateItem.mockClear();
+    mockRemoveItem.mockReset().mockResolvedValue(undefined);
     mockSetEpisodeState.mockReset().mockResolvedValue(undefined);
     mockSetSeasonWatched.mockReset().mockResolvedValue(undefined);
     mockMoveItemToWatched.mockReset().mockResolvedValue(undefined);
@@ -253,6 +255,51 @@ describe('item detail metadata subscriptions', () => {
         <ItemDetail />
       </ToastProvider>,
     );
+
+  it('cancels removal without changing the entry', async () => {
+    const user = userEvent.setup();
+    const view = await renderScreen();
+    await user.press(view.getByRole('button', { name: 'Edit entry' }));
+    await user.press(view.getByRole('button', { name: 'Remove from library' }));
+    expect(view.getByText('Remove title?')).toBeTruthy();
+    expect(mockRemoveItem).not.toHaveBeenCalled();
+    await user.press(view.getByRole('button', { name: 'Cancel' }));
+    expect(view.queryByText('Remove title?')).toBeNull();
+    expect(view.getByText('Edit entry')).toBeTruthy();
+    expect(mockRemoveItem).not.toHaveBeenCalled();
+    expect(mockUpdateItem).not.toHaveBeenCalled();
+  });
+
+  it('keeps the confirmation open for retry after failure and removes only on confirmation', async () => {
+    jest.useFakeTimers();
+    let resolveRemoval!: () => void;
+    mockRemoveItem.mockRejectedValueOnce(new Error('offline')).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRemoval = resolve;
+        }),
+    );
+    const user = userEvent.setup();
+    const view = await renderScreen();
+    await user.press(view.getByRole('button', { name: 'Edit entry' }));
+    await user.press(view.getByRole('button', { name: 'Remove from library' }));
+    await user.press(view.getByRole('button', { name: 'Remove' }));
+    await waitFor(() =>
+      expect(view.getByText('Couldn’t remove this title. Please try again.')).toBeTruthy(),
+    );
+    expect(view.getByText('Remove title?')).toBeTruthy();
+    await user.press(view.getByRole('button', { name: 'Remove' }));
+    for (const button of view.getAllByRole('button', { name: 'Removing…' })) {
+      expect(button).toBeDisabled();
+    }
+    expect(view.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(mockRemoveItem).toHaveBeenCalledTimes(2);
+    expect(mockRemoveItem).toHaveBeenLastCalledWith({ itemId: 'item' });
+    await act(async () => resolveRemoval());
+    expect(require('expo-router').router.replace).toHaveBeenCalledWith('/(tabs)');
+    await view.unmount();
+    jest.useRealTimers();
+  });
 
   it('trusts a missing item view instead of falling back to the library subscription', async () => {
     itemView = null;
