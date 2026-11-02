@@ -1,5 +1,4 @@
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import Trash2 from 'lucide-react-native/icons/trash-2';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
@@ -38,9 +37,6 @@ export function RemoveTitleDialog({
         />
         <View style={s.card}>
           <ScrollView bounces={false} contentContainerStyle={s.content}>
-            <View style={s.icon} accessible={false}>
-              <Trash2 size={24} color={colors.danger} />
-            </View>
             <Text accessibilityRole="header" style={s.title}>
               Remove title?
             </Text>
@@ -56,7 +52,7 @@ export function RemoveTitleDialog({
             <View style={s.actions}>
               <Button
                 title={pending ? 'Removing…' : 'Remove'}
-                variant="danger"
+                variant="primary"
                 disabled={pending}
                 onPress={onConfirm}
               />
@@ -83,21 +79,13 @@ const s = createAppStyles(
       width: '100%',
       maxWidth: 400,
       maxHeight: '100%',
-      backgroundColor: colors.surface,
+      backgroundColor: colors.bg,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: 24,
       overflow: 'hidden',
     },
     content: { padding: 24, gap: 16 },
-    icon: {
-      width: 48,
-      height: 48,
-      borderRadius: 16,
-      backgroundColor: colors.elevated,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
     title: { color: colors.text, fontSize: 22, fontWeight: '600' },
     message: { color: colors.muted, fontSize: 14, lineHeight: 21 },
     error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
