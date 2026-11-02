@@ -24,7 +24,10 @@ async function setup(change: 'order' | 'grow' | 'missing') {
               await ctx.db.delete(title._id);
             } else if (change === 'grow') {
               await ctx.db.patch(title._id, {
-                seasons: [...title.seasons, { season: season + 1, name: 'New', episodeCount: 1 }],
+                seasons: [
+                  ...title.seasons,
+                  { episodeCountVerified: true, season: season + 1, name: 'New', episodeCount: 1 },
+                ],
               });
             } else if (season === 2) {
               const mapping = (await ctx.db.query('titleMappings').first())!;
@@ -69,6 +72,7 @@ async function setup(change: 'order' | 'grow' | 'missing') {
       genres: [],
       cast: [],
       seasons: (change === 'order' ? [1, 2] : [1]).map((season) => ({
+        episodeCountVerified: true,
         season,
         name: `Season ${season}`,
         episodeCount: 1,

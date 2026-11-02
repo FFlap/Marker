@@ -3,7 +3,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
 import { refreshTagCollectionSummary } from '../tagCollectionsModel';
 import { itemActivityBase, writeActivityEvents } from '../activityEvents';
-import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { updateProfileStatsForItem } from '../profileStatsRefresh';
 import { bumpCalendarRevision } from '../calendarLibrary';
 import { statusValidator as status } from '../publicValidators';
 import { hasTag, normalizedTagKey, ownedItem, requireUser } from './shared';
@@ -179,7 +179,11 @@ async function moveItemToSlot(ctx: MutationCtx, userId: Id<'users'>, args: MoveI
     }),
     updatedAt: Date.now(),
   });
-  await requestProfileStatsRefresh(ctx, userId);
+  await updateProfileStatsForItem(ctx, item, {
+    ...item,
+    status: targetStatus,
+    timesWatched: targetStatus === 'watched' ? Math.max(1, item.timesWatched) : item.timesWatched,
+  });
   if (targetStatus !== item.status) await bumpCalendarRevision(ctx, userId);
   if (targetStatus !== item.status)
     await writeActivityEvents(ctx, [

@@ -85,8 +85,8 @@ describe('metadata pipeline', () => {
           mediaType: 'tv',
           title: 'Concurrent show',
           seasons: [
-            { season: 1, name: 'Season 1', episodeCount: 1 },
-            { season: 2, name: 'Season 2', episodeCount: 1 },
+            { episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 },
+            { episodeCountVerified: true, season: 2, name: 'Season 2', episodeCount: 1 },
           ],
         }),
         mediaType: 'tv' as const,
@@ -164,8 +164,8 @@ describe('metadata pipeline', () => {
           mediaType: 'tv',
           title: 'Stored show',
           seasons: [
-            { season: 1, name: 'Season 1', episodeCount: 1 },
-            { season: 2, name: 'Season 2', episodeCount: 1 },
+            { episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 },
+            { episodeCountVerified: true, season: 2, name: 'Season 2', episodeCount: 1 },
           ],
         }),
         mediaType: 'tv',
@@ -240,7 +240,7 @@ describe('metadata pipeline', () => {
           mediaType: 'tv',
           title: 'Stored show',
           episodeRunTime: [24],
-          seasons: [{ season: 2, name: 'Season 2', episodeCount: 1 }],
+          seasons: [{ episodeCountVerified: true, season: 2, name: 'Season 2', episodeCount: 1 }],
         }),
         mediaType: 'tv',
       });
@@ -369,7 +369,7 @@ describe('metadata pipeline', () => {
           mediaType: 'tv',
           title: 'Old title',
           refreshAfter: 0,
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+          seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }],
         }),
         mediaType: 'tv',
       }),
@@ -615,7 +615,7 @@ describe('metadata pipeline', () => {
           tmdbId: 88,
           mediaType: 'tv',
           title: 'Chunked show',
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+          seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }],
         }),
         mediaType: 'tv',
       });

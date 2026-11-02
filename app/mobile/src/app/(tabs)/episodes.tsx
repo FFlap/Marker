@@ -1,12 +1,14 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveLibrary, touchMetadata } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useMutation, useQuery } from 'convex/react';
-import { Check, EllipsisVertical, Star } from 'lucide-react-native';
+import Check from 'lucide-react-native/icons/check';
+import EllipsisVertical from 'lucide-react-native/icons/ellipsis-vertical';
+import Star from 'lucide-react-native/icons/star';
 import { api } from '@marker/shared/api';
 import { EpisodePageSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';

@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
-import { requestProfileStatsRefresh } from '../profileStatsRefresh';
+import { updateProfileStatsForItem } from '../profileStatsRefresh';
 import { bumpCalendarRevision } from '../calendarLibrary';
 import { updateItemTagPreviews } from '../tagCollectionsModel';
 import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
@@ -126,7 +126,7 @@ export const refreshItemProjections = internalMutation({
         item.releaseDate !== (title.releaseDate ?? title.firstAirDate)
       )
         await bumpCalendarRevision(ctx, item.userId);
-      await ctx.db.patch(item._id, {
+      const display = {
         title: title.title,
         normalizedTitle: title.title.toLowerCase(),
         posterPath: title.posterPath,
@@ -135,13 +135,21 @@ export const refreshItemProjections = internalMutation({
         runtime,
         genres: title.genres,
         isAnime: title.genres.some((genre) => genre.toLowerCase() === 'anime'),
-      });
+      };
+      if (
+        Object.entries(display).some(
+          ([key, value]) =>
+            JSON.stringify(item[key as keyof typeof display]) !== JSON.stringify(value),
+        )
+      )
+        await ctx.db.patch(item._id, display);
       if (item.title !== title.title || item.posterPath !== title.posterPath)
         await updateItemTagPreviews(ctx, item._id, {
           title: title.title,
           posterPath: title.posterPath,
         });
-      if (item.runtime !== runtime) await requestProfileStatsRefresh(ctx, item.userId);
+      if (item.runtime !== runtime)
+        await updateProfileStatsForItem(ctx, item, { ...item, runtime });
       if (type === 'tv') {
         await ctx.scheduler.runAfter(0, internal.nextEpisode.startNextEpisodeRefresh, {
           itemId: item._id,
@@ -304,8 +312,7 @@ export const commitRefresh = internalMutation({
         }),
       ),
     ),
-    keys: v.optional(v.array(v.string())),
-    outcomes: v.optional(v.array(refreshOutcomeValidator)),
+    outcomes: v.array(refreshOutcomeValidator),
     attemptToken: v.string(),
     leaseKey: v.string(),
     leaseToken: v.string(),
@@ -319,8 +326,7 @@ export const commitRefresh = internalMutation({
       .withIndex('by_key', (query) => query.eq('key', args.leaseKey))
       .unique();
     if (!lease || lease.token !== args.leaseToken || lease.expiresAt <= now) return false;
-    const outcomes: RefreshOutcome[] =
-      args.outcomes ?? (args.keys ?? []).map((key) => ({ key, state: 'succeeded' as const }));
+    const outcomes = args.outcomes;
     const currentMapping = await ctx.db
       .query('titleMappings')
       .withIndex('by_tmdb', (q) =>

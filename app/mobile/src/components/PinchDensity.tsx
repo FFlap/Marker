@@ -1,5 +1,6 @@
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { colors } from '@/constants/colors';
@@ -16,19 +17,10 @@ export function PinchDensity({
   enabled?: boolean;
   onChange: (columns: GridColumns) => void;
 }) {
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const reducedMotion = useReducedMotion();
   const [announcedColumns, setAnnouncedColumns] = useState<GridColumns>();
   const [opacity] = useState(() => new Animated.Value(0));
   const [scale] = useState(() => new Animated.Value(0.94));
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      setReducedMotion,
-    );
-    return () => subscription.remove();
-  }, []);
 
   useEffect(() => {
     if (announcedColumns === undefined) return;

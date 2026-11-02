@@ -2,6 +2,10 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import { Text } from 'react-native';
 
+jest.mock('../../src/components/StartupQueries', () => ({
+  StartupQueries: ({ children }: React.PropsWithChildren) => children,
+}));
+
 const mockRedirect = jest.fn(({ href }: { href: string }) => <Text>{href}</Text>);
 let mockProfile: { username: string } | undefined;
 let mockClerkLoaded = true;

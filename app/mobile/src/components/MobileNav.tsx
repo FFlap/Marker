@@ -1,7 +1,9 @@
 import { Text, View } from 'react-native';
 import { useAccountLoading } from '@/hooks/useAccountLoading';
 import { router, type Href } from 'expo-router';
-import { BookOpen, ListVideo, Tags } from 'lucide-react-native';
+import BookOpen from 'lucide-react-native/icons/book-open';
+import ListVideo from 'lucide-react-native/icons/list-video';
+import Tags from 'lucide-react-native/icons/tags';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';

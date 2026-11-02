@@ -73,7 +73,7 @@ describe('watch activity', () => {
     expect(resolveActivityDate('2026-10-08', now)).toBe('2026-10-10');
   });
 
-  it('leaves bulk marks unlogged and removes only logged episodes on a bulk unmark', async () => {
+  it('logs newly watched bulk episodes and reverses their original days on bulk unmark', async () => {
     const { t, asUser, itemId } = await setup();
     await putSeason(t, {
       tmdbId: 209867,
@@ -105,7 +105,7 @@ describe('watch activity', () => {
     await asUser.action(api.library.seasonWatched.setSeasonWatched, { itemId, season: 1 });
     expect((await asUser.query(api.stats.profile, {})).watchActivity).toEqual([
       { date: '2026-10-09', episodes: 3 },
-      { date: '2026-10-10', episodes: 1 },
+      { date: '2026-10-10', episodes: 2 },
     ]);
     for (let attempt = 0; attempt < 2; attempt += 1)
       await asUser.action(api.library.seasonWatched.setSeasonWatched, {

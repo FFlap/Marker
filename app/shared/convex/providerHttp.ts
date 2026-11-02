@@ -97,7 +97,7 @@ export const providerFetchEffect = Effect.fnUntraced(function* (
       ({ controller }) =>
         Effect.gen(function* () {
           // Preserve native response details (statusText/body cancellation) at this
-          // compatibility boundary. The outer finalizer owns the full body lifetime.
+          // transport boundary. The outer finalizer owns the full body lifetime.
           let nativeResponse: Response | undefined;
           const transport: typeof fetch = async (input, requestInit) => {
             nativeResponse = await fetch(String(input), {
@@ -244,9 +244,6 @@ export const providerBoundaryFailure = (error: unknown): unknown =>
 
 export const runProviderEffect = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
   runActionEffect(effect.pipe(Effect.mapError(providerBoundaryFailure)));
-
-export const providerFetch = (url: string, init: RequestInit, options: ProviderFetchOptions) =>
-  runProviderEffect(providerFetchEffect(url, init, options));
 
 export const providerObject = Schema.Record(Schema.String, Schema.Unknown);
 export const providerRecords = Schema.Array(providerObject);

@@ -3,7 +3,8 @@ import { convexTest } from 'convex-test';
 import schema from '../../convex/schema';
 import { internal } from '../../convex/_generated/api';
 import { selectSeriesMatch } from '../../convex/tvdbParsing';
-import { findSeries } from '../../convex/tvdbSeriesLookup';
+import { Effect } from 'effect';
+import { findSeriesEffect } from '../../convex/tvdbSeriesLookup';
 
 const title = 'That Time I Got Reincarnated as a Slime';
 // Relevant fields from TVDB v4 search, in the observed API order (2026-09-08).
@@ -61,9 +62,17 @@ it('rejects conflicting verified remote identities instead of using API result o
       series: { id, name: title },
     })),
   }));
-  expect(await findSeries(request, 82684, [title], new Set())).toBeUndefined();
+  expect(
+    await Effect.runPromise(
+      findSeriesEffect(() => Effect.promise(request), 82684, [title], new Set()),
+    ),
+  ).toBeUndefined();
   expect(request).toHaveBeenCalledTimes(1);
-  expect(await findSeries(request, 82684, [title], new Set([999]))).toBe(352408);
+  expect(
+    await Effect.runPromise(
+      findSeriesEffect(() => Effect.promise(request), 82684, [title], new Set([999])),
+    ),
+  ).toBe(352408);
 });
 it('resolves four aired seasons after an old one-season lookup was cached', async () => {
   vi.stubEnv('TVDB_API_KEY', 'test-key');

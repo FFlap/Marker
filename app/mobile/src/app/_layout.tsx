@@ -1,4 +1,5 @@
 import { useCallback, useRef, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 import { ScreenReadinessContext } from '@/components/ScreenLayout';
 import { OperationSessionProvider } from '@/hooks/operation-session';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -23,13 +24,8 @@ import {
   SafeAreaView,
 } from 'react-native-safe-area-context';
 import '@/global.css';
-import {
-  AlbertSans_400Regular,
-  AlbertSans_500Medium,
-  AlbertSans_600SemiBold,
-  AlbertSans_700Bold,
-  useFonts,
-} from '@expo-google-fonts/albert-sans';
+import { useFonts } from 'expo-font';
+import { fontSources } from '@/lib/fonts';
 
 // Navigation readiness can precede the visible screen’s first native layout.
 void SplashScreen.preventAutoHideAsync();
@@ -37,7 +33,9 @@ SplashScreen.setOptions({ duration: 0, fade: false });
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 if (!convexUrl) throw new Error('EXPO_PUBLIC_CONVEX_URL is required');
-const client = new ConvexReactClient(convexUrl);
+const client = new ConvexReactClient(convexUrl, { initialAuthTokenReuse: true });
+// Open the socket while Clerk restores its session. Queries still wait for server auth.
+if (Platform.OS !== 'web') client.connectionState();
 const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
 if (!clerkPublishableKey) throw new Error('EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is required');
 
@@ -94,12 +92,8 @@ export function StartupSplashBoundary({ children }: { children: ReactNode }) {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
-    AlbertSans_400Regular,
-    AlbertSans_500Medium,
-    AlbertSans_600SemiBold,
-    AlbertSans_700Bold,
-  });
+  // Embedded fonts are available synchronously; keep the fallback for Expo Go.
+  const [fontsLoaded, fontError] = useFonts(fontSources);
   if (!fontsLoaded && !fontError) return null;
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>

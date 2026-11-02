@@ -55,7 +55,7 @@ describe('metadata failure recovery', () => {
         tmdbId: 88,
         mediaType: 'tv',
         title: 'Interrupted show',
-        seasons: [{ season: 1, name: 'Season 1', episodeCount: 121 }],
+        seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 121 }],
         orderEpoch: 0,
       }),
       mediaType: 'tv' as const,

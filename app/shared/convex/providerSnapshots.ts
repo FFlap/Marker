@@ -39,9 +39,8 @@ const kindForKey = (key: string): Exclude<SnapshotKind, 'truncated'> => {
   if (key.startsWith('tvdb:anime:')) return 'tvdbGuide';
   if (key.startsWith('calendar:movie:')) return 'calendarMovie';
   if (key.startsWith('calendar:tv:v2:')) return 'calendarTvSchedule';
-  if (key.startsWith('calendar:tv:')) return 'calendarTv';
   if (key.startsWith('calendar:season:')) return 'calendarSeason';
-  return 'tmdbSearch';
+  throw new Error('Unknown provider snapshot key');
 };
 
 type SnapshotActionCtx = { runMutation: Function };
@@ -51,11 +50,12 @@ export async function putNonFatal(
   args: { key: string; value: unknown; metricKey: string },
 ) {
   try {
+    const kind = kindForKey(args.key);
     const value = boundedSnapshotValue(args.value);
     await ctx.runMutation(internal.providerSnapshots.put, {
       key: args.key,
       entry: {
-        kind: isTruncatedSnapshot(value) ? 'truncated' : kindForKey(args.key),
+        kind: isTruncatedSnapshot(value) ? 'truncated' : kind,
         value,
       },
     });

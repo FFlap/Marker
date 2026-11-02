@@ -1,5 +1,5 @@
 import { router, type Href } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import Plus from 'lucide-react-native/icons/plus';
 import { Text } from 'react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';

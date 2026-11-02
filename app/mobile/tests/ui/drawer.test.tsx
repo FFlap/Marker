@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { PortalHost } from '@rn-primitives/portal';
 import { Platform, TextInput } from 'react-native';
+import * as Reanimated from 'react-native-reanimated';
 import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '../../src/components/ui/drawer';
 
@@ -18,6 +19,35 @@ jest.mock('@rn-primitives/dialog', () => {
 jest.mock('react-native-screens', () => ({
   FullWindowOverlay: ({ children }: { children: React.ReactNode }) => children,
 }));
+
+it('keeps a closed drawer idle and mounts its contents when opened and reopened', async () => {
+  const timing = jest.spyOn(Reanimated, 'withTiming');
+  const scene = (open: boolean) => (
+    <>
+      <Drawer open={open}>
+        <DrawerContent>
+          <TextInput accessibilityLabel="Deferred drawer input" />
+        </DrawerContent>
+      </Drawer>
+      <PortalHost />
+    </>
+  );
+  try {
+    const view = await render(scene(false));
+    expect(view.queryByLabelText('Deferred drawer input')).toBeNull();
+    expect(timing).not.toHaveBeenCalled();
+    await view.rerender(scene(true));
+    expect(view.getByLabelText('Deferred drawer input')).toBeTruthy();
+    expect(timing).toHaveBeenCalledWith(1, expect.objectContaining({ reduceMotion: 'system' }));
+    await view.rerender(scene(false));
+    expect(view.queryByLabelText('Deferred drawer input')).toBeNull();
+    expect(timing).toHaveBeenCalledWith(0, expect.anything());
+    await view.rerender(scene(true));
+    expect(view.getByLabelText('Deferred drawer input')).toBeTruthy();
+  } finally {
+    timing.mockRestore();
+  }
+});
 
 it.each([
   ['ios', 0],

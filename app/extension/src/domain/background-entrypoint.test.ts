@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthClient } from "./background";
 import { runExtension } from "./effects";
-import { Effect } from "effect";
 
 const mocks = vi.hoisted(() => ({
   createClerkClient: vi.fn(),
@@ -54,7 +53,6 @@ describe("background Clerk session boundary", () => {
       (entrypoint.default as unknown as () => void)();
       const client = mocks.createMessageHandler.mock.calls[0]![1] as AuthClient;
       const current = client.getSession();
-      if (!Effect.isEffect(current)) throw new Error("Expected an Effect integration");
       const reading = runExtension(current);
       await vi.waitFor(() => expect(session.getToken).toHaveBeenCalledOnce());
       if (transition === "new user") clerk.user = { id: "other", username: "other" };

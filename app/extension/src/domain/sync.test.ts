@@ -1,3 +1,5 @@
+import { Effect } from "effect";
+import { external } from "./effects";
 import { describe, expect, it, vi } from "vitest";
 import { buildWatchPayload, createOutboxManager, parseWatchPayload, SYNC_OUTBOX_KEY, SYNC_OUTBOX_MAX, SYNC_RETRY_ALARM, SYNC_RETRY_KEY } from "./sync";
 
@@ -16,6 +18,7 @@ const bookmark = {
 };
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
 const storageFor = (values: Record<string, unknown>) => ({
+  remove: async (key: string) => { delete values[key]; },
   get: async () => ({ ...values }),
   set: async (next: Record<string, unknown>) => {
     Object.assign(values, next);
@@ -93,16 +96,16 @@ describe("background-owned sync outbox", () => {
   });
   it("deduplicates title-matched events by normalized episode title", async () => {
     const values: Record<string, unknown> = {};
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, () => Effect.succeed({ ok: false, retryable: true }));
     await manager.enqueue({ service: "netflix", seriesTitle: "Dark", episodeTitle: " Recap " });
     await manager.enqueue({ service: "netflix", seriesTitle: "dark", episodeTitle: "recap" });
     expect(values[SYNC_OUTBOX_KEY]).toHaveLength(1);
   });
   it("keeps distinct franchise season titles in the outbox", async () => {
     const values: Record<string, unknown> = {};
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, () => Effect.succeed({ ok: false, retryable: true }));
     await manager.enqueue({ service: "crunchyroll", seriesTitle: "Container", seasonTitle: "Show A", episodeNumber: 1, episodeTitle: "Pilot" });
     await manager.enqueue({ service: "crunchyroll", seriesTitle: "Container", seasonTitle: "Show B", episodeNumber: 1, episodeTitle: "Pilot" });
     expect(values[SYNC_OUTBOX_KEY]).toHaveLength(2);
@@ -116,8 +119,8 @@ describe("background-owned sync outbox", () => {
       episodeTitle: "Pilot",
     };
     const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [titled] };
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    const post = vi.fn(async () => ({ ok: true, retryable: false }));
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const post = vi.fn(() => Effect.succeed({ ok: true, retryable: false }));
     await createOutboxManager(storage, post).flush();
     expect(post).toHaveBeenCalledWith(titled);
   });
@@ -126,13 +129,14 @@ describe("background-owned sync outbox", () => {
     const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload] };
     const gate = deferred<void>();
     const storage = {
+      remove: async (key: string) => { delete values[key]; },
       get: vi.fn(async () => ({ ...values })),
       set: vi.fn(async (items: Record<string, unknown>) => { Object.assign(values, items); }),
     };
-    const flushing = createOutboxManager(storage, async () => {
+    const flushing = createOutboxManager(storage, () => external("test", async () => {
       await gate.promise;
       return { ok: true, retryable: false };
-    }).flush();
+    })).flush();
     await vi.waitFor(() => expect(storage.get).toHaveBeenCalled());
     values[SYNC_OUTBOX_KEY] = [payload, next];
     gate.resolve();
@@ -141,8 +145,8 @@ describe("background-owned sync outbox", () => {
   });
   it("deduplicates mixed stored numeric and title payloads by either identity", async () => {
     const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [{ ...payload, episodeTitle: "Recap" }] };
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, () => Effect.succeed({ ok: false, retryable: true }));
     await manager.enqueue({ service: "netflix", seriesTitle: "dark", episodeTitle: "Recap" });
     expect(values[SYNC_OUTBOX_KEY]).toEqual([{ service: "netflix", seriesTitle: "dark", episodeTitle: "Recap" }]);
   });
@@ -150,10 +154,11 @@ describe("background-owned sync outbox", () => {
     const values: Record<string, unknown> = {};
     const gate = deferred<void>(); let gets = 0;
     const storage = {
+      remove: async (key: string) => { delete values[key]; },
       get: vi.fn(async () => { if (++gets === 1) await gate.promise; return { ...values }; }),
       set: vi.fn(async (next: Record<string, unknown>) => { Object.assign(values, next); }),
     };
-    const post = vi.fn(async () => ({ ok: false, retryable: true }));
+    const post = vi.fn(() => Effect.succeed({ ok: false, retryable: true }));
     const manager = createOutboxManager(storage, post);
     const first = manager.enqueue(payload);
     const secondPayload = { ...payload, episodeNumber: 3 };
@@ -163,7 +168,7 @@ describe("background-owned sync outbox", () => {
   });
   it("keeps only the newest entries when the outbox reaches its cap", async () => {
     const values: Record<string, unknown> = {};
-    const manager = createOutboxManager(storageFor(values), async () => ({ ok: false, retryable: true }));
+    const manager = createOutboxManager(storageFor(values), () => Effect.succeed({ ok: false, retryable: true }));
     for (let episodeNumber = 0; episodeNumber < SYNC_OUTBOX_MAX + 2; episodeNumber += 1) {
       // eslint-disable-next-line no-await-in-loop
       await manager.enqueue({ ...payload, episodeNumber });
@@ -178,40 +183,40 @@ describe("background-owned sync outbox", () => {
     };
     await createOutboxManager(
       storageFor(values),
-      async () => ({ ok: false, retryable: true }),
+      () => Effect.succeed({ ok: false, retryable: true }),
     ).flush();
     expect(values[SYNC_OUTBOX_KEY]).toEqual([payload]);
   });
   it("treats an unexpected delivery rejection as retryable", async () => {
     const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload] };
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    await createOutboxManager(storage, async () => {
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    await createOutboxManager(storage, () => external("test", async () => {
       throw new Error("unexpected failure");
-    }).flush();
+    })).flush();
     expect(values[SYNC_OUTBOX_KEY]).toEqual([payload]);
     expect(values[SYNC_RETRY_KEY]).toMatchObject({ attempt: 1 });
   });
   it("persists before attempting delivery", async () => {
     const order: string[] = []; const values: Record<string, unknown> = {};
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { order.push("persist"); Object.assign(values, next); } };
-    const manager = createOutboxManager(storage, async () => { order.push("deliver"); return { ok: true, retryable: false }; });
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { order.push("persist"); Object.assign(values, next); } };
+    const manager = createOutboxManager(storage, () => external("test", async () => { order.push("deliver"); return { ok: true, retryable: false }; }));
     await manager.enqueue(payload);
     expect(order).not.toContain("deliver");
     await manager.flush();
     expect(order.indexOf("deliver")).toBeGreaterThan(order.indexOf("persist"));
   });
   it("keeps retryable results queued and dequeues terminal results", async () => {
-    const values: Record<string, unknown> = {}; const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    const retry = createOutboxManager(storage, async () => ({ ok: false, retryable: true }));
+    const values: Record<string, unknown> = {}; const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const retry = createOutboxManager(storage, () => Effect.succeed({ ok: false, retryable: true }));
     await retry.enqueue(payload); expect(values[SYNC_OUTBOX_KEY]).toEqual([payload]);
-    const terminal = createOutboxManager(storage, async () => ({ ok: false, reason: "rejected", retryable: false }));
+    const terminal = createOutboxManager(storage, () => Effect.succeed({ ok: false, reason: "rejected", retryable: false }));
     await terminal.flush(); expect(values[SYNC_OUTBOX_KEY]).toEqual([]);
   });
   it("persists retry attempts and schedules bounded backoff", async () => {
     const values: Record<string, unknown> = {};
-    const storage = { get: vi.fn(async () => ({ ...values })), set: vi.fn(async (next: Record<string, unknown>) => { Object.assign(values, next); }) };
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: vi.fn(async () => ({ ...values })), set: vi.fn(async (next: Record<string, unknown>) => { Object.assign(values, next); }) };
     const alarms = { schedule: vi.fn(), clear: vi.fn() };
-    const manager = createOutboxManager(storage, async () => ({ ok: false, retryable: true }), { now: () => 1_000, alarms });
+    const manager = createOutboxManager(storage, () => Effect.succeed({ ok: false, retryable: true }), { now: () => 1_000, alarms });
     await manager.enqueue(payload);
     expect(values[SYNC_RETRY_KEY]).toEqual({ attempt: 0, nextRetryAt: 61_000 });
     expect(alarms.schedule).toHaveBeenCalledWith(SYNC_RETRY_ALARM, 61_000);
@@ -225,10 +230,10 @@ describe("background-owned sync outbox", () => {
       [SYNC_OUTBOX_KEY]: [payload],
       [SYNC_RETRY_KEY]: { attempt: -2, nextRetryAt: 0 },
     };
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
     await createOutboxManager(
       storage,
-      async () => ({ ok: false, retryable: true }),
+      () => Effect.succeed({ ok: false, retryable: true }),
       { now: () => 1_000 },
     ).flush();
     expect(values[SYNC_RETRY_KEY]).toEqual({
@@ -238,16 +243,16 @@ describe("background-owned sync outbox", () => {
   });
   it("clears retry scheduling after success", async () => {
     const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload], [SYNC_RETRY_KEY]: { attempt: 2, nextRetryAt: 1000 } };
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
     const alarms = { schedule: vi.fn(), clear: vi.fn() };
-    await createOutboxManager(storage, async () => ({ ok: true, retryable: false }), { alarms }).flush();
+    await createOutboxManager(storage, () => Effect.succeed({ ok: true, retryable: false }), { alarms }).flush();
     expect(values[SYNC_RETRY_KEY]).toBeNull();
     expect(alarms.clear).toHaveBeenCalledWith(SYNC_RETRY_ALARM);
   });
   it("flushes when a due retry alarm fires", async () => {
     const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload], [SYNC_RETRY_KEY]: { attempt: 1, nextRetryAt: 1000 } };
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    const post = vi.fn(async () => ({ ok: true, retryable: false }));
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const post = vi.fn(() => Effect.succeed({ ok: true, retryable: false }));
     await createOutboxManager(storage, post, { now: () => 1000 }).alarmFired();
     expect(post).toHaveBeenCalledWith(payload);
   });
@@ -256,8 +261,8 @@ describe("background-owned sync outbox", () => {
       [SYNC_OUTBOX_KEY]: [payload],
       [SYNC_RETRY_KEY]: { attempt: 1, nextRetryAt: 2_000 },
     };
-    const storage = { get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
-    const post = vi.fn(async () => ({ ok: true, retryable: false }));
+    const storage = { remove: async (key: string) => { delete values[key]; }, get: async () => ({ ...values }), set: async (next: Record<string, unknown>) => { Object.assign(values, next); } };
+    const post = vi.fn(() => Effect.succeed({ ok: true, retryable: false }));
     await expect(
       createOutboxManager(storage, post, { now: () => 1_000 }).alarmFired(),
     ).resolves.toBe(false);
@@ -268,15 +273,15 @@ describe("background-owned sync outbox", () => {
 it('clears the outbox even when authentication preparation fails', async () => {
   const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload] };
   const manager = createOutboxManager(storageFor(values), vi.fn(), {
-    prepare: async () => { throw new Error('Authentication unavailable'); },
+    prepare: () => external("test", async () => { throw new Error('Authentication unavailable'); }),
   });
   await manager.clear();
-  expect(values[SYNC_OUTBOX_KEY]).toBeNull();
+  expect(values[SYNC_OUTBOX_KEY]).toBeUndefined();
 });
 
 it('keeps distinct numbered episodes that share a title', async () => {
   const values: Record<string, unknown> = {};
-  const manager = createOutboxManager(storageFor(values), async () => ({ ok: false, retryable: true }));
+  const manager = createOutboxManager(storageFor(values), () => Effect.succeed({ ok: false, retryable: true }));
   await manager.enqueue({ ...payload, episodeTitle: 'Episode One' });
   await manager.enqueue({ ...payload, seasonNumber: 2, episodeTitle: 'Episode One' });
   await manager.enqueue({ ...payload, episodeNumber: 3, episodeTitle: 'Episode One' });
@@ -286,7 +291,7 @@ it('keeps distinct numbered episodes that share a title', async () => {
 it('does not resume or restore a batch cleared during delivery', async () => {
   const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [payload, { ...payload, episodeNumber: 3 }] };
   const gate = deferred<void>();
-  const post = vi.fn(async () => { await gate.promise; return { ok: true, retryable: false }; });
+  const post = vi.fn(() => external("test", async () => { await gate.promise; return { ok: true, retryable: false }; }));
   const manager = createOutboxManager(storageFor(values), post);
   const flushing = manager.flush();
   await vi.waitFor(() => expect(post).toHaveBeenCalledOnce());
@@ -294,7 +299,7 @@ it('does not resume or restore a batch cleared during delivery', async () => {
   gate.resolve();
   await flushing;
   expect(post).toHaveBeenCalledOnce();
-  expect(values[SYNC_OUTBOX_KEY]).toBeNull();
+  expect(values[SYNC_OUTBOX_KEY]).toBeUndefined();
 });
 
 it('preserves corrected metadata queued during a terminal delivery', async () => {
@@ -302,10 +307,10 @@ it('preserves corrected metadata queued during a terminal delivery', async () =>
   const corrected = { ...payload, episodeTitle: 'Correct title' };
   const values: Record<string, unknown> = { [SYNC_OUTBOX_KEY]: [original] };
   const gate = deferred<void>();
-  const post = vi.fn(async () => {
+  const post = vi.fn(() => external("test", async () => {
     await gate.promise;
     return { ok: false, reason: 'unmatched-episode', retryable: false };
-  });
+  }));
   const manager = createOutboxManager(storageFor(values), post);
   const flushing = manager.flush();
   await vi.waitFor(() => expect(post).toHaveBeenCalledOnce());

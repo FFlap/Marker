@@ -1,7 +1,8 @@
 import { ScreenView } from '@/components/ScreenLayout';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Film, Tv2 } from 'lucide-react-native';
+import Film from 'lucide-react-native/icons/film';
+import Tv2 from 'lucide-react-native/icons/tv-minimal';
 import { SecondaryHeader } from '@/components/BackButton';
 import { EmptyState } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';

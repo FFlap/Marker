@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import { Pressable, StyleSheet, View, type PressableProps } from 'react-native';
-import { SlidersHorizontal } from 'lucide-react-native';
+import SlidersHorizontal from 'lucide-react-native/icons/sliders-horizontal';
 import { DrawerClose } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';

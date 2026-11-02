@@ -97,7 +97,7 @@ describe('watch sync', () => {
           mediaType: 'tv',
           title: 'Stored show',
           episodeRunTime: [24],
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 2 }],
+          seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 2 }],
         }),
         mediaType: 'tv',
       }),
@@ -132,7 +132,7 @@ describe('watch sync', () => {
       },
     ]);
     expect(await t.run((ctx) => ctx.db.get(itemId))).toMatchObject({
-      nextEpisode: { season: 1, episode: 2, name: 'Next', providerEpisodeId: 12346 },
+      nextEpisode: { chunkIndex: 0, season: 1, episode: 2, name: 'Next', providerEpisodeId: 12346 },
     });
   });
 
@@ -145,7 +145,7 @@ describe('watch sync', () => {
           tmdbId: 88,
           mediaType: 'tv',
           title: 'Stored show',
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 2 }],
+          seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 2 }],
           refreshAfter: Date.now() + 60_000,
         }),
         mediaType: 'tv',
@@ -236,7 +236,7 @@ describe('watch sync', () => {
           tmdbId: 88,
           mediaType: 'tv',
           title: 'Corrected show',
-          seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+          seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }],
         }),
         mediaType: 'tv',
       }),

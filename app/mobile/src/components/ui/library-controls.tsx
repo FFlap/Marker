@@ -1,6 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Check, Minus, Plus, Search, Star, X } from 'lucide-react-native';
+import Check from 'lucide-react-native/icons/check';
+import Minus from 'lucide-react-native/icons/minus';
+import Plus from 'lucide-react-native/icons/plus';
+import Search from 'lucide-react-native/icons/search';
+import Star from 'lucide-react-native/icons/star';
+import X from 'lucide-react-native/icons/x';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';

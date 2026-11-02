@@ -43,20 +43,3 @@ export const findSeriesEffect = Effect.fnUntraced(function* <E>(
   }
   return undefined;
 });
-
-/** Compatibility edge for native callers; provider orchestration uses findSeriesEffect. */
-export function findSeries(
-  request: (path: string) => Promise<Json>,
-  tmdbId: number,
-  titles: string[],
-  excluded: ReadonlySet<number>,
-) {
-  return Effect.runPromise(
-    findSeriesEffect(
-      (path) => Effect.tryPromise({ try: () => request(path), catch: (error) => error }),
-      tmdbId,
-      titles,
-      excluded,
-    ),
-  );
-}

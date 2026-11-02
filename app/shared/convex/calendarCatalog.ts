@@ -34,8 +34,7 @@ async function savedTitle(ctx: QueryCtx, item: Doc<'items'>, month: string, regi
       ...(item.posterPath && { posterPath: item.posterPath }),
       ...(item.releaseDate && { releaseDate: item.releaseDate }),
     },
-    saved:
-      saved && (saved.version || saved.refreshedAt) ? { refreshedAt: saved.refreshedAt } : null,
+    saved: saved?.version ? { refreshedAt: saved.refreshedAt } : null,
   };
 }
 
@@ -89,7 +88,7 @@ export const claim = internalMutation({
       await ctx.db.insert('calendarMonths', {
         month,
         region,
-        candidates: [],
+        candidateCount: 0,
         version: '',
         refreshedAt: 0,
         ...lease,
@@ -181,26 +180,79 @@ export const page = internalQuery({
       };
     if (version && version !== catalog.version)
       throw new Error('Release dates changed. Please retry the calendar.');
-    const candidateCount = catalog.candidateCount ?? catalog.candidates.length;
+    const candidateCount = catalog.candidateCount;
     if (offset > candidateCount) throw new Error('Invalid calendar cursor');
     const matches = [];
     let consumed = 0;
     const scanLimit = Math.min(1500, candidateCount - offset);
+    // For a small library and a large discovery feed, probe candidates by title
+    // instead of reading 1,500 unrelated candidate documents. Preserve ordinal
+    // cursors so cached client continuations remain valid across deployments.
+    if (scanLimit >= 1_000) {
+      const tail = await ctx.db
+        .query('items')
+        .withIndex('by_user_tmdb_active', (q) =>
+          q
+            .eq('userId', userId)
+            .eq('mediaType', mediaType)
+            .eq('deletingAt', undefined)
+            .gt('tmdbId', library[library.length - 1]!.tmdbId),
+        )
+        .take(101 - library.length);
+      const boundedLibrary = [...library, ...tail];
+      if (boundedLibrary.length <= 100) {
+        const candidates = await Promise.all(
+          boundedLibrary
+            .filter((item) => item.status !== 'dropped')
+            .map(async (item) => {
+              const candidate = await ctx.db
+                .query('calendarCandidates')
+                .withIndex('by_catalog_title', (q) =>
+                  q
+                    .eq('region', catalog.region)
+                    .eq('month', month)
+                    .eq('version', catalog.version)
+                    .eq('mediaType', mediaType)
+                    .eq('tmdbId', item.tmdbId),
+                )
+                .unique();
+              return candidate &&
+                candidate.ordinal >= offset &&
+                candidate.ordinal < offset + scanLimit
+                ? { item, ordinal: candidate.ordinal }
+                : null;
+            }),
+        );
+        const ordered = candidates
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+          .sort((a, b) => a.ordinal - b.ordinal);
+        const titles = (
+          await Promise.all(ordered.map(({ item }) => savedTitle(ctx, item, month, region)))
+        ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+        const next = offset + scanLimit;
+        return {
+          emptyLibrary: false,
+          direct: false,
+          version: catalog.version,
+          nextMediaType,
+          catalog: { version: catalog.version, refreshedAt: catalog.refreshedAt },
+          nextOffset: next < candidateCount ? next : null,
+          titles,
+        };
+      }
+    }
     while (consumed < scanLimit && matches.length < 100) {
       const size = Math.min(100 - matches.length, scanLimit - consumed);
-      const batch =
-        catalog.candidateCount !== undefined
-          ? await ctx.db
-              .query('calendarCandidates')
-              .withIndex('by_catalog_ordinal', (q) =>
-                q
-                  .eq('region', catalog.region)
-                  .eq('month', month)
-                  .eq('version', catalog.version)
-                  .gte('ordinal', offset + consumed),
-              )
-              .take(size)
-          : catalog.candidates.slice(offset + consumed, offset + consumed + size);
+      const batch = await ctx.db
+        .query('calendarCandidates')
+        .withIndex('by_catalog_ordinal', (q) =>
+          q
+            .eq('region', catalog.region)
+            .eq('month', month)
+            .eq('version', catalog.version)
+            .gte('ordinal', offset + consumed),
+        )
+        .take(size);
       if (!batch.length) throw new Error('Release catalog is incomplete. Please retry.');
       const found = await Promise.all(
         batch.map(async (candidate) => {

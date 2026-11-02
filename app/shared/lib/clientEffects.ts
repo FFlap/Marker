@@ -1,6 +1,9 @@
 import { ClientSessionGuard } from './clientOperations';
-import { Effect, Schema } from 'effect';
-import { FetchHttpClient, HttpBody, HttpClient } from 'effect/http';
+import * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
+import * as FetchHttpClient from 'effect/http/FetchHttpClient';
+import * as HttpBody from 'effect/http/HttpBody';
+import * as HttpClient from 'effect/http/HttpClient';
 
 export class SearchError extends Schema.TaggedError<SearchError>()('SearchError', {
   cause: Schema.Defect(),

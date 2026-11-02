@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { providerFetch } from '../../convex/providerHttp';
+import { providerFetchEffect, runProviderEffect } from '../../convex/providerHttp';
 
 describe('provider HTTP reliability', () => {
   afterEach(() => {
@@ -16,16 +16,18 @@ describe('provider HTTP reliability', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const beforeRequest = vi.fn().mockResolvedValue(true);
-    const request = providerFetch(
-      'https://example.test/title',
-      {},
-      {
-        provider: 'tmdb',
-        operation: '/title',
-        retries: 1,
-        timeoutMs: 1_000,
-        beforeRequest,
-      },
+    const request = runProviderEffect(
+      providerFetchEffect(
+        'https://example.test/title',
+        {},
+        {
+          provider: 'tmdb',
+          operation: '/title',
+          retries: 1,
+          timeoutMs: 1_000,
+          beforeRequest,
+        },
+      ),
     );
     await vi.runAllTimersAsync();
 
@@ -46,14 +48,16 @@ describe('provider HTTP reliability', () => {
       .mockResolvedValue(true);
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    const request = providerFetch(
-      'https://example.test/calendar',
-      {},
-      {
-        provider: 'tmdb',
-        operation: '/calendar',
-        beforeRequest,
-      },
+    const request = runProviderEffect(
+      providerFetchEffect(
+        'https://example.test/calendar',
+        {},
+        {
+          provider: 'tmdb',
+          operation: '/calendar',
+          beforeRequest,
+        },
+      ),
     );
     await vi.runAllTimersAsync();
     await expect(request).resolves.toMatchObject({ status: 200 });
@@ -65,14 +69,16 @@ describe('provider HTTP reliability', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     await expect(
-      providerFetch(
-        'https://example.test/calendar',
-        {},
-        {
-          provider: 'tmdb',
-          operation: '/calendar',
-          beforeRequest: async () => false,
-        },
+      runProviderEffect(
+        providerFetchEffect(
+          'https://example.test/calendar',
+          {},
+          {
+            provider: 'tmdb',
+            operation: '/calendar',
+            beforeRequest: async () => false,
+          },
+        ),
       ),
     ).rejects.toMatchObject({ data: { code: 'provider_global_limiter' } });
     expect(fetchMock).not.toHaveBeenCalled();
@@ -94,14 +100,16 @@ describe('provider HTTP reliability', () => {
       const fetchMock = vi.fn().mockResolvedValue(response);
       vi.stubGlobal('fetch', fetchMock);
       await expect(
-        providerFetch(
-          'https://example.test/login',
-          { method: 'POST', body: '{}' },
-          {
-            provider: 'tvdb',
-            operation: '/login',
-            retries: 1,
-          },
+        runProviderEffect(
+          providerFetchEffect(
+            'https://example.test/login',
+            { method: 'POST', body: '{}' },
+            {
+              provider: 'tvdb',
+              operation: '/login',
+              retries: 1,
+            },
+          ),
         ),
       ).rejects.toMatchObject({ data: { code: 'upstream', provider: 'tvdb' } });
       expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -122,15 +130,17 @@ describe('provider HTTP reliability', () => {
       ),
     );
 
-    const request = providerFetch(
-      'https://example.test/season',
-      {},
-      {
-        provider: 'tvdb',
-        operation: '/season',
-        retries: 0,
-        timeoutMs: 50,
-      },
+    const request = runProviderEffect(
+      providerFetchEffect(
+        'https://example.test/season',
+        {},
+        {
+          provider: 'tvdb',
+          operation: '/season',
+          retries: 0,
+          timeoutMs: 50,
+        },
+      ),
     );
     const assertion = expect(request).rejects.toMatchObject({
       data: { code: 'timeout', provider: 'tvdb', retryable: true },
@@ -160,15 +170,17 @@ it('keeps the timeout active while a successful response body is stalled', async
     ),
   );
   try {
-    const request = providerFetch(
-      'https://example.test/title',
-      {},
-      {
-        provider: 'tmdb',
-        operation: '/title',
-        retries: 0,
-        timeoutMs: 50,
-      },
+    const request = runProviderEffect(
+      providerFetchEffect(
+        'https://example.test/title',
+        {},
+        {
+          provider: 'tmdb',
+          operation: '/title',
+          retries: 0,
+          timeoutMs: 50,
+        },
+      ),
     );
     const assertion = expect(request).rejects.toMatchObject({
       data: { code: 'timeout', provider: 'tmdb', retryable: true },

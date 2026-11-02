@@ -1,5 +1,5 @@
 import {
-  useLayoutEffect,
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -37,14 +37,17 @@ export function WatchHeatmap({
   const container = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [selectedDate, setSelectedDate] = useState<string>();
-  useLayoutEffect(() => {
-    const node = container.current;
-    if (!node) return () => undefined;
+  const observeContainer = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return undefined;
+    container.current = node;
     const update = () => setWidth(node.getBoundingClientRect().width);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      container.current = null;
+    };
   }, []);
   const weekCount = Math.max(
     1,
@@ -93,7 +96,7 @@ export function WatchHeatmap({
   return (
     <figure className="border-b border-border pb-6">
       <SectionHeader title="Watch activity" />
-      <div ref={container} className="mt-4">
+      <div ref={observeContainer} className="mt-4">
         {width > 0 && (
           <>
             <div

@@ -1,14 +1,18 @@
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AccessibilityInfo,
   Animated,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  ScrollView,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import { useQuery } from 'convex/react';
+import { useStartupQuery as useQuery } from '@/hooks/useStartupQuery';
+import { StartupSyncStatus } from '@/components/StartupSyncStatus';
+import Reanimated from 'react-native-reanimated';
 import { useAccountLoading } from '@/hooks/useAccountLoading';
 import { api } from '@marker/shared/api';
 import { router } from 'expo-router';
@@ -25,18 +29,17 @@ import { MobileNav } from '@/components/MobileNav';
 import { NativePosterDragPreview } from '@/components/NativePosterDragPreview';
 import { NativeDraggableGrid } from '@/components/NativeDraggableGrid';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Plus } from 'lucide-react-native';
-import { DEFAULT_DISPLAY_PREFERENCES } from '@/lib/displayPreferences';
-import {
-  LIBRARY_STATUSES,
-  matchesMediaType,
-  type MediaTypeFilter,
-  type StatusFilter,
-} from '@/lib/libraryFilters';
+import Plus from 'lucide-react-native/icons/plus';
+import { DEFAULT_DISPLAY_PREFERENCES, listTypography } from '@/lib/displayPreferences';
+import { LIBRARY_STATUSES, matchesMediaType } from '@/lib/libraryFilters';
 
 import { LibraryPosterCard, LibraryRow } from '@/features/library/components/LibraryItemCards';
 import { LibraryToolbar } from '@/features/library/components/LibraryToolbar';
 import { useLibraryReordering } from '@/features/library/hooks/useLibraryReordering';
+import {
+  useLibraryFilters,
+  type LibraryFilterControls,
+} from '@/features/library/hooks/useLibraryFilters';
 import { createDrawerEdgeSwipe } from '@/features/library/components/LibraryDragHelpers';
 import {
   libraryScreenStyles as s,
@@ -47,11 +50,58 @@ const EMPTY_ITEMS: LibraryItem[] = [];
 export default function LibraryScreen() {
   return (
     <ScreenErrorBoundary message="Couldn’t load your library.">
-      <Library />
+      <LibraryContent />
     </ScreenErrorBoundary>
   );
 }
-function Library() {
+function LibraryContent() {
+  const { libraryReady } = useAccountLoading();
+  const controls = useLibraryFilters();
+  return libraryReady ? (
+    <Library controls={controls} />
+  ) : (
+    <LibraryLoadingScreen controls={controls} />
+  );
+}
+/** Render the existing library shell without initializing item drag/reorder machinery. */
+function LibraryLoadingScreen({ controls }: { controls: LibraryFilterControls }) {
+  const [drawer, setDrawer] = useState<AppDrawerHandle | null>(null);
+  const edgeSwipe = useMemo(() => createDrawerEdgeSwipe(drawer, () => false), [drawer]);
+  return (
+    <ScreenView style={s.root} {...edgeSwipe.panHandlers}>
+      <View style={s.toolbar}>
+        <LibraryToolbar
+          filters={{ ...controls.filters, allTags: [] }}
+          setFilters={controls.actions}
+          onDrawerChange={setDrawer}
+        />
+      </View>
+      <ScrollView testID="library-scroll" contentContainerStyle={s.content}>
+        {controls.filters.active && (
+          <Text accessibilityLiveRegion="polite" style={s.hint}>
+            Clear filters to reorder
+          </Text>
+        )}
+        <LibraryPageSkeleton list />
+      </ScrollView>
+      <View testID="library-add-motion" style={s.addButtonShell}>
+        <NativePressable
+          accessibilityRole="button"
+          accessibilityLabel="Add title"
+          accessibilityHint="Opens title search"
+          accessibilityState={{ disabled: true }}
+          disabled
+          style={s.addButton}
+        >
+          <Plus size={23} color={colors.bg} strokeWidth={1.9} />
+        </NativePressable>
+      </View>
+      <MobileNav current="library" />
+    </ScreenView>
+  );
+}
+
+function Library({ controls }: { controls: LibraryFilterControls }) {
   const { libraryReady } = useAccountLoading();
   const itemQuery = useQuery(api.library.items.listItems, libraryReady ? {} : 'skip');
   const items = itemQuery ?? EMPTY_ITEMS;
@@ -60,13 +110,25 @@ function Library() {
   const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const listColumns = settings?.listColumns ?? DEFAULT_DISPLAY_PREFERENCES.listColumns;
   const listTextSize = settings?.listTextSize ?? DEFAULT_DISPLAY_PREFERENCES.listTextSize;
-  const [search, setSearch] = useState('');
-  const [type, setType] = useState<MediaTypeFilter>('all');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [min, setMin] = useState(0);
-  const [tags, setTags] = useState<string[]>([]);
+  const { fontScale } = useWindowDimensions();
+  const typography = listTypography(listTextSize);
+  // Window only unscaled rows. Accessibility scaling can wrap the fixed-width
+  // rating, so those rows must retain their natural measured height.
+  const rowHeight = Math.max(
+    typography.minHeight,
+    Math.ceil((Math.max(22, typography.lineHeight) + typography.fontSize / 2) * fontScale),
+  );
+  const {
+    search,
+    type,
+    status: statusFilter,
+    minimumRating: min,
+    selectedTags: tags,
+    active,
+  } = controls.filters;
+  const motionReduced = useReducedMotion();
   const [addButtonHidden, setAddButtonHidden] = useState(false);
-  const [motionReduced, setMotionReduced] = useState(false);
+  if (motionReduced && addButtonHidden) setAddButtonHidden(false);
   const [scrollY] = useState(() => new Animated.Value(0));
   const toolbarY = useMemo(
     () => Animated.multiply(Animated.diffClamp(scrollY, 0, TOOLBAR_HEIGHT), -1),
@@ -74,23 +136,11 @@ function Library() {
   );
   const [drawerHandle, setDrawerHandle] = useState<AppDrawerHandle | null>(null);
   const toolbarPosition = useRef(0);
-  const reduceMotion = useRef(false);
+  // Keep per-frame scroll bookkeeping out of React state, and reset it even
+  // when motion is re-enabled before the next scroll event.
   useEffect(() => {
-    const setReducedMotion = (enabled: boolean) => {
-      reduceMotion.current = enabled;
-      setMotionReduced(enabled);
-      if (enabled) {
-        toolbarPosition.current = 0;
-        setAddButtonHidden(false);
-      }
-    };
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      setReducedMotion,
-    );
-    return () => subscription.remove();
-  }, []);
+    if (motionReduced) toolbarPosition.current = 0;
+  }, [motionReduced]);
   const allTags = useMemo(
     () =>
       [
@@ -120,8 +170,6 @@ function Library() {
     [items, type, statusFilter, min, tags, search],
   );
   const visibleItemIds = useMemo(() => new Set(filtered.map((item) => item._id)), [filtered]);
-  const active =
-    !!search.trim() || type !== 'all' || statusFilter !== 'all' || min > 0 || tags.length > 0;
   const visibleStatuses =
     statusFilter === 'all'
       ? LIBRARY_STATUSES
@@ -158,25 +206,18 @@ function Library() {
     updateTarget: updateNativeDragTarget,
   } = reordering.drag;
   const drop = (data: LibraryItem[], _from: number, to: number) => saveOrder(data, to);
-  const clear = () => {
-    setSearch('');
-    setType('all');
-    setStatusFilter('all');
-    setMin(0);
-    setTags([]);
-  };
   const updateToolbarFromScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const y = Math.max(0, event.nativeEvent.contentOffset.y);
       const delta = y - lastScrollY.current;
       lastScrollY.current = y;
-      if (reduceMotion.current) return;
+      if (motionReduced) return;
       const next =
         y === 0 ? 0 : Math.max(-TOOLBAR_HEIGHT, Math.min(0, toolbarPosition.current - delta));
       toolbarPosition.current = next;
       setAddButtonHidden(next <= -TOOLBAR_HEIGHT + 1);
     },
-    [lastScrollY],
+    [lastScrollY, motionReduced],
   );
   const handleScroll = useMemo(
     () =>
@@ -224,18 +265,11 @@ function Library() {
             status: statusFilter,
             type,
           }}
-          setFilters={{
-            clear,
-            setMinimumRating: setMin,
-            setSearch,
-            setSelectedTags: setTags,
-            setStatus: setStatusFilter,
-            setType,
-          }}
+          setFilters={controls.actions}
           onDrawerChange={setDrawerHandle}
         />
       </Animated.View>
-      <Animated.ScrollView
+      <Reanimated.ScrollView
         ref={nativePosterScrollRef}
         testID="library-scroll"
         contentContainerStyle={s.content}
@@ -304,6 +338,11 @@ function Library() {
                       data={data}
                       disabled={active || statusMovePending}
                       columns={view === 'posters' ? gridColumns : listColumns}
+                      rowHeight={
+                        view === 'list' && listColumns === 1 && fontScale <= 1
+                          ? rowHeight
+                          : undefined
+                      }
                       keyExtractor={(item) => item._id}
                       onMotionInit={(motion) =>
                         setNativePosterMotion((current) => ({ ...current, [status]: motion }))
@@ -315,8 +354,8 @@ function Library() {
                         beginNativePosterDrag(item, status, index, status === 'watched')
                       }
                       onDragLayout={positionNativePosterDrag}
-                      onDragMove={({ absoluteY }) =>
-                        updateNativeDragTarget(status, contentYFromWindow(absoluteY))
+                      onDragMove={({ absoluteY, scrollOffset }) =>
+                        updateNativeDragTarget(status, contentYFromWindow(absoluteY, scrollOffset))
                       }
                       onDragCancel={cancelNativePosterDrag}
                       onDragEnd={({ data: next, from, to }) =>
@@ -351,7 +390,8 @@ function Library() {
             })}
           </PinchDensity>
         )}
-      </Animated.ScrollView>
+      </Reanimated.ScrollView>
+      <StartupSyncStatus bottom={72} />
       <Drawer
         open={!!pendingWatchedMove}
         onOpenChange={(nextOpen) => {

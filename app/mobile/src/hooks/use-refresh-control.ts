@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
-import { Effect, Schema } from 'effect';
+import * as Effect from 'effect/Effect';
+import * as Schema from 'effect/Schema';
 import { useOperation } from './use-operation';
 
 class RefreshError extends Schema.TaggedError<RefreshError>()('RefreshError', {

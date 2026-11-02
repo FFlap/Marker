@@ -2,7 +2,6 @@ import { DateTime, Effect, Exit, Schema } from "effect";
 import {
   ExtensionStorage,
   createFifo,
-  operation,
   external,
   runExtension,
   storageService,
@@ -73,7 +72,7 @@ export interface AlarmScheduler {
 export interface SyncStorage {
   get(key: string | string[]): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
-  remove?(key: string): Promise<void>;
+  remove(key: string): Promise<void>;
 }
 
 export function buildWatchPayload(
@@ -176,11 +175,11 @@ export function createOutboxManager(
   post: (
     payload: WatchPayload,
     accountId?: string,
-  ) => Promise<SyncResult> | Effect.Effect<SyncResult, ExtensionFailure>,
+  ) => Effect.Effect<SyncResult, ExtensionFailure>,
   options: {
     now?: () => number;
     alarms?: AlarmScheduler;
-    prepare?: () => Promise<void> | Effect.Effect<void, ExtensionFailure>;
+    prepare?: () => Effect.Effect<void, ExtensionFailure>;
     serializeStorage?: ReturnType<typeof createFifo>;
     onClear?: Effect.Effect<void, ExtensionFailure>;
   } = {},
@@ -198,7 +197,7 @@ export function createOutboxManager(
     prepare = true,
   ) {
     if (prepare && options.prepare)
-      yield* operation("sync.prepare", options.prepare);
+      yield* options.prepare();
     return yield* task;
   }, fifo);
   const alarm = (action: "clear" | "schedule", when = 0) =>
@@ -257,11 +256,9 @@ export function createOutboxManager(
           if (!isCurrent()) break;
           const account = stored[SYNC_ACCOUNT_KEY];
           // Typed integration failures retry; defects propagate after persisting the retry schedule.
-          const result = yield* operation("sync.post", () =>
-            typeof account === "string"
-              ? post(payload, account)
-              : post(payload),
-          ).pipe(
+          const result = yield* (typeof account === "string"
+            ? post(payload, account)
+            : post(payload)).pipe(
             Effect.catchTag("ExtensionFailure", () =>
               Effect.succeed({ ok: false, retryable: true }),
             ),

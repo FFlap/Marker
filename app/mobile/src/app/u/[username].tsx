@@ -1,12 +1,12 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
-import { LockKeyhole } from 'lucide-react-native';
+import LockKeyhole from 'lucide-react-native/icons/lock-keyhole';
 import { api } from '@marker/shared/api';
 import { EmptyState } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';

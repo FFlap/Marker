@@ -1,5 +1,5 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useState } from 'react';
@@ -7,7 +7,7 @@ import { Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
-import { Check } from 'lucide-react-native';
+import Check from 'lucide-react-native/icons/check';
 import { api } from '@marker/shared/api';
 import type { Id } from '@marker/shared/dataModel';
 import { SecondaryHeader } from '@/components/BackButton';

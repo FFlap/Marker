@@ -2,6 +2,10 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import type { LayoutChangeEvent } from 'react-native';
 
+jest.mock('../../src/components/StartupQueries', () => ({
+  StartupQueries: ({ children }: React.PropsWithChildren) => children,
+}));
+
 let mockClerkLoaded = true;
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn() },

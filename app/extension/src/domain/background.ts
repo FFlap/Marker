@@ -1,6 +1,5 @@
 import { DateTime, Effect, Exit, Predicate, Schema } from "effect";
 import {
-  operation,
   runExtension,
   storageService,
   ExtensionFailure,
@@ -39,9 +38,7 @@ const UnsupportedBookmark = Schema.Struct({
 });
 type DeliveryClassification = "retryable" | "auth" | "terminal";
 
-type ClientResult<A> =
-  | Promise<A>
-  | Effect.Effect<A, ExtensionFailure | SyncHttpError>;
+type ClientResult<A> = Effect.Effect<A, ExtensionFailure | SyncHttpError>;
 
 export interface AuthClient {
   getSession(): ClientResult<{
@@ -90,7 +87,7 @@ const BackgroundMessageSchema = Schema.Union([
 const isBackgroundMessage = Schema.is(BackgroundMessageSchema);
 
 export function createMessageHandler(
-  storage: SyncStorage & { remove(key: string): Promise<void> },
+  storage: SyncStorage,
   client: AuthClient,
   options: { now?: () => number; alarms?: AlarmScheduler } = {},
 ) {
@@ -103,7 +100,7 @@ export function createMessageHandler(
     function* () {
       if (signingOut > 0) return null;
       const revision = accountRevision;
-      const current = yield* operation("auth.session", () => client.getSession());
+      const current = yield* client.getSession();
       return signingOut > 0 || revision !== accountRevision ? null : current;
     },
       Effect.timeout(15_000),
@@ -145,9 +142,7 @@ export function createMessageHandler(
         stored[SYNC_ACCOUNT_KEY] !== current.accountId)
     )
       return { ok: false, reason: "not-signed-in", retryable: true };
-    const result = yield* operation("auth.record", () =>
-      client.record(current.token, payload),
-    ).pipe(
+    const result = yield* client.record(current.token, payload).pipe(
       Effect.map((value): SyncResult => {
         if (!Schema.is(DeliveryResponse)(value))
           return { ok: false, retryable: true };
@@ -207,7 +202,7 @@ export function createMessageHandler(
         switch (message.type) {
           case "sync/connect":
             return yield* Effect.gen(function* () {
-              yield* operation("auth.connect", () => client.connect());
+              yield* client.connect();
               const signedIn = yield* session();
               if (signedIn) yield* outbox.effects.flush;
               return signedIn
@@ -227,7 +222,7 @@ export function createMessageHandler(
           case "sync/signOut":
             accountRevision += 1;
             signingOut += 1;
-            yield* operation("auth.signOut", () => client.signOut()).pipe(
+            yield* client.signOut().pipe(
               Effect.andThen(outbox.effects.clear()),
               Effect.ensuring(Effect.sync(() => {
                 accountRevision += 1;

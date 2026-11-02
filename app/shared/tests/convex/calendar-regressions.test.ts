@@ -1,3 +1,4 @@
+import { seedCalendarCatalog, seedCalendarSchedule } from './calendar-fixtures';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../convex/schema';
@@ -54,7 +55,7 @@ async function fixture(count = 1) {
 }
 async function seedCatalog(t: ReturnType<typeof convexTest>, count = 1) {
   await t.run((ctx) =>
-    ctx.db.insert('calendarMonths', {
+    seedCalendarCatalog(ctx, {
       month: job.month,
       region: job.region,
       version: 'ready',
@@ -126,7 +127,6 @@ describe('resumable calendar discovery', () => {
     expect(requested).toEqual(Array.from({ length: 301 }, (_, i) => i + 1));
     expect(await t.run((ctx) => ctx.db.query('calendarMonths').first())).toMatchObject({
       candidateCount: 301,
-      candidates: [],
       version: 'worker',
     });
     expect(await t.query(internal.calendarRefresh.progress, job)).toBeNull();
@@ -182,7 +182,6 @@ describe('resumable calendar discovery', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(await t.run((ctx) => ctx.db.query('calendarMonths').first())).toMatchObject({
       candidateCount: 9030,
-      candidates: [],
       version: 'worker',
     });
     expect(await t.query(internal.calendarRefresh.progress, job)).toBeNull();
@@ -252,7 +251,7 @@ describe('resumable calendar discovery', () => {
     await write(t, [release(1)]);
     await t.run(async (ctx) => {
       await ctx.db.insert('items', { ...item(userId, 99), mediaType: 'movie' });
-      await ctx.db.insert('calendarSchedules', {
+      await seedCalendarSchedule(ctx, {
         key: 'CA:2026-10:movie:99:',
         month: job.month,
         events: [{ id: 'movie:99', date: '2026-10-12', kind: 'movie' }],
@@ -296,6 +295,38 @@ describe('resumable calendar discovery', () => {
 });
 
 describe('bounded release storage and responses', () => {
+  it('keeps a first schedule invisible until its chunks are published', async () => {
+    const { t } = await fixture();
+    const args = {
+      key: 'CA:2026-10:tv:1:',
+      month: job.month,
+      refreshedAt: now,
+      token: 'first-publication',
+    };
+    await t.mutation(internal.calendarScheduleStore.begin, args);
+    await t.mutation(internal.calendarScheduleStore.writeChunk, {
+      ...args,
+      chunk: 0,
+      done: false,
+      events: Array.from({ length: 250 }, (_, index) => release(index + 1)),
+    });
+    expect(
+      await t.query(internal.calendarScheduleStore.readPage, { key: args.key, offset: 0 }),
+    ).toEqual({ events: [], count: 0, version: '' });
+    await t.mutation(internal.calendarScheduleStore.writeChunk, {
+      ...args,
+      chunk: 1,
+      done: true,
+      events: [release(251)],
+    });
+    const published = await t.query(internal.calendarScheduleStore.readPage, {
+      key: args.key,
+      offset: 0,
+    });
+    expect(published).toMatchObject({ count: 251, version: args.token });
+    expect(published.events).toEqual(Array.from({ length: 251 }, (_, index) => release(index + 1)));
+  });
+
   it('stores and pages 9000 events from one title without truncation or oversized arrays', async () => {
     const { t, asUser } = await fixture();
     await seedCatalog(t);
@@ -314,7 +345,6 @@ describe('bounded release storage and responses', () => {
     expect(chunks).toHaveLength(36);
     expect(chunks.every((chunk) => chunk.events.length <= 250)).toBe(true);
     expect(await t.run((ctx) => ctx.db.query('calendarSchedules').first())).toMatchObject({
-      events: [],
       eventCount: 9000,
     });
   });
@@ -323,7 +353,7 @@ describe('bounded release storage and responses', () => {
     await seedCatalog(t, 300);
     await t.run(async (ctx) => {
       for (let id = 1; id <= 300; id++)
-        await ctx.db.insert('calendarSchedules', {
+        await seedCalendarSchedule(ctx, {
           key: `CA:2026-10:tv:${id}:`,
           month: job.month,
           refreshedAt: now,

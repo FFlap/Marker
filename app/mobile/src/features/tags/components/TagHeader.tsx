@@ -1,4 +1,6 @@
-import { EllipsisVertical, Globe2, LockKeyhole } from 'lucide-react-native';
+import EllipsisVertical from 'lucide-react-native/icons/ellipsis-vertical';
+import Globe2 from 'lucide-react-native/icons/earth';
+import LockKeyhole from 'lucide-react-native/icons/lock-keyhole';
 import { Pressable, View } from 'react-native';
 import { SecondaryHeader } from '@/components/BackButton';
 import { LibraryFiltersDrawer } from '@/components/LibraryFiltersDrawer';

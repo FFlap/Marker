@@ -49,3 +49,24 @@ it('refreshes on foreground after a clock change and removes its subscription', 
   expect(jest.getTimerCount()).toBe(0);
   expect(remove).toHaveBeenCalledTimes(1);
 });
+
+it('shares the midnight timer and resume listener until the last consumer unmounts', async () => {
+  jest.useFakeTimers({ doNotFake: ['nextTick', 'queueMicrotask'] });
+  jest.setSystemTime(new Date(2026, 9, 10, 12));
+  const remove = jest.fn();
+  const subscribe = jest
+    .spyOn(AppState, 'addEventListener')
+    .mockReturnValue({ remove })
+    .mockClear();
+  const first = await renderHook(useLocalToday);
+  const second = await renderHook(useLocalToday);
+  expect(subscribe).toHaveBeenCalledTimes(1);
+  expect(jest.getTimerCount()).toBe(1);
+  await first.unmount();
+  expect(remove).not.toHaveBeenCalled();
+  await act(() => jest.advanceTimersByTime(12 * 60 * 60 * 1000 + 100));
+  expect(second.result.current).toBe('2026-10-11');
+  await second.unmount();
+  expect(remove).toHaveBeenCalledTimes(1);
+  expect(jest.getTimerCount()).toBe(0);
+});

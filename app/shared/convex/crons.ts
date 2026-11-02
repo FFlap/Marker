@@ -9,6 +9,15 @@ crons.hourly(
   internal.resolvedMetadata.orchestration.pruneRefreshLeases,
 );
 
+// Canonical payloads have a 30-day retention window; scanning them hourly rereads
+// every cached episode chunk even when nothing can be deleted.
+crons.daily(
+  'Prune canonical metadata',
+  { hourUTC: 4, minuteUTC: 40 },
+  internal.resolvedMetadata.cleanup.pruneCanonicalData,
+  {},
+);
+
 crons.hourly('Prune provider snapshots', { minuteUTC: 16 }, internal.providerSnapshots.prune, {});
 
 crons.hourly('Prune avatar uploads', { minuteUTC: 13 }, internal.profiles.pruneAvatarUploads, {});

@@ -1,11 +1,12 @@
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
-import { Plus, X } from 'lucide-react-native';
+import Plus from 'lucide-react-native/icons/plus';
+import X from 'lucide-react-native/icons/x';
 import DraggableFlatList, { type RenderItemParams } from 'react-native-draggable-flatlist';
 import { api } from '@marker/shared/api';
 import type { Id } from '@marker/shared/dataModel';

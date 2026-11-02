@@ -22,7 +22,9 @@ jest.mock('@clerk/expo', () => ({
   useClerk: () => mockClerk,
 }));
 jest.mock('@clerk/expo/token-cache', () => ({ tokenCache: {} }));
-jest.mock('convex/react', () => ({ ConvexReactClient: jest.fn() }));
+jest.mock('convex/react', () => ({
+  ConvexReactClient: jest.fn(() => ({ connectionState: jest.fn() })),
+}));
 jest.mock('convex/react-clerk', () => ({
   ConvexProviderWithClerk: ({ children }: React.PropsWithChildren) => children,
 }));
@@ -34,7 +36,7 @@ jest.mock('expo-router', () => {
   const Stack = Object.assign(() => <ScreenView testID="route-content" />, { Screen: () => null });
   return { Stack };
 });
-jest.mock('@expo-google-fonts/albert-sans', () => ({
+jest.mock('expo-font', () => ({
   useFonts: () => [mockFontsLoaded, mockFontError],
 }));
 jest.mock('../../src/hooks/useCalendar', () => ({
@@ -62,13 +64,24 @@ beforeEach(() => {
   mockFontError = null;
 });
 
-it('waits for custom fonts before mounting screen text and dismisses on its first layout', async () => {
+it('waits for fallback fonts before mounting screen text and dismisses on its first layout', async () => {
   const view = await render(<RootLayout />);
   expect(view.queryByTestId('route-content')).toBeNull();
   expect(SplashScreen.hide).not.toHaveBeenCalled();
 
   mockFontsLoaded = true;
   await view.rerender(<RootLayout />);
+  expect(SplashScreen.hide).not.toHaveBeenCalled();
+  await fireEvent(view.getByTestId('route-content'), 'layout', {
+    nativeEvent: { layout: { width: 400, height: 800 } },
+  });
+  expect(SplashScreen.hide).toHaveBeenCalledTimes(1);
+});
+
+it('mounts immediately with embedded fonts but keeps the splash until screen layout', async () => {
+  mockFontsLoaded = true;
+  const view = await render(<RootLayout />);
+  expect(view.getByTestId('route-content')).toBeTruthy();
   expect(SplashScreen.hide).not.toHaveBeenCalled();
   await fireEvent(view.getByTestId('route-content'), 'layout', {
     nativeEvent: { layout: { width: 400, height: 800 } },

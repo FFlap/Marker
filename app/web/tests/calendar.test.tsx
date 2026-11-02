@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CalendarFetch } from "@marker/shared/calendar";
+import { StrictMode } from "react";
 
 const upcoming = vi.fn<CalendarFetch>();
 let libraryRevision: number | undefined = 0;
@@ -60,6 +61,28 @@ describe("calendar partial failures", () => {
     await waitFor(() => expect(upcoming).toHaveBeenCalledTimes(2));
     expect(upcoming.mock.calls[1][0].cachedOnly).toBeUndefined();
     await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("disconnects day observers on Strict Mode replay and unmount", async () => {
+    const observers: { disconnect: ReturnType<typeof vi.fn> }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        disconnect = vi.fn<() => void>();
+        constructor() {
+          observers.push(this);
+        }
+        observe() {}
+      },
+    );
+    const view = render(<StrictMode><CalendarPage /></StrictMode>);
+    await screen.findByRole("button", { name: "Retry missing release dates" });
+    expect(observers.filter((observer) => observer.disconnect.mock.calls.length === 0)).toHaveLength(42);
+    const count = observers.length;
+    view.rerender(<StrictMode><CalendarPage /></StrictMode>);
+    expect(observers).toHaveLength(count);
+    view.unmount();
+    for (const observer of observers) expect(observer.disconnect).toHaveBeenCalledOnce();
   });
 
   it("loads the selected adjacent month instead of showing a false empty day", async () => {

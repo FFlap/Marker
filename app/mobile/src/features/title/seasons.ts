@@ -2,7 +2,7 @@ export type SeasonChoice = {
   season: number;
   name?: string;
   episodeCount: number;
-  episodeCountVerified?: boolean;
+  episodeCountVerified: boolean;
 };
 
 export function availableSeasons<T extends SeasonChoice>(seasons: readonly T[] | undefined): T[] {

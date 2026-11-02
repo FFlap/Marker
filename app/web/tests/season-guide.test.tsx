@@ -20,9 +20,9 @@ import { useSeasonGuide } from "@/hooks/use-season-guide";
 afterEach(cleanup);
 beforeEach(() => { mocks.request = null; mocks.pages = []; mocks.query.mockClear(); });
 const seasons = [
-  { season: 0, name: "Specials", episodeCount: 1 },
-  { season: 1, name: "Season 1", episodeCount: 2 },
-  { season: 3, name: "Season 3", episodeCount: 1 },
+  { season: 0, name: "Specials", episodeCount: 1, episodeCountVerified: true },
+  { season: 1, name: "Season 1", episodeCount: 2, episodeCountVerified: true },
+  { season: 3, name: "Season 3", episodeCount: 1, episodeCountVerified: true },
 ];
 const chunk = (chunkIndex: number, name: string, extra = {}) => ({
   season: 1, totalCount: 4, chunkIndex, metadataProvider: "tmdb" as const,

@@ -27,6 +27,17 @@
     "plugins": [
       "expo-router",
       [
+        "expo-font",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/albert-sans/400Regular/AlbertSans_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/albert-sans/500Medium/AlbertSans_500Medium.ttf",
+            "./node_modules/@expo-google-fonts/albert-sans/600SemiBold/AlbertSans_600SemiBold.ttf",
+            "./node_modules/@expo-google-fonts/albert-sans/700Bold/AlbertSans_700Bold.ttf"
+          ]
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0B0C0E",
@@ -63,7 +74,16 @@
       "expo-status-bar",
       "@clerk/expo",
       "expo-web-browser",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

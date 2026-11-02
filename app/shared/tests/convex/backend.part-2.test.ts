@@ -39,9 +39,9 @@ describe('Marker backend', () => {
         genres: ['Drama'],
         cast: [],
         seasons: [
-          { season: 0, name: 'Specials', episodeCount: 1 },
-          { season: 1, name: 'Season 1', episodeCount: 2 },
-          { season: 2, name: 'Season 2', episodeCount: 2 },
+          { episodeCountVerified: true, season: 0, name: 'Specials', episodeCount: 1 },
+          { episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 2 },
+          { episodeCountVerified: true, season: 2, name: 'Season 2', episodeCount: 2 },
         ],
         metadataProvider: 'tmdb',
         orderEpoch: 0,

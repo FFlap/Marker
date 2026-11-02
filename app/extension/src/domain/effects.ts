@@ -31,7 +31,7 @@ export async function runExtension<A, E>(
 export interface StorageApi {
   get(key: string | string[]): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
-  remove?(key: string): Promise<void>;
+  remove(key: string): Promise<void>;
 }
 export class ExtensionStorage extends Context.Service<
   ExtensionStorage,
@@ -51,25 +51,8 @@ export const storageService = (
   get: (key) => external("storage.get", () => storage.get(key)),
   set: (items) => external("storage.set", () => storage.set(items)),
   remove: (key) =>
-    external("storage.remove", () =>
-      storage.remove ? storage.remove(key) : storage.set({ [key]: null }),
-    ),
+    external("storage.remove", () => storage.remove(key)),
 });
-
-/** Adapt legacy Promise integrations without running Effect-valued integrations in a nested runtime. */
-export const operation = <A, E>(
-  name: string,
-  run: () => Promise<A> | Effect.Effect<A, E>,
-): Effect.Effect<A, E | ExtensionFailure> =>
-  Effect.try({
-    try: run,
-    catch: (cause) => new ExtensionFailure({ operation: name, cause }),
-  }).pipe(
-    Effect.flatMap(
-      (value): Effect.Effect<A, E | ExtensionFailure> =>
-        Effect.isEffect(value) ? value : external(name, () => value),
-    ),
-  );
 
 /** Reserve a place before waiting, so fresh arrivals cannot overtake scheduled waiters.
  * Storage transactions finish even if their caller leaves: browser writes cannot be aborted.

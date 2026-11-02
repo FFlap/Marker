@@ -1,9 +1,10 @@
 import { runClientEffect } from '@marker/shared/clientOperations';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { touchMetadata } from '@marker/shared/clientEffects';
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
+import type { FunctionReturnType } from 'convex/server';
 import type { Id } from '@marker/shared/dataModel';
 import { selectAvailableSeason } from '@/features/title/seasons';
 
@@ -24,23 +25,16 @@ const FAILED_REPOLL_MIN_MS = 5_000;
 const FAILED_REPOLL_MAX_MS = 5 * 60_000;
 const INFLIGHT_REPOLL_MIN_MS = 250;
 
-type TouchDecision = {
-  reason?: string;
-  mutationRejected?: boolean;
-  retryAt?: number;
-  expiresAt?: number;
-  delayMs?: number;
-  title?: TouchDecision;
-  season?: TouchDecision;
-};
+type TouchResult = FunctionReturnType<typeof api.resolvedMetadata.touch.touchTitle>;
+type RefreshResult = TouchResult | { mutationRejected: true } | undefined;
 
-const decisionForKey = (key: string, result: TouchDecision | undefined) =>
-  key.startsWith('season:') ? (result?.season ?? result) : (result?.title ?? result);
+const decisionForKey = (key: string, result: TouchResult) =>
+  'title' in result ? (key.startsWith('season:') ? result.season : result.title) : result;
 
 function useMetadataExpiryTimer(
   key: string | undefined,
   requestState: MetadataRequestState | null | undefined,
-  retouch: () => unknown,
+  retouch: () => Promise<RefreshResult>,
 ) {
   const onRetouch = useEffectEvent(retouch);
   const state = requestState?.state;
@@ -81,13 +75,13 @@ function useMetadataExpiryTimer(
         Effect.andThen(touchMetadata(() => Promise.resolve(onRetouch()))),
         Effect.match({
           onSuccess: (value) => {
-            const decision = decisionForKey(key, value as TouchDecision | undefined);
-            if (decision?.mutationRejected) {
+            if (value === undefined || 'mutationRejected' in value) {
               rearmFailure();
               return;
             }
+            const decision = decisionForKey(key, value);
             if (
-              decision?.delayMs === undefined ||
+              !('reason' in decision) ||
               (decision.reason !== 'backoff' && decision.reason !== 'inFlight')
             )
               return;
@@ -113,7 +107,7 @@ function useMetadataRecoveryTimers(args: {
   titleState: MetadataRequestState | null | undefined;
   seasonKey: string | undefined;
   seasonState: MetadataRequestState | null | undefined;
-  retouch: () => unknown;
+  retouch: () => Promise<RefreshResult>;
 }) {
   const sharedRetry =
     args.titleState?.state === 'failed' &&

@@ -46,7 +46,7 @@ describe('episode hub and profile favorites', () => {
         episodeRunTime: [24],
         genres: [],
         cast: [],
-        seasons: [{ season: 1, name: 'Season 1', episodeCount: 1 }],
+        seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 1 }],
         metadataProvider: 'tmdb',
         refreshedAt: Date.now(),
         refreshAfter: Date.now() + 60_000,
@@ -135,7 +135,9 @@ describe('episode hub and profile favorites', () => {
           episodeRunTime: [24],
           genres: ['Anime'],
           cast: [],
-          seasons: [{ season: 1, name: entry.seasonName, episodeCount: 1 }],
+          seasons: [
+            { episodeCountVerified: true, season: 1, name: entry.seasonName, episodeCount: 1 },
+          ],
           metadataProvider: 'tmdb',
           refreshedAt: Date.now(),
           refreshAfter: Date.now() + 60_000,
@@ -209,7 +211,9 @@ describe('episode hub and profile favorites', () => {
         episodeRunTime: [24],
         genres: [],
         cast: [],
-        seasons: [{ season: 1, name: 'Published Arc', episodeCount: 1 }],
+        seasons: [
+          { episodeCountVerified: true, season: 1, name: 'Published Arc', episodeCount: 1 },
+        ],
         metadataProvider: 'tmdb',
         refreshedAt: 2,
         refreshAfter: 60_002,
@@ -315,7 +319,9 @@ describe('episode hub and profile favorites', () => {
         episodeRunTime: [24],
         genres: [],
         cast: [],
-        seasons: [{ season: 1, name: 'Long Season', episodeCount: 600 }],
+        seasons: [
+          { episodeCountVerified: true, season: 1, name: 'Long Season', episodeCount: 600 },
+        ],
         metadataProvider: 'tmdb',
         refreshedAt: now,
         refreshAfter: now + 60_000,
@@ -439,7 +445,7 @@ describe('episode hub and profile favorites', () => {
         episodeRunTime: [24],
         genres: [],
         cast: [],
-        seasons: [{ season: 1, name: 'Season 1', episodeCount: 482 }],
+        seasons: [{ episodeCountVerified: true, season: 1, name: 'Season 1', episodeCount: 482 }],
         metadataProvider: 'tmdb',
         refreshedAt: now,
         refreshAfter: now + 60_000,
@@ -487,11 +493,7 @@ describe('episode hub and profile favorites', () => {
         rank: 0,
         createdAt: now,
         updatedAt: now,
-        nextEpisode: {
-          season: 1,
-          episode: 481,
-          name: 'Canonical 481',
-        },
+        nextEpisode: { chunkIndex: 4, season: 1, episode: 481, name: 'Canonical 481' },
       });
       for (let episode = 1; episode <= 480; episode += 1) {
         if (episode === 241) continue;

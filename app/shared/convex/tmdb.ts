@@ -134,6 +134,7 @@ export function mapTvDetails(r: Json) {
         {
           season,
           name: string(s.name) ?? '',
+          episodeCountVerified: true,
           episodeCount: (string(s.air_date) ?? '') > today ? 0 : (number(s.episode_count) ?? 0),
         },
       ];

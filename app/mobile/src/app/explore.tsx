@@ -1,5 +1,5 @@
 import { ScreenView } from '@/components/ScreenLayout';
-import { Effect } from 'effect';
+import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
@@ -7,7 +7,10 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-nativ
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
-import { ChevronRight, Plus, Search, Tags as TagsIcon } from 'lucide-react-native';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
+import Plus from 'lucide-react-native/icons/plus';
+import Search from 'lucide-react-native/icons/search';
+import TagsIcon from 'lucide-react-native/icons/tags';
 import { api } from '@marker/shared/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SearchResultsSkeleton } from '@/components/PageSkeletons';

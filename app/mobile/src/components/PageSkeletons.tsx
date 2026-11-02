@@ -1,7 +1,7 @@
 import type { StyleProp, ViewStyle } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 import { colors } from '@/constants/colors';
-import { SkeletonShimmer } from './SkeletonShimmer';
+import { SkeletonShimmer, SkeletonShimmerGroup } from './SkeletonShimmer';
 
 function Block({ style }: { style: StyleProp<ViewStyle> }) {
   return (
@@ -89,22 +89,24 @@ export function PosterGridSkeleton({
 
 export function LibraryPageSkeleton({ list = false }: { list?: boolean }) {
   return (
-    <View
-      testID="library-loading"
-      accessibilityRole="progressbar"
-      accessibilityLabel="Loading library"
-      style={styles.library}
-    >
-      {[0, 1].map((section) => (
-        <View key={section} style={styles.librarySection}>
-          <View style={styles.gridHeading}>
-            <Block style={styles.gridHeadingLabel} />
-            <Block style={styles.gridCount} />
+    <SkeletonShimmerGroup>
+      <View
+        testID="library-loading"
+        accessibilityRole="progressbar"
+        accessibilityLabel="Loading library"
+        style={styles.library}
+      >
+        {[0, 1].map((section) => (
+          <View key={section} style={styles.librarySection}>
+            <View style={styles.gridHeading}>
+              <Block style={styles.gridHeadingLabel} />
+              <Block style={styles.gridCount} />
+            </View>
+            {list ? <LibraryPickerSkeleton count={3} embedded /> : <PosterCards count={4} />}
           </View>
-          {list ? <LibraryPickerSkeleton count={3} embedded /> : <PosterCards count={4} />}
-        </View>
-      ))}
-    </View>
+        ))}
+      </View>
+    </SkeletonShimmerGroup>
   );
 }
 

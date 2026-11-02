@@ -81,7 +81,12 @@ function EntryDialog({
           }),
         );
         if (item.mediaType === "tv" && draft.status === "watched")
-          yield* saveLibrary(() => moveItemToWatched({ itemId: item._id }));
+          yield* saveLibrary(() =>
+            moveItemToWatched({
+              itemId: item._id,
+              activityDate: localDateKey(),
+            }),
+          );
       }),
       {
         success: () => {
@@ -504,6 +509,7 @@ export function ItemDetailPage() {
                   void runOperation.write(
                     saveLibrary(() =>
                       setSeasonWatched({
+                        activityDate: localDateKey(),
                         itemId: item._id,
                         season,
                         watched,

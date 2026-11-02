@@ -30,7 +30,7 @@ const repairResultValidator = v.object({
 
 const seasonOrderValue = (season: number) => (season === 0 ? Number.MAX_SAFE_INTEGER : season);
 
-async function repairContext(ctx: MutationCtx, item: Doc<'items'>) {
+async function repairContext(ctx: MutationCtx, item: Doc<'items'>, targetSeason?: number) {
   const [title, mapping] = await Promise.all([
     ctx.db
       .query('resolvedTitles')
@@ -48,6 +48,7 @@ async function repairContext(ctx: MutationCtx, item: Doc<'items'>) {
     title,
     mapping,
     seasons: [...title.seasons]
+      .filter((season) => targetSeason === undefined || season.season === targetSeason)
       .filter((season) => season.episodeCountVerified === false || season.episodeCount > 0)
       .sort((left, right) => seasonOrderValue(left.season) - seasonOrderValue(right.season)),
   };
@@ -61,10 +62,12 @@ function nextSeasonCursor(context: RepairContext, seasonNumber: number) {
   return season ? { season: season.season, chunkIndex: 0 } : undefined;
 }
 
-async function activeRepair(ctx: MutationCtx, itemId: Id<'items'>) {
+async function activeRepair(ctx: MutationCtx, itemId: Id<'items'>, targetSeason?: number) {
   return ctx.db
     .query('episodeProjectionRepairs')
-    .withIndex('by_item', (query) => query.eq('itemId', itemId))
+    .withIndex('by_item_season', (query) =>
+      query.eq('itemId', itemId).eq('targetSeason', targetSeason),
+    )
     .unique();
 }
 
@@ -83,7 +86,7 @@ async function continueRepairPage(
   repair: Doc<'episodeProjectionRepairs'>,
   cursor: RepairCursor,
 ): Promise<RepairResult> {
-  const context = await repairContext(ctx, item);
+  const context = await repairContext(ctx, item, repair.targetSeason);
   const result = { rowsRead: 0, patched: 0, chunkPairsRead: 0 };
   if (!context) return finishRepair(ctx, repair, result);
 
@@ -225,6 +228,7 @@ async function continueRepairPage(
     {
       itemId: item._id,
       token: repair.token,
+      targetSeason: repair.targetSeason,
       ...current,
     },
   );
@@ -232,22 +236,31 @@ async function continueRepairPage(
 }
 
 export const startEpisodeProjectionRepair = internalMutation({
-  args: { itemId: v.id('items') },
+  args: { itemId: v.id('items'), season: v.optional(v.number()) },
   returns: repairResultValidator,
   handler: async (ctx, args): Promise<RepairResult> => {
     const item = await ctx.db.get(args.itemId);
     if (!item || item.mediaType !== 'tv' || item.deletingAt !== undefined)
       return { state: 'skipped', rowsRead: 0, patched: 0, chunkPairsRead: 0 };
-    const context = await repairContext(ctx, item);
+    const saved = await ctx.db
+      .query('episodes')
+      .withIndex('by_item', (query) =>
+        args.season === undefined
+          ? query.eq('itemId', item._id)
+          : query.eq('itemId', item._id).eq('season', args.season),
+      )
+      .first();
+    if (!saved) return { state: 'skipped', rowsRead: 0, patched: 0, chunkPairsRead: 0 };
+    const context = await repairContext(ctx, item, args.season);
     const first = context?.seasons[0];
-    const existing = await activeRepair(ctx, item._id);
+    const existing = await activeRepair(ctx, item._id, args.season);
     if (!first) {
       if (existing) await ctx.db.delete(existing._id);
       return { state: 'completed', rowsRead: 0, patched: 0, chunkPairsRead: 0 };
     }
     const token = `episode-projection:${Date.now()}:${crypto.randomUUID()}`;
     const cursor = { season: first.season, chunkIndex: 0 };
-    const value = { itemId: item._id, token, ...cursor };
+    const value = { itemId: item._id, targetSeason: args.season, token, ...cursor };
     const repairId = existing
       ? (await ctx.db.replace(existing._id, value), existing._id)
       : await ctx.db.insert('episodeProjectionRepairs', value);
@@ -260,6 +273,7 @@ export const continueEpisodeProjectionRepair = internalMutation({
   args: {
     itemId: v.id('items'),
     token: v.string(),
+    targetSeason: v.optional(v.number()),
     season: v.number(),
     chunkIndex: v.number(),
     afterEpisode: v.optional(v.number()),
@@ -268,7 +282,7 @@ export const continueEpisodeProjectionRepair = internalMutation({
   handler: async (ctx, args): Promise<RepairResult> => {
     const [item, repair] = await Promise.all([
       ctx.db.get(args.itemId),
-      activeRepair(ctx, args.itemId),
+      activeRepair(ctx, args.itemId, args.targetSeason),
     ]);
     if (
       !item ||

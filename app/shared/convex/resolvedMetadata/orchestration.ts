@@ -354,7 +354,6 @@ export const pruneRefreshLeases = internalMutation({
       .withIndex('by_expires', (query) => query.lt('expiresAt', now))
       .take(500);
     await Promise.all(leases.map((document) => ctx.db.delete(document._id)));
-    await ctx.scheduler.runAfter(0, internal.resolvedMetadata.cleanup.pruneCanonicalData, {});
     return {
       leases: leases.length,
     };

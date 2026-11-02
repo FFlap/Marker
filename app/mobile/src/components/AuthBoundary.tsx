@@ -21,6 +21,7 @@ export function AuthBoundary({ children, routeName }: { children: ReactNode; rou
     profile,
     pending,
     signOut,
+    cachedContent,
   } = useAccount();
   const publicRoute = routeName === 'sign-in' || routeName.startsWith('u/');
   const setupRoute = routeName === 'profile-setup';
@@ -32,7 +33,7 @@ export function AuthBoundary({ children, routeName }: { children: ReactNode; rou
         libraryReady: !pending && !!profile?.username,
       }}
     >
-      {libraryRoute ? children : <LibraryScreen />}
+      {libraryRoute || routeName === 'profile' ? children : <LibraryScreen />}
     </AccountLoadingContext.Provider>
   );
   if (!clerkLoaded) return loading;
@@ -41,6 +42,15 @@ export function AuthBoundary({ children, routeName }: { children: ReactNode; rou
   if (!isSignedIn) {
     if (!publicRoute) return <Redirect href="/sign-in" />;
     return children;
+  }
+  // Only the two screens backed by a complete, matching saved snapshot can render early.
+  // Other routes retain the server-authentication gate.
+  if (cachedContent && profile?.username && (libraryRoute || routeName === 'profile')) {
+    return (
+      <AccountLoadingContext.Provider value={{ profileReady: true, libraryReady: true }}>
+        {children}
+      </AccountLoadingContext.Provider>
+    );
   }
   if (isLoading) return loading;
   if (accountError)

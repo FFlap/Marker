@@ -2,7 +2,7 @@ type SeasonSummary = {
   season: number;
   name: string;
   episodeCount: number;
-  episodeCountVerified?: boolean;
+  episodeCountVerified: boolean;
 };
 
 const genericSeasonLabel = (name: string) => {

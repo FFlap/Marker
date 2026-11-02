@@ -48,7 +48,6 @@ import type * as providerValidation from "../providerValidation.js";
 import type * as providerValidators from "../providerValidators.js";
 import type * as publicValidators from "../publicValidators.js";
 import type * as rank from "../rank.js";
-import type * as ratingMigrations from "../ratingMigrations.js";
 import type * as resolvedMetadata_cleanup from "../resolvedMetadata/cleanup.js";
 import type * as resolvedMetadata_orchestration from "../resolvedMetadata/orchestration.js";
 import type * as resolvedMetadata_publication from "../resolvedMetadata/publication.js";
@@ -120,7 +119,6 @@ declare const fullApi: ApiFromModules<{
   providerValidators: typeof providerValidators;
   publicValidators: typeof publicValidators;
   rank: typeof rank;
-  ratingMigrations: typeof ratingMigrations;
   "resolvedMetadata/cleanup": typeof resolvedMetadata_cleanup;
   "resolvedMetadata/orchestration": typeof resolvedMetadata_orchestration;
   "resolvedMetadata/publication": typeof resolvedMetadata_publication;
@@ -172,6 +170,4 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {
-  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
-};
+export declare const components: {};
