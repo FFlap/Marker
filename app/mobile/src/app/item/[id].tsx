@@ -1,18 +1,10 @@
+import { RemoveTitleDialog } from '@/components/RemoveTitleDialog';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  Linking,
-  Pressable,
-  ScrollView,
-  RefreshControl,
-  Text,
-  View,
-} from 'react-native';
+import { FlatList, Linking, Pressable, ScrollView, RefreshControl, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import Pencil from 'lucide-react-native/icons/pencil';
@@ -91,6 +83,8 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
   const [pendingEpisodes, setPendingEpisodes] = useState<Set<string>>(() => new Set());
   const [removePending, setRemovePending] = useState(false);
+  const [removeError, setRemoveError] = useState<string>();
+  const [removeOpen, setRemoveOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
   const [tagPrefix, setTagPrefix] = useState('');
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
@@ -146,6 +140,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     );
   const performRemoval = async () => {
     if (removePending) return;
+    setRemoveError(undefined);
     setRemovePending(true);
     await runOperation.write(
       Effect.gen(function* () {
@@ -157,7 +152,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         },
 
         failure: () => {
-          toast.show('Couldn’t remove this title');
+          setRemoveError('Couldn’t remove this title. Please try again.');
         },
         settled: () => {
           setRemovePending(false);
@@ -167,11 +162,8 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   };
   const requestRemoval = () => {
     if (removePending) return;
-    const message = `Remove ${item.title} and its episode history?`;
-    Alert.alert('Remove title?', message, [
-      { text: 'Cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => void performRemoval() },
-    ]);
+    setRemoveError(undefined);
+    setRemoveOpen(true);
   };
   const patchEpisode = (
     seasonNumber: number,
@@ -346,6 +338,14 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   };
   return (
     <ScreenView style={s.root}>
+      <RemoveTitleDialog
+        open={removeOpen}
+        title={item.title}
+        pending={removePending}
+        error={removeError}
+        onCancel={() => setRemoveOpen(false)}
+        onConfirm={() => void performRemoval()}
+      />
       <SecondaryHeader title="Details" maxWidth={760} />
       <FlatList
         testID="episode-list"
