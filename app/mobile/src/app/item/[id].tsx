@@ -217,6 +217,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     cast: [],
     ...detail,
   };
+  const visibleCast = castForDisplay(meta.cast ?? [], meta.genres);
   const overview = meta.overview?.trim();
   const availableSeasons = getAvailableSeasons(meta.seasons);
   const setSeasonState = async (
@@ -452,11 +453,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 removePending={removePending}
               />
             )}
-            {(meta.cast?.length ?? 0) > 0 && (
+            {visibleCast.length > 0 && (
               <>
                 <SectionHeader title="Cast" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {castForDisplay(meta.cast ?? [], meta.genres).map((c) => (
+                  {visibleCast.map((c) => (
                     <View key={`${c.name}-${c.character}`} style={s.cast}>
                       <PosterImage
                         path={c.profilePath}

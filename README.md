@@ -17,7 +17,7 @@ Apps may consume shared code only through its explicit package exports and must 
 
 Keep one current contract across clients and the backend. Remove obsolete API aliases, storage formats, and compatibility adapters when replacing them.
 
-All three apps use the same backend. The extension connects through the authenticated `/extension/watch` HTTP endpoint and does not need the Convex client SDK. TMDB supplies search and base title metadata; TVDB supplies matched anime season ordering, episode identities, and character artwork for animated titles. Animated cast cards show the character name above the voice actor and use matching character artwork, leaving a placeholder when artwork is unavailable. Provider calls stay in the backend.
+All three apps use the same backend. The extension connects through the authenticated `/extension/watch` HTTP endpoint and does not need the Convex client SDK. TMDB supplies search and base title metadata; TVDB supplies matched anime season ordering, episode identities, and character artwork for animated titles. Animated cast cards show the character name above the voice actor and use matching character artwork, hiding cast entries when character artwork is unavailable. Provider calls stay in the backend.
 
 ## Development
 

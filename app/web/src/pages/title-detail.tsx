@@ -58,6 +58,7 @@ export function TitleDetailPage() {
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const detail = titleView?.title;
   const meta = detail ?? preview;
+  const visibleCast = castForDisplay(detail?.cast ?? [], detail?.genres ?? []);
   const [touchError, setTouchError] = useState(false);
   const refreshGeneration = useRef(0);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
@@ -257,11 +258,11 @@ export function TitleDetailPage() {
               )}
             </div>
           </section>
-          {detail?.cast?.length ? (
+          {visibleCast.length ? (
             <section className="mt-12">
               <SectionHeader title="Cast" />
               <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-                {castForDisplay(detail.cast, detail.genres).map((person) => (
+                {visibleCast.map((person) => (
                   <div
                     key={`${person.name}:${person.character}`}
                     className="w-24 shrink-0"

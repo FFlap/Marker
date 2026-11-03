@@ -91,8 +91,15 @@ describe.each([
     expect(sources).not.toContain("https://image.tmdb.org/t/p/w500/actor.jpg");
     expect(screen.getByText("Animated character").tagName).toBe("STRONG");
     expect(screen.getByText("Voice actor").tagName).toBe("SPAN");
-    expect(screen.getByText("Other character").tagName).toBe("STRONG");
-    expect(screen.getByText("Other actor").tagName).toBe("SPAN");
+    expect(screen.queryByText("Other character")).not.toBeInTheDocument();
+    expect(screen.queryByText("Other actor")).not.toBeInTheDocument();
+  });
+  it("hides the cast section when animated characters have no artwork", () => {
+    mocks.genres = ["Animation"];
+    mocks.cast = [{ name: "Voice actor", character: "Unillustrated character", profilePath: "/actor.jpg" }];
+    render(<DetailPage />);
+    expect(screen.queryByText("Cast")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unillustrated character")).not.toBeInTheDocument();
   });
   it("keeps actor portraits and actor-first labels for live-action titles", () => {
     mocks.cast = [{ name: "Actor", character: "Role", profilePath: "/actor.jpg" }];

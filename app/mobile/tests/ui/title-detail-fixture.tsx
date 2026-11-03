@@ -164,7 +164,13 @@ beforeEach(() => {
       runtime: 24,
       voteAverage: 8.7,
       genres: ['Animation'],
-      cast: [{ name: 'Atsumi Tanezaki', character: 'Frieren' }],
+      cast: [
+        {
+          name: 'Atsumi Tanezaki',
+          character: 'Frieren',
+          characterImageUrl: 'https://artworks.thetvdb.com/frieren.jpg',
+        },
+      ],
       seasons: [
         { season: 1, name: 'Season 1', episodeCount: 1, episodeCountVerified: true },
         { season: 2, name: 'Season 2', episodeCount: 1, episodeCountVerified: true },

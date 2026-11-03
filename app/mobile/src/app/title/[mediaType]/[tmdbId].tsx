@@ -164,6 +164,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     cast: detail?.cast ?? [],
     seasons: detail?.seasons ?? [],
   };
+  const visibleCast = castForDisplay(meta.cast ?? [], meta.genres);
   const overview = meta.overview?.trim();
   const availableSeasons = getAvailableSeasons(meta.seasons);
   const averageRuntime =
@@ -444,11 +445,11 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                   <MetadataPlaceholder label="Loading more cast" kind="cast" />
                 </View>
               </>
-            ) : meta.cast.length > 0 ? (
+            ) : visibleCast.length > 0 ? (
               <>
                 <SectionHeader title="Cast" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {castForDisplay(meta.cast, meta.genres).map((member) => (
+                  {visibleCast.map((member) => (
                     <View key={`${member.name}-${member.character}`} style={s.cast}>
                       <PosterImage
                         path={member.profilePath}

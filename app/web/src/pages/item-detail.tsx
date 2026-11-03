@@ -283,6 +283,7 @@ export function ItemDetailPage() {
     genres: title?.genres ?? item.genres ?? [],
     cast: title?.cast ?? [],
   };
+  const visibleCast = castForDisplay(meta.cast ?? [], meta.genres);
   const overview = meta.overview;
   const releaseDate = meta.releaseDate;
   const genres = meta.genres;
@@ -452,11 +453,11 @@ export function ItemDetailPage() {
         </EntryDialog>
       </section>
 
-      {meta.cast.length > 0 && (
+      {visibleCast.length > 0 && (
         <section className="mt-12">
           <SectionHeader title="Cast" />
           <div className="mt-5 flex gap-5 overflow-x-auto pb-3">
-            {castForDisplay(meta.cast, meta.genres).map((person) => (
+            {visibleCast.map((person) => (
               <div
                 key={`${person.name}:${person.character}`}
                 className="w-24 shrink-0"
