@@ -163,7 +163,7 @@ it('rejects movie lookalikes with conflicting TMDB IDs or equally ranked matches
 });
 
 it.each(['movie', 'tv'] as const)(
-  'enriches animated %s cast through TVDB and persists the optional field',
+  'publishes animated %s cast without blocking on optional artwork',
   async (mediaType) => {
     const runAction = vi
       .fn()
@@ -177,7 +177,8 @@ it.each(['movie', 'tv'] as const)(
       null,
       false,
     );
-    expect(value.cast[0]).toEqual({ ...cast[0], characterImageUrl: characters[0].imageUrl });
+    expect(value.cast[0]).toEqual(cast[0]);
+    expect(runAction).toHaveBeenCalledTimes(mediaType === 'movie' ? 1 : 2);
     const t = convexTest({ schema, modules: import.meta.glob('../../convex/**/*.ts') });
     await t.run((ctx) => ctx.db.insert('resolvedTitles', value));
     expect(
@@ -186,7 +187,7 @@ it.each(['movie', 'tv'] as const)(
   },
 );
 
-it('reuses characters from the anime guide without another artwork request', async () => {
+it('confirms the anime guide without a separate artwork request', async () => {
   const runAction = vi
     .fn()
     .mockResolvedValueOnce({ title: 'Pokemon', genres: ['Anime'], cast })
@@ -208,7 +209,7 @@ it('reuses characters from the anime guide without another artwork request', asy
     null,
     false,
   );
-  expect(value.cast[0].characterImageUrl).toBe(characters[0].imageUrl);
+  expect(value.cast[0].characterImageUrl).toBeUndefined();
   expect(runAction).toHaveBeenCalledTimes(2);
 });
 
@@ -265,7 +266,7 @@ it('rejects unrelated providers, series, and movie title collisions in remote lo
 });
 
 it.each(['empty', 'failed', 'fresh'] as const)(
-  'preserves or replaces saved artwork on %s refresh',
+  'preserves saved artwork before background %s refresh',
   async (result) => {
     const runAction = vi
       .fn()
@@ -279,7 +280,12 @@ it.each(['empty', 'failed', 'fresh'] as const)(
       false,
     );
     const t = convexTest({ schema, modules: import.meta.glob('../../convex/**/*.ts') });
-    await t.run((ctx) => ctx.db.insert('resolvedTitles', initial.value));
+    await t.run((ctx) =>
+      ctx.db.insert('resolvedTitles', {
+        ...initial.value,
+        cast: withCharacterArtwork(cast, characters),
+      }),
+    );
     const current = await t.query(internal.resolvedMetadata.reads.readTitle, {
       mediaType: 'movie',
       tmdbId: 77,
@@ -297,9 +303,7 @@ it.each(['empty', 'failed', 'fresh'] as const)(
       null,
       false,
     );
-    expect(refreshed.value.cast[0].characterImageUrl).toBe(
-      result === 'fresh' ? 'https://example.com/new.jpg' : characters[0].imageUrl,
-    );
+    expect(refreshed.value.cast[0].characterImageUrl).toBe(characters[0].imageUrl);
   },
 );
 
@@ -316,42 +320,20 @@ it('resolves provider metadata with omitted optional genres', async () => {
   expect(runAction).toHaveBeenCalledTimes(1);
 });
 
-it.each(['empty', 'failed', 'found'] as const)(
-  'uses the original movie title after a %s artwork prefetch',
-  async (prefetch) => {
-    const base = { title: 'Pokemon', genres: ['Animation'], cast };
-    const runAction = vi.fn().mockResolvedValueOnce(base).mockResolvedValueOnce([]);
-    const initial = await resolveFreshTitle(
-      { runAction } as unknown as ActionCtx,
-      { mediaType: 'movie', tmdbId: 77 },
-      null,
-      null,
-      false,
-    );
-    const t = convexTest({ schema, modules: import.meta.glob('../../convex/**/*.ts') });
-    await t.run((ctx) => ctx.db.insert('resolvedTitles', initial.value));
-    const current = await t.query(internal.resolvedMetadata.reads.readTitle, {
-      mediaType: 'movie',
-      tmdbId: 77,
-    });
-    runAction
-      .mockReset()
-      .mockResolvedValueOnce({ ...base, originalTitle: 'Original Japanese title' });
-    if (prefetch === 'failed') runAction.mockRejectedValueOnce(new Error('TVDB unavailable'));
-    else runAction.mockResolvedValueOnce(prefetch === 'found' ? characters : []);
-    runAction.mockResolvedValueOnce(characters);
-    const refreshed = await resolveFreshTitle(
-      { runAction } as unknown as ActionCtx,
-      { mediaType: 'movie', tmdbId: 77 },
-      current,
-      null,
-      false,
-    );
-    expect(refreshed.value.cast[0].characterImageUrl).toBe(characters[0].imageUrl);
-    expect(runAction).toHaveBeenCalledTimes(prefetch === 'found' ? 2 : 3);
-    if (prefetch !== 'found')
-      expect(runAction.mock.calls[2][1]).toMatchObject({
-        originalTitle: 'Original Japanese title',
-      });
-  },
-);
+it('does no optional movie artwork work before basic publication', async () => {
+  const runAction = vi.fn().mockResolvedValue({
+    title: 'Pokemon',
+    originalTitle: 'Original title',
+    genres: ['Animation'],
+    cast,
+  });
+  const { value } = await resolveFreshTitle(
+    { runAction } as unknown as ActionCtx,
+    { mediaType: 'movie', tmdbId: 77 },
+    null,
+    null,
+    false,
+  );
+  expect(value.cast).toEqual(cast);
+  expect(runAction).toHaveBeenCalledTimes(1);
+});

@@ -7,6 +7,7 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { getClerkUserId } from '../clerkAuth';
 import { releasedEpisodes } from '../episodeAvailability';
 import { validateInteger, validateTmdbId } from '../providerValidation';
+import { nextReleaseBoundary } from './enrichment';
 import { mappingIdentity } from './publication';
 import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
@@ -183,7 +184,7 @@ export async function resolveAndCommitCanonical(
           false,
           args.force,
           args.deferEpisodes ? undefined : args.requestedSeason,
-          args.deferEpisodes ?? false,
+          true,
         );
   const reusedCapturedTitle = args.currentTitle !== undefined && currentTitle !== null;
   const discoveredIdentity: { tvdbId?: number; seasonOrder?: string } =
@@ -282,7 +283,10 @@ export async function resolveAndCommitCanonical(
         ? refreshedAt
         : (currentSeason?.refreshedAt ?? refreshedAt),
       refreshAfter: seasonResult.persisted
-        ? refreshedAt + (seasonResult.partial ? PARTIAL_RETRY_MS : SEASON_FRESH_MS)
+        ? Math.min(
+            nextReleaseBoundary(refreshedAt),
+            refreshedAt + (seasonResult.partial ? PARTIAL_RETRY_MS : SEASON_FRESH_MS),
+          )
         : currentSeason?.refreshAfter,
       orderEpoch,
     };
@@ -293,7 +297,10 @@ export async function resolveAndCommitCanonical(
         metadataProvider: title.metadataProvider,
         episodes: seasonResult.episodes,
         refreshedAt,
-        refreshAfter: refreshedAt + (seasonResult.partial ? PARTIAL_RETRY_MS : SEASON_FRESH_MS),
+        refreshAfter: Math.min(
+          nextReleaseBoundary(refreshedAt),
+          refreshedAt + (seasonResult.partial ? PARTIAL_RETRY_MS : SEASON_FRESH_MS),
+        ),
         orderEpoch,
       };
       title = {
@@ -380,6 +387,8 @@ export async function resolveAndCommitCanonical(
     : undefined;
   const coreArgs = {
     title,
+    forceEnrichment:
+      args.force && requestedSeason === undefined && args.requestedSeason === undefined,
     titleWrite: titleWriteForCapturedTitle(args.currentTitle !== undefined, reusedCapturedTitle),
     season: commitSeason,
     mapping: mappingPayload,

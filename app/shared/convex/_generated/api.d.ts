@@ -50,6 +50,7 @@ import type * as providerValidation from "../providerValidation.js";
 import type * as providerValidators from "../providerValidators.js";
 import type * as publicValidators from "../publicValidators.js";
 import type * as rank from "../rank.js";
+import type * as resolvedMetadata_enrichment from "../resolvedMetadata/enrichment.js";
 import type * as resolvedMetadata_cleanup from "../resolvedMetadata/cleanup.js";
 import type * as resolvedMetadata_orchestration from "../resolvedMetadata/orchestration.js";
 import type * as resolvedMetadata_publication from "../resolvedMetadata/publication.js";
@@ -123,6 +124,7 @@ declare const fullApi: ApiFromModules<{
   providerValidators: typeof providerValidators;
   publicValidators: typeof publicValidators;
   rank: typeof rank;
+  "resolvedMetadata/enrichment": typeof resolvedMetadata_enrichment;
   "resolvedMetadata/cleanup": typeof resolvedMetadata_cleanup;
   "resolvedMetadata/orchestration": typeof resolvedMetadata_orchestration;
   "resolvedMetadata/publication": typeof resolvedMetadata_publication;

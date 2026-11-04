@@ -24,6 +24,7 @@ export const providerSearchResultsValidator = v.array(
 export const providerMovieValidator = v.object({
   id: v.number(),
   title: v.string(),
+  originalTitle: v.optional(v.string()),
   mediaType: v.literal('movie'),
   posterPath: v.optional(v.string()),
   overview: v.optional(v.string()),
@@ -91,7 +92,14 @@ const truncated = v.object({
   __truncatedProviderSnapshot: v.literal(true),
   originalBytes: v.number(),
 });
+export const catalogManifestValidator = v.object({
+  generation: v.string(),
+  chunks: v.number(),
+  count: v.number(),
+});
 export const providerSnapshotEntryValidator = v.union(
+  v.object({ kind: v.literal('tvdbCatalog'), value: catalogManifestValidator }),
+  v.object({ kind: v.literal('tvdbMiss'), value: v.array(v.string()) }),
   v.object({ kind: v.literal('tmdbMovie'), value: providerMovieValidator }),
   v.object({ kind: v.literal('tmdbTv'), value: providerTvValidator }),
   v.object({

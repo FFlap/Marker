@@ -91,6 +91,7 @@ export function mapMovieDetails(r: Json) {
   return {
     id: requiredNumber(r.id),
     title: requiredString(r.title),
+    ...(string(r.original_title)?.trim() && { originalTitle: string(r.original_title)!.trim() }),
     mediaType: 'movie' as const,
     posterPath: string(r.poster_path),
     overview: string(r.overview),

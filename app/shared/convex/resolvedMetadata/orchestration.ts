@@ -124,7 +124,7 @@ export const orchestrateRefresh = internalAction({
       if (!result.committed) return;
       if (args.mediaType === 'tv' && args.season !== undefined) {
         await ctx.scheduler.runAfter(
-          100,
+          0,
           internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
           {
             userId: args.userId,

@@ -74,7 +74,7 @@ export async function resolveFreshTitle(
   loadSelectedSeason = true,
   force = false,
   requestedSeason?: number,
-  metadataOnly = false,
+  metadataOnly = true,
 ) {
   const manuallyPinnedMapping =
     mapping?.source === 'manual' &&
@@ -95,17 +95,14 @@ export async function resolveFreshTitle(
             { tmdbId: args.tmdbId, force },
           ) as Promise<ProviderTitle>,
       );
-      let tvCharacters: CharacterArtwork[] | undefined;
       const loadAnime = (base: ProviderTitle) =>
         providerOutcome(
           args.mediaType === 'tv' &&
             !manualWithoutTvdbIdentity &&
             !(
-              mapping?.source === 'auto' &&
               !knownTvdbId &&
-              current?.metadataProvider === 'tmdb' &&
-              base.genres.length > 0 &&
-              !base.genres.some((genre) => /^(animation|anime)$/i.test(genre))
+              (base.genres?.length ?? 0) > 0 &&
+              !(base.genres ?? []).some((genre) => /^(animation|anime)$/i.test(genre))
             )
             ? attempt(
                 () =>
@@ -125,40 +122,22 @@ export async function resolveFreshTitle(
                       ...(manuallyPinnedMapping && { order: manuallyPinnedMapping.seasonOrder }),
                     }),
                   }) as Promise<{ anime: ProviderAnime | null; characters?: CharacterArtwork[] }>,
-              ).pipe(
-                Effect.map((extras) => {
-                  tvCharacters = extras.characters;
-                  return extras.anime;
-                }),
-              )
+              ).pipe(Effect.map((extras) => extras.anime))
             : Effect.succeed(null),
         );
-      const movieArtwork =
-        current?.mediaType === 'movie' &&
-        current.cast.length > 0 &&
-        current.genres.some((genre) => /^(animation|anime)$/i.test(genre))
-          ? providerOutcome(
-              attempt(
-                () =>
-                  ctx.runAction(internal.tvdb.getCharacterArtwork, {
-                    tmdbId: args.tmdbId,
-                    mediaType: 'movie',
-                    title: current.title,
-                  }) as Promise<CharacterArtwork[]>,
-              ),
-            )
-          : Effect.succeed(undefined);
-      const loadBase = Effect.all([loadTmdb, movieArtwork], { concurrency: 2 });
+      const loadBase = loadTmdb;
       // An established mapping can refresh both providers independently. New titles
       // still wait for TMDB's authoritative identity before attempting a match.
-      const [[tmdb, prefetchedMovieArtwork], animeResult] =
+      const [tmdb, animeResult] =
         current && knownTvdbId && args.mediaType === 'tv'
           ? yield* Effect.all([loadBase, loadAnime(current)], { concurrency: 2 })
           : yield* loadBase.pipe(
               Effect.flatMap((base) =>
-                loadAnime(base[0]).pipe(Effect.map((anime) => [base, anime] as const)),
+                loadAnime(base).pipe(Effect.map((anime) => [base, anime] as const)),
               ),
             );
+      if (!animeResult.ok && !current && process.env.TVDB_API_KEY)
+        return yield* Effect.fail(animeResult.error);
       let partial = !animeResult.ok;
       let partialError: unknown = animeResult.ok ? undefined : animeResult.error;
       let anime = animeResult.ok ? animeResult.value : animeFromCurrent(current);
@@ -192,50 +171,21 @@ export async function resolveFreshTitle(
         partialError ??= tmdbSeasonResult.error;
       }
       const tmdbEpisodes = tmdbSeasonResult.ok ? tmdbSeasonResult.value : [];
-      const animated = [...(tmdb.genres ?? []), ...(anime?.genres ?? [])].some((genre) =>
-        /^(animation|anime)$/i.test(genre),
-      );
-      if (animated && tmdb.cast?.length) {
-        const artwork =
-          prefetchedMovieArtwork &&
-          tmdb.title === current?.title &&
-          (!tmdb.originalTitle ||
-            (prefetchedMovieArtwork.ok && prefetchedMovieArtwork.value.length > 0))
-            ? prefetchedMovieArtwork
-            : yield* providerOutcome(
-                tvCharacters !== undefined
-                  ? Effect.succeed(tvCharacters)
-                  : animeResult.ok && animeResult.value?.characters !== undefined
-                    ? Effect.succeed(animeResult.value.characters)
-                    : attempt(
-                        () =>
-                          ctx.runAction(internal.tvdb.getCharacterArtwork, {
-                            tmdbId: args.tmdbId,
-                            mediaType: args.mediaType,
-                            title: tmdb.title,
-                            ...(tmdb.originalTitle && { originalTitle: tmdb.originalTitle }),
-                            ...(anime?.tvdbId && { tvdbId: anime.tvdbId }),
-                          }) as Promise<CharacterArtwork[]>,
-                      ),
-              );
-        // Missing optional artwork must never prevent title/episode metadata from loading.
+      if (current)
         tmdb.cast = withCharacterArtwork(
-          tmdb.cast,
-          artwork.ok && artwork.value.length > 0
-            ? artwork.value
-            : (current?.cast ?? []).flatMap((member) =>
-                member.characterImageUrl
-                  ? [
-                      {
-                        name: member.character,
-                        personName: member.name,
-                        imageUrl: member.characterImageUrl,
-                      },
-                    ]
-                  : [],
-              ),
+          tmdb.cast ?? [],
+          current.cast.flatMap((member) =>
+            member.characterImageUrl
+              ? [
+                  {
+                    name: member.character,
+                    personName: member.name,
+                    imageUrl: member.characterImageUrl,
+                  },
+                ]
+              : [],
+          ),
         );
-      }
       const refreshedAt = Date.now();
       const value = mergeTitle(
         args.tmdbId,
@@ -251,7 +201,9 @@ export async function resolveFreshTitle(
         partialError: actionFailureCause(partialError),
         selectedSeason,
         selectedEpisodes: anime
-          ? mergeEpisodes(anime.selectedEpisodes ?? [], tmdbEpisodes)
+          ? anime.selectedEpisodes === undefined
+            ? undefined
+            : mergeEpisodes(anime.selectedEpisodes, tmdbEpisodes)
           : releasedEpisodes(tmdbEpisodes).map(cleanEpisode),
       };
     }),

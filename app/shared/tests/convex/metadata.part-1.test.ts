@@ -609,7 +609,7 @@ describe('metadata pipeline', () => {
         tmdbId: 999,
         title: 'Known film',
       }),
-    ).resolves.toMatchObject({ scheduled: true });
+    ).resolves.toMatchObject({ scheduled: false });
   });
 
   it('bypasses a successful touch debounce when current-epoch data is invisible', async () => {
