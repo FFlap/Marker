@@ -244,7 +244,7 @@ export const orchestrateSeasonRefresh = internalAction({
         });
         if (!allowed) throw new ConvexError({ code: 'throttled' });
       }
-      const [title, mapping, request] = await runActionEffect(
+      const [title, mapping] = await runActionEffect(
         Effect.all(
           [
             attempt(
@@ -261,14 +261,8 @@ export const orchestrateSeasonRefresh = internalAction({
                   tmdbId: args.tmdbId,
                 }) as Promise<Doc<'titleMappings'> | null>,
             ),
-            attempt(
-              () =>
-                ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
-                  key: args.key,
-                }) as Promise<Doc<'metadataRefreshRequests'> | null>,
-            ),
           ],
-          { concurrency: 3 },
+          { concurrency: 2 },
         ),
       );
       if (!title || title.orderEpoch !== (mapping?.orderEpoch ?? 0))
@@ -278,15 +272,7 @@ export const orchestrateSeasonRefresh = internalAction({
         tmdbId: args.tmdbId,
         title: title.title,
         requestedSeason: args.season,
-        force: args.fromTitleRefresh
-          ? (args.force ?? false)
-          : (args.force ?? false) &&
-            !(
-              request &&
-              title.metadataProvider === 'tvdb' &&
-              title.refreshedAt >= request.lastRequestedAt &&
-              args.season === title.seasons.find((entry) => entry.season > 0)?.season
-            ),
+        force: args.force ?? false,
         keys: [args.key],
         attemptToken: args.attemptToken,
         leaseKey,

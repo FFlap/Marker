@@ -110,7 +110,9 @@ it('resolves four aired seasons after an old one-season lookup was cached', asyn
     throw new Error(`Unexpected request: ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
-  const guide = await t.action(internal.tvdb.refreshAnime, { tmdbId: 82684, title });
+  const guide = await t
+    .action(internal.tvdb.refreshTitleExtras, { tmdbId: 82684, title })
+    .then((result) => result.anime);
   expect(guide).toMatchObject({ tvdbId: 352408, order: 'official' });
   expect(guide?.seasons.map((season) => season.season)).toEqual([0, 1, 2, 3, 4]);
   expect(guide?.selectedEpisodes?.[0].name).toBe('The Storm Dragon, Veldora');

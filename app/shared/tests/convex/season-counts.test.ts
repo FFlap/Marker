@@ -55,7 +55,9 @@ it('loads counts for unselected seasons in the chosen order and caches the compl
   });
   vi.stubGlobal('fetch', fetchMock);
   const args = { tmdbId: 88, tvdbId: 222, title: 'Test anime', order: 'dvd' };
-  const guide = await t.action(internal.tvdb.refreshAnimeWithMapping, args);
+  const guide = await t
+    .action(internal.tvdb.refreshTitleExtras, args)
+    .then((result) => result.anime);
   expect(guide?.seasons).toMatchObject([
     { season: 0, episodeCount: 0 },
     { season: 1, episodeCount: 1 },
@@ -69,7 +71,9 @@ it('loads counts for unselected seasons in the chosen order and caches the compl
     ).toBe(false);
   }
   const requests = fetchMock.mock.calls.length;
-  expect(await t.action(internal.tvdb.refreshAnimeWithMapping, args)).toEqual(guide);
+  expect(
+    await t.action(internal.tvdb.refreshTitleExtras, args).then((result) => result.anime),
+  ).toEqual(guide);
   expect(fetchMock).toHaveBeenCalledTimes(requests);
 });
 
@@ -95,13 +99,15 @@ it('bounds eager count requests while preserving the full season list', async ()
     return new Response('{}', { status: 404 });
   });
   vi.stubGlobal('fetch', fetchMock);
-  const guide = await t.action(internal.tvdb.refreshAnimeWithMapping, {
-    tmdbId: 89,
-    tvdbId: 333,
-    title: 'Long anime',
-    order: 'dvd',
-    requestedSeason: 79,
-  });
+  const guide = await t
+    .action(internal.tvdb.refreshTitleExtras, {
+      tmdbId: 89,
+      tvdbId: 333,
+      title: 'Long anime',
+      order: 'dvd',
+      requestedSeason: 79,
+    })
+    .then((result) => result.anime);
   expect(guide?.seasons).toHaveLength(80);
   expect(
     fetchMock.mock.calls.filter(([url]) => /\/seasons\/\d+\/extended$/.test(String(url))),
@@ -142,16 +148,20 @@ it('retries an incomplete cached guide after five minutes and verifies the recov
     order: 'official',
     requestedSeason: 3,
   };
-  const incomplete = await t.action(internal.tvdb.refreshAnimeWithMapping, args);
+  const incomplete = await t
+    .action(internal.tvdb.refreshTitleExtras, args)
+    .then((result) => result.anime);
   expect(incomplete?.seasons[0]).toMatchObject({ episodeCount: 0, episodeCountVerified: false });
   const cachedRequests = fetchMock.mock.calls.length;
-  await t.action(internal.tvdb.refreshAnimeWithMapping, args);
+  await t.action(internal.tvdb.refreshTitleExtras, args).then((result) => result.anime);
   expect(fetchMock).toHaveBeenCalledTimes(cachedRequests);
 
   countsAvailable = true;
   const now = Date.now();
   vi.spyOn(Date, 'now').mockReturnValue(now + 5 * 60_000 + 1);
-  const recovered = await t.action(internal.tvdb.refreshAnimeWithMapping, args);
+  const recovered = await t
+    .action(internal.tvdb.refreshTitleExtras, args)
+    .then((result) => result.anime);
   expect(recovered?.seasons[0]).toMatchObject({ episodeCount: 1, episodeCountVerified: true });
 });
 
@@ -204,13 +214,15 @@ it('builds a complete default aired-order guide from one translated catalog, inc
     throw new Error(`Unexpected request ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
-  const guide = await t.action(internal.tvdb.refreshAnimeWithMapping, {
-    tmdbId: 91,
-    tvdbId: 555,
-    title: 'Catalog anime',
-    order: 'official',
-    force: true,
-  });
+  const guide = await t
+    .action(internal.tvdb.refreshTitleExtras, {
+      tmdbId: 91,
+      tvdbId: 555,
+      title: 'Catalog anime',
+      order: 'official',
+      force: true,
+    })
+    .then((result) => result.anime);
   expect(guide?.seasons).toMatchObject([
     { season: 0, episodeCount: 0, episodeCountVerified: true },
     { season: 1, episodeCount: 1, episodeCountVerified: true },
@@ -253,13 +265,15 @@ it('rejects an incomplete translated catalog instead of publishing incorrect ver
     }),
   );
   await expect(
-    t.action(internal.tvdb.refreshAnimeWithMapping, {
-      tmdbId: 92,
-      tvdbId: 556,
-      title: 'Incomplete anime',
-      order: 'official',
-      force: true,
-    }),
+    t
+      .action(internal.tvdb.refreshTitleExtras, {
+        tmdbId: 92,
+        tvdbId: 556,
+        title: 'Incomplete anime',
+        order: 'official',
+        force: true,
+      })
+      .then((result) => result.anime),
   ).rejects.toThrow('incomplete catalog');
 });
 

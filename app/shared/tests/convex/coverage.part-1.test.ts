@@ -387,10 +387,12 @@ describe('TVDB provider snapshots', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const guide = await t.action(internal.tvdb.refreshAnime, {
-      tmdbId: 123,
-      title: 'Snapshot Anime',
-    });
+    const guide = await t
+      .action(internal.tvdb.refreshTitleExtras, {
+        tmdbId: 123,
+        title: 'Snapshot Anime',
+      })
+      .then((result) => result.anime);
     expect(guide).toMatchObject({
       tvdbId: 457078,
       selectedSeason: 1,
@@ -402,7 +404,9 @@ describe('TVDB provider snapshots', () => {
       ),
     ).toBe(true);
     const callsAfterResolve = fetchMock.mock.calls.length;
-    await t.action(internal.tvdb.refreshAnime, { tmdbId: 123, title: 'Snapshot Anime' });
+    await t
+      .action(internal.tvdb.refreshTitleExtras, { tmdbId: 123, title: 'Snapshot Anime' })
+      .then((result) => result.anime);
     expect(
       await t.action(internal.tvdb.refreshSeason, {
         tvdbId: 457078,

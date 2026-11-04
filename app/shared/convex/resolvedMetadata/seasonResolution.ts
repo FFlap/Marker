@@ -26,7 +26,6 @@ import {
   pause,
   resolveFreshTitle,
   seasonIsFresh,
-  type ProviderOutcome,
 } from './titleResolution';
 import {
   assertMetadataMutationSize,
@@ -44,23 +43,19 @@ export async function resolveFreshSeason(
   current: AssembledSeason | null,
   force = false,
   preloadedTvdbEpisodes?: ResolvedEpisode[],
-  preloadedTmdbResult?: ProviderOutcome<ResolvedEpisode[]>,
 ) {
   return runActionEffect(
     Effect.gen(function* () {
       const [tmdbResult, tvdbResult] = yield* Effect.all(
         [
-          preloadedTmdbResult
-            ? Effect.succeed(preloadedTmdbResult)
-            : providerOutcome(
-                attempt(
-                  () =>
-                    ctx.runAction(internal.tmdb.refreshSeasonDetails, {
-                      ...args,
-                      force,
-                    }) as Promise<ResolvedEpisode[]>,
-                ),
-              ),
+          providerOutcome(
+            attempt(
+              () =>
+                ctx.runAction(internal.tmdb.refreshSeasonDetails, { ...args, force }) as Promise<
+                  ResolvedEpisode[]
+                >,
+            ),
+          ),
           title.metadataProvider === 'tvdb' && title.tvdbId && title.seasonOrder
             ? providerOutcome(
                 preloadedTvdbEpisodes
@@ -171,7 +166,7 @@ export async function resolveAndCommitCanonical(
   );
   const currentTitle =
     queriedTitle && queriedTitle.orderEpoch === (mapping?.orderEpoch ?? 0) ? queriedTitle : null;
-  const loadTitle = async () =>
+  const titleResult =
     args.currentTitle && currentTitle
       ? {
           value: currentTitle,
@@ -190,26 +185,6 @@ export async function resolveAndCommitCanonical(
           args.deferEpisodes ? undefined : args.requestedSeason,
           args.deferEpisodes ?? false,
         );
-  const [titleResult, preloadedTmdbResult] = await runActionEffect(
-    Effect.all(
-      [
-        attempt(async () => loadTitle()),
-        !args.deferEpisodes && args.mediaType === 'tv' && args.requestedSeason !== undefined
-          ? providerOutcome(
-              attempt(
-                () =>
-                  ctx.runAction(internal.tmdb.refreshSeasonDetails, {
-                    tmdbId: args.tmdbId,
-                    season: args.requestedSeason!,
-                    force: args.force,
-                  }) as Promise<ResolvedEpisode[]>,
-              ),
-            )
-          : Effect.succeed(undefined),
-      ],
-      { concurrency: 2 },
-    ),
-  );
   const reusedCapturedTitle = args.currentTitle !== undefined && currentTitle !== null;
   const discoveredIdentity: { tvdbId?: number; seasonOrder?: string } =
     titleResult.value.metadataProvider === 'tvdb'
@@ -291,7 +266,6 @@ export async function resolveAndCommitCanonical(
       currentSeason,
       args.force,
       titleResult.selectedSeason === requestedSeason ? titleResult.selectedEpisodes : undefined,
-      args.requestedSeason === requestedSeason ? preloadedTmdbResult : undefined,
     );
     seasonPartial = seasonResult.partial;
     seasonError = seasonResult.error;
