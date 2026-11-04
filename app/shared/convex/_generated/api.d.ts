@@ -19,6 +19,7 @@ import type * as calendarProviders from "../calendarProviders.js";
 import type * as calendarRefresh from "../calendarRefresh.js";
 import type * as calendarScheduleStore from "../calendarScheduleStore.js";
 import type * as calendarTypes from "../calendarTypes.js";
+import type * as characterArtwork from "../characterArtwork.js";
 import type * as clerkAuth from "../clerkAuth.js";
 import type * as crons from "../crons.js";
 import type * as episodeAvailability from "../episodeAvailability.js";
@@ -89,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   calendarRefresh: typeof calendarRefresh;
   calendarScheduleStore: typeof calendarScheduleStore;
   calendarTypes: typeof calendarTypes;
+  characterArtwork: typeof characterArtwork;
   clerkAuth: typeof clerkAuth;
   crons: typeof crons;
   episodeAvailability: typeof episodeAvailability;

@@ -1,3 +1,5 @@
+import { castForDisplay } from "@marker/shared/castPresentation";
+import { CastPortrait } from "@/components/cast-portrait";
 import { touchMetadata } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,6 +19,7 @@ import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { posterUrl } from "@/lib/utils";
 
+/** Show catalog metadata and actions for adding a title to the library. */
 export function TitleDetailPage() {
   const runOperation = useOperation();
   const { mediaType: rawMediaType, tmdbId: rawTmdbId } = useParams({
@@ -56,6 +59,7 @@ export function TitleDetailPage() {
   const touchTitle = useMutation(api.resolvedMetadata.touch.touchTitle);
   const detail = titleView?.title;
   const meta = detail ?? preview;
+  const visibleCast = castForDisplay(detail?.cast ?? [], detail?.genres ?? []);
   const [touchError, setTouchError] = useState(false);
   const refreshGeneration = useRef(0);
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
@@ -255,24 +259,16 @@ export function TitleDetailPage() {
               )}
             </div>
           </section>
-          {detail?.cast?.length ? (
+          {visibleCast.length ? (
             <section className="mt-12">
               <SectionHeader title="Cast" />
               <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-                {detail.cast.map((person) => (
+                {visibleCast.map((person) => (
                   <div
                     key={`${person.name}:${person.character}`}
                     className="w-24 shrink-0"
                   >
-                    <div className="aspect-[3/4] overflow-hidden rounded-xl bg-card">
-                      {person.profilePath && (
-                        <img
-                          src={posterUrl(person.profilePath)}
-                          alt=""
-                          className="size-full object-cover"
-                        />
-                      )}
-                    </div>
+                    <CastPortrait person={person} />
                     <strong className="mt-2 block truncate text-sm">
                       {person.name}
                     </strong>

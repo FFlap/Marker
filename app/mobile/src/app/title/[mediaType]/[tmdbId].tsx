@@ -1,3 +1,4 @@
+import { castForDisplay } from '@marker/shared/castPresentation';
 import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
@@ -79,6 +80,7 @@ export default function TitleDetailScreen() {
   return <TitleDetailRoute key={routeKey} params={params} />;
 }
 
+/** Show catalog metadata and actions for adding or tracking a title. */
 function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const runOperation = useOperation();
   const { mediaType, tmdbId, validId } = parseTitleRoute(params);
@@ -163,6 +165,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     cast: detail?.cast ?? [],
     seasons: detail?.seasons ?? [],
   };
+  const visibleCast = castForDisplay(meta.cast ?? [], meta.genres);
   const overview = meta.overview?.trim();
   const availableSeasons = getAvailableSeasons(meta.seasons);
   const averageRuntime =
@@ -443,14 +446,15 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                   <MetadataPlaceholder label="Loading more cast" kind="cast" />
                 </View>
               </>
-            ) : meta.cast.length > 0 ? (
+            ) : visibleCast.length > 0 ? (
               <>
                 <SectionHeader title="Cast" />
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {meta.cast.map((member) => (
+                  {visibleCast.map((member) => (
                     <View key={`${member.name}-${member.character}`} style={s.cast}>
                       <PosterImage
                         path={member.profilePath}
+                        imageUrl={member.characterImageUrl}
                         title={member.name}
                         style={s.castImage}
                       />

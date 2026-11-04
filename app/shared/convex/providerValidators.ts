@@ -47,7 +47,13 @@ export const providerTvValidator = v.object({
   seasons: v.array(season),
   cast: v.array(castMember),
 });
+export const characterArtworkValidator = v.object({
+  name: v.string(),
+  imageUrl: v.string(),
+  personName: v.optional(v.string()),
+});
 export const animeGuideValidator = v.object({
+  characters: v.optional(v.array(characterArtworkValidator)),
   tvdbId: v.number(),
   title: v.string(),
   firstAirDate: v.optional(v.string()),

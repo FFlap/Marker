@@ -5,8 +5,10 @@ import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { useStartupData } from '@/hooks/useStartupQuery';
 
+/** Render direct artwork or a TMDB poster, with a title placeholder when absent. */
 export function PosterImage({
   path,
+  imageUrl,
   title,
   style,
   testID,
@@ -15,6 +17,7 @@ export function PosterImage({
   onError,
 }: {
   path?: string;
+  imageUrl?: string;
   title: string;
   style?: StyleProp<ImageStyle>;
   testID?: string;
@@ -25,11 +28,11 @@ export function PosterImage({
   // Restored artwork appears with the saved screen; newly fetched content keeps its fade.
   const saved = useStartupData()?.cached;
   const duration = transition ?? (saved ? 0 : 150);
-  if (path)
+  if (imageUrl || path)
     return (
       <Image
         testID={testID}
-        source={`https://image.tmdb.org/t/p/w342${path}`}
+        source={imageUrl || `https://image.tmdb.org/t/p/w342${path}`}
         contentFit="cover"
         transition={duration}
         onDisplay={onDisplay}

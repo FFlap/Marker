@@ -1,5 +1,5 @@
 import { Clock, Effect, Schema } from 'effect';
-import { attempt } from './actionEffects';
+import { attempt, providerOutcome } from './actionEffects';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction, type ActionCtx } from './_generated/server';
@@ -11,7 +11,14 @@ import {
   providerRecords,
   type ProviderTransportFailure,
 } from './providerHttp';
-import { animeEpisodeValidator, animeGuideValidator } from './providerValidators';
+import {
+  animeEpisodeValidator,
+  animeGuideValidator,
+  characterArtworkValidator,
+} from './providerValidators';
+import { mapCharacterArtwork } from './characterArtwork';
+import { validateTmdbId } from './providerValidation';
+import { mediaTypeValidator } from './publicValidators';
 import { findSeriesEffect } from './tvdbSeriesLookup';
 import { isAnime } from './mergePolicy';
 import { releasedEpisodes } from './episodeAvailability';
@@ -31,6 +38,9 @@ import {
   seasonDisplayName,
   seasonTranslationLimit,
   selectSeasonOrder,
+  selectTitleMatch,
+  verifiedTmdbRemoteMovie,
+  seriesId,
   text,
   validateOrder,
   validOrders,
@@ -52,7 +62,7 @@ export {
 } from './tvdbParsing';
 export type { AnimeDetails, AnimeEpisode, SeasonRecord } from './tvdbParsing';
 
-const TVDB_ANIME_GUIDE_VERSION = 'v10';
+const TVDB_ANIME_GUIDE_VERSION = 'v11';
 
 const tvdbAnimeGuideKey = (tmdbId: number, tvdbId: number, order: string) =>
   `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:${tmdbId}:${tvdbId}:${order}`;
@@ -70,6 +80,67 @@ const MAX_SEASON_COUNT_REQUESTS = 64;
 const SEASON_COUNT_DEADLINE_MS = 20_000;
 
 let credentials: { token: string; expiresAt: number } | undefined;
+
+/** Fetch TV or movie character artwork independently of anime season ordering. */
+export const getCharacterArtwork = internalAction({
+  args: {
+    tmdbId: v.number(),
+    mediaType: mediaTypeValidator,
+    title: v.string(),
+    originalTitle: v.optional(v.string()),
+    tvdbId: v.optional(v.number()),
+  },
+  returns: v.array(characterArtworkValidator),
+  handler: (ctx, args) =>
+    runTvdbEffect(
+      Effect.gen(function* () {
+        validateTmdbId(args.tmdbId);
+        const titles = authoritativeNames(args.title, args.originalTitle);
+        let id = args.tvdbId;
+        if (!id && args.mediaType === 'tv') {
+          id = yield* findSeriesEffect(
+            (path) => requestEffect(ctx, path, true),
+            args.tmdbId,
+            titles,
+            new Set(),
+          );
+        } else if (!id) {
+          const remote = yield* providerOutcome(
+            requestEffect(ctx, `/search/remoteid/${encodeURIComponent(String(args.tmdbId))}`, true),
+          );
+          if (remote.ok) {
+            const ids = new Set(
+              records(remote.value.data)
+                .map((entry) => verifiedTmdbRemoteMovie(entry, titles))
+                .filter(
+                  (candidate): candidate is number => candidate !== undefined && candidate > 0,
+                ),
+            );
+            if (ids.size > 1) return [];
+            id = ids.values().next().value;
+          }
+          for (const title of titles) {
+            if (id) break;
+            const search = yield* requestEffect(
+              ctx,
+              `/search?query=${encodeURIComponent(title)}&type=movie&limit=20`,
+              true,
+            );
+            id = seriesId(
+              selectTitleMatch(records(search.data), args.tmdbId, titles, 'movie') ?? {},
+            );
+            if (id) break;
+          }
+        }
+        if (!id) return [];
+        const payload = yield* requestEffect(
+          ctx,
+          `/${args.mediaType === 'tv' ? 'series' : 'movies'}/${id}/extended`,
+        );
+        return mapCharacterArtwork(record(payload.data));
+      }),
+    ),
+});
 
 class TvdbNotFoundError extends Schema.TaggedError<TvdbNotFoundError>()('TvdbNotFoundError', {
   message: Schema.String,
@@ -384,6 +455,7 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
     { concurrency: 3 },
   );
   const details: AnimeDetails = {
+    characters: mapCharacterArtwork(data),
     tvdbId,
     title: text(data.name) || titles[0] || `TVDB ${tvdbId}`,
     ...(text(data.firstAired) && { firstAirDate: text(data.firstAired) }),
