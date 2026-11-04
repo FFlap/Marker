@@ -398,7 +398,7 @@ describe('TVDB provider snapshots', () => {
     });
     expect(
       fetchMock.mock.calls.some(([input]) =>
-        String(input).includes('/episodes/official/eng?page=0&season=1'),
+        String(input).includes('/episodes/official/eng?page=0'),
       ),
     ).toBe(true);
     const callsAfterResolve = fetchMock.mock.calls.length;

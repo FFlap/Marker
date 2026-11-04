@@ -56,6 +56,11 @@ const mappingIdentity = v.object({
 const watchedTagCount = v.object({ tag: v.string(), count: v.number() });
 
 export default defineSchema({
+  providerCredentials: defineTable({
+    keyHash: v.string(),
+    token: v.string(),
+    expiresAt: v.number(),
+  }).index('by_key', ['keyHash']),
   users,
   avatarUploads: defineTable({
     userId: v.id('users'),

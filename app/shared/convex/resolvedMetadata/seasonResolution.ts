@@ -26,6 +26,7 @@ import {
   pause,
   resolveFreshTitle,
   seasonIsFresh,
+  type ProviderOutcome,
 } from './titleResolution';
 import {
   assertMetadataMutationSize,
@@ -43,19 +44,23 @@ export async function resolveFreshSeason(
   current: AssembledSeason | null,
   force = false,
   preloadedTvdbEpisodes?: ResolvedEpisode[],
+  preloadedTmdbResult?: ProviderOutcome<ResolvedEpisode[]>,
 ) {
   return runActionEffect(
     Effect.gen(function* () {
       const [tmdbResult, tvdbResult] = yield* Effect.all(
         [
-          providerOutcome(
-            attempt(
-              () =>
-                ctx.runAction(internal.tmdb.refreshSeasonDetails, { ...args, force }) as Promise<
-                  ResolvedEpisode[]
-                >,
-            ),
-          ),
+          preloadedTmdbResult
+            ? Effect.succeed(preloadedTmdbResult)
+            : providerOutcome(
+                attempt(
+                  () =>
+                    ctx.runAction(internal.tmdb.refreshSeasonDetails, {
+                      ...args,
+                      force,
+                    }) as Promise<ResolvedEpisode[]>,
+                ),
+              ),
           title.metadataProvider === 'tvdb' && title.tvdbId && title.seasonOrder
             ? providerOutcome(
                 preloadedTvdbEpisodes
@@ -132,6 +137,7 @@ export async function resolveAndCommitCanonical(
     title?: string;
     requestedSeason?: number;
     includeSelectedSeason?: boolean;
+    deferEpisodes?: boolean;
     force: boolean;
     keys: string[];
     attemptToken: string;
@@ -165,7 +171,7 @@ export async function resolveAndCommitCanonical(
   );
   const currentTitle =
     queriedTitle && queriedTitle.orderEpoch === (mapping?.orderEpoch ?? 0) ? queriedTitle : null;
-  const titleResult =
+  const loadTitle = async () =>
     args.currentTitle && currentTitle
       ? {
           value: currentTitle,
@@ -181,8 +187,29 @@ export async function resolveAndCommitCanonical(
           mapping,
           false,
           args.force,
-          args.requestedSeason,
+          args.deferEpisodes ? undefined : args.requestedSeason,
+          args.deferEpisodes ?? false,
         );
+  const [titleResult, preloadedTmdbResult] = await runActionEffect(
+    Effect.all(
+      [
+        attempt(async () => loadTitle()),
+        !args.deferEpisodes && args.mediaType === 'tv' && args.requestedSeason !== undefined
+          ? providerOutcome(
+              attempt(
+                () =>
+                  ctx.runAction(internal.tmdb.refreshSeasonDetails, {
+                    tmdbId: args.tmdbId,
+                    season: args.requestedSeason!,
+                    force: args.force,
+                  }) as Promise<ResolvedEpisode[]>,
+              ),
+            )
+          : Effect.succeed(undefined),
+      ],
+      { concurrency: 2 },
+    ),
+  );
   const reusedCapturedTitle = args.currentTitle !== undefined && currentTitle !== null;
   const discoveredIdentity: { tvdbId?: number; seasonOrder?: string } =
     titleResult.value.metadataProvider === 'tvdb'
@@ -216,8 +243,10 @@ export async function resolveAndCommitCanonical(
     ...titleWithoutDocumentFields
   } = titleResult.value as ResolvedTitle & Partial<Doc<'resolvedTitles'>>;
   let title: ResolvedTitle = { ...titleWithoutDocumentFields, orderEpoch };
-  const requestedSeason =
-    args.requestedSeason ?? (args.includeSelectedSeason ? titleResult.selectedSeason : undefined);
+  const requestedSeason = args.deferEpisodes
+    ? undefined
+    : (args.requestedSeason ??
+      (args.includeSelectedSeason ? titleResult.selectedSeason : undefined));
   let season:
     | {
         tmdbId: number;
@@ -262,6 +291,7 @@ export async function resolveAndCommitCanonical(
       currentSeason,
       args.force,
       titleResult.selectedSeason === requestedSeason ? titleResult.selectedEpisodes : undefined,
+      args.requestedSeason === requestedSeason ? preloadedTmdbResult : undefined,
     );
     seasonPartial = seasonResult.partial;
     seasonError = seasonResult.error;
@@ -333,7 +363,9 @@ export async function resolveAndCommitCanonical(
         leaseToken: args.leaseToken,
       })
     : [];
-  const claimedKeys = [...new Set([...args.keys, ...synchronousKeys])];
+  const claimedKeys = [...new Set([...args.keys, ...synchronousKeys])].filter(
+    (key) => !args.deferEpisodes || !key.startsWith('season:'),
+  );
   const outcomes = claimedKeys.map((key) => {
     if (key.startsWith('season:') && seasonNotFound)
       return {

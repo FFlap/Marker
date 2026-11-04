@@ -1,3 +1,4 @@
+import { getFunctionName } from 'convex/server';
 import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
@@ -155,20 +156,29 @@ describe('metadata pipeline', () => {
       token: attemptToken,
       leaseMs: 60_000,
     });
-    const runAction = vi
-      .fn()
-      .mockResolvedValueOnce({ title: 'Current epoch title', genres: [], seasons })
-      .mockResolvedValueOnce({
-        tvdbId: 900,
-        title: 'Current epoch title',
-        order: 'official',
-        genres: ['Anime'],
-        episodeRunTime: [],
-        seasons,
-        selectedSeason: 1,
-        selectedEpisodes: [{ season: 1, episode: 1, name: 'Current episode' }],
-      })
-      .mockResolvedValueOnce([]);
+    const runAction = vi.fn(async (reference) => {
+      switch (getFunctionName(reference)) {
+        case 'tmdb:refreshTvDetails':
+          return { title: 'Current epoch title', genres: [], seasons };
+        case 'tvdb:refreshTitleExtras':
+          return {
+            anime: {
+              tvdbId: 900,
+              title: 'Current epoch title',
+              order: 'official',
+              genres: ['Anime'],
+              episodeRunTime: [],
+              seasons,
+              selectedSeason: 1,
+              selectedEpisodes: [{ season: 1, episode: 1, name: 'Current episode' }],
+            },
+          };
+        case 'tmdb:refreshSeasonDetails':
+          return [];
+        default:
+          throw new Error(`Unexpected action ${getFunctionName(reference)}`);
+      }
+    });
 
     await expect(
       resolveAndCommitCanonical(

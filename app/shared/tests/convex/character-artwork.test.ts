@@ -168,8 +168,8 @@ it.each(['movie', 'tv'] as const)(
     const runAction = vi
       .fn()
       .mockResolvedValueOnce({ title: 'Pokemon', genres: ['Animation'], cast });
-    if (mediaType === 'tv') runAction.mockResolvedValueOnce(null);
-    runAction.mockResolvedValueOnce(characters);
+    if (mediaType === 'tv') runAction.mockResolvedValueOnce({ anime: null, characters });
+    else runAction.mockResolvedValueOnce(characters);
     const { value } = await resolveFreshTitle(
       { runAction } as unknown as ActionCtx,
       { mediaType, tmdbId: 77 },
@@ -191,11 +191,14 @@ it('reuses characters from the anime guide without another artwork request', asy
     .fn()
     .mockResolvedValueOnce({ title: 'Pokemon', genres: ['Anime'], cast })
     .mockResolvedValueOnce({
-      tvdbId: 88,
-      order: 'official',
-      genres: ['Anime'],
-      episodeRunTime: [],
-      seasons: [],
+      anime: {
+        tvdbId: 88,
+        order: 'official',
+        genres: ['Anime'],
+        episodeRunTime: [],
+        seasons: [],
+        characters,
+      },
       characters,
     });
   const { value } = await resolveFreshTitle(

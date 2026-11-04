@@ -42,7 +42,11 @@ export type AnimeDetails = {
   selectedSeason?: number;
   selectedEpisodes?: AnimeEpisode[];
 };
-export type AnimeResolution = { details: AnimeDetails; episodes?: AnimeEpisode[] };
+export type AnimeResolution = {
+  details: AnimeDetails;
+  episodes?: AnimeEpisode[];
+  seasonIds?: { id: number; season: number }[];
+};
 
 const MAX_SEASON_TRANSLATIONS = 64;
 export const validOrders = new Set<SeasonOrder>([

@@ -154,3 +154,385 @@ it('retries an incomplete cached guide after five minutes and verifies the recov
   const recovered = await t.action(internal.tvdb.refreshAnimeWithMapping, args);
   expect(recovered?.seasons[0]).toMatchObject({ episodeCount: 1, episodeCountVerified: true });
 });
+
+it('builds a complete default aired-order guide from one translated catalog, including future and empty seasons', async () => {
+  const t = convexTest({ schema, modules });
+  vi.stubEnv('TVDB_API_KEY', 'test-key');
+  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith('/login')) return Response.json({ data: { token: 'token' } });
+    if (url.includes('/series/555/extended'))
+      return Response.json({
+        data: {
+          name: 'Catalog anime',
+          defaultSeasonType: 1,
+          genres: [{ name: 'Anime' }],
+          seasons: [0, 1, 2, 3].map((number) => ({
+            id: 50 + number,
+            number,
+            type: { id: 1, type: 'official' },
+          })),
+        },
+      });
+    if (url.includes('/episodes/official/eng?page=0'))
+      return Response.json({
+        data: {
+          episodes: [
+            { id: 1, seasonNumber: 1, number: 1, name: 'English pilot', aired: '2020-01-01' },
+          ],
+        },
+        links: { total_items: 3, page_size: 1, next: 'page=1' },
+      });
+    if (url.includes('/episodes/official/eng?page=1'))
+      return Response.json({
+        data: {
+          episodes: [
+            { id: 2, seasonNumber: 2, number: 1, name: 'English second', aired: '2020-01-02' },
+          ],
+        },
+        links: { next: 'page=2' },
+      });
+    if (url.includes('/episodes/official/eng?page=2'))
+      return Response.json({
+        data: {
+          episodes: [{ id: 3, seasonNumber: 2, number: 2, name: 'Future', aired: '2999-01-01' }],
+        },
+        links: { next: null },
+      });
+    if (url.includes('/translations/eng'))
+      return Response.json({ data: { name: 'Translated arc' } });
+    throw new Error(`Unexpected request ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const guide = await t.action(internal.tvdb.refreshAnimeWithMapping, {
+    tmdbId: 91,
+    tvdbId: 555,
+    title: 'Catalog anime',
+    order: 'official',
+    force: true,
+  });
+  expect(guide?.seasons).toMatchObject([
+    { season: 0, episodeCount: 0, episodeCountVerified: true },
+    { season: 1, episodeCount: 1, episodeCountVerified: true },
+    { season: 2, episodeCount: 1, episodeCountVerified: true },
+    { season: 3, episodeCount: 0, episodeCountVerified: true },
+  ]);
+  expect(guide?.selectedEpisodes?.[0].name).toBe('English pilot');
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/episodes/'))).toHaveLength(
+    3,
+  );
+  expect(fetchMock.mock.calls.some(([url]) => /\/seasons\/\d+\/extended/.test(String(url)))).toBe(
+    false,
+  );
+});
+
+it('rejects an incomplete translated catalog instead of publishing incorrect verified totals', async () => {
+  const t = convexTest({ schema, modules });
+  vi.stubEnv('TVDB_API_KEY', 'test-key');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/login')) return Response.json({ data: { token: 'token' } });
+      if (url.includes('/series/556/extended'))
+        return Response.json({
+          data: {
+            name: 'Incomplete anime',
+            defaultSeasonType: 1,
+            genres: [{ name: 'Anime' }],
+            seasons: [{ id: 51, number: 1, type: { id: 1, type: 'official' } }],
+          },
+        });
+      if (url.includes('/translations/eng')) return Response.json({ data: { name: 'Arc' } });
+      if (url.includes('page=0'))
+        return Response.json({
+          data: { episodes: [{ id: 1, seasonNumber: 1, number: 1, name: 'Pilot' }] },
+          links: { total_items: 2, page_size: 1, next: 'page=1' },
+        });
+      return Response.json({ data: { episodes: [] }, links: { next: null } });
+    }),
+  );
+  await expect(
+    t.action(internal.tvdb.refreshAnimeWithMapping, {
+      tmdbId: 92,
+      tvdbId: 556,
+      title: 'Incomplete anime',
+      order: 'official',
+      force: true,
+    }),
+  ).rejects.toThrow('incomplete catalog');
+});
+
+it('returns names, verified counts and character artwork without fetching episode rows in metadata mode', async () => {
+  const t = convexTest({ schema, modules });
+  vi.stubEnv('TVDB_API_KEY', 'test-key');
+  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith('/login')) return Response.json({ data: { token: 'token' } });
+    if (url.includes('/series/557/extended'))
+      return Response.json({
+        data: {
+          id: 557,
+          name: 'Metadata anime',
+          defaultSeasonType: 1,
+          genres: [{ name: 'Anime' }],
+          characters: [{ name: 'Hero', image: '/hero.jpg' }],
+          seasons: [1, 2, 3].map((number) => ({
+            id: 50 + number,
+            number,
+            type: { id: 1, type: 'official' },
+          })),
+          episodes: [
+            { id: 1, seasonNumber: 1, number: 1, name: 'Original language', aired: '2020-01-01' },
+            { id: 2, seasonNumber: 2, number: 1, name: 'Future', aired: '2999-01-01' },
+          ],
+        },
+      });
+    const seasonId = url.match(/\/seasons\/(5[123])\/extended/)?.[1];
+    if (seasonId)
+      return Response.json({
+        data: {
+          id: Number(seasonId),
+          translations: { nameTranslations: [{ language: 'eng', name: 'English arc' }] },
+          episodes:
+            seasonId === '51'
+              ? [{ id: 1, seasonNumber: 1, number: 1, name: 'Original', aired: '2020-01-01' }]
+              : seasonId === '52'
+                ? [{ id: 2, seasonNumber: 2, number: 1, name: 'Future', aired: '2999-01-01' }]
+                : [],
+        },
+      });
+    if (url.includes('/translations/eng')) return Response.json({ data: { name: 'English arc' } });
+    throw new Error(`Unexpected request ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const result = await t.action(internal.tvdb.refreshTitleExtras, {
+    tmdbId: 93,
+    tvdbId: 557,
+    title: 'Metadata anime',
+    force: true,
+    metadataOnly: true,
+  });
+  expect(result.anime?.seasons).toMatchObject([
+    { name: 'English arc', episodeCount: 1, episodeCountVerified: true },
+    { name: 'English arc', episodeCount: 0, episodeCountVerified: true },
+    { name: 'English arc', episodeCount: 0, episodeCountVerified: true },
+  ]);
+  expect(result.characters?.[0]).toMatchObject({
+    name: 'Hero',
+    imageUrl: 'https://artworks.thetvdb.com/banners/hero.jpg',
+  });
+  expect(result.anime?.selectedEpisodes).toBeUndefined();
+  expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/episodes/official/eng'))).toBe(
+    false,
+  );
+  // Metadata-only cache entries cannot masquerade as fully hydrated episode guides.
+  await expect(
+    t.query(internal.providerSnapshots.get, { key: 'tvdb:season:557:official:1' }),
+  ).resolves.toBeNull();
+});
+
+it('validates a TMDB TVDB-ID hint and falls back when TVDB contradicts the identity', async () => {
+  const t = convexTest({ schema, modules });
+  vi.stubEnv('TVDB_API_KEY', 'test-key');
+  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith('/login')) return Response.json({ data: { token: 'token' } });
+    if (url.includes('/series/558/extended'))
+      return Response.json({
+        data: {
+          id: 558,
+          name: 'Wrong series',
+          remoteIds: [{ sourceName: 'TheMovieDB.com', id: '999' }],
+          characters: [{ name: 'Wrong character', image: '/wrong.jpg' }],
+        },
+      });
+    if (url.includes('/search/remoteid/94'))
+      return Response.json({
+        data: [{ sourceName: 'TMDB', series: { id: 559, name: 'Right anime' } }],
+      });
+    if (url.includes('/series/559/extended'))
+      return Response.json({
+        data: {
+          id: 559,
+          name: 'Right anime',
+          defaultSeasonType: 1,
+          genres: [{ name: 'Anime' }],
+          seasons: [{ id: 51, number: 1, type: { id: 1, type: 'official' } }],
+          episodes: [{ id: 1, seasonNumber: 1, number: 1, name: 'Pilot', aired: '2020-01-01' }],
+          characters: [{ name: 'Right character', image: '/right.jpg' }],
+        },
+      });
+    if (url.includes('/seasons/51/extended'))
+      return Response.json({
+        data: {
+          id: 51,
+          translations: { nameTranslations: [{ language: 'eng', name: 'English arc' }] },
+          episodes: [{ id: 1, seasonNumber: 1, number: 1, name: 'Pilot', aired: '2020-01-01' }],
+        },
+      });
+    if (url.includes('/translations/eng')) return Response.json({ data: { name: 'English arc' } });
+    throw new Error(`Unexpected request ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const result = await t.action(internal.tvdb.refreshTitleExtras, {
+    tmdbId: 94,
+    tvdbIdHint: 558,
+    title: 'Right anime',
+    metadataOnly: true,
+    force: true,
+  });
+  expect(result.anime).toMatchObject({
+    tvdbId: 559,
+    seasons: [{ episodeCount: 1, episodeCountVerified: true }],
+  });
+  expect(result.characters?.map((character) => character.name)).toEqual(['Right character']);
+});
+
+it('uses a verified external ID without a redundant TVDB search', async () => {
+  const t = convexTest({ schema, modules });
+  vi.stubEnv('TVDB_API_KEY', 'test-key');
+  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith('/login')) return Response.json({ data: { token: 'token' } });
+    if (url.includes('/series/560/extended'))
+      return Response.json({
+        data: {
+          id: 560,
+          name: 'Verified anime',
+          defaultSeasonType: 1,
+          genres: [{ name: 'Anime' }],
+          remoteIds: [{ sourceName: 'TheMovieDB.com', id: '95' }],
+          seasons: [{ id: 51, number: 1, type: { id: 1, type: 'official' } }],
+          episodes: [{ id: 1, seasonNumber: 1, number: 1, name: 'Pilot', aired: '2020-01-01' }],
+        },
+      });
+    if (url.includes('/seasons/51/extended'))
+      return Response.json({
+        data: {
+          id: 51,
+          translations: { nameTranslations: [{ language: 'eng', name: 'English arc' }] },
+          episodes: [{ id: 1, seasonNumber: 1, number: 1, name: 'Pilot', aired: '2020-01-01' }],
+        },
+      });
+    if (url.includes('/translations/eng')) return Response.json({ data: { name: 'English arc' } });
+    throw new Error(`Unexpected request ${url}`);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const result = await t.action(internal.tvdb.refreshTitleExtras, {
+    tmdbId: 95,
+    tvdbIdHint: 560,
+    title: 'Verified anime',
+    metadataOnly: true,
+    force: true,
+  });
+  expect(result.anime?.tvdbId).toBe(560);
+  expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/search'))).toBe(false);
+});
+
+it.each(['same', 'series-name', 'new-season', 'new-order'] as const)(
+  'overlaps fresh season reads with the series response and validates %s identities',
+  async (change) => {
+    const t = convexTest({ schema, modules });
+    vi.stubEnv('TVDB_API_KEY', 'prefetch-test-key');
+    let phase = 0,
+      prefetched = 0;
+    let releaseSeries!: () => void;
+    const seriesReady = new Promise<void>((resolve) => {
+      releaseSeries = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith('/login')) return Response.json({ data: { token: 'token' } });
+        if (url.includes('/series/561/extended')) {
+          if (phase) await seriesReady;
+          const changed = phase > 0 && (change === 'new-season' || change === 'new-order');
+          return Response.json({
+            data: {
+              id: 561,
+              name: 'Concurrent anime',
+              genres: [{ name: 'Anime' }],
+              defaultSeasonType: change === 'new-order' && changed ? 2 : 1,
+              seasons: [
+                {
+                  id: changed ? 52 : 51,
+                  number: 1,
+                  ...(change === 'series-name' && {
+                    name: phase ? 'Fresh series arc' : 'Old series arc',
+                  }),
+                  type: {
+                    id: change === 'new-order' && changed ? 2 : 1,
+                    type: change === 'new-order' && changed ? 'dvd' : 'official',
+                  },
+                },
+              ],
+            },
+          });
+        }
+        const id = url.match(/\/seasons\/(5[12])\/extended/)?.[1];
+        if (id) {
+          if (phase && id === '51') prefetched++;
+          const count = phase === 0 ? 1 : id === '51' ? 2 : 3;
+          return Response.json({
+            data: {
+              id: Number(id),
+              translations: {
+                nameTranslations: [
+                  {
+                    language: 'eng',
+                    ...(change !== 'series-name' && {
+                      name: phase ? (id === '51' ? 'Fresh arc' : 'New identity arc') : 'Old arc',
+                    }),
+                  },
+                ],
+              },
+              episodes: Array.from({ length: count }, (_, index) => ({
+                id: Number(id) * 10 + index,
+                seasonNumber: 1,
+                number: index + 1,
+                name: 'Released episode',
+                aired: '2020-01-01',
+              })),
+            },
+          });
+        }
+        throw new Error(`Unexpected request ${url}`);
+      }),
+    );
+    const args = {
+      tmdbId: 96,
+      tvdbId: 561,
+      title: 'Concurrent anime',
+      metadataOnly: true,
+      force: true,
+    };
+    const initial = await t.action(internal.tvdb.refreshTitleExtras, args);
+    expect(initial.anime?.seasons[0]).toMatchObject({
+      name: change === 'series-name' ? 'Old series arc' : 'Old arc',
+      episodeCount: 1,
+    });
+    phase = 1;
+    const refreshing = t.action(internal.tvdb.refreshTitleExtras, args);
+    try {
+      await vi.waitFor(() => expect(prefetched).toBe(1));
+    } finally {
+      releaseSeries();
+    }
+    const result = await refreshing;
+    expect(result.anime?.seasons[0]).toMatchObject({
+      name:
+        change === 'series-name'
+          ? 'Fresh series arc'
+          : change === 'same'
+            ? 'Fresh arc'
+            : 'New identity arc',
+      episodeCount: change === 'same' || change === 'series-name' ? 2 : 3,
+      episodeCountVerified: true,
+    });
+    expect(result.anime?.order).toBe(change === 'new-order' ? 'dvd' : 'official');
+    // Confirmed IDs reuse the fresh HTTP response even when series names supply fallbacks.
+    expect(prefetched).toBe(1);
+  },
+);

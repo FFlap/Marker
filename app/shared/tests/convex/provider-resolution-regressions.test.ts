@@ -276,13 +276,15 @@ it('uses the short retry interval when any TVDB season total remains unknown', a
     .fn()
     .mockResolvedValueOnce({ title: 'Anime', genres: [] })
     .mockResolvedValueOnce({
-      tvdbId: 222,
-      order: 'official',
-      genres: ['Anime'],
-      episodeRunTime: [],
-      seasons: [
-        { season: 2, name: 'Unavailable count', episodeCount: 0, episodeCountVerified: false },
-      ],
+      anime: {
+        tvdbId: 222,
+        order: 'official',
+        genres: ['Anime'],
+        episodeRunTime: [],
+        seasons: [
+          { season: 2, name: 'Unavailable count', episodeCount: 0, episodeCountVerified: false },
+        ],
+      },
     });
   const result = await resolveFreshTitle(
     { runAction } as unknown as ActionCtx,

@@ -34,6 +34,7 @@ export const providerMovieValidator = v.object({
   cast: v.array(castMember),
 });
 export const providerTvValidator = v.object({
+  tvdbId: v.optional(v.number()),
   id: v.number(),
   title: v.string(),
   originalTitle: v.optional(v.string()),
@@ -65,6 +66,7 @@ export const animeGuideValidator = v.object({
   selectedEpisodes: v.optional(v.array(animeEpisodeValidator)),
 });
 const lookup = v.object({
+  seasonIds: v.optional(v.array(v.object({ id: v.number(), season: v.number() }))),
   tvdbId: v.number(),
   order: v.string(),
   authoritativeNames: v.array(v.string()),

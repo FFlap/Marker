@@ -41,6 +41,8 @@ import type * as profileRules from "../profileRules.js";
 import type * as profileStats from "../profileStats.js";
 import type * as profileStatsRefresh from "../profileStatsRefresh.js";
 import type * as profiles from "../profiles.js";
+import type * as providerBudget from "../providerBudget.js";
+import type * as providerCredentials from "../providerCredentials.js";
 import type * as providerHttp from "../providerHttp.js";
 import type * as providerRateLimits from "../providerRateLimits.js";
 import type * as providerSnapshots from "../providerSnapshots.js";
@@ -112,6 +114,8 @@ declare const fullApi: ApiFromModules<{
   profileStats: typeof profileStats;
   profileStatsRefresh: typeof profileStatsRefresh;
   profiles: typeof profiles;
+  providerBudget: typeof providerBudget;
+  providerCredentials: typeof providerCredentials;
   providerHttp: typeof providerHttp;
   providerRateLimits: typeof providerRateLimits;
   providerSnapshots: typeof providerSnapshots;

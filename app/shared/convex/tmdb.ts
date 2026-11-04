@@ -117,6 +117,9 @@ export function mapTvDetails(r: Json) {
     id: requiredNumber(r.id),
     title: requiredString(r.name),
     ...(originalTitle && { originalTitle }),
+    ...(identifier(record(r.external_ids)?.tvdb_id) && {
+      tvdbId: identifier(record(r.external_ids)?.tvdb_id),
+    }),
     mediaType: 'tv' as const,
     posterPath: string(r.poster_path),
     overview: string(r.overview),
@@ -305,12 +308,12 @@ export const refreshTvDetails = internalAction({
   handler: async (ctx, { tmdbId, force = false }) => {
     validateTmdbId(tmdbId);
     const load = () =>
-      requestEffect(ctx, `/tv/${tmdbId}?append_to_response=credits`).pipe(
+      requestEffect(ctx, `/tv/${tmdbId}?append_to_response=credits,external_ids`).pipe(
         Effect.flatMap((payload) => parseProvider(() => mapTvDetails(payload))),
       );
     return force
-      ? refreshSnapshot(ctx, `tmdb:tv:full:v2:${tmdbId}`, load)
-      : snapshot(ctx, `tmdb:tv:full:v2:${tmdbId}`, load);
+      ? refreshSnapshot(ctx, `tmdb:tv:full:v3:${tmdbId}`, load)
+      : snapshot(ctx, `tmdb:tv:full:v3:${tmdbId}`, load);
   },
 });
 export const refreshSeasonDetails = internalAction({

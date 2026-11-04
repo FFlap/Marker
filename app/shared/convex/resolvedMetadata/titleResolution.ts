@@ -74,6 +74,7 @@ export async function resolveFreshTitle(
   loadSelectedSeason = true,
   force = false,
   requestedSeason?: number,
+  metadataOnly = false,
 ) {
   const manuallyPinnedMapping =
     mapping?.source === 'manual' &&
@@ -85,7 +86,7 @@ export async function resolveFreshTitle(
   const manualWithoutTvdbIdentity = mapping?.source === 'manual' && !manuallyPinnedMapping;
   return runActionEffect(
     Effect.gen(function* () {
-      const tmdb = yield* attempt(
+      const loadTmdb = attempt(
         () =>
           ctx.runAction(
             args.mediaType === 'movie'
@@ -94,27 +95,70 @@ export async function resolveFreshTitle(
             { tmdbId: args.tmdbId, force },
           ) as Promise<ProviderTitle>,
       );
-      const animeResult = yield* providerOutcome(
-        args.mediaType === 'tv' && !manualWithoutTvdbIdentity
-          ? attempt(
-              () =>
-                ctx.runAction(
-                  knownTvdbId ? internal.tvdb.refreshAnimeWithMapping : internal.tvdb.refreshAnime,
-                  {
+      let tvCharacters: CharacterArtwork[] | undefined;
+      const loadAnime = (base: ProviderTitle) =>
+        providerOutcome(
+          args.mediaType === 'tv' &&
+            !manualWithoutTvdbIdentity &&
+            !(
+              mapping?.source === 'auto' &&
+              !knownTvdbId &&
+              current?.metadataProvider === 'tmdb' &&
+              base.genres.length > 0 &&
+              !base.genres.some((genre) => /^(animation|anime)$/i.test(genre))
+            )
+            ? attempt(
+                () =>
+                  ctx.runAction(internal.tvdb.refreshTitleExtras, {
                     tmdbId: args.tmdbId,
-                    title: tmdb.title,
-                    ...(tmdb.originalTitle && { originalTitle: tmdb.originalTitle }),
+                    metadataOnly,
+                    ...(!knownTvdbId &&
+                      base.tvdbId && {
+                        tvdbIdHint: base.tvdbId,
+                      }),
+                    title: base.title,
+                    ...(base.originalTitle && { originalTitle: base.originalTitle }),
                     force,
                     ...(requestedSeason !== undefined && { requestedSeason }),
                     ...(knownTvdbId && {
                       tvdbId: knownTvdbId,
                       ...(manuallyPinnedMapping && { order: manuallyPinnedMapping.seasonOrder }),
                     }),
-                  },
-                ) as Promise<ProviderAnime | null>,
+                  }) as Promise<{ anime: ProviderAnime | null; characters?: CharacterArtwork[] }>,
+              ).pipe(
+                Effect.map((extras) => {
+                  tvCharacters = extras.characters;
+                  return extras.anime;
+                }),
+              )
+            : Effect.succeed(null),
+        );
+      const movieArtwork =
+        current?.mediaType === 'movie' &&
+        current.cast.length > 0 &&
+        current.genres.some((genre) => /^(animation|anime)$/i.test(genre))
+          ? providerOutcome(
+              attempt(
+                () =>
+                  ctx.runAction(internal.tvdb.getCharacterArtwork, {
+                    tmdbId: args.tmdbId,
+                    mediaType: 'movie',
+                    title: current.title,
+                  }) as Promise<CharacterArtwork[]>,
+              ),
             )
-          : Effect.succeed(null),
-      );
+          : Effect.succeed(undefined);
+      const loadBase = Effect.all([loadTmdb, movieArtwork], { concurrency: 2 });
+      // An established mapping can refresh both providers independently. New titles
+      // still wait for TMDB's authoritative identity before attempting a match.
+      const [[tmdb, prefetchedMovieArtwork], animeResult] =
+        current && knownTvdbId && args.mediaType === 'tv'
+          ? yield* Effect.all([loadBase, loadAnime(current)], { concurrency: 2 })
+          : yield* loadBase.pipe(
+              Effect.flatMap((base) =>
+                loadAnime(base[0]).pipe(Effect.map((anime) => [base, anime] as const)),
+              ),
+            );
       let partial = !animeResult.ok;
       let partialError: unknown = animeResult.ok ? undefined : animeResult.error;
       let anime = animeResult.ok ? animeResult.value : animeFromCurrent(current);
@@ -152,20 +196,25 @@ export async function resolveFreshTitle(
         /^(animation|anime)$/i.test(genre),
       );
       if (animated && tmdb.cast?.length) {
-        const artwork = yield* providerOutcome(
-          animeResult.ok && animeResult.value?.characters !== undefined
-            ? Effect.succeed(animeResult.value.characters)
-            : attempt(
-                () =>
-                  ctx.runAction(internal.tvdb.getCharacterArtwork, {
-                    tmdbId: args.tmdbId,
-                    mediaType: args.mediaType,
-                    title: tmdb.title,
-                    ...(tmdb.originalTitle && { originalTitle: tmdb.originalTitle }),
-                    ...(anime?.tvdbId && { tvdbId: anime.tvdbId }),
-                  }) as Promise<CharacterArtwork[]>,
-              ),
-        );
+        const artwork =
+          prefetchedMovieArtwork && tmdb.title === current?.title
+            ? prefetchedMovieArtwork
+            : yield* providerOutcome(
+                tvCharacters !== undefined
+                  ? Effect.succeed(tvCharacters)
+                  : animeResult.ok && animeResult.value?.characters !== undefined
+                    ? Effect.succeed(animeResult.value.characters)
+                    : attempt(
+                        () =>
+                          ctx.runAction(internal.tvdb.getCharacterArtwork, {
+                            tmdbId: args.tmdbId,
+                            mediaType: args.mediaType,
+                            title: tmdb.title,
+                            ...(tmdb.originalTitle && { originalTitle: tmdb.originalTitle }),
+                            ...(anime?.tvdbId && { tvdbId: anime.tvdbId }),
+                          }) as Promise<CharacterArtwork[]>,
+                      ),
+              );
         // Missing optional artwork must never prevent title/episode metadata from loading.
         tmdb.cast = withCharacterArtwork(
           tmdb.cast,

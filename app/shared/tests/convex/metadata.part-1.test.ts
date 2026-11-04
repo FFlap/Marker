@@ -293,20 +293,26 @@ describe('metadata pipeline', () => {
     );
   });
 
-  it('uses one attempt and one atomic commit for a cold title plus selected season', async () => {
-    const { t, asUser } = await setup();
+  it('publishes complete title metadata while the selected episode request is still pending', async () => {
+    const { t, asUser, userId } = await setup();
     vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'token');
+    let releaseEpisodes!: () => void;
+    const episodesReady = new Promise<void>((resolve) => {
+      releaseEpisodes = resolve;
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: string | URL | Request) => {
         const url = String(input);
-        if (url.includes('/season/1'))
+        if (url.includes('/season/1')) {
+          await episodesReady;
           return new Response(
             JSON.stringify({
               season_number: 1,
               episodes: [{ id: 101, season_number: 1, episode_number: 1, name: 'Pilot' }],
             }),
           );
+        }
         return new Response(
           JSON.stringify({
             id: 88,
@@ -326,6 +332,28 @@ describe('metadata pipeline', () => {
       season: 1,
     })) as any;
     expect(touch.title.attemptToken).toBe(touch.season.attemptToken);
+
+    try {
+      await vi.waitFor(async () => {
+        const title = await asUser.query(api.resolvedMetadata.reads.getTitleView, {
+          mediaType: 'tv',
+          tmdbId: 88,
+        });
+        const titleState = await asUser.query(api.resolvedMetadata.reads.getTitleRequestState, {
+          mediaType: 'tv',
+          tmdbId: 88,
+        });
+        const seasonState = await asUser.query(api.resolvedMetadata.reads.getSeasonRequestState, {
+          tmdbId: 88,
+          season: 1,
+        });
+        expect(title.title).toMatchObject({ title: 'Cold show', seasons: [{ episodeCount: 1 }] });
+        expect(titleState?.state).toBe('succeeded');
+        expect(seasonState?.state).toBe('inFlight');
+      });
+    } finally {
+      releaseEpisodes();
+    }
 
     await vi.waitFor(async () => {
       const state = await t.run(async (ctx) => ({
@@ -354,13 +382,20 @@ describe('metadata pipeline', () => {
         state: 'succeeded',
         attemptToken: touch.title.attemptToken,
       });
-      expect(state.title?.completedAt).toBe(state.season?.completedAt);
+      expect(state.title!.completedAt!).toBeLessThan(state.season!.completedAt!);
       expect(state.canonicalTitle).toMatchObject({ title: 'Cold show', orderEpoch: 0 });
       expect(state.canonicalSeason).toMatchObject({ episodeCount: 1, orderEpoch: 0 });
     });
+    const budget = await t.run((ctx) =>
+      ctx.db
+        .query('requestThrottle')
+        .withIndex('by_key', (q) => q.eq('key', `resolved:${userId}`))
+        .unique(),
+    );
+    expect(budget?.count).toBe(1);
   });
 
-  it('commits a refreshed title and fails its stale selected season in the same attempt', async () => {
+  it('keeps refreshed title metadata available when the subsequent episode refresh fails', async () => {
     const { t, asUser } = await setup();
     await t.run((ctx) =>
       ctx.db.insert('resolvedTitles', {
@@ -426,7 +461,7 @@ describe('metadata pipeline', () => {
         attemptToken: touch.title.attemptToken,
         retryAt: expect.any(Number),
       });
-      expect(titleRequest?.completedAt).toBe(seasonRequest?.completedAt);
+      expect(titleRequest!.completedAt!).toBeLessThan(seasonRequest!.completedAt!);
       expect(state.title).toMatchObject({ title: 'Fresh title' });
     });
     expect(
