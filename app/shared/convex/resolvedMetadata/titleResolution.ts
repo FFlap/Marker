@@ -65,6 +65,7 @@ const animeFromCurrent = (current: Doc<'resolvedTitles'> | null): ProviderAnime 
       }
     : null;
 
+/** Resolve fresh provider metadata while preserving usable cached data on optional failures. */
 export async function resolveFreshTitle(
   ctx: ActionCtx,
   args: { mediaType: MediaType; tmdbId: number; title?: string },
@@ -147,7 +148,7 @@ export async function resolveFreshTitle(
         partialError ??= tmdbSeasonResult.error;
       }
       const tmdbEpisodes = tmdbSeasonResult.ok ? tmdbSeasonResult.value : [];
-      const animated = [...tmdb.genres, ...(anime?.genres ?? [])].some((genre) =>
+      const animated = [...(tmdb.genres ?? []), ...(anime?.genres ?? [])].some((genre) =>
         /^(animation|anime)$/i.test(genre),
       );
       if (animated && tmdb.cast?.length) {
@@ -168,7 +169,7 @@ export async function resolveFreshTitle(
         // Missing optional artwork must never prevent title/episode metadata from loading.
         tmdb.cast = withCharacterArtwork(
           tmdb.cast,
-          artwork.ok
+          artwork.ok && artwork.value.length > 0
             ? artwork.value
             : (current?.cast ?? []).flatMap((member) =>
                 member.characterImageUrl

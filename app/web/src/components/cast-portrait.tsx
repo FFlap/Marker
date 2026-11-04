@@ -1,5 +1,6 @@
 import { posterUrl } from "@/lib/utils";
 
+/** Render character artwork or an actor portrait in a fixed cast-card frame. */
 export function CastPortrait({
   person,
 }: {

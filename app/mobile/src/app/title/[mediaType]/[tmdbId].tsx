@@ -80,6 +80,7 @@ export default function TitleDetailScreen() {
   return <TitleDetailRoute key={routeKey} params={params} />;
 }
 
+/** Show catalog metadata and actions for adding or tracking a title. */
 function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const runOperation = useOperation();
   const { mediaType, tmdbId, validId } = parseTitleRoute(params);

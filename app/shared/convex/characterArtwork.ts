@@ -18,22 +18,22 @@ const roleKeys = (value: string) =>
 // Common alternative romanizations, used only alongside the same voice actor.
 const romanizedKey = (value: string) => value.replace(/uu/g, 'u').replace(/ou|oo/g, 'o');
 
+/** Map all illustrated roles before matching, without substituting actor portraits. */
 export function mapCharacterArtwork(data: Json): CharacterArtwork[] {
-  return records(data.characters)
-    .flatMap((character) => {
-      const name = text(character.name);
-      const image = text(character.image);
-      if (!name || !image || normalize(name) === 'narrator') return [];
-      // TVDB also provides personImgURL: only the character's image belongs here.
-      const imageUrl = /^https?:\/\//i.test(image)
-        ? image
-        : `https://artworks.thetvdb.com/banners/${image.replace(/^\/?banners\//, '').replace(/^\//, '')}`;
-      const personName = text(character.personName);
-      return [{ name, imageUrl, ...(personName && { personName }) }];
-    })
-    .slice(0, 200);
+  return records(data.characters).flatMap((character) => {
+    const name = text(character.name);
+    const image = text(character.image);
+    if (!name || !image || normalize(name) === 'narrator') return [];
+    // TVDB also provides personImgURL: only the character's image belongs here.
+    const imageUrl = /^https?:\/\//i.test(image)
+      ? image
+      : `https://artworks.thetvdb.com/banners/${image.replace(/^\/?banners\//, '').replace(/^\//, '')}`;
+    const personName = text(character.personName);
+    return [{ name, imageUrl, ...(personName && { personName }) }];
+  });
 }
 
+/** Match unambiguous role artwork, using actor identity to resolve aliases. */
 export function withCharacterArtwork<
   T extends { name: string; character: string; characterImageUrl?: string },
 >(cast: T[], characters: CharacterArtwork[]): T[] {

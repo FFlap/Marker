@@ -112,7 +112,7 @@ it('rejects a malformed TVDB season catalog before caching a successfully empty 
     }),
   ).rejects.toThrow('malformed data');
   expect(
-    await t.query(internal.providerSnapshots.get, { key: 'tvdb:anime:v10:88:88:official' }),
+    await t.query(internal.providerSnapshots.get, { key: 'tvdb:anime:v11:88:88:official' }),
   ).toBeNull();
 });
 

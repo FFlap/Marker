@@ -51,6 +51,7 @@ export default function ItemDetailScreen() {
     </ScreenErrorBoundary>
   );
 }
+/** Show saved title metadata and controls for managing library watch progress. */
 function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const runOperation = useOperation();
   const [selectedSeason, setSeason] = useState(1);

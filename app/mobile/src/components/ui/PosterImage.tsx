@@ -5,6 +5,7 @@ import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { useStartupData } from '@/hooks/useStartupQuery';
 
+/** Render direct artwork or a TMDB poster, with a title placeholder when absent. */
 export function PosterImage({
   path,
   imageUrl,

@@ -1,5 +1,5 @@
 import { Clock, Effect, Schema } from 'effect';
-import { attempt } from './actionEffects';
+import { attempt, providerOutcome } from './actionEffects';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction, type ActionCtx } from './_generated/server';
@@ -39,6 +39,7 @@ import {
   seasonTranslationLimit,
   selectSeasonOrder,
   selectTitleMatch,
+  verifiedTmdbRemoteMovie,
   seriesId,
   text,
   validateOrder,
@@ -61,7 +62,7 @@ export {
 } from './tvdbParsing';
 export type { AnimeDetails, AnimeEpisode, SeasonRecord } from './tvdbParsing';
 
-const TVDB_ANIME_GUIDE_VERSION = 'v10';
+const TVDB_ANIME_GUIDE_VERSION = 'v11';
 
 const tvdbAnimeGuideKey = (tmdbId: number, tvdbId: number, order: string) =>
   `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:${tmdbId}:${tvdbId}:${order}`;
@@ -80,7 +81,7 @@ const SEASON_COUNT_DEADLINE_MS = 20_000;
 
 let credentials: { token: string; expiresAt: number } | undefined;
 
-// Artwork enrichment is independent of anime season ordering and also supports movies.
+/** Fetch TV or movie character artwork independently of anime season ordering. */
 export const getCharacterArtwork = internalAction({
   args: {
     tmdbId: v.number(),
@@ -104,7 +105,22 @@ export const getCharacterArtwork = internalAction({
             new Set(),
           );
         } else if (!id) {
+          const remote = yield* providerOutcome(
+            requestEffect(ctx, `/search/remoteid/${encodeURIComponent(String(args.tmdbId))}`, true),
+          );
+          if (remote.ok) {
+            const ids = new Set(
+              records(remote.value.data)
+                .map((entry) => verifiedTmdbRemoteMovie(entry, titles))
+                .filter(
+                  (candidate): candidate is number => candidate !== undefined && candidate > 0,
+                ),
+            );
+            if (ids.size > 1) return [];
+            id = ids.values().next().value;
+          }
           for (const title of titles) {
+            if (id) break;
             const search = yield* requestEffect(
               ctx,
               `/search?query=${encodeURIComponent(title)}&type=movie&limit=20`,

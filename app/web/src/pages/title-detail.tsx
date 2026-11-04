@@ -19,6 +19,7 @@ import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { posterUrl } from "@/lib/utils";
 
+/** Show catalog metadata and actions for adding a title to the library. */
 export function TitleDetailPage() {
   const runOperation = useOperation();
   const { mediaType: rawMediaType, tmdbId: rawTmdbId } = useParams({

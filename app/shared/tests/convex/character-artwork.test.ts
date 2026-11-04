@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import { mapCharacterArtwork, withCharacterArtwork } from '../../convex/characterArtwork';
 import { resolveFreshTitle } from '../../convex/resolvedMetadata/titleResolution';
-import { selectTitleMatch } from '../../convex/tvdbParsing';
+import { selectTitleMatch, verifiedTmdbRemoteMovie } from '../../convex/tvdbParsing';
 import type { ActionCtx } from '../../convex/_generated/server';
 import { internal } from '../../convex/_generated/api';
 import schema from '../../convex/schema';
@@ -21,32 +21,36 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-it('loads character artwork from the matched TVDB movie endpoint', async () => {
+it.each(['remote', 'title'] as const)('loads movie artwork via %s lookup', async (lookup) => {
   vi.stubEnv('TVDB_API_KEY', 'test-key');
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     const data = url.endsWith('/login')
       ? { token: 'test-token' }
-      : url.includes('/search?')
-        ? [
-            {
-              id: 'movie-101',
-              type: 'movie',
-              name: 'Pokemon',
-              remote_ids: [{ id: '77', sourceName: 'TheMovieDB.com' }],
-            },
-          ]
-        : url.endsWith('/movies/101/extended')
-          ? {
-              characters: [
-                {
-                  name: 'Pikachu',
-                  image: 'https://artworks.thetvdb.com/pikachu.jpg',
-                  personName: 'Ikue Otani',
-                },
-              ],
-            }
-          : undefined;
+      : url.includes('/search/remoteid/')
+        ? lookup === 'remote'
+          ? [{ sourceName: 'TheMovieDB.com', movie: { id: 101, name: 'Pokemon' } }]
+          : []
+        : url.includes('/search?')
+          ? [
+              {
+                id: 'movie-101',
+                type: 'movie',
+                name: 'Pokemon',
+                remote_ids: [{ id: '77', sourceName: 'TheMovieDB.com' }],
+              },
+            ]
+          : url.endsWith('/movies/101/extended')
+            ? {
+                characters: [
+                  {
+                    name: 'Pikachu',
+                    image: 'https://artworks.thetvdb.com/pikachu.jpg',
+                    personName: 'Ikue Otani',
+                  },
+                ],
+              }
+            : undefined;
     if (!data) throw new Error(`Unexpected URL: ${url}`);
     return new Response(JSON.stringify({ data }));
   });
@@ -59,6 +63,9 @@ it('loads character artwork from the matched TVDB movie endpoint', async () => {
       title: 'Pokemon',
     }),
   ).toEqual(characters);
+  expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/search?'))).toBe(
+    lookup === 'title',
+  );
   expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/movies/101/extended'))).toBe(
     true,
   );
@@ -225,5 +232,83 @@ it('keeps actor photos when TVDB fails and skips lookup for live action', async 
     false,
   );
   expect(live.value.cast).toEqual(cast);
+  expect(runAction).toHaveBeenCalledTimes(1);
+});
+
+it('matches artwork beyond the first 200 provider characters', () => {
+  const mapped = mapCharacterArtwork({
+    characters: [
+      ...Array.from({ length: 200 }, (_, i) => ({ name: `Other ${i}`, image: `/other-${i}.jpg` })),
+      { name: 'Pikachu', image: characters[0].imageUrl },
+    ],
+  });
+  expect(withCharacterArtwork(cast, mapped)[0].characterImageUrl).toBe(characters[0].imageUrl);
+});
+
+it('rejects unrelated providers, series, and movie title collisions in remote lookup', () => {
+  expect(
+    verifiedTmdbRemoteMovie({ sourceName: 'IMDB', movie: { id: 101, name: 'Pokemon' } }, [
+      'Pokemon',
+    ]),
+  ).toBeUndefined();
+  expect(
+    verifiedTmdbRemoteMovie({ sourceName: 'TMDB', series: { id: 101, name: 'Pokemon' } }, [
+      'Pokemon',
+    ]),
+  ).toBeUndefined();
+  expect(
+    verifiedTmdbRemoteMovie({ sourceName: 'TMDB', movie: { id: 101, name: 'Other' } }, ['Pokemon']),
+  ).toBeUndefined();
+});
+
+it.each(['empty', 'failed', 'fresh'] as const)(
+  'preserves or replaces saved artwork on %s refresh',
+  async (result) => {
+    const runAction = vi
+      .fn()
+      .mockResolvedValueOnce({ title: 'Pokemon', genres: ['Animation'], cast })
+      .mockResolvedValueOnce(characters);
+    const initial = await resolveFreshTitle(
+      { runAction } as unknown as ActionCtx,
+      { mediaType: 'movie', tmdbId: 77 },
+      null,
+      null,
+      false,
+    );
+    const t = convexTest({ schema, modules: import.meta.glob('../../convex/**/*.ts') });
+    await t.run((ctx) => ctx.db.insert('resolvedTitles', initial.value));
+    const current = await t.query(internal.resolvedMetadata.reads.readTitle, {
+      mediaType: 'movie',
+      tmdbId: 77,
+    });
+    runAction.mockReset().mockResolvedValueOnce({ title: 'Pokemon', genres: ['Animation'], cast });
+    if (result === 'failed') runAction.mockRejectedValueOnce(new Error('TVDB unavailable'));
+    else
+      runAction.mockResolvedValueOnce(
+        result === 'empty' ? [] : [{ ...characters[0], imageUrl: 'https://example.com/new.jpg' }],
+      );
+    const refreshed = await resolveFreshTitle(
+      { runAction } as unknown as ActionCtx,
+      { mediaType: 'movie', tmdbId: 77 },
+      current,
+      null,
+      false,
+    );
+    expect(refreshed.value.cast[0].characterImageUrl).toBe(
+      result === 'fresh' ? 'https://example.com/new.jpg' : characters[0].imageUrl,
+    );
+  },
+);
+
+it('resolves provider metadata with omitted optional genres', async () => {
+  const runAction = vi.fn().mockResolvedValue({ title: 'Movie', cast });
+  const { value } = await resolveFreshTitle(
+    { runAction } as unknown as ActionCtx,
+    { mediaType: 'movie', tmdbId: 77 },
+    null,
+    null,
+    false,
+  );
+  expect(value.cast).toEqual(cast);
   expect(runAction).toHaveBeenCalledTimes(1);
 });

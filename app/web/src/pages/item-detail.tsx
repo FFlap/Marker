@@ -161,6 +161,7 @@ function EntryDialog({
   );
 }
 
+/** Show library metadata and watch-progress controls. */
 export function ItemDetailPage() {
   const runOperation = useOperation();
   const { itemId } = useParams({ from: "/app/item/$itemId" });

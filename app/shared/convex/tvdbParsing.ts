@@ -178,7 +178,7 @@ const titleMatches = (entry: Json, titles: string[]) => {
 };
 const tmdbRemoteSources = new Set(['tmdb', 'the movie database', 'themoviedb', 'themoviedb com']);
 
-// Search relevance can put a spinoff first whose aliases include the parent title.
+/** Prefer verified provider IDs over names; reject equally ranked distinct titles. */
 export function selectTitleMatch(
   entries: Json[],
   tmdbId: number,
@@ -233,6 +233,14 @@ export const verifiedTmdbRemoteSeries = (entry: Json, titles: string[]) => {
   const series = record(entry.series);
   if (!titleMatches(series, titles) && !titleMatches(entry, titles)) return undefined;
   return integer(entry.seriesId) ?? integer(series.id);
+};
+
+/** Verify movie identity without accepting series or unrelated remote-ID providers. */
+export const verifiedTmdbRemoteMovie = (entry: Json, titles: string[]) => {
+  if (!tmdbRemoteSources.has(remoteIdSource(entry))) return undefined;
+  const movie = record(entry.movie);
+  if (!titleMatches(movie, titles) && !titleMatches(entry, titles)) return undefined;
+  return integer(entry.movieId) ?? integer(movie.id);
 };
 
 export function seasonDisplayName(seasonNumber: number, rawName: string, translatedName?: string) {
