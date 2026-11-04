@@ -79,3 +79,28 @@ it('refreshes a rejected cached TVDB token and keeps its replacement private to 
     vi.unstubAllEnvs();
   }
 });
+
+it('retries a denied reservation only after the distributed window resets', async () => {
+  let now = Date.now();
+  vi.spyOn(Date, 'now').mockImplementation(() => now);
+  const t = convexTest({ schema, modules });
+  await t.run((ctx) =>
+    ctx.db.insert('requestThrottle', {
+      key: 'tvdb-global',
+      windowStart: now,
+      count: 300,
+    }),
+  );
+  const reserve = vi.fn(() =>
+    t.mutation(internal.providerRateLimits.reserveProviderBudget, { provider: 'tvdb' }),
+  );
+  const take = batchedProviderBudget(reserve);
+  expect(await Promise.all(Array.from({ length: 10 }, take))).toEqual(Array(10).fill(false));
+  expect(reserve).toHaveBeenCalledTimes(1);
+  now += 59_999;
+  expect(await take()).toBe(false);
+  expect(reserve).toHaveBeenCalledTimes(1);
+  now++;
+  expect(await Promise.all(Array.from({ length: 8 }, take))).toEqual(Array(8).fill(true));
+  expect(reserve).toHaveBeenCalledTimes(2);
+});

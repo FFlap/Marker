@@ -47,13 +47,13 @@ export const consumeGlobalProviderLimiter = internalMutation({
 /** Small prepaid batches for a single action's parallel provider work. */
 export const reserveProviderBudget = internalMutation({
   args: { provider: v.union(v.literal('tmdb'), v.literal('tvdb')) },
-  returns: v.union(v.null(), v.object({ amount: v.number(), expiresAt: v.number() })),
+  returns: v.object({ amount: v.number(), expiresAt: v.number() }),
   handler: async (ctx, { provider }) => {
     const key = provider + '-global';
     let amount = 8;
     if (!(await consumeWindowBudget(ctx, key, 300, 60_000, amount))) {
       amount = 1;
-      if (!(await consumeWindowBudget(ctx, key, 300, 60_000, amount))) return null;
+      if (!(await consumeWindowBudget(ctx, key, 300, 60_000, amount))) amount = 0;
     }
     const row = await ctx.db
       .query('requestThrottle')

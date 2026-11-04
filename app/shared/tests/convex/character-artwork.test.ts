@@ -315,3 +315,43 @@ it('resolves provider metadata with omitted optional genres', async () => {
   expect(value.cast).toEqual(cast);
   expect(runAction).toHaveBeenCalledTimes(1);
 });
+
+it.each(['empty', 'failed', 'found'] as const)(
+  'uses the original movie title after a %s artwork prefetch',
+  async (prefetch) => {
+    const base = { title: 'Pokemon', genres: ['Animation'], cast };
+    const runAction = vi.fn().mockResolvedValueOnce(base).mockResolvedValueOnce([]);
+    const initial = await resolveFreshTitle(
+      { runAction } as unknown as ActionCtx,
+      { mediaType: 'movie', tmdbId: 77 },
+      null,
+      null,
+      false,
+    );
+    const t = convexTest({ schema, modules: import.meta.glob('../../convex/**/*.ts') });
+    await t.run((ctx) => ctx.db.insert('resolvedTitles', initial.value));
+    const current = await t.query(internal.resolvedMetadata.reads.readTitle, {
+      mediaType: 'movie',
+      tmdbId: 77,
+    });
+    runAction
+      .mockReset()
+      .mockResolvedValueOnce({ ...base, originalTitle: 'Original Japanese title' });
+    if (prefetch === 'failed') runAction.mockRejectedValueOnce(new Error('TVDB unavailable'));
+    else runAction.mockResolvedValueOnce(prefetch === 'found' ? characters : []);
+    runAction.mockResolvedValueOnce(characters);
+    const refreshed = await resolveFreshTitle(
+      { runAction } as unknown as ActionCtx,
+      { mediaType: 'movie', tmdbId: 77 },
+      current,
+      null,
+      false,
+    );
+    expect(refreshed.value.cast[0].characterImageUrl).toBe(characters[0].imageUrl);
+    expect(runAction).toHaveBeenCalledTimes(prefetch === 'found' ? 2 : 3);
+    if (prefetch !== 'found')
+      expect(runAction.mock.calls[2][1]).toMatchObject({
+        originalTitle: 'Original Japanese title',
+      });
+  },
+);

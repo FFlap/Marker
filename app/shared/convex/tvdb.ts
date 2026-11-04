@@ -1,4 +1,4 @@
-import { Clock, Effect, Schema } from 'effect';
+import { Clock, Effect, Fiber, Schema } from 'effect';
 import { batchedProviderBudget } from './providerBudget';
 import { attempt, providerOutcome, type ActionCallFailure } from './actionEffects';
 import { v } from 'convex/values';
@@ -79,7 +79,9 @@ const API_ROOT = 'https://api4.thetvdb.com/v4';
 const GUIDE_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
 const INCOMPLETE_GUIDE_SNAPSHOT_MS = 5 * 60 * 1000;
 const SEASON_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
-const MAX_EPISODE_PAGES = 5;
+// This endpoint returns the whole series, not a single season. Allow long-running
+// catalogs while retaining a hard request bound and the traversal deadline.
+const MAX_EPISODE_CATALOG_PAGES = 100;
 const EPISODE_FETCH_DEADLINE_MS = 20_000;
 const MAX_SEASON_COUNT_REQUESTS = 64;
 const SEASON_COUNT_DEADLINE_MS = 20_000;
@@ -342,7 +344,7 @@ const fetchEpisodesEffect = Effect.fnUntraced(function* (
     page.links.next !== null && page.links.next !== undefined && page.links.next !== '';
   if (hasNext(first) && total !== undefined && pageSize !== undefined && pageSize > 0) {
     const pageCount = Math.ceil(total / pageSize);
-    if (pageCount < 2 || pageCount > MAX_EPISODE_PAGES)
+    if (pageCount < 2 || pageCount > MAX_EPISODE_CATALOG_PAGES)
       return yield* Effect.fail(
         new ProviderIntegrationFailure({
           provider: 'tvdb',
@@ -368,7 +370,7 @@ const fetchEpisodesEffect = Effect.fnUntraced(function* (
       );
   } else {
     while (hasNext(pages[pages.length - 1])) {
-      if (pages.length >= MAX_EPISODE_PAGES || pages[pages.length - 1].entries.length === 0)
+      if (pages.length >= MAX_EPISODE_CATALOG_PAGES || pages[pages.length - 1].entries.length === 0)
         return yield* Effect.fail(
           new ProviderIntegrationFailure({
             provider: 'tvdb',
@@ -510,16 +512,12 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
   // Reuse only identifiers as hints. Every label and count is fetched afresh;
   // the fresh series response must confirm the entire season-ID/order set.
   if (metadataOnly && prefetch?.tvdbId === tvdbId) yield* loginEffect(ctx);
-  const [response, prefetchedMetadata] = yield* Effect.all(
-    [
-      seriesRequest,
-      metadataOnly && prefetch?.tvdbId === tvdbId
-        ? resolveGuideMetadataEffect(parallelCtx, prefetch.seasons, titles)
-        : Effect.succeed(undefined),
-    ],
-    { concurrency: 2 },
-  );
-  let payload = response;
+  const prefetchFiber =
+    metadataOnly && prefetch?.tvdbId === tvdbId
+      ? yield* Effect.forkChild(resolveGuideMetadataEffect(parallelCtx, prefetch.seasons, titles))
+      : undefined;
+  let payload = yield* seriesRequest;
+  if (prefetchFiber && prefetch?.tvdbId !== tvdbId) yield* Fiber.interrupt(prefetchFiber);
   if (!pinned?.tvdbId && pinned?.hintId === tvdbId) {
     const candidate = record(payload.data);
     // An external ID is a hint, never a manually pinned mapping. Validate TVDB's
@@ -567,24 +565,24 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
     selectedSeason !== undefined &&
     (requestedSeason === undefined || requestedSeason === selectedSeason);
   const catalogOrder = order === 'official' && integer(data.defaultSeasonType) === 1;
+  const prefetchMatches =
+    prefetch?.tvdbId === tvdbId &&
+    prefetch.order === order &&
+    prefetch.seasons.length === selectedSeasons.length &&
+    selectedSeasons.every((season) =>
+      prefetch.seasons.some(
+        (previous) => previous.id === season.id && previous.number === season.number,
+      ),
+    );
+  if (prefetchFiber && !prefetchMatches) yield* Fiber.interrupt(prefetchFiber);
+  const prefetchedMetadata =
+    prefetchFiber && prefetchMatches ? yield* Fiber.join(prefetchFiber) : undefined;
   const [names, counts, catalog] = metadataOnly
-    ? yield* (
-        prefetchedMetadata &&
-        prefetch?.tvdbId === tvdbId &&
-        prefetch.order === order &&
-        prefetch.seasons.length === selectedSeasons.length &&
-        selectedSeasons.every((season) =>
-          prefetch.seasons.some(
-            (previous) => previous.id === season.id && previous.number === season.number,
-          ),
-        )
-          ? resolveGuideMetadataEffect(
-              parallelCtx,
-              selectedSeasons,
-              titles,
-              prefetchedMetadata.responses,
-            )
-          : resolveGuideMetadataEffect(parallelCtx, selectedSeasons, titles)
+    ? yield* resolveGuideMetadataEffect(
+        parallelCtx,
+        selectedSeasons,
+        titles,
+        prefetchedMetadata?.responses,
       ).pipe(Effect.map((metadata) => [metadata.names, metadata.counts, undefined] as const))
     : yield* Effect.all(
         [

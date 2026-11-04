@@ -197,7 +197,10 @@ export async function resolveFreshTitle(
       );
       if (animated && tmdb.cast?.length) {
         const artwork =
-          prefetchedMovieArtwork && tmdb.title === current?.title
+          prefetchedMovieArtwork &&
+          tmdb.title === current?.title &&
+          (!tmdb.originalTitle ||
+            (prefetchedMovieArtwork.ok && prefetchedMovieArtwork.value.length > 0))
             ? prefetchedMovieArtwork
             : yield* providerOutcome(
                 tvCharacters !== undefined

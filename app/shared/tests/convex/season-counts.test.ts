@@ -550,3 +550,136 @@ it.each(['same', 'series-name', 'new-season', 'new-order'] as const)(
     expect(prefetched).toBe(1);
   },
 );
+
+it.each([true, false])(
+  'loads a translated catalog beyond five pages (totals: %s)',
+  async (withTotals) => {
+    const t = convexTest({ schema, modules });
+    vi.stubEnv('TVDB_API_KEY', 'large-catalog-test');
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/login')) return Response.json({ data: { token: 'large-catalog' } });
+      const page = Number(new URL(url).searchParams.get('page'));
+      return Response.json({
+        data: {
+          episodes: [
+            {
+              id: page + 1,
+              seasonNumber: page + 1,
+              number: 1,
+              name: 'Episode',
+              aired: '2020-01-01',
+            },
+          ],
+        },
+        links: {
+          ...(withTotals && { total_items: 6, page_size: 1 }),
+          next: page < 5 ? `page=${page + 1}` : null,
+        },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const episodes = await t.action(internal.tvdb.refreshSeason, {
+      tvdbId: 555,
+      order: 'official',
+      season: 6,
+      force: true,
+    });
+    expect(episodes).toMatchObject([{ season: 6, episode: 1 }]);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/episodes/'))).toHaveLength(
+      6,
+    );
+  },
+);
+
+it('cancels outdated season prefetches before fetching a changed season identity', async () => {
+  const t = convexTest({ schema, modules });
+  vi.stubEnv('TVDB_API_KEY', 'cancel-prefetch-test');
+  let phase = 0;
+  let notifyOldStarted!: () => void;
+  const oldStarted = new Promise<void>((resolve) => {
+    notifyOldStarted = resolve;
+  });
+  let aborted = false;
+  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.endsWith('/login')) return Response.json({ data: { token: 'cancel-prefetch' } });
+    if (url.includes('/series/561/extended')) {
+      if (phase) await oldStarted;
+      return Response.json({
+        data: {
+          id: 561,
+          name: 'Anime',
+          genres: [{ name: 'Anime' }],
+          defaultSeasonType: 1,
+          seasons: [{ id: phase ? 52 : 51, number: 1, type: { id: 1, type: 'official' } }],
+        },
+      });
+    }
+    if (phase && url.includes('/seasons/51/extended')) {
+      notifyOldStarted();
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            aborted = true;
+            reject(new Error('aborted'));
+          },
+          { once: true },
+        );
+      });
+    }
+    const id = url.includes('/seasons/52/extended') ? 52 : 51;
+    return Response.json({
+      data: {
+        id,
+        name: 'Fresh arc',
+        episodes: [{ id: 1, seasonNumber: 1, number: 1, name: 'Pilot', aired: '2020-01-01' }],
+      },
+    });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const args = { tmdbId: 96, tvdbId: 561, title: 'Anime', metadataOnly: true, force: true };
+  await t.action(internal.tvdb.refreshTitleExtras, args);
+  phase = 1;
+  const result = await t.action(internal.tvdb.refreshTitleExtras, args);
+  expect(aborted).toBe(true);
+  expect(result.anime?.seasons).toMatchObject([
+    { name: 'Fresh arc', episodeCount: 1, episodeCountVerified: true },
+  ]);
+  expect(
+    fetchMock.mock.calls.filter(([url]) => String(url).includes('/seasons/52/extended')),
+  ).toHaveLength(1);
+});
+
+it.each([true, false])(
+  'rejects catalog overflow without publishing a partial season (totals: %s)',
+  async (withTotals) => {
+    const t = convexTest({ schema, modules });
+    vi.stubEnv('TVDB_API_KEY', 'catalog-overflow-test');
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/login')) return Response.json({ data: { token: 'catalog-overflow' } });
+      const page = Number(new URL(url).searchParams.get('page'));
+      return Response.json({
+        data: { episodes: [{ id: page + 1, seasonNumber: 1, number: page + 1, name: 'Episode' }] },
+        links: { ...(withTotals && { total_items: 101, page_size: 1 }), next: `page=${page + 1}` },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      t.action(internal.tvdb.refreshSeason, {
+        tvdbId: 555,
+        order: 'official',
+        season: 1,
+        force: true,
+      }),
+    ).rejects.toThrow('safety limit');
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/episodes/'))).toHaveLength(
+      withTotals ? 1 : 100,
+    );
+    expect(
+      await t.query(internal.providerSnapshots.get, { key: 'tvdb:season:555:official:1' }),
+    ).toBeNull();
+  },
+);
