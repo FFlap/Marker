@@ -1,7 +1,7 @@
 import { type Infer, v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
-import { providerSnapshotEntryValidator } from './providerValidators';
+import { providerSnapshotEntryValidator, catalogManifestValidator } from './providerValidators';
 
 export const SNAPSHOT_TTL_MS = 15 * 60 * 1000;
 const MAX_SNAPSHOT_BYTES = 700 * 1024;
@@ -32,6 +32,7 @@ const boundedSnapshotValue = (value: unknown) => {
 type SnapshotKind = Infer<typeof providerSnapshotEntryValidator>['kind'];
 
 const kindForKey = (key: string): Exclude<SnapshotKind, 'truncated'> => {
+  if (key.startsWith('tvdb:miss:')) return 'tvdbMiss';
   if (key.startsWith('tmdb:movie:')) return 'tmdbMovie';
   if (key.startsWith('tmdb:tv:')) return 'tmdbTv';
   if (key.startsWith('tmdb:season:') || key.startsWith('tvdb:season:')) return 'episodes';
@@ -59,7 +60,7 @@ export async function putNonFatal(
         value,
       },
     });
-    return true;
+    return !isTruncatedSnapshot(value);
   } catch (error) {
     console.warn('[provider-snapshot-write-skipped]', args.metricKey, error);
     return false;
@@ -149,5 +150,24 @@ export const prune = internalMutation({
         cursor: page.continueCursor,
       });
     return { deleted: page.page.length, isDone: page.isDone };
+  },
+});
+
+export const publishCatalog = internalMutation({
+  args: { key: v.string(), token: v.string(), value: catalogManifestValidator },
+  handler: async (ctx, { key, token, value }) => {
+    const lease = await ctx.db
+      .query('metadataRefreshLeases')
+      .withIndex('by_key', (q) => q.eq('key', key))
+      .unique();
+    if (!lease || lease.token !== token || lease.expiresAt <= Date.now()) return false;
+    const existing = await ctx.db
+      .query('providerSnapshots')
+      .withIndex('by_key', (q) => q.eq('key', key))
+      .unique();
+    const next = { key, entry: { kind: 'tvdbCatalog' as const, value }, refreshedAt: Date.now() };
+    if (existing) await ctx.db.replace(existing._id, next);
+    else await ctx.db.insert('providerSnapshots', next);
+    return true;
   },
 });

@@ -162,11 +162,13 @@ it.each(['outage', 'unavailable', 'ambiguous', 'mismatch'] as const)(
     const t = convexTest({ schema, modules });
     const fetchMock = provider(state);
     await expect(
-      t.action(internal.tvdb.refreshAnimeWithMapping, {
-        tmdbId: 296286,
-        tvdbId: 465973,
-        title,
-      }),
+      t
+        .action(internal.tvdb.refreshTitleExtras, {
+          tmdbId: 296286,
+          tvdbId: 465973,
+          title,
+        })
+        .then((result) => result.anime),
     ).rejects.toThrow();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/series/483430/'))).toBe(
       false,
@@ -176,48 +178,60 @@ it.each(['outage', 'unavailable', 'ambiguous', 'mismatch'] as const)(
 it('reuses the recovered guide for automatic mappings without repeating provider requests', async () => {
   const t = convexTest({ schema, modules });
   const fetchMock = provider();
-  const guide = await t.action(internal.tvdb.refreshAnimeWithMapping, {
-    tmdbId: 296286,
-    tvdbId: 465973,
-    title,
-  });
+  const guide = await t
+    .action(internal.tvdb.refreshTitleExtras, {
+      tmdbId: 296286,
+      tvdbId: 465973,
+      title,
+    })
+    .then((result) => result.anime);
   expect(guide?.tvdbId).toBe(483430);
   const requests = fetchMock.mock.calls.length;
   expect(
-    await t.action(internal.tvdb.refreshAnimeWithMapping, {
-      tmdbId: 296286,
-      tvdbId: 483430,
-      title,
-    }),
+    await t
+      .action(internal.tvdb.refreshTitleExtras, {
+        tmdbId: 296286,
+        tvdbId: 483430,
+        title,
+      })
+      .then((result) => result.anime),
   ).toEqual(guide);
   expect(fetchMock).toHaveBeenCalledTimes(requests);
 
   await expect(
-    t.action(internal.tvdb.refreshAnimeWithMapping, {
-      tmdbId: 296286,
-      tvdbId: 465973,
-      order: 'official',
-      title,
-    }),
+    t
+      .action(internal.tvdb.refreshTitleExtras, {
+        tmdbId: 296286,
+        tvdbId: 465973,
+        order: 'official',
+        title,
+      })
+      .then((result) => result.anime),
   ).rejects.toThrow('TVDB record not found');
 });
 it('recovers when the search index returns a deleted series for a first-time lookup', async () => {
   const t = convexTest({ schema, modules });
   provider('deleted', 'Anime');
-  const guide = await t.action(internal.tvdb.refreshAnime, { tmdbId: 296286, title });
-  expect(guide).toMatchObject({ tvdbId: 483430, selectedEpisodes: expect.any(Array) });
-  expect(guide?.selectedEpisodes).toHaveLength(12);
+  const guide = await t
+    .action(internal.tvdb.refreshTitleExtras, { tmdbId: 296286, title })
+    .then((result) => result.anime);
+  expect(guide).toMatchObject({ tvdbId: 483430 });
+  expect(
+    await t.action(internal.tvdb.refreshSeason, { tvdbId: 483430, order: guide!.order, season: 1 }),
+  ).toHaveLength(12);
 });
 it('does not rediscover a manually pinned missing TVDB record', async () => {
   const t = convexTest({ schema, modules });
   const fetchMock = provider();
   await expect(
-    t.action(internal.tvdb.refreshAnimeWithMapping, {
-      tmdbId: 296286,
-      tvdbId: 465973,
-      title,
-      order: 'official',
-    }),
+    t
+      .action(internal.tvdb.refreshTitleExtras, {
+        tmdbId: 296286,
+        tvdbId: 465973,
+        title,
+        order: 'official',
+      })
+      .then((result) => result.anime),
   ).rejects.toThrow('TVDB record not found');
   expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/search'))).toBe(false);
 });

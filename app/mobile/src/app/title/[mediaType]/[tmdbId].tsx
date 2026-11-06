@@ -98,7 +98,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   );
   const {
     title: detail,
-    loading: titleViewLoading,
     season,
     titleRequestState,
     seasonRequestState,
@@ -116,16 +115,8 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   );
   const toast = useToast();
   const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
-  const availableHeroOwner =
-    detail !== undefined
-      ? 'canonical'
-      : preview !== undefined && !titleViewLoading
-        ? 'preview'
-        : undefined;
-  const [storedHeroOwner, setHeroOwner] = useState(availableHeroOwner);
-  const heroOwner = storedHeroOwner ?? availableHeroOwner;
-  if (storedHeroOwner === undefined && availableHeroOwner !== undefined)
-    setHeroOwner(availableHeroOwner);
+  const heroOwner =
+    detail !== undefined ? 'canonical' : preview !== undefined ? 'preview' : undefined;
   const hero = heroOwner === 'canonical' ? detail : heroOwner === 'preview' ? preview : undefined;
   const loading = !detail && titleRequestState?.state !== 'failed' && touchError === undefined;
   const failed = !detail && (titleRequestState?.state === 'failed' || touchError !== undefined);
@@ -330,7 +321,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
       </ScreenView>
     );
 
-  if (titleViewLoading || heroOwner === undefined)
+  if (heroOwner === undefined)
     return (
       <ScreenView testID="title-detail-initial-placeholder" style={s.root}>
         <View style={s.initialPlaceholder}>

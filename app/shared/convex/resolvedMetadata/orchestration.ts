@@ -9,7 +9,7 @@ import {
   internalQuery,
   type ActionCtx,
 } from '../_generated/server';
-import { refreshLeaseKey, requestKey } from './requests';
+import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import { resolveAndCommitCanonical } from './seasonResolution';
 import { FAILED_TOUCH_BACKOFF_MS, mediaType, REFRESH_LEASE_MS, REQUEST_LEASE_MS } from './shared';
 import { errorCode } from './titleResolution';
@@ -101,6 +101,7 @@ export const orchestrateRefresh = internalAction({
         tmdbId: args.tmdbId,
         title: args.title,
         requestedSeason: args.season,
+        deferEpisodes: args.mediaType === 'tv',
         force: args.force ?? false,
         keys: args.keys,
         attemptToken: args.attemptToken,
@@ -121,6 +122,27 @@ export const orchestrateRefresh = internalAction({
       if (result.commitStatus === 'mappingChanged')
         throw new ConvexError({ code: 'mapping_changed', retryable: true });
       if (!result.committed) return;
+      if (args.mediaType === 'tv' && args.season !== undefined) {
+        // Let the episode job claim immediately instead of retrying our title lease.
+        await ctx.runMutation(internal.resolvedMetadata.requests.releaseRefresh, {
+          key: leaseKey,
+          token: leaseToken,
+        });
+        claimed = false;
+        await ctx.scheduler.runAfter(
+          0,
+          internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
+          {
+            userId: args.userId,
+            tmdbId: args.tmdbId,
+            season: args.season,
+            key: seasonRequestKey(args.tmdbId, args.season),
+            attemptToken: args.attemptToken,
+            force: args.force,
+            fromTitleRefresh: true,
+          },
+        );
+      }
     } catch (error) {
       const settled = await ctx
         .runMutation(internal.resolvedMetadata.requests.settleScheduledRefresh, {
@@ -172,6 +194,7 @@ export const orchestrateSeasonRefresh = internalAction({
     tmdbId: v.number(),
     season: v.number(),
     force: v.optional(v.boolean()),
+    fromTitleRefresh: v.optional(v.boolean()),
     key: v.string(),
     attemptToken: v.string(),
     mappingRetry: v.optional(v.boolean()),
@@ -220,11 +243,14 @@ export const orchestrateSeasonRefresh = internalAction({
         }
         throw new ConvexError({ code: 'refresh_in_progress', retryable: true });
       }
-      const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
-        key: `resolved:${args.userId}`,
-      });
-      if (!allowed) throw new ConvexError({ code: 'throttled' });
-      const [title, mapping, request] = await runActionEffect(
+      // The initial metadata job already charged this accepted user refresh.
+      if (!args.fromTitleRefresh) {
+        const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
+          key: `resolved:${args.userId}`,
+        });
+        if (!allowed) throw new ConvexError({ code: 'throttled' });
+      }
+      const [title, mapping] = await runActionEffect(
         Effect.all(
           [
             attempt(
@@ -241,14 +267,8 @@ export const orchestrateSeasonRefresh = internalAction({
                   tmdbId: args.tmdbId,
                 }) as Promise<Doc<'titleMappings'> | null>,
             ),
-            attempt(
-              () =>
-                ctx.runQuery(internal.resolvedMetadata.orchestration.readRefreshRequest, {
-                  key: args.key,
-                }) as Promise<Doc<'metadataRefreshRequests'> | null>,
-            ),
           ],
-          { concurrency: 3 },
+          { concurrency: 2 },
         ),
       );
       if (!title || title.orderEpoch !== (mapping?.orderEpoch ?? 0))
@@ -258,14 +278,7 @@ export const orchestrateSeasonRefresh = internalAction({
         tmdbId: args.tmdbId,
         title: title.title,
         requestedSeason: args.season,
-        force:
-          (args.force ?? false) &&
-          !(
-            request &&
-            title.metadataProvider === 'tvdb' &&
-            title.refreshedAt >= request.lastRequestedAt &&
-            args.season === title.seasons.find((entry) => entry.season > 0)?.season
-          ),
+        force: args.force ?? false,
         keys: [args.key],
         attemptToken: args.attemptToken,
         leaseKey,

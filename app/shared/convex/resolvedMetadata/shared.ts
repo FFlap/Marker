@@ -59,7 +59,6 @@ export type ProviderAnime = {
   order: string;
   seasons: ResolvedTitle['seasons'];
   selectedSeason?: number;
-  selectedEpisodes?: ResolvedEpisode[];
 };
 
 export const cleanEpisode = (episode: ResolvedEpisode): ResolvedEpisode => ({

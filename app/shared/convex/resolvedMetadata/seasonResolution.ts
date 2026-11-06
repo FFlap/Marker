@@ -7,6 +7,7 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { getClerkUserId } from '../clerkAuth';
 import { releasedEpisodes } from '../episodeAvailability';
 import { validateInteger, validateTmdbId } from '../providerValidation';
+import { nextReleaseBoundary } from './seasonSummaries';
 import { mappingIdentity } from './publication';
 import { refreshLeaseKey, requestKey, seasonRequestKey } from './requests';
 import {
@@ -42,7 +43,6 @@ export async function resolveFreshSeason(
   title: ResolvedTitle,
   current: AssembledSeason | null,
   force = false,
-  preloadedTvdbEpisodes?: ResolvedEpisode[],
 ) {
   return runActionEffect(
     Effect.gen(function* () {
@@ -58,17 +58,15 @@ export async function resolveFreshSeason(
           ),
           title.metadataProvider === 'tvdb' && title.tvdbId && title.seasonOrder
             ? providerOutcome(
-                preloadedTvdbEpisodes
-                  ? Effect.succeed(preloadedTvdbEpisodes)
-                  : attempt(
-                      () =>
-                        ctx.runAction(internal.tvdb.refreshSeason, {
-                          tvdbId: title.tvdbId!,
-                          order: title.seasonOrder!,
-                          season: args.season,
-                          force,
-                        }) as Promise<ResolvedEpisode[]>,
-                    ),
+                attempt(
+                  () =>
+                    ctx.runAction(internal.tvdb.refreshSeason, {
+                      tvdbId: title.tvdbId!,
+                      order: title.seasonOrder!,
+                      season: args.season,
+                      force,
+                    }) as Promise<ResolvedEpisode[]>,
+                ),
               )
             : Effect.succeed(null),
         ],
@@ -132,6 +130,7 @@ export async function resolveAndCommitCanonical(
     title?: string;
     requestedSeason?: number;
     includeSelectedSeason?: boolean;
+    deferEpisodes?: boolean;
     force: boolean;
     keys: string[];
     attemptToken: string;
@@ -172,16 +171,13 @@ export async function resolveAndCommitCanonical(
           partial: false,
           partialError: undefined,
           selectedSeason: args.requestedSeason,
-          selectedEpisodes: undefined,
         }
       : await resolveFreshTitle(
           ctx,
           { mediaType: args.mediaType, tmdbId: args.tmdbId, title: args.title },
           currentTitle,
           mapping,
-          false,
           args.force,
-          args.requestedSeason,
         );
   const reusedCapturedTitle = args.currentTitle !== undefined && currentTitle !== null;
   const discoveredIdentity: { tvdbId?: number; seasonOrder?: string } =
@@ -216,8 +212,10 @@ export async function resolveAndCommitCanonical(
     ...titleWithoutDocumentFields
   } = titleResult.value as ResolvedTitle & Partial<Doc<'resolvedTitles'>>;
   let title: ResolvedTitle = { ...titleWithoutDocumentFields, orderEpoch };
-  const requestedSeason =
-    args.requestedSeason ?? (args.includeSelectedSeason ? titleResult.selectedSeason : undefined);
+  const requestedSeason = args.deferEpisodes
+    ? undefined
+    : (args.requestedSeason ??
+      (args.includeSelectedSeason ? titleResult.selectedSeason : undefined));
   let season:
     | {
         tmdbId: number;
@@ -261,7 +259,6 @@ export async function resolveAndCommitCanonical(
       title,
       currentSeason,
       args.force,
-      titleResult.selectedSeason === requestedSeason ? titleResult.selectedEpisodes : undefined,
     );
     seasonPartial = seasonResult.partial;
     seasonError = seasonResult.error;
@@ -278,7 +275,10 @@ export async function resolveAndCommitCanonical(
         ? refreshedAt
         : (currentSeason?.refreshedAt ?? refreshedAt),
       refreshAfter: seasonResult.persisted
-        ? refreshedAt + (seasonResult.partial ? PARTIAL_RETRY_MS : SEASON_FRESH_MS)
+        ? Math.min(
+            nextReleaseBoundary(refreshedAt),
+            refreshedAt + (seasonResult.partial ? PARTIAL_RETRY_MS : SEASON_FRESH_MS),
+          )
         : currentSeason?.refreshAfter,
       orderEpoch,
     };
@@ -289,7 +289,10 @@ export async function resolveAndCommitCanonical(
         metadataProvider: title.metadataProvider,
         episodes: seasonResult.episodes,
         refreshedAt,
-        refreshAfter: refreshedAt + (seasonResult.partial ? PARTIAL_RETRY_MS : SEASON_FRESH_MS),
+        refreshAfter: Math.min(
+          nextReleaseBoundary(refreshedAt),
+          refreshedAt + (seasonResult.partial ? PARTIAL_RETRY_MS : SEASON_FRESH_MS),
+        ),
         orderEpoch,
       };
       title = {
@@ -333,7 +336,9 @@ export async function resolveAndCommitCanonical(
         leaseToken: args.leaseToken,
       })
     : [];
-  const claimedKeys = [...new Set([...args.keys, ...synchronousKeys])];
+  const claimedKeys = [...new Set([...args.keys, ...synchronousKeys])].filter(
+    (key) => !args.deferEpisodes || !key.startsWith('season:'),
+  );
   const outcomes = claimedKeys.map((key) => {
     if (key.startsWith('season:') && seasonNotFound)
       return {
@@ -374,6 +379,8 @@ export async function resolveAndCommitCanonical(
     : undefined;
   const coreArgs = {
     title,
+    forceSeasonSummaries:
+      args.force && requestedSeason === undefined && args.requestedSeason === undefined,
     titleWrite: titleWriteForCapturedTitle(args.currentTitle !== undefined, reusedCapturedTitle),
     season: commitSeason,
     mapping: mappingPayload,

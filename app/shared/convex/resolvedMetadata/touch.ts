@@ -15,6 +15,15 @@ import {
 } from './shared';
 import { validateInteger, validateTmdbId } from '../providerValidation';
 
+type RejectedDecision = {
+  scheduled: false;
+  reason: 'inFlight' | 'backoff' | 'debounced' | 'notFound';
+  expiresAt: number;
+  delayMs: number;
+  retryAt?: number;
+};
+type Decision = RejectedDecision | { scheduled: true };
+
 export async function requestRefresh(
   ctx: MutationCtx,
   args: {
@@ -40,14 +49,9 @@ export async function requestRefresh(
     ),
   );
 
-  const decideFromRequestRow = (row: Doc<'metadataRefreshRequests'> | null) => {
-    if (row?.state === 'notFound')
-      return {
-        scheduled: false as const,
-        reason: 'notFound' as const,
-        expiresAt: row.expiresAt,
-        delayMs: 0,
-      };
+  const decideFromRequestRow = (
+    row: Doc<'metadataRefreshRequests'> | null,
+  ): RejectedDecision | undefined => {
     if (row?.state === 'inFlight' && row.expiresAt > now)
       return {
         scheduled: false as const,
@@ -112,6 +116,113 @@ export async function requestRefresh(
     else await ctx.db.insert('metadataRefreshRequests', next);
   };
 
+  const [mapping, storedTitle, storedSeasonParent] = await Promise.all([
+    ctx.db
+      .query('titleMappings')
+      .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
+      .unique(),
+    ctx.db
+      .query('resolvedTitles')
+      .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
+      .unique(),
+    args.season === undefined
+      ? Promise.resolve(null)
+      : ctx.db
+          .query('resolvedSeasons')
+          .withIndex('by_tmdb_season', (q) =>
+            q.eq('tmdbId', args.tmdbId).eq('season', args.season!),
+          )
+          .unique(),
+  ]);
+  const titleVisible =
+    !!storedTitle &&
+    (mapping?.orderEpoch === undefined || storedTitle.orderEpoch === mapping.orderEpoch);
+  const seasonVisible =
+    !!mapping &&
+    !!storedSeasonParent &&
+    storedSeasonParent.orderEpoch === mapping.orderEpoch &&
+    storedSeasonParent.chunkCount !== undefined &&
+    storedSeasonParent.seasonVersion !== undefined &&
+    storedSeasonParent.chunksComplete === true;
+  const decideVisibleKey = (
+    row: Doc<'metadataRefreshRequests'> | null,
+    rowDecision: ReturnType<typeof decideFromRequestRow>,
+    dataVisible: boolean,
+    refreshAfter: number | undefined,
+    missingSeason = false,
+  ): Decision => {
+    if (
+      !args.force &&
+      missingSeason &&
+      row?.state === 'notFound' &&
+      titleVisible &&
+      storedTitle &&
+      storedTitle.refreshAfter > now &&
+      !storedTitle.seasons.some((entry) => entry.season === args.season)
+    )
+      return {
+        scheduled: false as const,
+        reason: 'notFound' as const,
+        expiresAt: storedTitle.refreshAfter,
+        delayMs: storedTitle.refreshAfter - now,
+      };
+    if (rowDecision) return rowDecision;
+    if (
+      !args.force &&
+      row?.state !== 'inFlight' &&
+      row?.state !== 'failed' &&
+      dataVisible &&
+      refreshAfter !== undefined &&
+      refreshAfter > now
+    )
+      return {
+        scheduled: false as const,
+        reason: 'debounced' as const,
+        expiresAt: refreshAfter,
+        delayMs: refreshAfter - now,
+      };
+    const cooldown = args.force ? FORCE_DEBOUNCE_MS : DEBOUNCE_MS;
+    if (dataVisible && row?.state === 'succeeded' && (row.completedAt ?? 0) > now - cooldown)
+      return {
+        scheduled: false as const,
+        reason: 'debounced' as const,
+        expiresAt: (row.completedAt ?? now) + cooldown,
+        delayMs: (row.completedAt ?? now) + cooldown - now,
+      };
+    return { scheduled: true as const };
+  };
+
+  const titleDecision = decideVisibleKey(
+    rows[0],
+    titleRowDecision,
+    titleVisible,
+    storedTitle?.refreshAfter,
+  );
+  const seasonDecision =
+    args.season === undefined
+      ? undefined
+      : decideVisibleKey(
+          rows[1],
+          seasonRowDecision,
+          seasonVisible,
+          storedSeasonParent?.refreshAfter,
+          true,
+        );
+  if (!titleDecision.scheduled && !seasonDecision?.scheduled) {
+    if (args.season === undefined) return titleDecision;
+    return {
+      scheduled: false,
+      title: titleDecision,
+      season: seasonDecision!,
+      expiresAt: Math.max(titleDecision.expiresAt, seasonDecision!.expiresAt),
+      delayMs: Math.max(titleDecision.delayMs, seasonDecision!.delayMs),
+    };
+  }
+
+  const pendingTitle = titleDecision.scheduled;
+  const pendingSeason = seasonDecision?.scheduled === true;
+  const admittedTitleDecision = titleDecision;
+  const admittedSeasonDecision = seasonDecision;
   const activeLease = await ctx.db
     .query('metadataRefreshLeases')
     .withIndex('by_key', (query) => query.eq('key', refreshLeaseKey(args.mediaType, args.tmdbId)))
@@ -135,13 +246,18 @@ export async function requestRefresh(
       expiresAt: activeLease.expiresAt,
       delayMs: activeLease.expiresAt - now,
     };
-    const titleDecision = titleRowDecision ?? leaseDecision;
+    const titleDecision =
+      titleRowDecision ??
+      (pendingTitle ? leaseDecision : (admittedTitleDecision as RejectedDecision));
     const seasonDecision =
-      args.season === undefined ? undefined : (seasonRowDecision ?? leaseDecision);
+      args.season === undefined
+        ? undefined
+        : (seasonRowDecision ??
+          (pendingSeason ? leaseDecision : (admittedSeasonDecision as RejectedDecision)));
     if (activeLease.token.startsWith('synchronous:')) {
       const admittedRows = [
-        ...(!titleRowDecision ? [{ index: 0, key: keys[0] }] : []),
-        ...(args.season !== undefined && !seasonRowDecision ? [{ index: 1, key: keys[1] }] : []),
+        ...(pendingTitle ? [{ index: 0, key: keys[0] }] : []),
+        ...(args.season !== undefined && pendingSeason ? [{ index: 1, key: keys[1] }] : []),
       ];
       await consumeRefreshAdmission(
         ctx,
@@ -150,7 +266,7 @@ export async function requestRefresh(
       );
       let independentlyScheduledTitle:
         { scheduled: true; attemptToken: string; expiresAt: number; delayMs: number } | undefined;
-      if (!titleRowDecision) {
+      if (pendingTitle) {
         if (activeLease.token.startsWith('synchronous:season:')) {
           const attemptToken = `${now}:title:${crypto.randomUUID()}`;
           const expiresAt = now + REQUEST_LEASE_MS;
@@ -176,7 +292,7 @@ export async function requestRefresh(
           };
         } else await writeRequest(keys[0], rows[0], activeLease.token, activeLease.expiresAt);
       }
-      if (args.season !== undefined && !seasonRowDecision) {
+      if (args.season !== undefined && pendingSeason) {
         const attemptToken = `${now}:season:${crypto.randomUUID()}`;
         const expiresAt = now + REQUEST_LEASE_MS;
         await writeRequest(keys[1], rows[1], attemptToken, expiresAt);
@@ -217,13 +333,13 @@ export async function requestRefresh(
           delayMs: Math.max(independentlyScheduledTitle.delayMs, seasonDecision!.delayMs),
         };
       }
-    } else if (!titleRowDecision && scheduledSeasonOnlyLease) {
+    } else if (pendingTitle && scheduledSeasonOnlyLease) {
       // A season-only scheduled holder can only season-patch, so it cannot
       // satisfy a colliding title touch.
       await consumeRefreshAdmission(
         ctx,
         args.userId,
-        Number(!rows[0]) + Number(args.season !== undefined && !seasonRowDecision && !rows[1]),
+        Number(!rows[0]) + Number(args.season !== undefined && pendingSeason && !rows[1]),
       );
       const titleAttemptToken = `${now}:title:${crypto.randomUUID()}`;
       const titleExpiresAt = now + REQUEST_LEASE_MS;
@@ -245,7 +361,7 @@ export async function requestRefresh(
       };
       if (args.season === undefined) return scheduledTitle;
 
-      if (!seasonRowDecision) {
+      if (pendingSeason) {
         const seasonAttemptToken = `${now}:season:${crypto.randomUUID()}`;
         const seasonExpiresAt = now + REQUEST_LEASE_MS;
         await writeRequest(keys[1], rows[1], seasonAttemptToken, seasonExpiresAt);
@@ -282,7 +398,7 @@ export async function requestRefresh(
         expiresAt: Math.max(scheduledTitle.expiresAt, seasonDecision!.expiresAt),
         delayMs: Math.max(scheduledTitle.delayMs, seasonDecision!.delayMs),
       };
-    } else if (args.season !== undefined && !seasonRowDecision) {
+    } else if (args.season !== undefined && pendingSeason) {
       // A scheduled title/season holder cannot adopt a newly requested sibling season.
       await consumeRefreshAdmission(ctx, args.userId, rows[1] ? 0 : 1);
       const attemptToken = `${now}:season:${crypto.randomUUID()}`;
@@ -317,67 +433,6 @@ export async function requestRefresh(
     return combineRejectedDecisions(titleDecision, seasonDecision);
   }
 
-  const [mapping, storedTitle, storedSeasonParent] = await Promise.all([
-    ctx.db
-      .query('titleMappings')
-      .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
-      .unique(),
-    ctx.db
-      .query('resolvedTitles')
-      .withIndex('by_tmdb', (q) => q.eq('mediaType', args.mediaType).eq('tmdbId', args.tmdbId))
-      .unique(),
-    args.season === undefined
-      ? Promise.resolve(null)
-      : ctx.db
-          .query('resolvedSeasons')
-          .withIndex('by_tmdb_season', (q) =>
-            q.eq('tmdbId', args.tmdbId).eq('season', args.season!),
-          )
-          .unique(),
-  ]);
-  const titleVisible =
-    !!storedTitle &&
-    (mapping?.orderEpoch === undefined || storedTitle.orderEpoch === mapping.orderEpoch);
-  const seasonVisible =
-    !!mapping &&
-    !!storedSeasonParent &&
-    storedSeasonParent.orderEpoch === mapping.orderEpoch &&
-    storedSeasonParent.chunkCount !== undefined &&
-    storedSeasonParent.seasonVersion !== undefined &&
-    storedSeasonParent.chunksComplete === true;
-  const decideVisibleKey = (
-    row: Doc<'metadataRefreshRequests'> | null,
-    rowDecision: ReturnType<typeof decideFromRequestRow>,
-    dataVisible: boolean,
-  ) => {
-    if (rowDecision) return rowDecision;
-    const cooldown = args.force ? FORCE_DEBOUNCE_MS : DEBOUNCE_MS;
-    if (dataVisible && row?.state === 'succeeded' && (row.completedAt ?? 0) > now - cooldown)
-      return {
-        scheduled: false as const,
-        reason: 'debounced' as const,
-        expiresAt: (row.completedAt ?? now) + cooldown,
-        delayMs: (row.completedAt ?? now) + cooldown - now,
-      };
-    return { scheduled: true as const };
-  };
-
-  const titleDecision = decideVisibleKey(rows[0], titleRowDecision, titleVisible);
-  const seasonDecision =
-    args.season === undefined
-      ? undefined
-      : decideVisibleKey(rows[1], seasonRowDecision, seasonVisible);
-  if (!titleDecision.scheduled && !seasonDecision?.scheduled) {
-    if (args.season === undefined) return titleDecision;
-    return {
-      scheduled: false,
-      title: titleDecision,
-      season: seasonDecision!,
-      expiresAt: Math.max(titleDecision.expiresAt, seasonDecision!.expiresAt),
-      delayMs: Math.max(titleDecision.delayMs, seasonDecision!.delayMs),
-    };
-  }
-
   const newKeyCount =
     Number(!rows[0] && !titleVisible) +
     Number(args.season !== undefined && !rows[1] && !seasonVisible);
@@ -387,10 +442,7 @@ export async function requestRefresh(
 
   if (titleDecision.scheduled) {
     const attemptToken = `${now}:title:${crypto.randomUUID()}`;
-    const combinedSeason =
-      args.season !== undefined &&
-      seasonRowDecision?.reason !== 'inFlight' &&
-      seasonRowDecision?.reason !== 'backoff';
+    const combinedSeason = args.season !== undefined && seasonDecision?.scheduled === true;
     await writeRequest(keys[0], rows[0], attemptToken, expiresAt);
     if (combinedSeason) await writeRequest(keys[1], rows[1], attemptToken, expiresAt);
     const claimedKeys = [keys[0], ...(combinedSeason ? [keys[1]] : [])];
@@ -413,7 +465,7 @@ export async function requestRefresh(
     if (args.season === undefined) return titleResult;
     const seasonResult = combinedSeason
       ? { scheduled: true as const, attemptToken, expiresAt, delayMs: expiresAt - now }
-      : seasonRowDecision!;
+      : (seasonDecision as RejectedDecision);
     return {
       scheduled: true,
       title: titleResult,

@@ -24,6 +24,7 @@ export const providerSearchResultsValidator = v.array(
 export const providerMovieValidator = v.object({
   id: v.number(),
   title: v.string(),
+  originalTitle: v.optional(v.string()),
   mediaType: v.literal('movie'),
   posterPath: v.optional(v.string()),
   overview: v.optional(v.string()),
@@ -34,6 +35,7 @@ export const providerMovieValidator = v.object({
   cast: v.array(castMember),
 });
 export const providerTvValidator = v.object({
+  tvdbId: v.optional(v.number()),
   id: v.number(),
   title: v.string(),
   originalTitle: v.optional(v.string()),
@@ -53,6 +55,16 @@ export const characterArtworkValidator = v.object({
   personName: v.optional(v.string()),
 });
 export const animeGuideValidator = v.object({
+  seasonRecords: v.optional(
+    v.array(
+      v.object({
+        id: v.number(),
+        number: v.number(),
+        name: v.string(),
+        translatedName: v.optional(v.string()),
+      }),
+    ),
+  ),
   characters: v.optional(v.array(characterArtworkValidator)),
   tvdbId: v.number(),
   title: v.string(),
@@ -65,6 +77,7 @@ export const animeGuideValidator = v.object({
   selectedEpisodes: v.optional(v.array(animeEpisodeValidator)),
 });
 const lookup = v.object({
+  seasonIds: v.optional(v.array(v.object({ id: v.number(), season: v.number() }))),
   tvdbId: v.number(),
   order: v.string(),
   authoritativeNames: v.array(v.string()),
@@ -89,7 +102,14 @@ const truncated = v.object({
   __truncatedProviderSnapshot: v.literal(true),
   originalBytes: v.number(),
 });
+export const catalogManifestValidator = v.object({
+  generation: v.string(),
+  chunks: v.number(),
+  count: v.number(),
+});
 export const providerSnapshotEntryValidator = v.union(
+  v.object({ kind: v.literal('tvdbCatalog'), value: catalogManifestValidator }),
+  v.object({ kind: v.literal('tvdbMiss'), value: v.array(v.string()) }),
   v.object({ kind: v.literal('tmdbMovie'), value: providerMovieValidator }),
   v.object({ kind: v.literal('tmdbTv'), value: providerTvValidator }),
   v.object({

@@ -387,22 +387,25 @@ describe('TVDB provider snapshots', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const guide = await t.action(internal.tvdb.refreshAnime, {
-      tmdbId: 123,
-      title: 'Snapshot Anime',
-    });
+    const guide = await t
+      .action(internal.tvdb.refreshTitleExtras, {
+        tmdbId: 123,
+        title: 'Snapshot Anime',
+      })
+      .then((result) => result.anime);
     expect(guide).toMatchObject({
       tvdbId: 457078,
       selectedSeason: 1,
-      selectedEpisodes: [{ season: 1, episode: 1, name: 'Ready immediately' }],
     });
     expect(
       fetchMock.mock.calls.some(([input]) =>
-        String(input).includes('/episodes/official/eng?page=0&season=1'),
+        String(input).includes('/episodes/official/eng?page=0'),
       ),
-    ).toBe(true);
+    ).toBe(false);
     const callsAfterResolve = fetchMock.mock.calls.length;
-    await t.action(internal.tvdb.refreshAnime, { tmdbId: 123, title: 'Snapshot Anime' });
+    await t
+      .action(internal.tvdb.refreshTitleExtras, { tmdbId: 123, title: 'Snapshot Anime' })
+      .then((result) => result.anime);
     expect(
       await t.action(internal.tvdb.refreshSeason, {
         tvdbId: 457078,
@@ -419,6 +422,6 @@ describe('TVDB provider snapshots', () => {
         imageUrl: 'https://artworks.thetvdb.com/banners/v4/episode/100/screencap.jpg',
       },
     ]);
-    expect(fetchMock).toHaveBeenCalledTimes(callsAfterResolve);
+    expect(fetchMock).toHaveBeenCalledTimes(callsAfterResolve + 1);
   });
 });

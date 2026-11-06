@@ -103,13 +103,15 @@ it('rejects a malformed TVDB season catalog before caching a successfully empty 
     ),
   );
   await expect(
-    t.action(internal.tvdb.refreshAnimeWithMapping, {
-      tmdbId: 88,
-      tvdbId: 88,
-      order: 'official',
-      title: 'Anime',
-      force: true,
-    }),
+    t
+      .action(internal.tvdb.refreshTitleExtras, {
+        tmdbId: 88,
+        tvdbId: 88,
+        order: 'official',
+        title: 'Anime',
+        force: true,
+      })
+      .then((result) => result.anime),
   ).rejects.toThrow('malformed data');
   expect(
     await t.query(internal.providerSnapshots.get, { key: 'tvdb:anime:v11:88:88:official' }),
@@ -136,22 +138,20 @@ it.each([
             seasons: [{ id: 10, number: 1, type: { type: 'official' } }],
           },
         });
-      if (url.endsWith('/seasons/10/extended'))
+      if (url.includes('/series/88/episodes/official/eng'))
         return Response.json({ data: { id: 10, episodes } });
       return new Response('{}', { status: 404 });
     }),
   );
-  const guide = await t.action(internal.tvdb.refreshAnimeWithMapping, {
-    tmdbId: 88,
-    tvdbId: 88,
-    order: 'official',
-    title: 'Anime',
-    requestedSeason: 2,
-    force: true,
-  });
-  expect(guide?.seasons).toEqual([
-    { season: 1, name: 'Season 1', episodeCount: 0, episodeCountVerified: false },
-  ]);
+  await expect(
+    t.action(internal.tvdb.loadSeasonSummaries, {
+      tmdbId: 88,
+      tvdbId: 88,
+      order: 'official',
+      title: 'Anime',
+      seasons: [{ season: 1, name: 'Season 1', episodeCount: 0, episodeCountVerified: false }],
+    }),
+  ).rejects.toThrow(/malformed/);
 });
 
 it.each([-1, 1.5])('ignores an invalid optional calendar season hint: %s', async (season) => {

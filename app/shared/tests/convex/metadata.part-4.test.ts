@@ -1,3 +1,4 @@
+import { getFunctionName } from 'convex/server';
 import { putSeason } from './metadata-fixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
@@ -155,20 +156,30 @@ describe('metadata pipeline', () => {
       token: attemptToken,
       leaseMs: 60_000,
     });
-    const runAction = vi
-      .fn()
-      .mockResolvedValueOnce({ title: 'Current epoch title', genres: [], seasons })
-      .mockResolvedValueOnce({
-        tvdbId: 900,
-        title: 'Current epoch title',
-        order: 'official',
-        genres: ['Anime'],
-        episodeRunTime: [],
-        seasons,
-        selectedSeason: 1,
-        selectedEpisodes: [{ season: 1, episode: 1, name: 'Current episode' }],
-      })
-      .mockResolvedValueOnce([]);
+    const runAction = vi.fn(async (reference) => {
+      switch (getFunctionName(reference)) {
+        case 'tmdb:refreshTvDetails':
+          return { title: 'Current epoch title', genres: [], seasons };
+        case 'tvdb:refreshTitleExtras':
+          return {
+            anime: {
+              tvdbId: 900,
+              title: 'Current epoch title',
+              order: 'official',
+              genres: ['Anime'],
+              episodeRunTime: [],
+              seasons,
+              selectedSeason: 1,
+            },
+          };
+        case 'tmdb:refreshSeasonDetails':
+          return [];
+        case 'tvdb:refreshSeason':
+          return [{ season: 1, episode: 1, name: 'Current episode' }];
+        default:
+          throw new Error(`Unexpected action ${getFunctionName(reference)}`);
+      }
+    });
 
     await expect(
       resolveAndCommitCanonical(
@@ -478,6 +489,8 @@ describe('metadata pipeline', () => {
   it('terminates an out-of-catalog season touch without creating a season parent', async () => {
     const { t, userId, asUser } = await setup();
     const now = Date.now();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
     await t.run(async (ctx) => {
       await ctx.db.insert('titleMappings', {
         tmdbId: 88,
@@ -528,6 +541,7 @@ describe('metadata pipeline', () => {
     await expect(
       asUser.query(api.resolvedMetadata.reads.getSeasonRequestState, { tmdbId: 88, season: 999 }),
     ).resolves.toMatchObject({ state: 'notFound', errorCode: 'season_not_found' });
+    expect(fetchMock).not.toHaveBeenCalled();
     await expect(t.run((ctx) => ctx.db.query('resolvedSeasons').collect())).resolves.toEqual([]);
     await expect(
       asUser.mutation(api.resolvedMetadata.touch.touchTitle, {
