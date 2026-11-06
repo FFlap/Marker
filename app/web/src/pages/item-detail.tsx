@@ -1,3 +1,5 @@
+import { usePendingTasks } from "@/hooks/use-pending-tasks";
+import { useTaskState } from "@/hooks/use-task-state";
 import { castForDisplay } from "@marker/shared/castPresentation";
 import { CastPortrait } from "@/components/cast-portrait";
 import { Effect } from "effect";
@@ -186,9 +188,7 @@ export function ItemDetailPage() {
   });
   const { seasons, season, setSeason, episodes, summary: seasonRow } = guide;
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
-  const [episodePending, setEpisodePending] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [episodePending, setEpisodePending] = usePendingTasks();
   const setEpisodeState = useMutation(api.library.episodes.setEpisodeState);
   const savedEpisodes = useQuery(
     api.library.episodes.listEpisodes,
@@ -220,7 +220,8 @@ export function ItemDetailPage() {
   const seasonFullyWatched =
     (seasonRow?.totalCount ?? 0) > 0 &&
     watchedSeasonCount >= (seasonRow?.totalCount ?? 0);
-  const [seasonPending, setSeasonPending] = useState(false);
+  const { pending: seasonPending, setPending: setSeasonPending } =
+    useTaskState();
   const [seasonActionError, setSeasonActionError] = useState("");
   const [metadataActionError, setMetadataActionError] = useState("");
   const [episodeActionError, setEpisodeActionError] = useState("");

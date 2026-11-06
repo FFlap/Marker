@@ -1,3 +1,4 @@
+import { publicationState } from '../lifecycles';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
@@ -115,7 +116,7 @@ export const refreshItemProjections = internalMutation({
         .withIndex('by_tmdb', (query) => query.eq('mediaType', type).eq('tmdbId', tmdbId))
         .unique(),
     ]);
-    if (!title || (mapping && title.orderEpoch !== mapping.orderEpoch))
+    if (!title || publicationState(title, mapping).state !== 'current')
       return { updated: 0, isDone: true };
     const page = await ctx.db
       .query('items')

@@ -1,3 +1,4 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { Effect } from "effect";
 import { saveProfile } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
@@ -31,8 +32,7 @@ function PublicProfile({ username }: { username: string }) {
   const result = useQuery(api.profiles.publicProfile, { username });
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
+  const { pending, error, setPending, setError } = useTaskState();
   const [tab, setTab] = useState<"collection" | "stats">("collection");
   if (result === undefined) {
     return (

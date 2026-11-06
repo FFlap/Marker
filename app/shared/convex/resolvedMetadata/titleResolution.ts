@@ -1,3 +1,4 @@
+import { mappingState } from '../lifecycles';
 import { Effect } from 'effect';
 import { actionFailureCause, attempt, providerOutcome, runActionEffect } from '../actionEffects';
 import { ConvexError, v } from 'convex/values';
@@ -72,14 +73,10 @@ export async function resolveFreshTitle(
   mapping: Doc<'titleMappings'> | null,
   force = false,
 ) {
-  const manuallyPinnedMapping =
-    mapping?.source === 'manual' &&
-    mapping.tvdbId !== undefined &&
-    mapping.seasonOrder !== undefined
-      ? mapping
-      : null;
+  const identity = mappingState(mapping);
+  const manuallyPinnedMapping = identity.state === 'manualTvdb' ? identity.mapping : null;
   const knownTvdbId = mapping?.tvdbId;
-  const manualWithoutTvdbIdentity = mapping?.source === 'manual' && !manuallyPinnedMapping;
+  const manualWithoutTvdbIdentity = identity.state === 'manualTmdb';
   return runActionEffect(
     Effect.gen(function* () {
       const loadTmdb = attempt(

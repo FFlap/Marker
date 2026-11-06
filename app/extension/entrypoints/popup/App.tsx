@@ -13,7 +13,13 @@ interface AppProps {
     accountLabel?: string;
     error?: string;
     notice?: string;
-    lastResult?: { ok: boolean; at: number; reason?: string; seriesTitle?: string; unverified?: boolean };
+    lastResult?: {
+      ok: boolean;
+      at: number;
+      reason?: string;
+      seriesTitle?: string;
+      unverified?: boolean;
+    };
     onConnect: () => Promise<void>;
     onSignOut: () => Promise<void>;
   };
@@ -49,20 +55,36 @@ export function App({
   onClear,
   sync,
 }: AppProps) {
-  const [saving, setSaving] = React.useState(false);
-  const syncResultText = sync?.lastResult && (() => {
-    const title = sync.lastResult.seriesTitle?.trim();
-    const shortTitle = title && title.length > 42 ? `${title.slice(0, 39)}…` : title;
-    const prefix = shortTitle ? `${shortTitle}${sync.lastResult.ok ? "" : " —"}` : "Last sync";
-    if (sync.lastResult.ok && sync.lastResult.unverified) return `${prefix} synced (unlisted special)`;
-    if (sync.lastResult.ok) return `${prefix} synced`;
-    if (sync.lastResult.reason === "unmatched-episode") return `${prefix} episode not matched by name`;
-    if (sync.lastResult.reason === "unsupported-episode") return `${prefix} unsupported episode`;
-    if (sync.lastResult.reason === "unmatched") return shortTitle ? `${prefix} episode couldn't be matched to a show` : "Last episode couldn't be matched to a show";
-    if (sync.lastResult.reason === "not-signed-in") return `${prefix} waiting for sign-in`;
-    if (sync.lastResult.reason === "rejected") return `${prefix} was rejected`;
-    return `${prefix} failed`;
-  })();
+  const [action, setAction] = React.useState<"idle" | "saving">("idle");
+  const saving = action === "saving";
+  const setSaving = (pending: boolean) =>
+    setAction(pending ? "saving" : "idle");
+  const syncResultText =
+    sync?.lastResult &&
+    (() => {
+      const title = sync.lastResult.seriesTitle?.trim();
+      const shortTitle =
+        title && title.length > 42 ? `${title.slice(0, 39)}…` : title;
+      const prefix = shortTitle
+        ? `${shortTitle}${sync.lastResult.ok ? "" : " —"}`
+        : "Last sync";
+      if (sync.lastResult.ok && sync.lastResult.unverified)
+        return `${prefix} synced (unlisted special)`;
+      if (sync.lastResult.ok) return `${prefix} synced`;
+      if (sync.lastResult.reason === "unmatched-episode")
+        return `${prefix} episode not matched by name`;
+      if (sync.lastResult.reason === "unsupported-episode")
+        return `${prefix} unsupported episode`;
+      if (sync.lastResult.reason === "unmatched")
+        return shortTitle
+          ? `${prefix} episode couldn't be matched to a show`
+          : "Last episode couldn't be matched to a show";
+      if (sync.lastResult.reason === "not-signed-in")
+        return `${prefix} waiting for sign-in`;
+      if (sync.lastResult.reason === "rejected")
+        return `${prefix} was rejected`;
+      return `${prefix} failed`;
+    })();
 
   return (
     <main className="shell">
@@ -93,24 +115,58 @@ export function App({
         </summary>
         <div className="sync-form">
           {sync?.signedIn ? (
-            <p className="sync-account"><strong>Signed in</strong><br />{sync.accountLabel}</p>
-          ) : <p className="sync-account"><strong>Connect your Marker account</strong><br />Sign in on the website. The extension never sees your password.</p>}
+            <p className="sync-account">
+              <strong>Signed in</strong>
+              <br />
+              {sync.accountLabel}
+            </p>
+          ) : (
+            <p className="sync-account">
+              <strong>Connect your Marker account</strong>
+              <br />
+              Sign in on the website. The extension never sees your password.
+            </p>
+          )}
           <div aria-live="polite">
-            {sync?.error && <small className="sync-error" role="alert">{sync.error}</small>}
+            {sync?.error && (
+              <small className="sync-error" role="alert">
+                {sync.error}
+              </small>
+            )}
             {sync?.notice && <small>{sync.notice}</small>}
             {sync?.lastResult && (
               <small>
-                {syncResultText}{" "}
-                · {new Date(sync.lastResult.at).toLocaleString()}
+                {syncResultText} ·{" "}
+                {new Date(sync.lastResult.at).toLocaleString()}
               </small>
             )}
           </div>
           <div>
-            {sync?.signedIn ? <button type="button" className="disconnect" onClick={() => void sync.onSignOut()}>Sign out</button> :
-            <button type="button" disabled={saving} onClick={async () => {
-              if (!sync) return; setSaving(true);
-              try { await sync.onConnect(); } finally { setSaving(false); }
-            }}>{saving ? "Opening Marker…" : "Connect Marker"}</button>}
+            {sync?.signedIn ? (
+              <button
+                type="button"
+                className="disconnect"
+                onClick={() => void sync.onSignOut()}
+              >
+                Sign out
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  if (!sync) return;
+                  setSaving(true);
+                  try {
+                    await sync.onConnect();
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? "Opening Marker…" : "Connect Marker"}
+              </button>
+            )}
           </div>
         </div>
       </details>
@@ -136,9 +192,17 @@ export function App({
         <>
           <div className="section-label">
             <span>Continue watching</span>
-            <button type="button" onClick={() => {
-              if (window.confirm(`Clear all ${bookmarks.length} saved series? This cannot be undone.`)) onClear();
-            }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Clear all ${bookmarks.length} saved series? This cannot be undone.`,
+                  )
+                )
+                  onClear();
+              }}
+            >
               Clear all
             </button>
           </div>

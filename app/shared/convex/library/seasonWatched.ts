@@ -1,3 +1,4 @@
+import { bulkWatchState } from '../lifecycles';
 import {
   action,
   internalMutation,
@@ -384,7 +385,11 @@ async function moveItemToWatchedForUser(
     let pending: number[] = initialTitle.seasons
       .map((entry: { season: number }) => entry.season)
       .filter((season: number) => season >= 0);
-    for (let pass = 0; pending.length > 0 && pass < MAX_WATCHED_SEASON_PASSES; pass += 1) {
+    for (
+      let pass = 0;
+      bulkWatchState(pending, pass, MAX_WATCHED_SEASON_PASSES).state === 'marking';
+      pass += 1
+    ) {
       for (const season of pending) {
         const episodes = await ctx.runAction(
           internal.resolvedMetadata.seasonResolution.resolveSeasonForUser,
@@ -423,7 +428,11 @@ async function moveItemToWatchedForUser(
         .map((entry: { season: number }) => entry.season)
         .filter((season: number) => season >= 0 && !done.has(watchedSeasonKey(latest, season)));
     }
-    if (pending.length > 0) throw staleSeasonEpoch();
+    if (
+      bulkWatchState(pending, MAX_WATCHED_SEASON_PASSES, MAX_WATCHED_SEASON_PASSES).state ===
+      'exhausted'
+    )
+      throw staleSeasonEpoch();
   }
   return ctx.runMutation(internal.library.ordering.moveItemToSlotInternal, {
     userId,

@@ -1,3 +1,4 @@
+import { cursorJobState, itemLifecycle } from './lifecycles';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
@@ -240,7 +241,7 @@ export const startEpisodeProjectionRepair = internalMutation({
   returns: repairResultValidator,
   handler: async (ctx, args): Promise<RepairResult> => {
     const item = await ctx.db.get(args.itemId);
-    if (!item || item.mediaType !== 'tv' || item.deletingAt !== undefined)
+    if (!item || item.mediaType !== 'tv' || itemLifecycle(item).state !== 'active')
       return { state: 'skipped', rowsRead: 0, patched: 0, chunkPairsRead: 0 };
     const saved = await ctx.db
       .query('episodes')
@@ -287,9 +288,9 @@ export const continueEpisodeProjectionRepair = internalMutation({
     if (
       !item ||
       item.mediaType !== 'tv' ||
-      item.deletingAt !== undefined ||
+      itemLifecycle(item).state !== 'active' ||
       !repair ||
-      repair.token !== args.token ||
+      cursorJobState(repair, args.token).state !== 'running' ||
       repair.season !== args.season ||
       repair.chunkIndex !== args.chunkIndex ||
       repair.afterEpisode !== args.afterEpisode

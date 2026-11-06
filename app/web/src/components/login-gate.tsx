@@ -1,3 +1,4 @@
+import { accountAccess } from "@marker/shared/lifecycle";
 import { Navigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "@marker/shared/api";
@@ -21,16 +22,22 @@ export function LoginGate() {
   const search = useSearch({ from: "/login" });
   const next = safeInternalPath(search.next);
 
-  if (accountError) return <AccountLinkError onRetry={retryAccountLink} />;
-  if (
-    isLoading ||
-    (isAuthenticated && (!accountReady || profile === undefined))
-  ) {
+  const access = accountAccess({
+    isLoading,
+    isAuthenticated,
+    accountReady,
+    accountError,
+    profileLoaded: profile !== undefined,
+    hasUsername: !!profile?.username,
+  });
+  if (access.state === "error")
+    return <AccountLinkError onRetry={retryAccountLink} />;
+  if (access.state === "loading") {
     return <AccountLoading />;
   }
-  if (isAuthenticated && !profile?.username) {
+  if (access.state === "setupRequired") {
     return <Navigate to="/setup" search={{ next }} replace />;
   }
-  if (isAuthenticated) return <Navigate to={next} replace />;
+  if (access.state === "ready") return <Navigate to={next} replace />;
   return <LoginPage />;
 }

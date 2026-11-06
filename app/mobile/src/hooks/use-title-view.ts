@@ -39,13 +39,18 @@ function useMetadataExpiryTimer(
   const onRetouch = useEffectEvent(retouch);
   const state = requestState?.state;
   const delayMs = requestState?.delayMs;
-  const [serverArm, setServerArm] = useState<{
+  type TimerArm = {
     key: string;
     delayMs: number;
     reason: string;
     sourceState: MetadataRequestState['state'];
     sourceDelayMs?: number;
-  }>();
+  };
+  const [timer, setTimer] = useState<{ state: 'idle' } | { state: 'armed'; arm: TimerArm }>({
+    state: 'idle',
+  });
+  const serverArm = timer.state === 'armed' ? timer.arm : undefined;
+  const setServerArm = useCallback((arm: TimerArm) => setTimer({ state: 'armed', arm }), []);
   useEffect(() => {
     if (!key) return;
     const authoritativeArm =
@@ -99,7 +104,7 @@ function useMetadataExpiryTimer(
       { signal: controller.signal },
     );
     return () => controller.abort();
-  }, [key, state, delayMs, serverArm]);
+  }, [key, state, delayMs, serverArm, setServerArm]);
 }
 
 function useMetadataRecoveryTimers(args: {

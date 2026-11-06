@@ -1,3 +1,4 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { Effect } from "effect";
 import { sessionStep, saveProfile } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
@@ -102,7 +103,7 @@ export function SettingsPage() {
   const [overrides, setOverrides] = useState<Partial<Preferences>>({});
   const [saving, setSaving] = useState<keyof Preferences>();
   const [error, setError] = useState("");
-  const [signingOut, setSigningOut] = useState(false);
+  const { pending: signingOut, setPending: setSigningOut } = useTaskState();
   const [signOutError, setSignOutError] = useState("");
   const [failedPreference, setFailedPreference] = useState<FailedPreference>();
   const current: Preferences = { ...defaults, ...stored, ...overrides };

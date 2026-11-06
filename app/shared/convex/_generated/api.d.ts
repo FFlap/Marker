@@ -33,6 +33,7 @@ import type * as library_items from "../library/items.js";
 import type * as library_ordering from "../library/ordering.js";
 import type * as library_seasonWatched from "../library/seasonWatched.js";
 import type * as library_shared from "../library/shared.js";
+import type * as lifecycles from "../lifecycles.js";
 import type * as mergePolicy from "../mergePolicy.js";
 import type * as nextEpisode from "../nextEpisode.js";
 import type * as notifications from "../notifications.js";
@@ -108,6 +109,7 @@ declare const fullApi: ApiFromModules<{
   "library/ordering": typeof library_ordering;
   "library/seasonWatched": typeof library_seasonWatched;
   "library/shared": typeof library_shared;
+  lifecycles: typeof lifecycles;
   mergePolicy: typeof mergePolicy;
   nextEpisode: typeof nextEpisode;
   notifications: typeof notifications;

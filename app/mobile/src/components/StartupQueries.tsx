@@ -1,3 +1,4 @@
+import { startupState } from '@marker/shared/lifecycle';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from 'convex/react';
 import { getFunctionName } from 'convex/server';
@@ -60,10 +61,12 @@ export function StartupQueries({
   const ready =
     enabled &&
     [profile, items, settings, stats, tags, requests].every((value) => value !== undefined);
-  const cached =
+  const saved =
     allowCache && !invalidateCache && !ready && snapshotMatches(snapshot, scope)
       ? snapshot.data
       : null;
+  const startup = startupState(ready, saved);
+  const cached = startup.state === 'cached' ? startup.data : null;
   useEffect(() => {
     if (
       !enabled ||

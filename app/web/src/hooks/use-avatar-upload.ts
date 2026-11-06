@@ -1,7 +1,8 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { useOperation } from "./use-operation";
 import { avatarStep, uploadAvatar } from "@marker/shared/clientEffects";
 import { useAuth } from "@clerk/react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@marker/shared/api";
 import type { Id } from "@marker/shared/dataModel";
@@ -13,21 +14,21 @@ export function useAvatarUpload(onError: (message: string) => void) {
   const generateUploadUrl = useMutation(api.profiles.generateAvatarUploadUrl);
   const setAvatar = useMutation(api.profiles.setAvatar);
   const removeAvatar = useMutation(api.profiles.removeAvatar);
-  const [pending, setPending] = useState(false);
-  const busy = useRef(false);
+  const { pending, setPending } = useTaskState();
+  const busy = useRef<"idle" | "pending">("idle");
   const run = useOperation();
   const finish = () => {
-    busy.current = false;
+    busy.current = "idle";
     setPending(false);
   };
 
   const upload = (file: File | undefined) => {
-    if (!file || busy.current) return Promise.resolve();
+    if (!file || busy.current === "pending") return Promise.resolve();
     if (file.size > MAX_AVATAR_BYTES) {
       onError("Choose an image under 5 MB.");
       return Promise.resolve();
     }
-    busy.current = true;
+    busy.current = "pending";
     setPending(true);
     onError("");
     return run.write(
@@ -65,8 +66,8 @@ export function useAvatarUpload(onError: (message: string) => void) {
     );
   };
   const clear = () => {
-    if (busy.current) return Promise.resolve();
-    busy.current = true;
+    if (busy.current === "pending") return Promise.resolve();
+    busy.current = "pending";
     setPending(true);
     onError("");
     return run.write(

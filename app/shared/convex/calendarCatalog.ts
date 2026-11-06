@@ -1,3 +1,4 @@
+import { discoveryState } from './lifecycles';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
@@ -65,11 +66,11 @@ export const claim = internalMutation({
       .query('calendarMonths')
       .withIndex('by_region_month', (q) => q.eq('region', region).eq('month', month))
       .unique();
+    const discovery = discoveryState(row, Date.now(), CALENDAR_TTL_MS);
     if (
-      row &&
-      (row.refreshedAt > Date.now() - CALENDAR_TTL_MS ||
-        (row.leaseExpiresAt ?? 0) > Date.now() ||
-        (row.discoveryRetryAt ?? 0) > Date.now())
+      discovery.state === 'fresh' ||
+      discovery.state === 'discovering' ||
+      discovery.state === 'cooldown'
     )
       return false;
     const lease = {

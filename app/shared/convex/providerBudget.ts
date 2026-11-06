@@ -1,32 +1,57 @@
-/** Action-local prepaid slots. Parallel HTTP attempts share a single reservation
- * instead of contending on the distributed limiter row for every request.
- * Unused slots are charged and expire with the original distributed window.
+type BudgetState =
+  | { state: 'empty' }
+  | { state: 'reserving'; pending: Promise<void> }
+  | { state: 'available'; slots: number; expiresAt: number }
+  | { state: 'denied'; until: number };
+
+/** Action-local prepaid slots. One reservation owns all concurrent waiters.
+ * Unused slots remain charged until the distributed window expires.
  */
 export function batchedProviderBudget(
   reserve: () => Promise<{ amount: number; expiresAt: number }>,
 ) {
-  let slots = 0;
-  let expiresAt = 0;
-  let pending: Promise<void> | undefined;
-  let deniedUntil = 0;
+  let budget: BudgetState = { state: 'empty' };
   return async (): Promise<boolean> => {
     for (;;) {
-      if (slots > 0 && Date.now() < expiresAt) {
-        slots--;
-        return true;
+      switch (budget.state) {
+        case 'available':
+          if (budget.slots > 0 && Date.now() < budget.expiresAt) {
+            budget = { ...budget, slots: budget.slots - 1 };
+            return true;
+          }
+          budget = { state: 'empty' };
+          break;
+        case 'denied':
+          if (Date.now() < budget.until) return false;
+          budget = { state: 'empty' };
+          break;
+        case 'empty': {
+          const pending = Promise.resolve()
+            .then(reserve)
+            .then(
+              (reservation) => {
+                budget =
+                  reservation.amount > 0
+                    ? {
+                        state: 'available',
+                        slots: reservation.amount,
+                        expiresAt: reservation.expiresAt,
+                      }
+                    : { state: 'denied', until: reservation.expiresAt };
+              },
+              (error) => {
+                budget = { state: 'empty' };
+                throw error;
+              },
+            );
+          budget = { state: 'reserving', pending };
+          await pending;
+          break;
+        }
+        case 'reserving':
+          await budget.pending;
+          break;
       }
-      if (Date.now() < deniedUntil) return false;
-      if (!pending) {
-        pending = (async () => {
-          const reservation = await reserve();
-          slots = reservation.amount;
-          expiresAt = reservation.expiresAt;
-          deniedUntil = slots === 0 ? expiresAt : 0;
-        })().finally(() => {
-          pending = undefined;
-        });
-      }
-      await pending;
     }
   };
 }

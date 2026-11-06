@@ -37,7 +37,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const [visible, setVisible] = useState(false);
   const motionReduced = useReducedMotion();
   const [progress] = useState(() => new Animated.Value(0));
-  const pendingClose = useRef<(() => void) | undefined>(undefined);
+  const navigation = useRef<{ state: 'idle' } | { state: 'closing'; onClosed?: () => void }>({
+    state: 'idle',
+  });
   const { profileReady } = useAccountLoading();
   const profile = useQuery(api.profiles.me, profileReady ? {} : 'skip');
   const canOpen = !!profile;
@@ -45,12 +47,13 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
 
   const openDrawer = useCallback(() => {
     if (!canOpen) return;
-    if (pendingClose.current) {
+    if (navigation.current.state === 'closing' && navigation.current.onClosed) {
       progress.stopAnimation();
       setVisible(false);
-      const callback = pendingClose.current;
-      pendingClose.current = undefined;
-      callback();
+      const callback =
+        navigation.current.state === 'closing' ? navigation.current.onClosed : undefined;
+      navigation.current = { state: 'idle' };
+      callback?.();
       return;
     }
     progress.stopAnimation();
@@ -70,13 +73,19 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
 
   const closeDrawer = useCallback(
     (onClosed?: () => void) => {
-      pendingClose.current = onClosed ?? pendingClose.current;
+      navigation.current = {
+        state: 'closing',
+        onClosed:
+          onClosed ??
+          (navigation.current.state === 'closing' ? navigation.current.onClosed : undefined),
+      };
       progress.stopAnimation();
       if (motionReduced) {
         progress.setValue(0);
         setVisible(false);
-        const callback = pendingClose.current;
-        pendingClose.current = undefined;
+        const callback =
+          navigation.current.state === 'closing' ? navigation.current.onClosed : undefined;
+        navigation.current = { state: 'idle' };
         callback?.();
         return;
       }
@@ -88,8 +97,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       }).start(({ finished }) => {
         if (!finished) return;
         setVisible(false);
-        const callback = pendingClose.current;
-        pendingClose.current = undefined;
+        const callback =
+          navigation.current.state === 'closing' ? navigation.current.onClosed : undefined;
+        navigation.current = { state: 'idle' };
         callback?.();
       });
     },
