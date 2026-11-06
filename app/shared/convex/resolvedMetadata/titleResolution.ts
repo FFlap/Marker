@@ -95,7 +95,7 @@ export async function resolveFreshTitle(
             { tmdbId: args.tmdbId, force },
           ) as Promise<ProviderTitle>,
       );
-      const loadAnime = (base: ProviderTitle) =>
+      const loadExtras = (base: ProviderTitle) =>
         providerOutcome(
           args.mediaType === 'tv' &&
             !manualWithoutTvdbIdentity &&
@@ -122,26 +122,30 @@ export async function resolveFreshTitle(
                       ...(manuallyPinnedMapping && { order: manuallyPinnedMapping.seasonOrder }),
                     }),
                   }) as Promise<{ anime: ProviderAnime | null; characters?: CharacterArtwork[] }>,
-              ).pipe(Effect.map((extras) => extras.anime))
-            : Effect.succeed(null),
+              )
+            : Effect.succeed({ anime: null, characters: undefined }),
         );
       const loadBase = loadTmdb;
       // An established mapping can refresh both providers independently. New titles
       // still wait for TMDB's authoritative identity before attempting a match.
-      const [tmdb, animeResult] =
+      const [tmdb, extrasResult] =
         current && knownTvdbId && args.mediaType === 'tv'
-          ? yield* Effect.all([loadBase, loadAnime(current)], { concurrency: 2 })
+          ? yield* Effect.all([loadBase, loadExtras(current)], { concurrency: 2 })
           : yield* loadBase.pipe(
               Effect.flatMap((base) =>
-                loadAnime(base).pipe(Effect.map((anime) => [base, anime] as const)),
+                loadExtras(base).pipe(Effect.map((extras) => [base, extras] as const)),
               ),
             );
-      if (!animeResult.ok && !current && process.env.TVDB_API_KEY)
-        return yield* Effect.fail(animeResult.error);
-      let partial = !animeResult.ok;
-      let partialError: unknown = animeResult.ok ? undefined : animeResult.error;
-      let anime = animeResult.ok ? animeResult.value : animeFromCurrent(current);
-      if (animeResult.ok && animeResult.value === null && current?.metadataProvider === 'tvdb') {
+      if (!extrasResult.ok && !current && process.env.TVDB_API_KEY)
+        return yield* Effect.fail(extrasResult.error);
+      let partial = !extrasResult.ok;
+      let partialError: unknown = extrasResult.ok ? undefined : extrasResult.error;
+      let anime = extrasResult.ok ? extrasResult.value.anime : animeFromCurrent(current);
+      if (
+        extrasResult.ok &&
+        extrasResult.value.anime === null &&
+        current?.metadataProvider === 'tvdb'
+      ) {
         anime = animeFromCurrent(current);
         partial = true;
         partialError = new Error('TVDB mapping disappeared during refresh');
@@ -186,6 +190,31 @@ export async function resolveFreshTitle(
               : [],
           ),
         );
+      // The series identity response already includes artwork. Only request it
+      // separately when that response did not provide it (for example, movies).
+      let characters = extrasResult.ok ? extrasResult.value.characters : undefined;
+      if (
+        characters === undefined &&
+        (tmdb.cast?.length ?? 0) > 0 &&
+        [...(tmdb.genres ?? []), ...(anime?.genres ?? [])].some((genre) =>
+          /^(animation|anime)$/i.test(genre),
+        )
+      ) {
+        const artwork = yield* providerOutcome(
+          attempt(
+            () =>
+              ctx.runAction(internal.tvdb.getCharacterArtwork, {
+                mediaType: args.mediaType,
+                tmdbId: args.tmdbId,
+                title: tmdb.title,
+                ...(tmdb.originalTitle && { originalTitle: tmdb.originalTitle }),
+                ...((anime?.tvdbId ?? knownTvdbId) && { tvdbId: anime?.tvdbId ?? knownTvdbId }),
+              }) as Promise<CharacterArtwork[]>,
+          ),
+        );
+        if (artwork.ok) characters = artwork.value;
+      }
+      if (characters?.length) tmdb.cast = withCharacterArtwork(tmdb.cast ?? [], characters);
       const refreshedAt = Date.now();
       const value = mergeTitle(
         args.tmdbId,

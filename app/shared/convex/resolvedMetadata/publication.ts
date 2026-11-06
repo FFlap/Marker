@@ -56,12 +56,13 @@ export async function publishCanonicalMetadata(
         : args.title;
     if (existingTitle) await ctx.db.replace(existingTitle._id, title);
     else await ctx.db.insert('resolvedTitles', title);
-    await ctx.scheduler.runAfter(1_000, internal.resolvedMetadata.enrichment.enrichTitle, {
-      mediaType: title.mediaType,
-      tmdbId: title.tmdbId,
-      refreshedAt: title.refreshedAt,
-      forceCatalog: args.forceEnrichment,
-    });
+    if (title.metadataProvider === 'tvdb')
+      await ctx.scheduler.runAfter(1_000, internal.resolvedMetadata.enrichment.enrichTitle, {
+        mediaType: title.mediaType,
+        tmdbId: title.tmdbId,
+        refreshedAt: title.refreshedAt,
+        forceCatalog: args.forceEnrichment,
+      });
     await ctx.scheduler.runAfter(0, internal.resolvedMetadata.publication.refreshItemProjections, {
       mediaType: title.mediaType,
       tmdbId: title.tmdbId,

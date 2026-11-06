@@ -77,30 +77,22 @@ const movie = () => ({
   refreshAfter: Date.now() + 60_000,
 });
 
-it('enriches artwork after publication and fences a superseded title', async () => {
-  const { t, ctx } = setup();
-  const title = movie();
-  await t.run((ctx) => ctx.db.insert('resolvedTitles', title));
-  const runAction = vi
-    .fn()
-    .mockResolvedValue([{ name: 'Hero', imageUrl: 'https://example.com/hero.jpg' }]);
-  await enrichTitle._handler({ ...ctx, runAction } as ActionCtx, {
-    mediaType: 'movie',
-    tmdbId: 77,
-    refreshedAt: title.refreshedAt,
-  });
-  const saved = await t.query(internal.resolvedMetadata.reads.readTitle, {
-    mediaType: 'movie',
-    tmdbId: 77,
-  });
-  expect(saved?.cast[0].characterImageUrl).toBe('https://example.com/hero.jpg');
-  await enrichTitle._handler({ ...ctx, runAction } as ActionCtx, {
-    mediaType: 'movie',
-    tmdbId: 77,
-    refreshedAt: title.refreshedAt - 1,
-  });
-  expect(runAction).toHaveBeenCalledTimes(1);
-});
+it.each(['movie', 'tv'] as const)(
+  'skips background enrichment for TMDB %s titles',
+  async (mediaType) => {
+    const { t, ctx } = setup();
+    const title = { ...movie(), mediaType };
+    await t.run((ctx) => ctx.db.insert('resolvedTitles', title));
+    const runAction = vi.fn();
+    await enrichTitle._handler({ ...ctx, runAction } as ActionCtx, {
+      mediaType,
+      tmdbId: 77,
+      refreshedAt: title.refreshedAt,
+    });
+    expect(runAction).not.toHaveBeenCalled();
+    expect(await t.run((ctx) => ctx.db.query('metadataRefreshLeases').collect())).toEqual([]);
+  },
+);
 
 it('serves fresh titles without creating refresh requests and force admits work', async () => {
   const { t } = setup();
@@ -312,6 +304,13 @@ it('keeps interactive leases available and preserves season counts published dur
     await t.run((ctx) =>
       ctx.db.patch(id, {
         seasons: [{ season: 1, name: 'Season 1', episodeCount: 8, episodeCountVerified: true }],
+        cast: [
+          {
+            name: 'Actor',
+            character: 'Hero',
+            characterImageUrl: 'https://example.com/current.jpg',
+          },
+        ],
       }),
     );
     return {
@@ -320,7 +319,7 @@ it('keeps interactive leases available and preserves season counts published dur
         order: 'official',
         seasons: [{ season: 1, name: 'Enriched arc', episodeCount: 7, episodeCountVerified: true }],
       },
-      characters: [],
+      characters: [{ name: 'Hero', imageUrl: 'https://example.com/late.jpg' }],
     };
   });
   await enrichTitle._handler({ ...ctx, runAction } as unknown as ActionCtx, {
@@ -332,36 +331,9 @@ it('keeps interactive leases available and preserves season counts published dur
     mediaType: 'tv',
     tmdbId: 77,
   });
+  expect(saved?.cast[0].characterImageUrl).toBe('https://example.com/current.jpg');
+  expect(runAction).toHaveBeenCalledTimes(1);
   expect(saved?.seasons).toEqual([
     { season: 1, name: 'Enriched arc', episodeCount: 8, episodeCountVerified: true },
   ]);
-});
-
-it('uses the versioned TMDB TV snapshot for original-title artwork matching', async () => {
-  const { t, ctx } = setup();
-  const title = { ...movie(), mediaType: 'tv' as const };
-  await t.run((ctx) => ctx.db.insert('resolvedTitles', title));
-  await t.mutation(internal.providerSnapshots.put, {
-    key: 'tmdb:tv:full:v3:77',
-    entry: {
-      kind: 'tmdbTv',
-      value: {
-        id: 77,
-        mediaType: 'tv',
-        title: title.title,
-        originalTitle: 'Original title',
-        genres: title.genres,
-        cast: title.cast,
-        seasons: [],
-        episodeRunTime: [],
-      },
-    },
-  });
-  const runAction = vi.fn().mockResolvedValue([]);
-  await enrichTitle._handler({ ...ctx, runAction } as ActionCtx, {
-    mediaType: 'tv',
-    tmdbId: 77,
-    refreshedAt: title.refreshedAt,
-  });
-  expect(runAction.mock.calls[0][1]).toMatchObject({ originalTitle: 'Original title' });
 });

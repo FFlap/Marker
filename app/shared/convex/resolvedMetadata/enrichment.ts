@@ -1,14 +1,13 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction, internalMutation } from '../_generated/server';
-import { withCharacterArtwork, type CharacterArtwork } from '../characterArtwork';
 import { mediaType, resolvedTitleValidator, TITLE_FRESH_MS } from './shared';
 import { refreshLeaseKey } from './requests';
 
 export const nextReleaseBoundary = (now = Date.now()) =>
   Math.floor(now / 86_400_000) * 86_400_000 + 86_400_000;
 
-/** Optional work has its own lease so interactive refreshes never wait for artwork. */
+/** Complete season counts and names without holding up interactive episode loads. */
 export const enrichTitle = internalAction({
   args: {
     mediaType,
@@ -22,7 +21,14 @@ export const enrichTitle = internalAction({
       mediaType: args.mediaType,
       tmdbId: args.tmdbId,
     });
-    if (!current || current.refreshedAt !== args.refreshedAt) return;
+    if (
+      !current ||
+      current.refreshedAt !== args.refreshedAt ||
+      current.metadataProvider !== 'tvdb' ||
+      !current.tvdbId ||
+      !current.seasonOrder
+    )
+      return;
     const key = `enrichment:${refreshLeaseKey(args.mediaType, args.tmdbId)}`;
     const token = `enrichment:${crypto.randomUUID()}`;
     if (
@@ -40,43 +46,18 @@ export const enrichTitle = internalAction({
       return;
     }
     try {
-      let seasons = current.seasons;
-      let characters: CharacterArtwork[] | undefined;
-      if (current.metadataProvider === 'tvdb' && current.tvdbId && current.seasonOrder) {
-        const extras = await ctx.runAction(internal.tvdb.refreshTitleExtras, {
-          tmdbId: current.tmdbId,
-          title: current.title,
-          tvdbId: current.tvdbId,
-          order: current.seasonOrder,
-          metadataOnly: false,
-          force: true,
-          forceCatalog: args.forceCatalog ?? false,
-        });
-        const guide = extras.anime;
-        if (!guide || guide.tvdbId !== current.tvdbId || guide.order !== current.seasonOrder)
-          return;
-        seasons = guide.seasons;
-        characters = extras.characters;
-      }
-      if (!characters && current.genres.some((genre) => /^(animation|anime)$/i.test(genre))) {
-        const base = await ctx.runQuery(internal.providerSnapshots.get, {
-          key:
-            current.mediaType === 'tv'
-              ? `tmdb:tv:full:v3:${current.tmdbId}`
-              : `tmdb:movie:${current.tmdbId}`,
-        });
-        const originalTitle =
-          base?.kind === 'tmdbMovie' || base?.kind === 'tmdbTv'
-            ? base.value.originalTitle
-            : undefined;
-        characters = await ctx.runAction(internal.tvdb.getCharacterArtwork, {
-          mediaType: current.mediaType,
-          tmdbId: current.tmdbId,
-          title: current.title,
-          ...(current.tvdbId && { tvdbId: current.tvdbId }),
-          ...(originalTitle && { originalTitle }),
-        });
-      }
+      const extras = await ctx.runAction(internal.tvdb.refreshTitleExtras, {
+        tmdbId: current.tmdbId,
+        title: current.title,
+        tvdbId: current.tvdbId,
+        order: current.seasonOrder,
+        metadataOnly: false,
+        force: true,
+        forceCatalog: args.forceCatalog ?? false,
+      });
+      const guide = extras.anime;
+      if (!guide || guide.tvdbId !== current.tvdbId || guide.order !== current.seasonOrder) return;
+      const seasons = guide.seasons;
       const { _id, _creationTime, ...title } = current;
       void _id;
       void _creationTime;
@@ -84,15 +65,12 @@ export const enrichTitle = internalAction({
         title: {
           ...title,
           seasons,
-          ...(characters?.length && { cast: withCharacterArtwork(title.cast, characters) }),
-          refreshAfter:
-            current.metadataProvider !== 'tvdb' ||
-            seasons.some((s) => s.episodeCountVerified === false)
-              ? title.refreshAfter
-              : Math.min(
-                  Date.now() + TITLE_FRESH_MS,
-                  title.mediaType === 'tv' ? nextReleaseBoundary() : Infinity,
-                ),
+          refreshAfter: seasons.some((s) => s.episodeCountVerified === false)
+            ? title.refreshAfter
+            : Math.min(
+                Date.now() + TITLE_FRESH_MS,
+                title.mediaType === 'tv' ? nextReleaseBoundary() : Infinity,
+              ),
         },
         key,
         token,
@@ -143,7 +121,6 @@ export const publishEnrichment = internalMutation({
           ? { ...entry, episodeCount: latest.episodeCount, episodeCountVerified: true }
           : entry;
       }),
-      cast: title.cast,
       refreshAfter: title.refreshAfter,
     });
     await ctx.scheduler.runAfter(0, internal.resolvedMetadata.publication.refreshItemProjections, {
