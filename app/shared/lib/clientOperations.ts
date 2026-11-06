@@ -1,3 +1,9 @@
+import {
+  transitionOwner,
+  transitionSession,
+  type OwnedState,
+  type SessionState,
+} from './lifecycle';
 import * as Context from 'effect/Context';
 import * as Cause from 'effect/Cause';
 import * as Effect from 'effect/Effect';
@@ -35,15 +41,18 @@ export const guardClientSession = Effect.flatMap(ClientSessionGuard, (current) =
 
 /** Owned by the auth provider, never by a screen. No work is made uninterruptible. */
 export class ClientWriteSession {
-  private valid = true;
+  private session: SessionState = { state: 'current' };
   constructor(
     private readonly identity: string | null,
     private readonly currentIdentity: () => string | null,
   ) {}
 
   isCurrent = () => {
-    this.valid = this.valid && this.identity !== null && this.currentIdentity() === this.identity;
-    return this.valid;
+    this.session = transitionSession(
+      this.session,
+      this.identity !== null && this.currentIdentity() === this.identity,
+    );
+    return this.session.state === 'current';
   };
 
   protect = <A, E>(program: Effect.Effect<A, E>) =>
@@ -55,19 +64,17 @@ export class ClientWriteSession {
 
 /** View ownership suppresses observers; accepted writes keep their session ownership. */
 export class ClientOperations {
-  private active = true;
-  private generation = 0;
+  private owner: OwnedState = { state: 'active', generation: 0 };
   private pending = new Set<AbortController>();
 
   constructor(private readonly writes?: ClientWriteSession) {}
 
   activate() {
-    this.active = true;
+    this.owner = transitionOwner(this.owner, 'activate');
   }
 
   dispose() {
-    this.active = false;
-    this.generation++;
+    this.owner = transitionOwner(this.owner, 'dispose');
     for (const controller of this.pending) controller.abort();
     this.pending.clear();
   }
@@ -91,13 +98,13 @@ export class ClientOperations {
     handlers: OperationHandlers<A, E>,
     write: boolean,
   ): Promise<void> => {
-    if (!this.active) return Promise.resolve();
-    const generation = this.generation;
+    if (this.owner.state !== 'active') return Promise.resolve();
+    const generation = this.owner.generation;
     const controller = new AbortController();
     if (!write) this.pending.add(controller);
     const observable = () =>
-      this.active &&
-      generation === this.generation &&
+      this.owner.state === 'active' &&
+      generation === this.owner.generation &&
       !controller.signal.aborted &&
       (!write || this.writes!.isCurrent());
     return runClientEffect(
@@ -107,12 +114,13 @@ export class ClientOperations {
             Effect.sync(() => {
               if (observable()) handlers.success?.(value);
             }),
-          onFailure: (error) =>
-            handlers.failure && observable()
+          onFailure: (error) => {
+            return handlers.failure && observable()
               ? Effect.sync(() => {
                   if (observable()) handlers.failure?.(error);
                 })
-              : Effect.fail(error),
+              : Effect.fail(error);
+          },
         }),
         Effect.ensuring(
           Effect.sync(() => {

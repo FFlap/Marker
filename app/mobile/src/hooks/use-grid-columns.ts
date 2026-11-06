@@ -11,11 +11,14 @@ export function useGridColumns(saved: GridColumns | undefined) {
   const runOperation = useOperation();
   const setSettings = useMutation(api.settings.setSettings);
   const toast = useToast();
-  const [optimistic, setOptimistic] = useState<GridColumns>();
+  const [edit, setEdit] = useState<
+    { state: 'saved' } | { state: 'saving'; value: GridColumns; version: number }
+  >({ state: 'saved' });
+  const optimistic = edit.state === 'saving' ? edit.value : undefined;
   const version = useRef(0);
   const update = async (next: GridColumns) => {
     const request = ++version.current;
-    setOptimistic(next);
+    setEdit({ state: 'saving', value: next, version: request });
     await runOperation.write(
       Effect.gen(function* () {
         yield* saveProfile(() => setSettings({ gridColumns: next }));
@@ -25,7 +28,11 @@ export function useGridColumns(saved: GridColumns | undefined) {
           toast.show('Couldn’t save grid scale');
         },
         settled: () => {
-          if (version.current === request) setOptimistic(undefined);
+          setEdit((current) =>
+            current.state === 'saving' && current.version === request
+              ? { state: 'saved' }
+              : current,
+          );
         },
       },
     );

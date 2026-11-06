@@ -6,13 +6,13 @@ export function createContentLifetime(
 ) {
   const scope = Scope.makeUnsafe();
   const controller = new AbortController();
-  let active = true;
+  let lifetime: "active" | "disposed" = "active";
   const own = (release: () => void) => {
     Effect.runSync(Scope.addFinalizer(scope, Effect.sync(release)));
   };
   const dispose = () => {
-    if (!active) return;
-    active = false;
+    if (lifetime === "disposed") return;
+    lifetime = "disposed";
     controller.abort();
     Effect.runSync(Scope.close(scope, Exit.void));
   };
@@ -34,7 +34,7 @@ export function createContentLifetime(
     dispose,
     signal: controller.signal,
     get active() {
-      return active;
+      return lifetime === "active";
     },
   };
 }

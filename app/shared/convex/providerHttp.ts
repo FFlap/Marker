@@ -59,6 +59,27 @@ const retryAfterMs = (response: Response, now: number) => {
   return Number.isNaN(delay) ? undefined : Math.min(2_000, Math.max(0, delay));
 };
 
+export type ProviderRetryDecision = { state: 'stop' } | { state: 'retry'; delayMs: number };
+export function providerRetryDecision(
+  error: unknown,
+  attempt: number,
+  jitter = 0,
+): ProviderRetryDecision {
+  const retryable =
+    (error instanceof ProviderBudgetFailure && error.retryable) ||
+    (error instanceof ProviderFailure &&
+      error.code !== 'provider_global_limiter' &&
+      !error.cancelled);
+  if (!retryable) return { state: 'stop' };
+  return {
+    state: 'retry',
+    delayMs:
+      error instanceof ProviderFailure && error.delayMs !== undefined
+        ? error.delayMs
+        : Math.min(150 * 2 ** (attempt - 1) + jitter, 2_000),
+  };
+}
+
 /** Every retry reserves distributed budget anew. Only idempotent HTTP methods retry. */
 export const providerFetchEffect = Effect.fnUntraced(function* (
   url: string,
@@ -165,18 +186,17 @@ export const providerFetchEffect = Effect.fnUntraced(function* (
   return yield* request.pipe(
     Effect.retry({
       times: retries,
-      while: (error) =>
-        (error instanceof ProviderBudgetFailure && error.retryable) ||
-        (error instanceof ProviderFailure &&
-          error.code !== 'provider_global_limiter' &&
-          !error.cancelled),
+      while: (error) => providerRetryDecision(error, attempts).state === 'retry',
       schedule: Schedule.recurs(retries).pipe(
         Schedule.addDelay(({ input }) =>
-          Effect.succeed(
-            input instanceof ProviderFailure && input.delayMs !== undefined
-              ? input.delayMs
-              : Math.min(150 * 2 ** (attempts - 1) + Math.floor(Math.random() * 100), 2_000),
-          ),
+          Effect.sync(() => {
+            const decision = providerRetryDecision(
+              input,
+              attempts,
+              Math.floor(Math.random() * 100),
+            );
+            return decision.state === 'retry' ? decision.delayMs : 0;
+          }),
         ),
       ),
     }),

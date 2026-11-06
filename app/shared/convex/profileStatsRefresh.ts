@@ -1,3 +1,4 @@
+import { statsRefreshState } from './lifecycles';
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
 import { internal } from './_generated/api';
@@ -36,8 +37,8 @@ export async function requestProfileStatsRefresh(ctx: MutationCtx, userId: Id<'u
     .unique();
   if (existing) {
     const now = Date.now();
-    const abandoned =
-      existing.lastProgressAt === undefined || now - existing.lastProgressAt > ABANDONED_AFTER_MS;
+    const lifecycle = statsRefreshState(existing, now, ABANDONED_AFTER_MS);
+    const abandoned = lifecycle.state === 'abandoned';
     // Changes before the first batch are already included in its snapshot.
     if (abandoned || (existing.hasStarted !== false && !existing.restartRequested))
       await ctx.db.patch(existing._id, {

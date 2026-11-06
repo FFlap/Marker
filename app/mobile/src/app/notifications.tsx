@@ -1,8 +1,8 @@
+import { usePendingTasks } from '@/hooks/use-pending-tasks';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
@@ -50,7 +50,7 @@ export default function NotificationsScreen() {
   const activity = useQuery(api.notifications.feed) as Activity[] | undefined;
   const respond = useMutation(api.profiles.respondToFollow);
   const toast = useToast();
-  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  const [pending, setPending] = usePendingTasks();
   const handle = async (username: string, accept: boolean) => {
     setPending((current) => new Set(current).add(username));
     await runOperation.write(

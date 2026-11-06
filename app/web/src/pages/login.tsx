@@ -1,3 +1,10 @@
+import { useTaskState } from "@/hooks/use-task-state";
+import {
+  transitionAuthScreen,
+  type AuthScreen,
+  type AuthFlow,
+  type RecoveryStage,
+} from "@marker/shared/lifecycle";
 import { Effect, Option, Schema } from "effect";
 import {
   sessionStep,
@@ -59,8 +66,6 @@ function clerkError(cause: unknown) {
   );
 }
 
-type RecoveryStage = "identifier" | "code" | "password";
-
 function recoveryError(cause: unknown) {
   const message = clerkError(cause);
   if (/too many|throttl|rate.?limit|try again later/i.test(message)) {
@@ -87,20 +92,37 @@ export function LoginPage() {
   const { signIn } = useSignIn();
   const { signUp } = useSignUp();
   const navigate = useNavigate();
-  const [chosenFlow, setFlow] = useState<"choose" | "signIn" | "signUp">(
-    "choose",
-  );
+  const [authScreen, setAuthScreen] = useState<AuthScreen>({
+    state: "form",
+    flow: "choose",
+  });
+  const chosenFlow = authScreen.flow;
+  const chosenVerification =
+    authScreen.state === "verification" ? authScreen.verification : null;
+  const recovery = authScreen.state === "recovery" ? authScreen.stage : null;
+  const setFlow = (flow: AuthFlow) =>
+    setAuthScreen((current) =>
+      transitionAuthScreen(current, { type: "choose", flow }),
+    );
+  const setVerification = (verification: "signUp" | "clientTrust" | null) =>
+    setAuthScreen((current) =>
+      transitionAuthScreen(current, { type: "verify", verification }),
+    );
+  const setRecovery = (stage: RecoveryStage | null) =>
+    setAuthScreen((current) =>
+      transitionAuthScreen(current, { type: "recover", stage }),
+    );
   const [identifier, setIdentifier] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const [chosenVerification, setVerification] = useState<
-    "signUp" | "clientTrust" | null
-  >(null);
-  const [recovery, setRecovery] = useState<RecoveryStage | null>(null);
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const {
+    pending: busy,
+    error,
+    setPending: setBusy,
+    setError,
+  } = useTaskState();
   const chooseFlow = (nextFlow: "signIn" | "signUp") => {
     setFlow(nextFlow);
     setIdentifier("");

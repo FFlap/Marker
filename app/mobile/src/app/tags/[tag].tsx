@@ -1,4 +1,5 @@
 import { useCrossSectionDrop } from '@/hooks/use-cross-section-drop';
+import { useTaskState } from '@/hooks/use-task-state';
 import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -57,7 +58,7 @@ export default function TagDetailScreen() {
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const toast = useToast();
   const tagVisibility = useTagVisibility(tag);
-  const [statusMovePending, setStatusMovePending] = useState(false);
+  const { pending: statusMovePending, setPending: setStatusMovePending } = useTaskState();
   const statusMovePendingRef = useRef(false);
   const [pendingWatchedMove, setPendingWatchedMove] = useState<RankedItem>();
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});

@@ -149,6 +149,14 @@ const mockDragEnds = new Map<
   string,
   (event: { data: typeof items; from: number; to: number }) => void
 >();
+const mockDragBegins = new Map<
+  string,
+  (event: { item: (typeof items)[number]; index: number }) => void
+>();
+const mockDragMoves = new Map<
+  string,
+  (event: { absoluteX: number; absoluteY: number; scrollOffset: number }) => void
+>();
 jest.mock('convex/react', () => ({
   useQuery: (...args: [unknown]) => mockUseQuery(...args),
   useMutation: () => mockUseMutation(),
@@ -175,7 +183,13 @@ jest.mock('@/components/NativeDraggableGrid', () => {
       data,
       renderItem,
       onDragEnd,
+      onDragBegin,
+      onDragMove,
+      onDropTarget,
     }: {
+      onDragBegin: (event: { item: (typeof items)[number]; index: number }) => void;
+      onDragMove: (event: { absoluteX: number; absoluteY: number; scrollOffset: number }) => void;
+      onDropTarget: (target: (() => { index: number; distance: number }) | undefined) => void;
       data: typeof items;
       renderItem: (event: {
         item: (typeof items)[number];
@@ -183,17 +197,26 @@ jest.mock('@/components/NativeDraggableGrid', () => {
         isActive: boolean;
       }) => React.ReactNode;
       onDragEnd: (event: { data: typeof items; from: number; to: number }) => void;
-    }) => (
-      <View>
-        {(() => {
-          mockDragEnds.set(data.map((item) => item._id).join(','), onDragEnd);
-          return null;
-        })()}
-        {data.map((item, index) => (
-          <View key={item._id}>{renderItem({ item, index, isActive: false })}</View>
-        ))}
-      </View>
-    ),
+    }) => {
+      React.useEffect(() => {
+        onDropTarget(() => ({ index: 1, distance: data[0]?.status === 'watched' ? 0 : 999 }));
+        return () => onDropTarget(undefined);
+      }, [onDropTarget, data]);
+      return (
+        <View>
+          {(() => {
+            const key = data.map((item) => item._id).join(',');
+            mockDragBegins.set(key, onDragBegin);
+            mockDragMoves.set(key, onDragMove);
+            mockDragEnds.set(key, onDragEnd);
+            return null;
+          })()}
+          {data.map((item, index) => (
+            <View key={item._id}>{renderItem({ item, index, isActive: false })}</View>
+          ))}
+        </View>
+      );
+    },
   };
 });
 jest.mock('expo-image', () => ({ Image: require('react-native').Image }));
@@ -222,6 +245,8 @@ describe('Marker library', () => {
     mockMoveItemToWatched.mockReset();
     (jest.requireMock('expo-router').router.push as jest.Mock).mockReset();
     mockDragEnds.clear();
+    mockDragBegins.clear();
+    mockDragMoves.clear();
     mockQueryShouldThrow = false;
     mockUseQuery.mockImplementation((ref: unknown) => {
       if (mockQueryShouldThrow) throw new Error('query failed');
@@ -586,6 +611,38 @@ describe('Marker library', () => {
       itemId: 'b',
       beforeId: 'e',
     });
+  });
+
+  it('preserves a cross-status insertion through watched confirmation and saving', async () => {
+    let finish!: () => void;
+    mockMoveItemToWatched.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const q = await view();
+    await act(() => mockDragBegins.get('b,f')!({ item: items[1], index: 0 }));
+    await act(() => mockDragMoves.get('b,f')!({ absoluteX: 150, absoluteY: 100, scrollOffset: 0 }));
+    await act(() => mockDragEnds.get('b,f')!({ data: [items[1], items[5]], from: 0, to: 0 }));
+    expect(q.getByText('Mark as watched?')).toBeTruthy();
+    expect(mockMoveItemToWatched).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.press(q.getByText('Mark watched'));
+      await Promise.resolve();
+    });
+    expect(q.getByText('Marking watched…')).toBeTruthy();
+    expect(mockMoveItemToWatched).toHaveBeenCalledTimes(1);
+    expect(mockMoveItemToWatched).toHaveBeenCalledWith({
+      itemId: 'b',
+      beforeId: 'a',
+      afterId: 'd',
+      activityDate: localDateKey(),
+    });
+    await act(async () => {
+      finish();
+    });
+    expect(q.queryByText('Mark as watched?')).toBeNull();
   });
 
   it('moves directly into non-watched categories', async () => {

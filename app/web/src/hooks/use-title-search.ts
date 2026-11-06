@@ -1,3 +1,4 @@
+import { transitionAsync, type AsyncState } from "@marker/shared/lifecycle";
 import { runClientEffect } from "@marker/shared/clientOperations";
 import { Effect } from "effect";
 import { searchTitles } from "@marker/shared/clientEffects";
@@ -8,9 +9,7 @@ import { TITLE_SEARCH_MAX_LENGTH, type SearchResult } from "@/lib/catalog";
 
 type SearchState = {
   query: string;
-  results: SearchResult[];
-  loading: boolean;
-  error: string;
+  request: AsyncState<SearchResult[]>;
 };
 
 export function useTitleSearch(query: string, enabled = true) {
@@ -26,32 +25,37 @@ export function useTitleSearch(query: string, enabled = true) {
   const retry = useCallback(() => setAttempt((current) => current + 1), []);
   const [state, setState] = useState<SearchState>({
     query: "",
-    results: [],
-    loading: false,
-    error: "",
+    request: { state: "idle" },
   });
 
   useEffect(() => {
     if (!activeQuery) return undefined;
     const controller = new AbortController();
-    setState({ query: activeQuery, results: [], loading: true, error: "" });
+    setState({
+      query: activeQuery,
+      request: { state: "pending", version: attempt },
+    });
     void runClientEffect(
       searchTitles(() => search({ query: activeQuery })).pipe(
         Effect.match({
           onSuccess: (results) =>
-            setState({
+            setState((current) => ({
               query: activeQuery,
-              results,
-              loading: false,
-              error: "",
-            }),
+              request: transitionAsync(current.request, {
+                type: "succeed",
+                version: attempt,
+                value: results,
+              }),
+            })),
           onFailure: () =>
-            setState({
+            setState((current) => ({
               query: activeQuery,
-              results: [],
-              loading: false,
-              error: "Search is unavailable right now.",
-            }),
+              request: transitionAsync(current.request, {
+                type: "fail",
+                version: attempt,
+                error: "Search is unavailable right now.",
+              }),
+            })),
         }),
       ),
       { signal: controller.signal },
@@ -69,5 +73,10 @@ export function useTitleSearch(query: string, enabled = true) {
   if (!activeQuery) return { retry, results: [], loading: false, error: "" };
   if (state.query !== activeQuery)
     return { retry, results: [], loading: true, error: "" };
-  return { ...state, retry };
+  return {
+    retry,
+    results: state.request.state === "succeeded" ? state.request.value : [],
+    loading: state.request.state === "pending",
+    error: state.request.state === "failed" ? state.request.error : "",
+  };
 }

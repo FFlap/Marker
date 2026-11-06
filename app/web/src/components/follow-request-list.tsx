@@ -1,3 +1,4 @@
+import { usePendingTasks } from "@/hooks/use-pending-tasks";
 import { Effect } from "effect";
 import { saveProfile } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
@@ -14,7 +15,7 @@ export function FollowRequestList({ compact = false }: { compact?: boolean }) {
   const requests = useQuery(api.profiles.followRequests, {});
   const respond = useMutation(api.profiles.respondToFollow);
   const activeRequests = useRef(new Set<string>());
-  const [pending, setPending] = useState<Set<string>>(() => new Set());
+  const [pending, setPending] = usePendingTasks();
   const [error, setError] = useState("");
 
   const handleRequest = async (username: string, accept: boolean) => {

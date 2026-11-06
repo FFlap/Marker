@@ -82,7 +82,10 @@ export class StartupSnapshotStore {
   private generation = 0;
   private pending: Promise<void> = Promise.resolve();
   private snapshot: StartupSnapshot | null = null;
-  private loaded: Promise<StartupSnapshot | null> | undefined;
+  private hydration:
+    { state: 'unread' } | { state: 'reading'; pending: Promise<StartupSnapshot | null> } = {
+    state: 'unread',
+  };
   constructor(
     private readonly storage: {
       read(): Promise<string | null>;
@@ -92,9 +95,9 @@ export class StartupSnapshotStore {
   ) {}
 
   read() {
-    if (!this.loaded) {
+    if (this.hydration.state === 'unread') {
       const generation = this.generation;
-      this.loaded = this.storage
+      const pending = this.storage
         .read()
         .then((text) => {
           if (generation === this.generation)
@@ -102,8 +105,9 @@ export class StartupSnapshotStore {
           return this.snapshot;
         })
         .catch(() => null);
+      this.hydration = { state: 'reading', pending };
     }
-    return this.loaded.then(() => this.snapshot);
+    return this.hydration.pending.then(() => this.snapshot);
   }
 
   save(scope: SnapshotScope, data: StartupData) {

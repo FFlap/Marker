@@ -1,3 +1,4 @@
+import { advanceCollection, type CollectionPagination } from '@marker/shared/lifecycle';
 import { ScreenView } from '@/components/ScreenLayout';
 import { useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
@@ -39,8 +40,14 @@ export default function GlobalTagScreen() {
 }
 
 function GlobalTagRoute({ tag }: { tag: string }) {
-  const [pageCursor, setPageCursor] = useState<string>();
-  const [previousPages, setPreviousPages] = useState<PublicCollection[]>([]);
+  const [pagination, setPagination] = useState<CollectionPagination<PublicCollection>>({
+    state: 'initial',
+  });
+  const pageCursor = pagination.state === 'continuation' ? pagination.cursor : undefined;
+  const previousPages = useMemo(
+    () => (pagination.state === 'continuation' ? pagination.pages : []),
+    [pagination],
+  );
   const collectionPage = useQuery(
     api.tags.publicDetails,
     tag ? { tag, cursor: pageCursor } : 'skip',
@@ -63,8 +70,7 @@ function GlobalTagRoute({ tag }: { tag: string }) {
   const nextCursor = collectionPage?.nextCursor;
   const loadMore = () => {
     if (!collectionPage || !nextCursor) return;
-    setPreviousPages((current) => [...current, collectionPage]);
-    setPageCursor(nextCursor);
+    setPagination((current) => advanceCollection(current, collectionPage, nextCursor));
   };
   const library = useQuery(api.library.items.listItems);
   const settings = useQuery(api.settings.getSettings);

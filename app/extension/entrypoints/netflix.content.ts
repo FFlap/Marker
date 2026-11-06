@@ -3,7 +3,11 @@ import {
   parseNetflixPage,
   parseNetflixWatchPath,
 } from "../src/domain/netflix-parser";
-import { persistDetectedEpisode } from "../src/domain/tracking";
+import {
+  persistDetectedEpisode,
+  transitionInspection,
+  type InspectionState,
+} from "../src/domain/tracking";
 
 export default defineContentScript({
   matches: ["https://www.netflix.com/*"],
@@ -14,10 +18,8 @@ export default defineContentScript({
     );
     document.documentElement.dataset.markerNetflix = "loaded";
     let lastUrl = location.href;
-    let lastSavedVideoId: string | null = null;
+    let inspection: InspectionState = { state: "waiting", lastEpisode: null };
     let inspectionTimer: ReturnType<typeof setTimeout> | undefined;
-    let saveInFlight = false;
-    let inspectAgain = false;
 
     const schedule = (delay = 150, replace = false) => {
       if (!lifetime.active) return;
@@ -29,8 +31,8 @@ export default defineContentScript({
     const inspect = async () => {
       if (!lifetime.active) return;
       inspectionTimer = undefined;
-      if (saveInFlight) {
-        inspectAgain = true;
+      if (inspection.state === "saving") {
+        inspection = transitionInspection(inspection, { type: "inspect" });
         return;
       }
       const bookmark = parseNetflixPage(document, new URL(location.href));
@@ -39,30 +41,35 @@ export default defineContentScript({
         return;
       }
 
-      if (bookmark.episodeId === lastSavedVideoId) return;
+      if (bookmark.episodeId === inspection.lastEpisode) return;
 
-      saveInFlight = true;
+      inspection = transitionInspection(inspection, { type: "save" });
       document.documentElement.dataset.markerNetflix = "saving";
+      let inspectAgain = false;
       try {
         await persistDetectedEpisode(bookmark, undefined, lifetime.signal);
         if (!lifetime.active) return;
-        lastSavedVideoId = bookmark.episodeId;
+        inspectAgain = inspection.state === "saving" && inspection.inspectAgain;
+        inspection = transitionInspection(inspection, {
+          type: "saved",
+          episodeId: bookmark.episodeId,
+        });
         document.documentElement.dataset.markerNetflix = "tracked";
       } catch {
+        inspectAgain = inspection.state === "saving" && inspection.inspectAgain;
+        inspection = transitionInspection(inspection, { type: "failed" });
         if (!lifetime.active) return;
         document.documentElement.dataset.markerNetflix = "error";
         console.error("[Marker] Failed to save Netflix episode");
       } finally {
-        saveInFlight = false;
         if (inspectAgain && lifetime.active) {
-          inspectAgain = false;
           schedule(0, true);
         }
       }
     };
 
     const resetForNavigation = () => {
-      lastSavedVideoId = null;
+      inspection = transitionInspection(inspection, { type: "navigate" });
       schedule(0, true);
     };
 
@@ -101,7 +108,7 @@ export default defineContentScript({
       if (location.href !== lastUrl) {
         lastUrl = location.href;
         resetForNavigation();
-      } else if (!lastSavedVideoId) {
+      } else if (!inspection.lastEpisode) {
         schedule(0, true);
       }
     }, 250);
