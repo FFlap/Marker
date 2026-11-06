@@ -160,11 +160,9 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const visibleCast = castForDisplay(meta.cast ?? [], meta.genres);
   const overview = meta.overview?.trim();
   const availableSeasons = getAvailableSeasons(meta.seasons);
-  const averageRuntime =
-    detail?.runtime ??
-    (detail?.episodeRunTime?.length
-      ? detail.episodeRunTime.reduce((sum, value) => sum + value, 0) / detail.episodeRunTime.length
-      : undefined);
+  const averageRuntime = detail?.episodeRunTime?.length
+    ? detail.episodeRunTime.reduce((sum, value) => sum + value, 0) / detail.episodeRunTime.length
+    : undefined;
   const initialEntry: LibraryEntryDraft = {
     status: 'watchlist',
     rating: undefined,
@@ -383,30 +381,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                 {overview}
               </Text>
             ) : null}
-
-            <View style={s.facts}>
-              {detail ? (
-                <>
-                  <View style={s.fact}>
-                    <Text style={s.factLabel}>Runtime</Text>
-                    <Text style={s.factValue}>
-                      {averageRuntime === undefined ? '—' : `${Math.round(averageRuntime)} min`}
-                    </Text>
-                  </View>
-                  <View style={s.fact}>
-                    <Text style={s.factLabel}>Rating</Text>
-                    <Text style={s.factValue}>
-                      {detail.voteAverage === undefined ? '—' : detail.voteAverage.toFixed(1)}
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <MetadataPlaceholder label="Loading runtime" kind="stat" />
-                  <MetadataPlaceholder label="Loading rating" kind="stat" />
-                </>
-              )}
-            </View>
 
             {loading && heroOwner !== 'preview' && <TitleSkeleton />}
             {failed && (

@@ -113,8 +113,6 @@ export const mergeTitle = (
       ...(base.posterPath && { posterPath: base.posterPath }),
       ...(base.overview && { overview: base.overview }),
       ...(base.releaseDate && { releaseDate: base.releaseDate }),
-      ...(base.voteAverage !== undefined && { voteAverage: base.voteAverage }),
-      ...(base.runtime !== undefined && { runtime: base.runtime }),
       episodeRunTime: [],
       genres: base.genres,
       cast: base.cast ?? [],
@@ -136,7 +134,6 @@ export const mergeTitle = (
     ...(base.overview && { overview: base.overview }),
     ...(base.releaseDate && { releaseDate: base.releaseDate }),
     ...(base.firstAirDate && { firstAirDate: base.firstAirDate }),
-    ...(base.voteAverage !== undefined && { voteAverage: base.voteAverage }),
     episodeRunTime: anime?.episodeRunTime.length
       ? anime.episodeRunTime
       : (base.episodeRunTime ?? []),

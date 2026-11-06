@@ -122,11 +122,9 @@ export const refreshItemProjections = internalMutation({
       .query('items')
       .withIndex('by_media_tmdb', (query) => query.eq('mediaType', type).eq('tmdbId', tmdbId))
       .paginate({ cursor: cursor ?? null, numItems: 10 });
-    const runtime =
-      title.runtime ??
-      (title.episodeRunTime.length
-        ? title.episodeRunTime.reduce((sum, value) => sum + value, 0) / title.episodeRunTime.length
-        : undefined);
+    const runtime = title.episodeRunTime.length
+      ? title.episodeRunTime.reduce((sum, value) => sum + value, 0) / title.episodeRunTime.length
+      : undefined;
     for (const item of page.page) {
       if (
         item.title !== title.title ||
@@ -140,7 +138,7 @@ export const refreshItemProjections = internalMutation({
         posterPath: title.posterPath,
         overview: title.overview,
         releaseDate: title.releaseDate ?? title.firstAirDate,
-        runtime,
+        runtime: type === 'movie' ? item.runtime : runtime,
         genres: title.genres,
         isAnime: title.genres.some((genre) => genre.toLowerCase() === 'anime'),
       };
@@ -156,8 +154,8 @@ export const refreshItemProjections = internalMutation({
           title: title.title,
           posterPath: title.posterPath,
         });
-      if (item.runtime !== runtime)
-        await updateProfileStatsForItem(ctx, item, { ...item, runtime });
+      if (item.runtime !== display.runtime)
+        await updateProfileStatsForItem(ctx, item, { ...item, runtime: display.runtime });
       if (type === 'tv') {
         await ctx.scheduler.runAfter(0, internal.nextEpisode.startNextEpisodeRefresh, {
           itemId: item._id,
