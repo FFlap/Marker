@@ -76,21 +76,25 @@ export async function setEpisode(
   boundedOptional('Episode image URL', args.imageUrl, 500);
   boundedOptional('Episode air date', args.airDate, 50);
   const tags = args.tags === undefined ? undefined : normalizeTags(args.tags);
-  const existing = batch
-    ? batch.existing
-    : await ctx.db
-        .query('episodes')
-        .withIndex('by_item', (q) =>
-          q.eq('itemId', args.itemId).eq('season', args.season).eq('episode', args.episode),
-        )
-        .unique();
+  const [existing, stamp] = await Promise.all([
+    batch
+      ? Promise.resolve(batch.existing)
+      : ctx.db
+          .query('episodes')
+          .withIndex('by_item', (q) =>
+            q.eq('itemId', args.itemId).eq('season', args.season).eq('episode', args.episode),
+          )
+          .unique(),
+    args.stamp
+      ? Promise.resolve(args.stamp)
+      : episodeMetadataStamp(ctx, item, args.season, args.episode),
+  ]);
   const watched = args.watched ?? existing?.watched ?? false;
   const nextRating = args.clearRating
     ? undefined
     : args.rating !== undefined
       ? args.rating
       : existing?.rating;
-  const stamp = args.stamp ?? (await episodeMetadataStamp(ctx, item, args.season, args.episode));
   const { activityDate } = args;
   const materializeDisplay = watched || nextRating !== undefined;
   const display = {
