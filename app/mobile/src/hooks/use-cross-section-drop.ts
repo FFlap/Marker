@@ -8,6 +8,7 @@ export function useCrossSectionDrop() {
   const indexRef = useRef<number | undefined>(undefined);
   const [index, setIndex] = useState<number>();
   const pendingIndex = useRef<number | undefined>(undefined);
+  /** Resolve a measured slot from window coordinates and the parent scroll offset. */
   const update = (status: Status | undefined, x: number, y: number, offset: number) => {
     // Window geometry accounts for parent padding and the current scroll offset.
     let selected: ReturnType<NativeGridDropTarget> | undefined;
@@ -26,6 +27,7 @@ export function useCrossSectionDrop() {
     setIndex(next);
     return status;
   };
+  /** Clear hover state while retaining placement for a pending Watched confirmation. */
   const clear = () => {
     indexRef.current = undefined;
     setIndex(undefined);
