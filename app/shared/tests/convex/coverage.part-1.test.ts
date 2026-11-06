@@ -396,13 +396,12 @@ describe('TVDB provider snapshots', () => {
     expect(guide).toMatchObject({
       tvdbId: 457078,
       selectedSeason: 1,
-      selectedEpisodes: [{ season: 1, episode: 1, name: 'Ready immediately' }],
     });
     expect(
       fetchMock.mock.calls.some(([input]) =>
         String(input).includes('/episodes/official/eng?page=0'),
       ),
-    ).toBe(true);
+    ).toBe(false);
     const callsAfterResolve = fetchMock.mock.calls.length;
     await t
       .action(internal.tvdb.refreshTitleExtras, { tmdbId: 123, title: 'Snapshot Anime' })
@@ -423,6 +422,6 @@ describe('TVDB provider snapshots', () => {
         imageUrl: 'https://artworks.thetvdb.com/banners/v4/episode/100/screencap.jpg',
       },
     ]);
-    expect(fetchMock).toHaveBeenCalledTimes(callsAfterResolve);
+    expect(fetchMock).toHaveBeenCalledTimes(callsAfterResolve + 1);
   });
 });

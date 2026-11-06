@@ -55,6 +55,16 @@ export const characterArtworkValidator = v.object({
   personName: v.optional(v.string()),
 });
 export const animeGuideValidator = v.object({
+  seasonRecords: v.optional(
+    v.array(
+      v.object({
+        id: v.number(),
+        number: v.number(),
+        name: v.string(),
+        translatedName: v.optional(v.string()),
+      }),
+    ),
+  ),
   characters: v.optional(v.array(characterArtworkValidator)),
   tvdbId: v.number(),
   title: v.string(),

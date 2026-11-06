@@ -25,7 +25,7 @@ import {
 } from '../seasonStorage';
 
 type CanonicalPublication = {
-  forceEnrichment?: boolean;
+  forceSeasonSummaries?: boolean;
   title: ResolvedTitle;
   titleWrite: 'replace' | 'seasonPatch';
   season?: { season: number; episodeCount: number };
@@ -57,11 +57,10 @@ export async function publishCanonicalMetadata(
     if (existingTitle) await ctx.db.replace(existingTitle._id, title);
     else await ctx.db.insert('resolvedTitles', title);
     if (title.metadataProvider === 'tvdb')
-      await ctx.scheduler.runAfter(1_000, internal.resolvedMetadata.enrichment.enrichTitle, {
-        mediaType: title.mediaType,
+      await ctx.scheduler.runAfter(0, internal.resolvedMetadata.seasonSummaries.refresh, {
         tmdbId: title.tmdbId,
         refreshedAt: title.refreshedAt,
-        forceCatalog: args.forceEnrichment,
+        forceCatalog: args.forceSeasonSummaries,
       });
     await ctx.scheduler.runAfter(0, internal.resolvedMetadata.publication.refreshItemProjections, {
       mediaType: title.mediaType,
@@ -284,7 +283,7 @@ async function visiblePublicationOutcomes(
 export const commitRefresh = internalMutation({
   args: {
     title: resolvedTitleValidator,
-    forceEnrichment: v.optional(v.boolean()),
+    forceSeasonSummaries: v.optional(v.boolean()),
     titleWrite: v.optional(v.union(v.literal('replace'), v.literal('seasonPatch'))),
     season: v.optional(
       v.object({
@@ -401,7 +400,7 @@ export const commitRefresh = internalMutation({
       ctx,
       {
         title: args.title,
-        forceEnrichment: args.forceEnrichment,
+        forceSeasonSummaries: args.forceSeasonSummaries,
         titleWrite: args.titleWrite ?? 'replace',
         ...(args.season && {
           season: { season: args.season.season, episodeCount: args.season.episodeCount },

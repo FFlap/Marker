@@ -5,15 +5,12 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getClerkUserId } from '../clerkAuth';
-import { releasedEpisodes } from '../episodeAvailability';
 import { withCharacterArtwork, type CharacterArtwork } from '../characterArtwork';
 import { validateTmdbId } from '../providerValidation';
 import { refreshLeaseKey, requestKey } from './requests';
 import { resolveAndCommitCanonical } from './seasonResolution';
 import {
-  cleanEpisode,
   mediaType,
-  mergeEpisodes,
   mergeTitle,
   PARTIAL_RETRY_MS,
   REFRESH_LEASE_MS,
@@ -25,7 +22,7 @@ import {
   type ProviderTitle,
   type ResolvedTitle,
 } from './shared';
-import { type AssembledSeason, type ResolvedEpisode } from '../seasonStorage';
+import { type AssembledSeason } from '../seasonStorage';
 
 export async function authorizeRefresh(ctx: { runMutation: Function }, userId: string) {
   const allowed = await ctx.runMutation(internal.providerRateLimits.consumeThrottle, {
@@ -33,8 +30,6 @@ export async function authorizeRefresh(ctx: { runMutation: Function }, userId: s
   });
   if (!allowed) throw new Error('Too many metadata refreshes — try again shortly');
 }
-
-export type ProviderOutcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
 export const pause = (milliseconds: number) => runActionEffect(Effect.sleep(milliseconds));
 
@@ -71,10 +66,7 @@ export async function resolveFreshTitle(
   args: { mediaType: MediaType; tmdbId: number; title?: string },
   current: Doc<'resolvedTitles'> | null,
   mapping: Doc<'titleMappings'> | null,
-  loadSelectedSeason = true,
   force = false,
-  requestedSeason?: number,
-  metadataOnly = true,
 ) {
   const manuallyPinnedMapping =
     mapping?.source === 'manual' &&
@@ -108,7 +100,6 @@ export async function resolveFreshTitle(
                 () =>
                   ctx.runAction(internal.tvdb.refreshTitleExtras, {
                     tmdbId: args.tmdbId,
-                    metadataOnly,
                     ...(!knownTvdbId &&
                       base.tvdbId && {
                         tvdbIdHint: base.tvdbId,
@@ -116,7 +107,6 @@ export async function resolveFreshTitle(
                     title: base.title,
                     ...(base.originalTitle && { originalTitle: base.originalTitle }),
                     force,
-                    ...(requestedSeason !== undefined && { requestedSeason }),
                     ...(knownTvdbId && {
                       tvdbId: knownTvdbId,
                       ...(manuallyPinnedMapping && { order: manuallyPinnedMapping.seasonOrder }),
@@ -157,24 +147,6 @@ export async function resolveFreshTitle(
       const seasons = anime ? anime.seasons : (tmdb.seasons ?? []);
       const selectedSeason =
         anime?.selectedSeason ?? seasons.find((entry) => entry.season > 0)?.season;
-      const tmdbSeasonResult: ProviderOutcome<ResolvedEpisode[]> =
-        loadSelectedSeason && args.mediaType === 'tv' && selectedSeason !== undefined
-          ? yield* providerOutcome(
-              attempt(
-                () =>
-                  ctx.runAction(internal.tmdb.refreshSeasonDetails, {
-                    tmdbId: args.tmdbId,
-                    season: selectedSeason,
-                    force,
-                  }) as Promise<ResolvedEpisode[]>,
-              ),
-            )
-          : { ok: true, value: [] };
-      if (!tmdbSeasonResult.ok) {
-        partial = true;
-        partialError ??= tmdbSeasonResult.error;
-      }
-      const tmdbEpisodes = tmdbSeasonResult.ok ? tmdbSeasonResult.value : [];
       if (current)
         tmdb.cast = withCharacterArtwork(
           tmdb.cast ?? [],
@@ -229,11 +201,6 @@ export async function resolveFreshTitle(
         partial,
         partialError: actionFailureCause(partialError),
         selectedSeason,
-        selectedEpisodes: anime
-          ? anime.selectedEpisodes === undefined
-            ? undefined
-            : mergeEpisodes(anime.selectedEpisodes, tmdbEpisodes)
-          : releasedEpisodes(tmdbEpisodes).map(cleanEpisode),
       };
     }),
   );

@@ -115,5 +115,9 @@ it('resolves four aired seasons after an old one-season lookup was cached', asyn
     .then((result) => result.anime);
   expect(guide).toMatchObject({ tvdbId: 352408, order: 'official' });
   expect(guide?.seasons.map((season) => season.season)).toEqual([0, 1, 2, 3, 4]);
-  expect(guide?.selectedEpisodes?.[0].name).toBe('The Storm Dragon, Veldora');
+  expect(
+    (
+      await t.action(internal.tvdb.refreshSeason, { tvdbId: 352408, order: 'official', season: 1 })
+    )[0].name,
+  ).toBe('The Storm Dragon, Veldora');
 });

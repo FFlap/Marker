@@ -11,7 +11,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it('loads counts for unselected seasons in the chosen order and caches the complete guide', async () => {
+it('loads counts for unselected seasons in the chosen order and caches title identity', async () => {
   const t = convexTest({ schema, modules });
   vi.stubEnv('TVDB_API_KEY', 'test-key');
   const json = (data: unknown) => new Response(JSON.stringify({ data }));
@@ -61,9 +61,19 @@ it('loads counts for unselected seasons in the chosen order and caches the compl
   });
   vi.stubGlobal('fetch', fetchMock);
   const args = { tmdbId: 88, tvdbId: 222, title: 'Test anime', order: 'dvd' };
-  const guide = await t
-    .action(internal.tvdb.refreshTitleExtras, args)
-    .then((result) => result.anime);
+  const guide = await t.action(internal.tvdb.refreshTitleExtras, args).then(
+    async ({ anime }) =>
+      anime && {
+        ...anime,
+        seasons: await t.action(internal.tvdb.loadSeasonSummaries, {
+          tmdbId: 88,
+          tvdbId: anime.tvdbId,
+          order: anime.order,
+          title: anime.title,
+          seasons: anime.seasons,
+        }),
+      },
+  );
   expect(guide?.seasons).toMatchObject([
     { season: 0, episodeCount: 0 },
     { season: 1, episodeCount: 1 },
@@ -77,13 +87,12 @@ it('loads counts for unselected seasons in the chosen order and caches the compl
     ).toBe(false);
   }
   const requests = fetchMock.mock.calls.length;
-  expect(
-    await t.action(internal.tvdb.refreshTitleExtras, args).then((result) => result.anime),
-  ).toEqual(guide);
+  const cached = await t.action(internal.tvdb.refreshTitleExtras, args);
+  expect(cached.anime?.tvdbId).toBe(222);
   expect(fetchMock).toHaveBeenCalledTimes(requests);
 });
 
-it('bounds eager count requests while preserving the full season list', async () => {
+it('bounds season translation requests while preserving the full season list', async () => {
   const t = convexTest({ schema, modules });
   vi.stubEnv('TVDB_API_KEY', 'test-key');
   const json = (data: unknown) => new Response(JSON.stringify({ data }));
@@ -112,9 +121,20 @@ it('bounds eager count requests while preserving the full season list', async ()
       tvdbId: 333,
       title: 'Long anime',
       order: 'dvd',
-      requestedSeason: 79,
     })
-    .then((result) => result.anime);
+    .then(
+      async ({ anime }) =>
+        anime && {
+          ...anime,
+          seasons: await t.action(internal.tvdb.loadSeasonSummaries, {
+            tmdbId: 89,
+            tvdbId: anime.tvdbId,
+            order: anime.order,
+            title: anime.title,
+            seasons: anime.seasons,
+          }),
+        },
+    );
   expect(guide?.seasons).toHaveLength(80);
   expect(
     fetchMock.mock.calls.filter(([url]) => /\/seasons\/\d+\/extended$/.test(String(url))),
@@ -183,14 +203,29 @@ it('builds a complete default aired-order guide from one translated catalog, inc
       order: 'official',
       force: true,
     })
-    .then((result) => result.anime);
+    .then(
+      async ({ anime }) =>
+        anime && {
+          ...anime,
+          seasons: await t.action(internal.tvdb.loadSeasonSummaries, {
+            tmdbId: 91,
+            tvdbId: anime.tvdbId,
+            order: anime.order,
+            title: anime.title,
+            seasons: anime.seasons,
+          }),
+        },
+    );
   expect(guide?.seasons).toMatchObject([
     { season: 0, episodeCount: 0, episodeCountVerified: true },
     { season: 1, episodeCount: 1, episodeCountVerified: true },
     { season: 2, episodeCount: 1, episodeCountVerified: true },
     { season: 3, episodeCount: 0, episodeCountVerified: true },
   ]);
-  expect(guide?.selectedEpisodes?.[0].name).toBe('English pilot');
+  expect(
+    (await t.action(internal.tvdb.refreshSeason, { tvdbId: 555, order: 'official', season: 1 }))[0]
+      .name,
+  ).toBe('English pilot');
   expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/episodes/'))).toHaveLength(
     3,
   );
@@ -234,11 +269,23 @@ it('rejects an incomplete translated catalog instead of publishing incorrect ver
         order: 'official',
         force: true,
       })
-      .then((result) => result.anime),
+      .then(
+        async ({ anime }) =>
+          anime && {
+            ...anime,
+            seasons: await t.action(internal.tvdb.loadSeasonSummaries, {
+              tmdbId: 92,
+              tvdbId: anime.tvdbId,
+              order: anime.order,
+              title: anime.title,
+              seasons: anime.seasons,
+            }),
+          },
+      ),
   ).rejects.toThrow('incomplete catalog');
 });
 
-it('publishes confirmed identity and basic names without season enrichment in metadata mode', async () => {
+it('publishes confirmed identity and basic names without loading the season catalog', async () => {
   const t = convexTest({ schema, modules });
   vi.stubEnv('TVDB_API_KEY', 'test-key');
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
@@ -286,7 +333,6 @@ it('publishes confirmed identity and basic names without season enrichment in me
     tvdbId: 557,
     title: 'Metadata anime',
     force: true,
-    metadataOnly: true,
   });
   expect(result.anime?.seasons).toMatchObject([
     { name: 'Season 1', episodeCount: 0, episodeCountVerified: false },
@@ -354,7 +400,6 @@ it('validates a TMDB TVDB-ID hint and falls back when TVDB contradicts the ident
     tmdbId: 94,
     tvdbIdHint: 558,
     title: 'Right anime',
-    metadataOnly: true,
     force: true,
   });
   expect(result.anime).toMatchObject({
@@ -398,7 +443,6 @@ it('uses a verified external ID without a redundant TVDB search', async () => {
     tmdbId: 95,
     tvdbIdHint: 560,
     title: 'Verified anime',
-    metadataOnly: true,
     force: true,
   });
   expect(result.anime?.tvdbId).toBe(560);
@@ -422,7 +466,7 @@ it('does no speculative season work when the provider changes season identity', 
     });
   });
   vi.stubGlobal('fetch', fetchMock);
-  const args = { tmdbId: 96, tvdbId: 561, title: 'Anime', metadataOnly: true, force: true };
+  const args = { tmdbId: 96, tvdbId: 561, title: 'Anime', force: true };
   await t.action(internal.tvdb.refreshTitleExtras, args);
   seasonId = 52;
   const result = await t.action(internal.tvdb.refreshTitleExtras, args);

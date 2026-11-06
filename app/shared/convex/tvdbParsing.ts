@@ -26,6 +26,7 @@ export type SeasonRecord = {
   episodeCount?: number;
 };
 export type AnimeDetails = {
+  seasonRecords?: Pick<SeasonRecord, 'id' | 'number' | 'name' | 'translatedName'>[];
   characters?: CharacterArtwork[];
   tvdbId: number;
   title: string;
@@ -40,12 +41,6 @@ export type AnimeDetails = {
     episodeCountVerified: boolean;
   }[];
   selectedSeason?: number;
-  selectedEpisodes?: AnimeEpisode[];
-};
-export type AnimeResolution = {
-  details: AnimeDetails;
-  episodes?: AnimeEpisode[];
-  seasonIds?: { id: number; season: number }[];
 };
 
 const MAX_SEASON_TRANSLATIONS = 64;

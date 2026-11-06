@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { internal, api } from '../../convex/_generated/api';
 import schema from '../../convex/schema';
 import { reusableCatalog } from '../../convex/tvdbCatalog';
-import { enrichTitle, nextReleaseBoundary } from '../../convex/resolvedMetadata/enrichment';
+import { refresh, nextReleaseBoundary } from '../../convex/resolvedMetadata/seasonSummaries';
 import type { ActionCtx } from '../../convex/_generated/server';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
@@ -78,14 +78,13 @@ const movie = () => ({
 });
 
 it.each(['movie', 'tv'] as const)(
-  'skips background enrichment for TMDB %s titles',
+  'skips background season summary refresh for TMDB %s titles',
   async (mediaType) => {
     const { t, ctx } = setup();
     const title = { ...movie(), mediaType };
     await t.run((ctx) => ctx.db.insert('resolvedTitles', title));
     const runAction = vi.fn();
-    await enrichTitle._handler({ ...ctx, runAction } as ActionCtx, {
-      mediaType,
+    await refresh._handler({ ...ctx, runAction } as ActionCtx, {
       tmdbId: 77,
       refreshedAt: title.refreshedAt,
     });
@@ -133,7 +132,7 @@ it('bounds definitive guide misses without caching transient errors or suppressi
   });
   vi.stubGlobal('fetch', fetchMock);
   try {
-    const args = { tmdbId: 10, tvdbId: 10, title: 'Drama', metadataOnly: true };
+    const args = { tmdbId: 10, tvdbId: 10, title: 'Drama' };
     expect((await t.action(internal.tvdb.refreshTitleExtras, args)).anime).toBeNull();
     const count = fetchMock.mock.calls.length;
     await t.action(internal.tvdb.refreshTitleExtras, args);
@@ -195,7 +194,7 @@ it('loads selected and sibling seasons from one English catalog and refetches on
   }
 });
 
-it('fences enrichment when a manual mapping changes during provider work', async () => {
+it('fences season summary refresh when a manual mapping changes during provider work', async () => {
   const { t, ctx } = setup();
   const title = {
     ...movie(),
@@ -221,17 +220,9 @@ it('fences enrichment when a manual mapping changes during provider work', async
       const mapping = (await ctx.db.query('titleMappings').collect())[0]!;
       await ctx.db.patch(mapping._id, { source: 'manual', tvdbId: 456, orderEpoch: 1 });
     });
-    return {
-      anime: {
-        tvdbId: 123,
-        order: 'official',
-        seasons: [{ season: 1, name: 'Obsolete', episodeCount: 3 }],
-      },
-      characters: [],
-    };
+    return [{ season: 1, name: 'Obsolete', episodeCount: 3, episodeCountVerified: true }];
   });
-  await enrichTitle._handler({ ...ctx, runAction } as unknown as ActionCtx, {
-    mediaType: 'tv',
+  await refresh._handler({ ...ctx, runAction } as unknown as ActionCtx, {
     tmdbId: 77,
     refreshedAt: title.refreshedAt,
   });
@@ -255,7 +246,6 @@ it('does not record a guide miss after a transient provider failure', async () =
         tmdbId: 12,
         tvdbId: 12,
         title: 'Anime',
-        metadataOnly: true,
       }),
     ).rejects.toThrow();
     expect(
@@ -271,7 +261,7 @@ it('does not record a guide miss after a transient provider failure', async () =
   }
 });
 
-it('keeps interactive leases available and preserves season counts published during enrichment', async () => {
+it('keeps interactive leases available and preserves season counts published during season summary refresh', async () => {
   const { t, ctx } = setup();
   const title = {
     ...movie(),
@@ -313,17 +303,9 @@ it('keeps interactive leases available and preserves season counts published dur
         ],
       }),
     );
-    return {
-      anime: {
-        tvdbId: 123,
-        order: 'official',
-        seasons: [{ season: 1, name: 'Enriched arc', episodeCount: 7, episodeCountVerified: true }],
-      },
-      characters: [{ name: 'Hero', imageUrl: 'https://example.com/late.jpg' }],
-    };
+    return [{ season: 1, name: 'Named arc', episodeCount: 7, episodeCountVerified: true }];
   });
-  await enrichTitle._handler({ ...ctx, runAction } as unknown as ActionCtx, {
-    mediaType: 'tv',
+  await refresh._handler({ ...ctx, runAction } as unknown as ActionCtx, {
     tmdbId: 77,
     refreshedAt: title.refreshedAt,
   });
@@ -334,6 +316,140 @@ it('keeps interactive leases available and preserves season counts published dur
   expect(saved?.cast[0].characterImageUrl).toBe('https://example.com/current.jpg');
   expect(runAction).toHaveBeenCalledTimes(1);
   expect(saved?.seasons).toEqual([
-    { season: 1, name: 'Enriched arc', episodeCount: 8, episodeCountVerified: true },
+    { season: 1, name: 'Named arc', episodeCount: 8, episodeCountVerified: true },
   ]);
+});
+
+it.each(['episodes first', 'summaries first', 'concurrent'] as const)(
+  'shares one catalog and the initial series response: %s',
+  async (sequence) => {
+    const { t } = setup();
+    vi.stubEnv('TVDB_API_KEY', 'summary-reuse');
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/login')) return Response.json({ data: { token: 'token' } });
+      if (url.endsWith('/series/222/extended'))
+        return Response.json({
+          data: {
+            id: 222,
+            name: 'Test anime',
+            genres: [{ name: 'Anime' }],
+            seasons: [0, 1, 2].map((number) => ({
+              id: number + 10,
+              number,
+              type: { type: 'dvd' },
+            })),
+          },
+        });
+      if (url.includes('/episodes/dvd/eng'))
+        return Response.json({
+          data: {
+            episodes: [
+              { id: 1, seasonNumber: 1, number: 1, name: 'Pilot', aired: '2020-01-01' },
+              { id: 2, seasonNumber: 2, number: 1, name: 'Upcoming', aired: '2999-01-01' },
+            ],
+          },
+          links: { next: null },
+        });
+      if (url.endsWith('/translations/eng'))
+        return Response.json({ data: { name: 'Translated arc' } });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      // A manually pinned order also saves the initial season records for names.
+      const identity = { tmdbId: 88, tvdbId: 222, title: 'Test anime', order: 'dvd' };
+      const { anime } = await t.action(internal.tvdb.refreshTitleExtras, identity);
+      const summaries = () =>
+        t.action(internal.tvdb.loadSeasonSummaries, { ...identity, seasons: anime!.seasons });
+      const episodes = () =>
+        t.action(internal.tvdb.refreshSeason, { tvdbId: 222, order: 'dvd', season: 1 });
+      let result;
+      if (sequence === 'episodes first') {
+        await episodes();
+        result = await summaries();
+      } else if (sequence === 'summaries first') {
+        result = await summaries();
+        await episodes();
+      } else [result] = await Promise.all([summaries(), episodes()]);
+      expect(result).toEqual([
+        { season: 0, name: 'Specials', episodeCount: 0, episodeCountVerified: true },
+        { season: 1, name: 'Translated arc', episodeCount: 1, episodeCountVerified: true },
+        { season: 2, name: 'Translated arc', episodeCount: 0, episodeCountVerified: true },
+      ]);
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url).includes('/series/222/extended')),
+      ).toHaveLength(1);
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url).includes('/episodes/')),
+      ).toHaveLength(1);
+      await t.action(internal.tvdb.loadSeasonSummaries, {
+        ...identity,
+        seasons: anime!.seasons,
+        forceCatalog: true,
+      });
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url).includes('/episodes/')),
+      ).toHaveLength(2);
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url).includes('/series/222/extended')),
+      ).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  },
+);
+
+it('leaves a failed summary refresh retryable without scheduling a retry loop', async () => {
+  const { t, ctx } = setup();
+  const title = {
+    ...movie(),
+    mediaType: 'tv' as const,
+    metadataProvider: 'tvdb' as const,
+    tvdbId: 123,
+    seasonOrder: 'official',
+    seasons: [{ season: 1, name: 'Season 1', episodeCount: 0, episodeCountVerified: false }],
+  };
+  await t.run((ctx) => ctx.db.insert('resolvedTitles', title));
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+  const runAction = vi.fn().mockRejectedValue(new Error('Provider unavailable'));
+  await refresh._handler({ ...ctx, runAction } as ActionCtx, {
+    tmdbId: 77,
+    refreshedAt: title.refreshedAt,
+  });
+  expect(
+    await t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 77 }),
+  ).toMatchObject(title);
+  expect(await t.run((ctx) => ctx.db.query('metadataRefreshLeases').collect())).toEqual([]);
+  expect(await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect())).toEqual([]);
+});
+
+it('discards summaries when the title is refreshed again while provider work is in flight', async () => {
+  const { t, ctx } = setup();
+  const title = {
+    ...movie(),
+    mediaType: 'tv' as const,
+    metadataProvider: 'tvdb' as const,
+    tvdbId: 123,
+    seasonOrder: 'official',
+  };
+  const id = await t.run((ctx) => ctx.db.insert('resolvedTitles', title));
+  const runAction = vi.fn(async () => {
+    await t.run((ctx) => ctx.db.patch(id, { refreshedAt: title.refreshedAt + 1 }));
+    return [{ season: 1, name: 'Obsolete', episodeCount: 1, episodeCountVerified: true }];
+  });
+  await refresh._handler({ ...ctx, runAction } as unknown as ActionCtx, {
+    tmdbId: 77,
+    refreshedAt: title.refreshedAt,
+  });
+  expect(
+    (await t.query(internal.resolvedMetadata.reads.readTitle, { mediaType: 'tv', tmdbId: 77 }))
+      ?.seasons,
+  ).toEqual([]);
+  await refresh._handler({ ...ctx, runAction } as unknown as ActionCtx, {
+    tmdbId: 77,
+    refreshedAt: title.refreshedAt,
+  });
+  expect(runAction).toHaveBeenCalledTimes(1);
 });

@@ -170,11 +170,12 @@ describe('metadata pipeline', () => {
               episodeRunTime: [],
               seasons,
               selectedSeason: 1,
-              selectedEpisodes: [{ season: 1, episode: 1, name: 'Current episode' }],
             },
           };
         case 'tmdb:refreshSeasonDetails':
           return [];
+        case 'tvdb:refreshSeason':
+          return [{ season: 1, episode: 1, name: 'Current episode' }];
         default:
           throw new Error(`Unexpected action ${getFunctionName(reference)}`);
       }

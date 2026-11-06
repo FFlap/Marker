@@ -19,7 +19,7 @@ import {
 } from './providerValidators';
 import { mapCharacterArtwork, type CharacterArtwork } from './characterArtwork';
 import { validateTmdbId } from './providerValidation';
-import { mediaTypeValidator } from './publicValidators';
+import { mediaTypeValidator, resolvedSeasonValidator } from './publicValidators';
 import { findSeriesEffect } from './tvdbSeriesLookup';
 import { isAnime } from './mergePolicy';
 import { releasedEpisodes } from './episodeAvailability';
@@ -48,7 +48,6 @@ import {
   validOrders,
   type AnimeDetails,
   type AnimeEpisode,
-  type AnimeResolution,
   type Json,
   type SeasonOrder,
   type SeasonRecord,
@@ -64,21 +63,18 @@ export {
 } from './tvdbParsing';
 export type { AnimeDetails, AnimeEpisode, SeasonRecord } from './tvdbParsing';
 
-const TVDB_ANIME_GUIDE_VERSION = 'v12';
+const TVDB_ANIME_GUIDE_VERSION = 'v15';
 type TvdbRequestCtx = Pick<ActionCtx, 'runMutation' | 'runQuery'> & {
   reserveRequest?: () => Promise<boolean>;
-  forceCatalog?: boolean;
 };
 
-const tvdbAnimeGuideKey = (tmdbId: number, tvdbId: number, order: string, metadataOnly = false) =>
-  `tvdb:anime:${metadataOnly ? 'v14' : TVDB_ANIME_GUIDE_VERSION}:${tmdbId}:${tvdbId}:${order}`;
-
-const tvdbAnimeLookupKey = (tmdbId: number, metadataOnly = false) =>
-  `tvdb:anime:${metadataOnly ? 'v14' : TVDB_ANIME_GUIDE_VERSION}:lookup:${tmdbId}`;
+const tvdbAnimeGuideKey = (tmdbId: number, tvdbId: number, order: string) =>
+  `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:${tmdbId}:${tvdbId}:${order}`;
+const tvdbAnimeLookupKey = (tmdbId: number) =>
+  `tvdb:anime:${TVDB_ANIME_GUIDE_VERSION}:lookup:${tmdbId}`;
 
 const API_ROOT = 'https://api4.thetvdb.com/v4';
 const GUIDE_SNAPSHOT_MS = SNAPSHOT_TTL_MS;
-const INCOMPLETE_GUIDE_SNAPSHOT_MS = 5 * 60 * 1000;
 // This endpoint returns the whole series, not a single season. Allow long-running
 // catalogs while retaining a hard request bound and the traversal deadline.
 const MAX_EPISODE_CATALOG_PAGES = 100;
@@ -403,17 +399,6 @@ const downloadEpisodesEffect = Effect.fnUntraced(function* (
   return episodes;
 });
 
-const fetchEpisodesEffect = (ctx: TvdbRequestCtx, tvdbId: number, order: SeasonOrder) =>
-  attempt(() =>
-    reusableCatalog(
-      ctx,
-      tvdbId,
-      order,
-      () => runTvdbEffect(downloadEpisodesEffect(ctx, tvdbId, order)),
-      ctx.forceCatalog ?? false,
-    ),
-  );
-
 function translatedSeasonNameEffect(ctx: TvdbRequestCtx, season: SeasonRecord, titles: string[]) {
   const localName = seasonDisplayName(season.number, season.name, season.translatedName);
   const knownName = knownAnimeSeasonName(titles, season.number);
@@ -471,22 +456,12 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
   tmdbId: number,
   titles: string[],
   pinned?: { tvdbId?: number; order?: SeasonOrder; hintId?: number },
-  requestedSeason?: number,
   captureCharacters?: (characters: CharacterArtwork[]) => void,
-  metadataOnly = false,
 ) {
   const lookup = (excluded: Set<number> = new Set()) =>
     findSeriesEffect((path) => requestEffect(ctx, path, true), tmdbId, titles, excluded);
   let tvdbId = pinned?.tvdbId ?? pinned?.hintId ?? (yield* lookup());
   if (!tvdbId) return null;
-  const parallelCtx: TvdbRequestCtx = {
-    runQuery: ctx.runQuery,
-    runMutation: ctx.runMutation,
-    forceCatalog: ctx.forceCatalog,
-    reserveRequest: batchedProviderBudget(() =>
-      ctx.runMutation(internal.providerRateLimits.reserveProviderBudget, { provider: 'tvdb' }),
-    ),
-  };
   const extendedPath = (id: number) => `/series/${id}/extended`;
   const seriesRequest = requestEffect(ctx, extendedPath(tvdbId)).pipe(
     Effect.catch((error) =>
@@ -549,47 +524,13 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
     .filter((season) => season.type === order)
     .sort((left, right) => left.number - right.number);
   const selectedSeason = selectedSeasons.find((season) => season.number > 0)?.number;
-  const loadSelectedEpisodes =
-    !metadataOnly &&
-    selectedSeason !== undefined &&
-    (requestedSeason === undefined || requestedSeason === selectedSeason);
-  const [names, catalog] = metadataOnly
-    ? ([
-        new Map(
-          selectedSeasons.map((season) => [
-            season.number,
-            seasonDisplayName(
-              season.number,
-              season.name,
-              season.translatedName ?? knownAnimeSeasonName(titles, season.number),
-            ),
-          ]),
-        ),
-        undefined,
-      ] as const)
-    : yield* Effect.all(
-        [
-          translateSeasonNamesEffect(parallelCtx, selectedSeasons, titles),
-          fetchEpisodesEffect(parallelCtx, tvdbId, order),
-        ],
-        { concurrency: 2 },
-      );
-  const counts = new Map<number, number>();
-  if (catalog) {
-    for (const season of selectedSeasons) counts.set(season.number, 0);
-    for (const episode of releasedEpisodes(catalog))
-      counts.set(episode.season, (counts.get(episode.season) ?? 0) + 1);
-  }
-  const selectedEpisodes =
-    loadSelectedEpisodes && catalog ? episodesForSeason(catalog, selectedSeason) : undefined;
-  if (selectedEpisodes && selectedEpisodes.length > MAX_SEASON_EPISODES)
-    return yield* Effect.fail(
-      new ProviderIntegrationFailure({
-        provider: 'tvdb',
-        message: 'TVDB season exceeded the safety limit',
-      }),
-    );
   const details: AnimeDetails = {
+    seasonRecords: selectedSeasons.map(({ id, number, name, translatedName }) => ({
+      id,
+      number,
+      name,
+      ...(translatedName && { translatedName }),
+    })),
     characters: mapCharacterArtwork(data),
     tvdbId,
     title: text(data.name) || titles[0] || `TVDB ${tvdbId}`,
@@ -600,76 +541,41 @@ const resolveAnimeEffect = Effect.fnUntraced(function* (
     order,
     seasons: selectedSeasons.map((season) => ({
       season: season.number,
-      name:
-        names.get(season.number) ?? (season.number === 0 ? 'Specials' : `Season ${season.number}`),
-      episodeCount:
-        season.number === selectedSeason && selectedEpisodes !== undefined
-          ? releasedEpisodes(selectedEpisodes).length
-          : (counts.get(season.number) ?? 0),
-      episodeCountVerified:
-        (season.number === selectedSeason && selectedEpisodes !== undefined) ||
-        counts.has(season.number),
+      name: seasonDisplayName(
+        season.number,
+        season.name,
+        season.translatedName ?? knownAnimeSeasonName(titles, season.number),
+      ),
+      episodeCount: 0,
+      episodeCountVerified: false,
     })),
-    ...(selectedSeason !== undefined && {
-      selectedSeason,
-      ...(selectedEpisodes !== undefined && { selectedEpisodes }),
-    }),
+    ...(selectedSeason !== undefined && { selectedSeason }),
   };
-  return {
-    details,
-    episodes: selectedEpisodes,
-    seasonIds: selectedSeasons.map((season) => ({ id: season.id, season: season.number })),
-  };
+  return details;
 });
 
 type SnapshotActionCtx = TvdbRequestCtx;
 type StoredSnapshot = { value: unknown; refreshedAt: number } | null;
-const guideSnapshotFresh = (refreshedAt: number, guide: AnimeDetails) =>
-  refreshedAt >
-  Date.now() -
-    (guide.seasons.some((season) => season.episodeCountVerified === false)
-      ? INCOMPLETE_GUIDE_SNAPSHOT_MS
-      : GUIDE_SNAPSHOT_MS);
-const guideSnapshotKey = (
-  tmdbId: number,
-  tvdbId: number,
-  order: SeasonOrder,
-  metadataOnly = false,
-) => tvdbAnimeGuideKey(tmdbId, tvdbId, order, metadataOnly);
+const guideSnapshotKey = tvdbAnimeGuideKey;
 const guideLookupKey = tvdbAnimeLookupKey;
 async function refreshAnimeSnapshot(
   ctx: SnapshotActionCtx,
   tmdbId: number,
   titles: string[],
   pinned?: { tvdbId?: number; order?: SeasonOrder; hintId?: number },
-  requestedSeason?: number,
   captureCharacters?: (characters: CharacterArtwork[]) => void,
-  metadataOnly = false,
 ): Promise<AnimeDetails | null> {
-  const resolution: AnimeResolution | null = await runTvdbEffect(
-    resolveAnimeEffect(
-      ctx,
-      tmdbId,
-      titles,
-      pinned,
-      requestedSeason,
-      captureCharacters,
-      metadataOnly,
-    ),
+  const details: AnimeDetails | null = await runTvdbEffect(
+    resolveAnimeEffect(ctx, tmdbId, titles, pinned, captureCharacters),
   );
-  if (resolution) {
+  if (details) {
     await runProviderEffect(
       Effect.all(
         [
           attempt(() =>
             putNonFatal(ctx, {
-              key: guideSnapshotKey(
-                tmdbId,
-                resolution.details.tvdbId,
-                resolution.details.order,
-                metadataOnly,
-              ),
-              value: resolution.details,
+              key: guideSnapshotKey(tmdbId, details.tvdbId, details.order),
+              value: details,
               metricKey: 'tvdb-guide',
             }),
           ),
@@ -677,12 +583,11 @@ async function refreshAnimeSnapshot(
             ? [
                 attempt(() =>
                   putNonFatal(ctx, {
-                    key: guideLookupKey(tmdbId, metadataOnly),
+                    key: guideLookupKey(tmdbId),
                     value: {
-                      tvdbId: resolution.details.tvdbId,
-                      order: resolution.details.order,
+                      tvdbId: details.tvdbId,
+                      order: details.order,
                       authoritativeNames: normalizedNames(titles),
-                      ...(resolution.seasonIds && { seasonIds: resolution.seasonIds }),
                     },
                     metricKey: 'tvdb-guide-lookup',
                   }),
@@ -695,11 +600,11 @@ async function refreshAnimeSnapshot(
     );
   } else if (pinned?.tvdbId && pinned.order)
     await putNonFatal(ctx, {
-      key: guideSnapshotKey(tmdbId, pinned.tvdbId, pinned.order, metadataOnly),
+      key: guideSnapshotKey(tmdbId, pinned.tvdbId, pinned.order),
       value: null,
       metricKey: 'tvdb-guide',
     });
-  return resolution?.details ?? null;
+  return details;
 }
 
 async function animeSnapshot(
@@ -707,28 +612,21 @@ async function animeSnapshot(
   tmdbId: number,
   titles: string[],
   pinned?: { tvdbId?: number; order?: SeasonOrder; hintId?: number },
-  requestedSeason?: number,
   captureCharacters?: (characters: CharacterArtwork[]) => void,
-  metadataOnly = false,
 ): Promise<AnimeDetails | null> {
   if (pinned?.tvdbId && pinned.order) {
-    const key = guideSnapshotKey(tmdbId, pinned.tvdbId, pinned.order, metadataOnly);
+    const key = guideSnapshotKey(tmdbId, pinned.tvdbId, pinned.order);
     const stored: StoredSnapshot = await ctx.runQuery(internal.providerSnapshots.get, { key });
     if (stored && stored.refreshedAt > Date.now() - GUIDE_SNAPSHOT_MS) {
       const value = (
         isTruncatedSnapshot(stored.value) ? null : stored.value
       ) as AnimeDetails | null;
       if (stored.value === null) return null;
-      if (
-        value?.tvdbId === pinned.tvdbId &&
-        value.order === pinned.order &&
-        guideSnapshotFresh(stored.refreshedAt, value)
-      )
-        return value;
+      if (value?.tvdbId === pinned.tvdbId && value.order === pinned.order) return value;
     }
   } else if (!pinned?.order) {
     const lookup: StoredSnapshot = await ctx.runQuery(internal.providerSnapshots.get, {
-      key: guideLookupKey(tmdbId, metadataOnly),
+      key: guideLookupKey(tmdbId),
     });
     const identity = lookup?.value as
       { tvdbId?: unknown; order?: unknown; authoritativeNames?: unknown } | undefined;
@@ -746,30 +644,17 @@ async function animeSnapshot(
       cachedNames.some((value) => currentNames.has(value))
     ) {
       const stored: StoredSnapshot = await ctx.runQuery(internal.providerSnapshots.get, {
-        key: guideSnapshotKey(tmdbId, identity.tvdbId, identity.order as SeasonOrder, metadataOnly),
+        key: guideSnapshotKey(tmdbId, identity.tvdbId, identity.order as SeasonOrder),
       });
       if (stored && stored.refreshedAt > Date.now() - GUIDE_SNAPSHOT_MS) {
         const value = (
           isTruncatedSnapshot(stored.value) ? null : stored.value
         ) as AnimeDetails | null;
-        if (
-          value?.tvdbId === identity.tvdbId &&
-          value.order === identity.order &&
-          guideSnapshotFresh(stored.refreshedAt, value)
-        )
-          return value;
+        if (value?.tvdbId === identity.tvdbId && value.order === identity.order) return value;
       }
     }
   }
-  return refreshAnimeSnapshot(
-    ctx,
-    tmdbId,
-    titles,
-    pinned,
-    requestedSeason,
-    captureCharacters,
-    metadataOnly,
-  );
+  return refreshAnimeSnapshot(ctx, tmdbId, titles, pinned, captureCharacters);
 }
 
 async function loadSeasonCatalog(
@@ -795,8 +680,6 @@ async function loadSeasonCatalog(
 /** Return artwork from the same series response even when the show is not anime. */
 export const refreshTitleExtras = internalAction({
   args: {
-    metadataOnly: v.optional(v.boolean()),
-    forceCatalog: v.optional(v.boolean()),
     tvdbIdHint: v.optional(v.number()),
     tmdbId: v.number(),
     title: v.string(),
@@ -804,7 +687,6 @@ export const refreshTitleExtras = internalAction({
     tvdbId: v.optional(v.number()),
     order: v.optional(v.string()),
     force: v.optional(v.boolean()),
-    requestedSeason: v.optional(v.number()),
   },
   returns: v.object({
     anime: v.union(v.null(), animeGuideValidator),
@@ -822,7 +704,7 @@ export const refreshTitleExtras = internalAction({
           };
     const titles = authoritativeNames(args.title, args.originalTitle);
     // A definitive guide miss says nothing about character artwork availability.
-    const missKey = `tvdb:miss:guide:v1:${args.tmdbId}:${args.tvdbId ?? args.tvdbIdHint ?? 0}:${args.order ?? 'auto'}:${args.metadataOnly ?? false}`;
+    const missKey = `tvdb:miss:guide:v1:${args.tmdbId}:${args.tvdbId ?? args.tvdbIdHint ?? 0}:${args.order ?? 'auto'}`;
     if (!args.force) {
       const miss = await ctx.runQuery(internal.providerSnapshots.get, { key: missKey });
       if (
@@ -837,16 +719,13 @@ export const refreshTitleExtras = internalAction({
       {
         runQuery: ctx.runQuery,
         runMutation: ctx.runMutation,
-        forceCatalog: args.forceCatalog ?? args.force,
       },
       args.tmdbId,
       titles,
       pinned,
-      args.requestedSeason,
       (value) => {
         characters = value;
       },
-      args.metadataOnly ?? false,
     );
     if (!anime)
       await putNonFatal(ctx, {
@@ -879,4 +758,63 @@ export const refreshSeason = internalAction({
       args.season,
       args.force ?? false,
     ),
+});
+
+/** Reuse title identity and the catalog loaded by episode requests; never re-resolve the title. */
+export const loadSeasonSummaries = internalAction({
+  args: {
+    tmdbId: v.number(),
+    tvdbId: v.number(),
+    order: v.string(),
+    title: v.string(),
+    seasons: v.array(resolvedSeasonValidator),
+    forceCatalog: v.optional(v.boolean()),
+  },
+  returns: v.array(resolvedSeasonValidator),
+  handler: async (ctx, args): Promise<AnimeDetails['seasons']> => {
+    const order = validateOrder(args.order);
+    const [catalog, stored] = await Promise.all([
+      reusableCatalog(
+        ctx,
+        args.tvdbId,
+        order,
+        () => runTvdbEffect(downloadEpisodesEffect(ctx, args.tvdbId, order)),
+        args.forceCatalog ?? false,
+      ),
+      ctx.runQuery(internal.providerSnapshots.get, {
+        key: guideSnapshotKey(args.tmdbId, args.tvdbId, order),
+      }),
+    ]);
+    const guide = stored?.kind === 'tvdbGuide' ? stored.value : null;
+    const seasons = new Set(args.seasons.map((season) => season.season));
+    // The initial series response provides IDs and names, including for manual mappings.
+    // If its optional cache write failed, keep the already-published names.
+    const records = (guide?.seasonRecords ?? [])
+      .filter((season) => seasons.has(season.number))
+      .map((season) => ({ ...season, type: order }));
+    const names = await runTvdbEffect(
+      translateSeasonNamesEffect(
+        {
+          runQuery: ctx.runQuery,
+          runMutation: ctx.runMutation,
+          reserveRequest: batchedProviderBudget(() =>
+            ctx.runMutation(internal.providerRateLimits.reserveProviderBudget, {
+              provider: 'tvdb',
+            }),
+          ),
+        },
+        records,
+        [args.title],
+      ),
+    );
+    const counts = new Map<number, number>();
+    for (const episode of releasedEpisodes(catalog))
+      counts.set(episode.season, (counts.get(episode.season) ?? 0) + 1);
+    return args.seasons.map((season) => ({
+      ...season,
+      name: names.get(season.season) ?? season.name,
+      episodeCount: counts.get(season.season) ?? 0,
+      episodeCountVerified: true,
+    }));
+  },
 });

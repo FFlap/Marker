@@ -215,8 +215,10 @@ it('recovers when the search index returns a deleted series for a first-time loo
   const guide = await t
     .action(internal.tvdb.refreshTitleExtras, { tmdbId: 296286, title })
     .then((result) => result.anime);
-  expect(guide).toMatchObject({ tvdbId: 483430, selectedEpisodes: expect.any(Array) });
-  expect(guide?.selectedEpisodes).toHaveLength(12);
+  expect(guide).toMatchObject({ tvdbId: 483430 });
+  expect(
+    await t.action(internal.tvdb.refreshSeason, { tvdbId: 483430, order: guide!.order, season: 1 }),
+  ).toHaveLength(12);
 });
 it('does not rediscover a manually pinned missing TVDB record', async () => {
   const t = convexTest({ schema, modules });

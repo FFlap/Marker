@@ -144,13 +144,12 @@ it.each([
     }),
   );
   await expect(
-    t.action(internal.tvdb.refreshTitleExtras, {
+    t.action(internal.tvdb.loadSeasonSummaries, {
       tmdbId: 88,
       tvdbId: 88,
       order: 'official',
       title: 'Anime',
-      requestedSeason: 2,
-      force: true,
+      seasons: [{ season: 1, name: 'Season 1', episodeCount: 0, episodeCountVerified: false }],
     }),
   ).rejects.toThrow(/malformed/);
 });
