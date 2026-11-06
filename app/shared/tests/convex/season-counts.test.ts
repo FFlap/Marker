@@ -498,7 +498,7 @@ it.each([true, false])(
       }),
     ).rejects.toThrow('safety limit');
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/episodes/'))).toHaveLength(
-      withTotals ? 1 : 100,
+      100,
     );
     expect(
       await t.query(internal.providerSnapshots.get, { key: 'tvdb:season:555:official:1' }),
@@ -510,8 +510,11 @@ it.each([
   { title: 'Honey Lemon Soda', count: 12, reportedTotal: 13, pageSize: 500 },
   { title: 'Spice and Wolf', count: 52, reportedTotal: 53, pageSize: 500 },
   { title: 'Multiple pages', count: 3, reportedTotal: 4, pageSize: 2 },
+  { title: 'Overstated page count', count: 4, reportedTotal: 5, pageSize: 2 },
+  { title: 'Understated page count', count: 5, reportedTotal: 4, pageSize: 2 },
+  { title: 'Understated single page', count: 3, reportedTotal: 1, pageSize: 2 },
 ])(
-  'loads $title when TVDB overstates the translated total',
+  'loads $title when TVDB misstates the translated total',
   async ({ count, reportedTotal, pageSize }) => {
     const t = convexTest({ schema, modules });
     vi.stubEnv('TVDB_API_KEY', 'translated-total-test');
@@ -541,6 +544,9 @@ it.each([
       season: 1,
     });
     expect(result.map((episode) => episode.id)).toEqual(episodes.map((episode) => episode.id));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/episodes/'))).toHaveLength(
+      Math.ceil(count / pageSize),
+    );
     const requests = fetchMock.mock.calls.length;
     expect(
       await t.action(internal.tvdb.refreshSeason, { tvdbId: 111, order: 'official', season: 1 }),

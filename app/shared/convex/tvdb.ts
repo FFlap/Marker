@@ -331,51 +331,34 @@ const downloadEpisodesEffect = Effect.fnUntraced(function* (
   });
   const first = yield* loadPage(0);
   const pages = [first];
-  const total = integer(first.links.total_items);
-  const pageSize = integer(first.links.page_size);
   const hasNext = (page: typeof first) =>
     page.links.next !== null && page.links.next !== undefined && page.links.next !== '';
-  if (hasNext(first) && total !== undefined && pageSize !== undefined && pageSize > 0) {
-    const pageCount = Math.ceil(total / pageSize);
-    if (pageCount < 2 || pageCount > MAX_EPISODE_CATALOG_PAGES)
+  // Translated totals can overstate or understate even the number of pages.
+  // Follow the advertised chain instead of speculating from total_items.
+  while (hasNext(pages[pages.length - 1])) {
+    if (pages.length >= MAX_EPISODE_CATALOG_PAGES)
       return yield* Effect.fail(
         new ProviderIntegrationFailure({
           provider: 'tvdb',
           message: 'TVDB episode pagination exceeded the safety limit',
         }),
       );
-    pages.push(
-      ...(yield* Effect.forEach(
-        Array.from({ length: pageCount - 1 }, (_, i) => i + 1),
-        loadPage,
-        { concurrency: 4 },
-      )),
-    );
-    // TVDB's translated totals can exceed the actual records (for example,
-    // Honey Lemon Soda reports 13 but returns all 12). Validate the page chain,
-    // rather than requiring the records to match that advisory total.
-    if (
-      pages.some(
-        (page, index) => page.entries.length === 0 || hasNext(page) !== index < pages.length - 1,
-      )
-    )
+    if (pages[pages.length - 1].entries.length === 0)
       return yield* Effect.fail(
         new ProviderIntegrationFailure({
           provider: 'tvdb',
           message: 'TVDB episode pagination returned an incomplete catalog',
         }),
       );
-  } else {
-    while (hasNext(pages[pages.length - 1])) {
-      if (pages.length >= MAX_EPISODE_CATALOG_PAGES || pages[pages.length - 1].entries.length === 0)
-        return yield* Effect.fail(
-          new ProviderIntegrationFailure({
-            provider: 'tvdb',
-            message: 'TVDB episode pagination exceeded the safety limit',
-          }),
-        );
-      pages.push(yield* loadPage(pages.length));
-    }
+    const next = yield* loadPage(pages.length);
+    if (next.entries.length === 0)
+      return yield* Effect.fail(
+        new ProviderIntegrationFailure({
+          provider: 'tvdb',
+          message: 'TVDB episode pagination returned an incomplete catalog',
+        }),
+      );
+    pages.push(next);
   }
   const episodes: AnimeEpisode[] = [];
   const seen = new Set<number>();

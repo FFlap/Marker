@@ -60,7 +60,7 @@ export async function putNonFatal(
         value,
       },
     });
-    return true;
+    return !isTruncatedSnapshot(value);
   } catch (error) {
     console.warn('[provider-snapshot-write-skipped]', args.metricKey, error);
     return false;

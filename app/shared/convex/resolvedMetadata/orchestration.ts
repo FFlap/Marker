@@ -123,6 +123,12 @@ export const orchestrateRefresh = internalAction({
         throw new ConvexError({ code: 'mapping_changed', retryable: true });
       if (!result.committed) return;
       if (args.mediaType === 'tv' && args.season !== undefined) {
+        // Let the episode job claim immediately instead of retrying our title lease.
+        await ctx.runMutation(internal.resolvedMetadata.requests.releaseRefresh, {
+          key: leaseKey,
+          token: leaseToken,
+        });
+        claimed = false;
         await ctx.scheduler.runAfter(
           0,
           internal.resolvedMetadata.orchestration.orchestrateSeasonRefresh,
