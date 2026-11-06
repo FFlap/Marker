@@ -1,3 +1,4 @@
+import { useCrossSectionDrop } from '@/hooks/use-cross-section-drop';
 import { localDateKey } from '@/hooks/use-local-today';
 import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
@@ -16,6 +17,7 @@ import type { LibraryItem, Status } from '@/types';
 import { MOBILE_NAV_HEIGHT, TOOLBAR_HEIGHT } from '../screens/LibraryScreen.styles';
 
 export function useLibraryReordering(items: LibraryItem[], filtersActive: boolean) {
+  const insertion = useCrossSectionDrop();
   const runOperation = useOperation();
   const reorderItem = useMutation(api.library.ordering.reorderItem);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
@@ -159,21 +161,28 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     );
   };
 
-  const moveToStatus = async (item: LibraryItem, target: Status) => {
+  const moveToStatus = async (item: LibraryItem, target: Status, targetIndex?: number) => {
     if (statusMoveRef.current.state === 'saving' || effectiveStatus(item) === target) return;
     publishMove({ state: 'saving', item, target });
     const source = effectiveStatus(item);
     const sourceItems = orderedForStatus(source).filter((entry) => entry._id !== item._id);
     const targetItems = orderedForStatus(target).filter((entry) => entry._id !== item._id);
+    const index = Math.min(targetIndex ?? targetItems.length, targetItems.length);
+    const nextTarget = [...targetItems];
+    nextTarget.splice(index, 0, item);
     setOptimisticStatuses((current) => ({ ...current, [item._id]: target }));
     setOptimisticOrders((current) => ({
       ...current,
       [source]: sourceItems.map((entry) => entry._id),
-      [target]: [...targetItems, item].map((entry) => entry._id),
+      [target]: nextTarget.map((entry) => entry._id),
     }));
     await runOperation.write(
       Effect.gen(function* () {
-        const placement = { itemId: item._id, beforeId: targetItems.at(-1)?._id };
+        const placement = {
+          itemId: item._id,
+          beforeId: targetItems[index - 1]?._id,
+          afterId: targetItems[index]?._id,
+        };
         if (target === 'watched')
           yield* saveLibrary(() =>
             moveItemToWatched({
@@ -209,16 +218,18 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     );
   };
 
-  const requestStatusMove = (itemId: string, target: Status) => {
+  const requestStatusMove = (itemId: string, target: Status, index?: number) => {
     if (filtersActive || statusMoveRef.current.state === 'saving') return;
     const item = items.find((entry) => entry._id === itemId);
     if (!item || effectiveStatus(item) === target) return;
-    if (target === 'watched') publishMove({ state: 'confirming', item });
-    else void moveToStatus(item, target);
+    if (target === 'watched') {
+      insertion.pendingIndex.current = index;
+      publishMove({ state: 'confirming', item });
+    } else void moveToStatus(item, target, index);
   };
 
   const updateDragTarget = useCallback(
-    (_sourceStatus: Status, contentY: number) => {
+    (_sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
       if (!draggedItemRef.current) return;
       let nearest: Status | undefined;
       let nearestDistance = Number.POSITIVE_INFINITY;
@@ -233,18 +244,21 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
           nearest = status;
         }
       }
+      nearest = insertion.update(nearest, x, y, offset);
       if (nearest === targetStatusRef.current) return;
       targetStatusRef.current = nearest;
       setTargetStatus(nearest);
     },
-    [sectionLayouts],
+    [sectionLayouts, insertion],
   );
 
   const finishDrag = (source: Status, data: LibraryItem[], from: number, to: number) => {
     const dragged = draggedItemRef.current;
     const target = targetStatusRef.current;
+    const index = insertion.indexRef.current;
     cancelDrag();
-    if (dragged && target && target !== source) requestStatusMove(dragged.item._id, target);
+    if (dragged && !target) return;
+    if (dragged && target && target !== source) requestStatusMove(dragged.item._id, target, index);
     else if (from !== to) void saveOrder(data, to);
   };
 
@@ -276,6 +290,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   };
 
   function cancelDrag() {
+    insertion.clear();
     setDraggedItem(undefined);
     setDragPreviewLayout(undefined);
     setTargetStatus(undefined);
@@ -303,11 +318,13 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     moveToStatus,
     requestStatusMove,
     confirmation: {
+      index: insertion.pendingIndex.current,
       item: pendingWatchedMove,
       pending: statusMovePending,
       close: () => publishMove({ state: 'idle' }),
     },
     drag: {
+      insertion,
       autoScroll,
       begin: beginDrag,
       cancel: cancelDrag,
