@@ -155,21 +155,6 @@ export async function resolveFreshTitle(
         /^(animation|anime)$/i.test(genre),
       );
       const mergeArtwork = animated ? withAllCharacterArtwork : withCharacterArtwork;
-      if (current)
-        tmdb.cast = mergeArtwork(
-          tmdb.cast ?? [],
-          current.cast.flatMap((member) =>
-            member.characterImageUrl
-              ? [
-                  {
-                    name: member.character,
-                    personName: member.name,
-                    imageUrl: member.characterImageUrl,
-                  },
-                ]
-              : [],
-          ),
-        );
       // The series identity response already includes artwork. Only request it
       // separately when that response did not provide it (for example, movies).
       let characters = extrasResult.ok ? extrasResult.value.characters : undefined;
@@ -188,7 +173,22 @@ export async function resolveFreshTitle(
         );
         if (artwork.ok) characters = artwork.value;
       }
-      if (characters?.length) tmdb.cast = mergeArtwork(tmdb.cast ?? [], characters);
+      // A nonempty fresh result replaces TVDB-only roles. Cached artwork is a
+      // fallback, so corrections to role names and actor attribution can take effect.
+      const artwork = characters?.length
+        ? characters
+        : (current?.cast ?? []).flatMap((member) =>
+            member.characterImageUrl
+              ? [
+                  {
+                    name: member.character,
+                    personName: member.name,
+                    imageUrl: member.characterImageUrl,
+                  },
+                ]
+              : [],
+          );
+      if (artwork.length) tmdb.cast = mergeArtwork(tmdb.cast ?? [], artwork);
       const refreshedAt = Date.now();
       const value = mergeTitle(
         args.tmdbId,

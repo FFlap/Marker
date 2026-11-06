@@ -68,9 +68,9 @@ export function withAllCharacterArtwork(
   const merged = withCharacterArtwork(cast, characters);
   const images = new Set(merged.flatMap((member) => member.characterImageUrl ?? []));
   const roles = new Set(
-    merged
-      .filter((member) => member.characterImageUrl)
-      .flatMap((member) => roleKeys(member.character)),
+    characters
+      .filter((character) => images.has(character.imageUrl))
+      .flatMap((character) => roleKeys(character.name)),
   );
   for (const character of characters) {
     const keys = roleKeys(character.name);

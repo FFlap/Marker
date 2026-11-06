@@ -462,3 +462,69 @@ it('does not duplicate matched roles, aliases, or repeated TVDB artwork', () => 
   ]);
   expect(matched).toEqual(withCharacterArtwork(cast, characters));
 });
+
+it('keeps separate artwork for combined TMDB roles with different actors', () => {
+  const merged = withAllCharacterArtwork(
+    [{ name: 'Actor A', character: 'Role A / Role B' }],
+    [
+      { name: 'Role A', personName: 'Actor A', imageUrl: 'https://example.com/a.jpg' },
+      { name: 'Role B', personName: 'Actor B', imageUrl: 'https://example.com/b.jpg' },
+    ],
+  );
+  expect(merged.map((member) => member.characterImageUrl)).toEqual([
+    'https://example.com/a.jpg',
+    'https://example.com/b.jpg',
+  ]);
+});
+
+it.each(['Mina', 'Mina Hibino'])(
+  'replaces cached TVDB-only role %s and actor attribution on refresh',
+  async (oldRole) => {
+    const runAction = vi
+      .fn()
+      .mockResolvedValueOnce({ title: 'Takagi-san', genres: ['Animation'], cast: [] })
+      .mockResolvedValueOnce({
+        anime: null,
+        characters: [
+          { name: oldRole, personName: 'Old actor', imageUrl: 'https://example.com/old.jpg' },
+          {
+            name: 'Removed role',
+            personName: 'Removed actor',
+            imageUrl: 'https://example.com/removed.jpg',
+          },
+        ],
+      });
+    const args = { mediaType: 'tv' as const, tmdbId: 75865 };
+    const ctx = { runAction } as unknown as ActionCtx;
+    const initial = await resolveFreshTitle(ctx, args, null, null, false);
+    runAction
+      .mockReset()
+      .mockResolvedValueOnce({ title: 'Takagi-san', genres: ['Animation'], cast: [] })
+      .mockResolvedValueOnce({
+        anime: null,
+        characters: [
+          {
+            name: 'Mina Hibino',
+            personName: 'Konomi Kohara',
+            imageUrl: 'https://example.com/new.jpg',
+          },
+        ],
+      });
+    const refreshed = await resolveFreshTitle(
+      ctx,
+      args,
+      { ...initial.value, _id: 'fixture', _creationTime: 0 } as unknown as Parameters<
+        typeof resolveFreshTitle
+      >[2],
+      null,
+      false,
+    );
+    expect(refreshed.value.cast).toEqual([
+      {
+        name: 'Konomi Kohara',
+        character: 'Mina Hibino',
+        characterImageUrl: 'https://example.com/new.jpg',
+      },
+    ]);
+  },
+);
