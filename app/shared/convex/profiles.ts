@@ -283,10 +283,10 @@ export const search = query({
       users
         .filter((user): user is typeof user & { username: string } => !!user.username)
         .map(async (user) => {
-          const avatarUrl = user.avatarStorageId
-            ? ((await ctx.storage.getUrl(user.avatarStorageId)) ?? undefined)
-            : undefined;
-          const follow = user._id === viewerId ? null : await relationship(ctx, viewerId, user._id);
+          const [avatarUrl, follow] = await Promise.all([
+            user.avatarStorageId ? ctx.storage.getUrl(user.avatarStorageId) : Promise.resolve(null),
+            user._id === viewerId ? Promise.resolve(null) : relationship(ctx, viewerId, user._id),
+          ]);
           const relationshipStatus: 'self' | 'none' | 'pending' | 'accepted' =
             user._id === viewerId ? 'self' : (follow?.status ?? 'none');
           return {
@@ -432,16 +432,23 @@ export const publicProfile = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const user = await userByUsername(ctx, args.username);
+    const [user, viewerId] = await Promise.all([
+      userByUsername(ctx, args.username),
+      getClerkUserId(ctx),
+    ]);
     if (!user?.username) return null;
-    const viewerId = await getClerkUserId(ctx);
-    const follow =
-      viewerId && viewerId !== user._id ? await relationship(ctx, viewerId, user._id) : null;
+    const [follow, avatarUrl, collections] = await Promise.all([
+      viewerId && viewerId !== user._id
+        ? relationship(ctx, viewerId, user._id)
+        : Promise.resolve(null),
+      user.avatarStorageId ? ctx.storage.getUrl(user.avatarStorageId) : Promise.resolve(null),
+      ctx.db
+        .query('tagCollections')
+        .withIndex('by_user_tag', (q) => q.eq('userId', user._id))
+        .take(500),
+    ]);
     const relationshipStatus: 'self' | 'none' | 'pending' | 'accepted' | undefined =
       viewerId === user._id ? ('self' as const) : viewerId ? (follow?.status ?? 'none') : undefined;
-    const avatarUrl = user.avatarStorageId
-      ? ((await ctx.storage.getUrl(user.avatarStorageId)) ?? undefined)
-      : undefined;
     const profile = {
       username: user.username,
       isPublic: user.isPublic === true,
@@ -449,10 +456,6 @@ export const publicProfile = query({
       followingCount: user.followingCount ?? 0,
       ...(avatarUrl && { avatarUrl }),
     };
-    const collections = await ctx.db
-      .query('tagCollections')
-      .withIndex('by_user_tag', (q) => q.eq('userId', user._id))
-      .take(500);
     const publicTags = collections
       .filter((collection) => collection.isPublic && collection.memberCount > 0)
       .map((collection) => ({

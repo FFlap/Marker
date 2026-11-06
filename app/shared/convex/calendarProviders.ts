@@ -294,7 +294,7 @@ const normalizedSeasonEpisodes = (payload: Json, fallbackSeason: number) =>
     ];
   });
 
-function seasonLoader(
+const seasonLoader = Effect.fnUntraced(function* (
   tmdbId: number,
   missing: number[],
   request: ReturnType<typeof createRequestEffect>,
@@ -305,21 +305,21 @@ function seasonLoader(
   for (let offset = 0; offset < missing.length; offset += 5) {
     const batch = missing.slice(offset, offset + 5);
     for (const season of batch) batches.set(season, batch);
+    if (batch.length > 1) {
+      completed.set(
+        batch[0],
+        yield* Effect.cached(
+          request(
+            `/tv/${tmdbId}?append_to_response=${batch.map((number) => `season/${number}`).join(',')}`,
+          ),
+        ),
+      );
+    }
   }
   return Effect.fnUntraced(function* (season: number) {
     const batch = batches.get(season) ?? [season];
     if (batch.length === 1) return yield* request(`/tv/${tmdbId}/season/${season}`);
-    const key = batch[0];
-    let response = completed.get(key);
-    if (!response) {
-      response = yield* Effect.cached(
-        request(
-          `/tv/${tmdbId}?append_to_response=${batch.map((number) => `season/${number}`).join(',')}`,
-        ),
-      );
-      completed.set(key, response);
-    }
-    const payload = (yield* response)[`season/${season}`];
+    const payload = (yield* completed.get(batch[0])!)[`season/${season}`];
     return yield* Schema.decodeUnknownEffect(Schema.Struct({ episodes: providerRecords }))(
       payload,
     ).pipe(
@@ -332,7 +332,7 @@ function seasonLoader(
       ),
     );
   });
-}
+});
 
 const titleEvents = Effect.fnUntraced(function* (
   ctx: ActionCtx,
@@ -391,34 +391,37 @@ const titleEvents = Effect.fnUntraced(function* (
       !stored || isTruncatedSnapshot(stored.value) || stored.refreshedAt <= now - CALENDAR_TTL_MS
     );
   });
-  const loadSeason = seasonLoader(
+  const loadSeason = yield* seasonLoader(
     item.tmdbId,
     missing.map(({ season }) => season),
     request,
   );
-  const seasonEpisodes = [];
-  for (const season of relevant) {
-    const outcome = yield* providerOutcome(
-      cached(
-        ctx,
-        `calendar:season:${item.tmdbId}:${season.season}`,
-        () =>
-          loadSeason(season.season).pipe(
-            Effect.flatMap((payload) =>
-              parseCalendar(() => normalizedSeasonEpisodes(payload, season.season)),
+  const outcomes = yield* Effect.forEach(
+    relevant,
+    (season) =>
+      providerOutcome(
+        cached(
+          ctx,
+          `calendar:season:${item.tmdbId}:${season.season}`,
+          () =>
+            loadSeason(season.season).pipe(
+              Effect.flatMap((payload) =>
+                parseCalendar(() => normalizedSeasonEpisodes(payload, season.season)),
+              ),
             ),
-          ),
-        onFailure,
-        snapshots,
-        read,
+          onFailure,
+          snapshots,
+          read,
+        ),
       ),
-    );
-    if (outcome.ok) seasonEpisodes.push(...outcome.value);
-    else {
-      missingSeasons.push(season.season);
-      onFailure(outcome.error);
-    }
-  }
+    { concurrency: 2 },
+  );
+  const seasonEpisodes = outcomes.flatMap((outcome, index) => {
+    if (outcome.ok) return outcome.value;
+    missingSeasons.push(relevant[index].season);
+    onFailure(outcome.error);
+    return [];
+  });
   return seasonEpisodes.flatMap((episode) => {
     if (!inRange(episode.date, startDate, endDate)) return [];
     return [
