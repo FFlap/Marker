@@ -351,9 +351,13 @@ const downloadEpisodesEffect = Effect.fnUntraced(function* (
         { concurrency: 4 },
       )),
     );
+    // TVDB's translated totals can exceed the actual records (for example,
+    // Honey Lemon Soda reports 13 but returns all 12). Validate the page chain,
+    // rather than requiring the records to match that advisory total.
     if (
-      pages.reduce((sum, page) => sum + page.entries.length, 0) !== total ||
-      hasNext(pages[pages.length - 1])
+      pages.some(
+        (page, index) => page.entries.length === 0 || hasNext(page) !== index < pages.length - 1,
+      )
     )
       return yield* Effect.fail(
         new ProviderIntegrationFailure({
@@ -389,13 +393,6 @@ const downloadEpisodesEffect = Effect.fnUntraced(function* (
       seen.add(episode.id);
       episodes.push(boundedAnimeEpisode(episode));
     }
-  if (total !== undefined && episodes.length !== total)
-    return yield* Effect.fail(
-      new ProviderIntegrationFailure({
-        provider: 'tvdb',
-        message: 'TVDB episode pagination returned an incomplete catalog',
-      }),
-    );
   return episodes;
 });
 
