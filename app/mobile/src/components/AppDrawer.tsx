@@ -1,6 +1,16 @@
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
-import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Modal,
+  PanResponder,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { router, type Href } from 'expo-router';
 import Bell from 'lucide-react-native/icons/bell';
 import CalendarDays from 'lucide-react-native/icons/calendar-days';
@@ -38,6 +48,10 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const motionReduced = useReducedMotion();
   const [progress] = useState(() => new Animated.Value(0));
   const pendingClose = useRef<(() => void) | undefined>(undefined);
+  const closing = useRef(false);
+  const dragStart = useRef(1);
+  const { width: windowWidth } = useWindowDimensions();
+  const drawerWidth = Math.min(windowWidth * 0.82, 320);
   const { profileReady } = useAccountLoading();
   const profile = useQuery(api.profiles.me, profileReady ? {} : 'skip');
   const canOpen = !!profile;
@@ -53,6 +67,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       callback();
       return;
     }
+    closing.current = false;
     progress.stopAnimation();
     progress.setValue(motionReduced ? 1 : 0);
     setVisible(true);
@@ -70,6 +85,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
 
   const closeDrawer = useCallback(
     (onClosed?: () => void) => {
+      closing.current = true;
       pendingClose.current = onClosed ?? pendingClose.current;
       progress.stopAnimation();
       if (motionReduced) {
@@ -94,6 +110,45 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       });
     },
     [motionReduced, progress],
+  );
+
+  const settleOpen = useCallback(() => {
+    Animated.timing(progress, {
+      toValue: 1,
+      duration: motionReduced ? 0 : 200,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      useNativeDriver: true,
+    }).start();
+  }, [motionReduced, progress]);
+
+  const swipe = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          !closing.current &&
+          gesture.numberActiveTouches === 1 &&
+          gesture.dx < -6 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+        onPanResponderGrant: () => {
+          progress.stopAnimation((value) => {
+            dragStart.current = value;
+          });
+        },
+        onPanResponderMove: (_, gesture) => {
+          progress.setValue(Math.max(0, Math.min(1, dragStart.current + gesture.dx / drawerWidth)));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const position = Math.max(0, Math.min(1, dragStart.current + gesture.dx / drawerWidth));
+          if (gesture.vx <= -0.55 || (position <= 0.75 && gesture.vx < 0.55)) {
+            closeDrawer();
+          } else {
+            settleOpen();
+          }
+        },
+        onPanResponderTerminate: settleOpen,
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [closeDrawer, drawerWidth, progress, settleOpen],
   );
 
   useImperativeHandle(ref, () => ({ open: openDrawer }), [openDrawer]);
@@ -138,7 +193,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
         navigationBarTranslucent
         onRequestClose={() => closeDrawer()}
       >
-        <View style={s.overlay}>
+        <View testID="account-menu-overlay" style={s.overlay} {...swipe.panHandlers}>
           <Animated.View
             pointerEvents="none"
             style={[
@@ -151,6 +206,12 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
                 }),
               },
             ]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close account menu"
+            onPress={() => closeDrawer()}
+            style={StyleSheet.absoluteFill}
           />
           <Animated.View
             testID="account-menu-panel"
@@ -165,7 +226,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
                   {
                     translateX: progress.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [-336, 0],
+                      outputRange: [-drawerWidth, 0],
                     }),
                   },
                 ],
@@ -216,12 +277,6 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
               })}
             </View>
           </Animated.View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close account menu"
-            onPress={() => closeDrawer()}
-            style={s.backdrop}
-          />
         </View>
       </Modal>
     </>
@@ -244,9 +299,8 @@ const s = createAppStyles(
       justifyContent: 'center',
     },
     pressed: { opacity: 0.62 },
-    overlay: { flex: 1, flexDirection: 'row' },
+    overlay: { flex: 1 },
     scrim: { backgroundColor: '#000' },
-    backdrop: { flex: 1 },
     drawer: {
       width: '82%',
       maxWidth: 320,
