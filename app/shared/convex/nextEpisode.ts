@@ -293,10 +293,12 @@ export async function refreshNextEpisode(
     typeof itemOrId === 'string' ? await ctx.db.get(itemOrId) : await ctx.db.get(itemOrId._id);
   if (!item || item.mediaType !== 'tv' || item.deletingAt !== undefined)
     return { state: 'skipped', chunkPairsRead: 0 };
-  const context = await loadRefreshContext(ctx, item);
+  const [context, existing] = await Promise.all([
+    loadRefreshContext(ctx, item),
+    activeRefresh(ctx, item._id),
+  ]);
   if (!context || context.title.refreshAfter <= Date.now()) await loadMissingMetadata(ctx, item);
   const cursor = context ? firstCursor(context, item, watchedEpisode) : undefined;
-  const existing = await activeRefresh(ctx, item._id);
   if (!cursor) {
     if (existing) await ctx.db.delete(existing._id);
     if (item.nextEpisode !== undefined) await ctx.db.patch(item._id, { nextEpisode: undefined });
