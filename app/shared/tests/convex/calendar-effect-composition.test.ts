@@ -154,3 +154,81 @@ it('does not perform TVDB title fallback after a remote-lookup defect or interru
   ).toBe(true);
   expect(request).toHaveBeenCalledTimes(2);
 });
+
+it('overlaps season work with bounded concurrency and shares a single batched request', async () => {
+  vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'test');
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const writes: string[] = [];
+  let active = 0;
+  let peak = 0;
+  const context = {
+    runQuery: async (_ref: unknown, { keys }: { keys: string[] }) =>
+      keys.map((key) =>
+        key === 'calendar:tv:v2:88'
+          ? {
+              entry: { kind: 'calendarTvSchedule', value: [1, 2, 3].map((season) => ({ season })) },
+              refreshedAt: Date.now(),
+            }
+          : null,
+      ),
+    runMutation: async (_ref: unknown, args: { key?: string }) => {
+      if (args.key?.startsWith('calendar:season:')) {
+        writes.push(args.key);
+        active++;
+        peak = Math.max(peak, active);
+        await gate;
+        active--;
+      }
+      return true;
+    },
+  } as unknown as ActionCtx;
+  const fetch = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify(
+          Object.fromEntries(
+            [1, 2, 3].map((season) => [
+              `season/${season}`,
+              {
+                episodes: [{ season_number: season, episode_number: 1, air_date: '2026-10-05' }],
+              },
+            ]),
+          ),
+        ),
+      ),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const pending = Effect.runPromise(
+    loadTitleSchedulesEffect(
+      context,
+      [
+        {
+          item: { tmdbId: 88, title: 'Show', mediaType: 'tv', status: 'watching' },
+          hasSavedSchedule: false,
+        },
+      ],
+      '2026-10-01',
+      '2026-10-31',
+      'US',
+      false,
+    ),
+  );
+  try {
+    // Both writes must start while the first is still blocked.
+    await vi.waitFor(() => expect(writes).toHaveLength(2));
+    expect(peak).toBe(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  } finally {
+    release();
+    await pending;
+  }
+  const result = await pending;
+  expect(result.results[0].events.map((event) => event.season)).toEqual([1, 2, 3]);
+  expect(result.results[0].failed).toBe(false);
+  expect(writes).toHaveLength(3);
+  expect(peak).toBe(2);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

@@ -122,8 +122,10 @@ async function rebalanceStatusWindow(
 async function moveItemToSlot(ctx: MutationCtx, userId: Id<'users'>, args: MoveItemArgs) {
   const item = await ownedItem(ctx, args.itemId, userId);
   const targetStatus = args.status ?? item.status;
-  const claimedBefore = args.beforeId ? await ownedItem(ctx, args.beforeId, userId) : undefined;
-  const claimedAfter = args.afterId ? await ownedItem(ctx, args.afterId, userId) : undefined;
+  const [claimedBefore, claimedAfter] = await Promise.all([
+    args.beforeId ? ownedItem(ctx, args.beforeId, userId) : Promise.resolve(undefined),
+    args.afterId ? ownedItem(ctx, args.afterId, userId) : Promise.resolve(undefined),
+  ]);
   if (claimedBefore?._id === item._id || claimedAfter?._id === item._id)
     throw new Error('An item cannot be its own neighbor');
   if (claimedBefore && claimedBefore.status !== targetStatus)
@@ -336,8 +338,10 @@ export const reorderTagItem = mutation({
     const current = await tagMembership(ctx, userId, tagKey, moved._id);
     if (!current || current.collectionId !== collection._id)
       throw new Error('Tag order could not be initialized');
-    const beforeClaim = await tagMembership(ctx, userId, tagKey, args.beforeId);
-    const afterClaim = await tagMembership(ctx, userId, tagKey, args.afterId);
+    const [beforeClaim, afterClaim] = await Promise.all([
+      tagMembership(ctx, userId, tagKey, args.beforeId),
+      tagMembership(ctx, userId, tagKey, args.afterId),
+    ]);
     const claimedBefore = beforeClaim?._id === current._id ? undefined : beforeClaim;
     const claimedAfter = afterClaim?._id === current._id ? undefined : afterClaim;
     let before: Doc<'tagMemberships'> | undefined;
