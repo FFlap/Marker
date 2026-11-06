@@ -528,3 +528,57 @@ it.each(['Mina', 'Mina Hibino'])(
     ]);
   },
 );
+
+it.each([{ cast: [] }, { cast: [{ name: 'Actor A', character: 'Role A' }] }])(
+  'retains distinct roles sharing an image with cast $cast',
+  ({ cast }) => {
+    const merged = withAllCharacterArtwork(cast, [
+      { name: 'Role A', personName: 'Actor A', imageUrl: 'https://example.com/shared.jpg' },
+      { name: 'Role B', personName: 'Actor B', imageUrl: 'https://example.com/shared.jpg' },
+    ]);
+    expect(merged.map((member) => member.character)).toEqual(['Role A', 'Role B']);
+  },
+);
+
+it('retains composite TVDB entries when only some roles are already illustrated', () => {
+  const merged = withAllCharacterArtwork(
+    [],
+    [
+      { name: 'Yui', imageUrl: 'https://example.com/yui.jpg' },
+      { name: 'Yui / Mio', imageUrl: 'https://example.com/group.jpg' },
+    ],
+  );
+  expect(merged.map((member) => member.character)).toEqual(['Yui', 'Yui / Mio']);
+});
+
+it.each(['empty', 'missing'] as const)(
+  'preserves illustrated roles when refreshed genres are %s and cast is empty',
+  async (genres) => {
+    const runAction = vi
+      .fn()
+      .mockResolvedValueOnce({ title: 'Pokemon', genres: ['Animation'], cast: [] })
+      .mockResolvedValueOnce(characters);
+    const ctx = { runAction } as unknown as ActionCtx;
+    const args = { mediaType: 'movie' as const, tmdbId: 77 };
+    const initial = await resolveFreshTitle(ctx, args, null, null, false);
+    runAction
+      .mockReset()
+      .mockResolvedValueOnce({
+        title: 'Pokemon',
+        ...(genres === 'empty' && { genres: [] }),
+        cast: [],
+      })
+      .mockRejectedValueOnce(new Error('TVDB unavailable'));
+    const refreshed = await resolveFreshTitle(
+      ctx,
+      args,
+      { ...initial.value, _id: 'fixture', _creationTime: 0 } as unknown as Parameters<
+        typeof resolveFreshTitle
+      >[2],
+      null,
+      false,
+    );
+    expect(refreshed.value.cast).toEqual(initial.value.cast);
+    expect(refreshed.value.genres).toEqual(['Animation']);
+  },
+);

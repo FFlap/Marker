@@ -151,10 +151,14 @@ export async function resolveFreshTitle(
       const seasons = anime ? anime.seasons : (tmdb.seasons ?? []);
       const selectedSeason =
         anime?.selectedSeason ?? seasons.find((entry) => entry.season > 0)?.season;
+      const hasSavedArtwork = current?.cast.some((member) => member.characterImageUrl) === true;
+      if (!tmdb.genres?.length && !anime?.genres?.length && hasSavedArtwork)
+        tmdb.genres = current!.genres;
       const animated = [...(tmdb.genres ?? []), ...(anime?.genres ?? [])].some((genre) =>
         /^(animation|anime)$/i.test(genre),
       );
-      const mergeArtwork = animated ? withAllCharacterArtwork : withCharacterArtwork;
+      const mergeArtwork =
+        animated || hasSavedArtwork ? withAllCharacterArtwork : withCharacterArtwork;
       // The series identity response already includes artwork. Only request it
       // separately when that response did not provide it (for example, movies).
       let characters = extrasResult.ok ? extrasResult.value.characters : undefined;

@@ -33,29 +33,34 @@ export function mapCharacterArtwork(data: Json): CharacterArtwork[] {
   });
 }
 
+const artworkForMember = (
+  member: { name: string; character: string },
+  characters: CharacterArtwork[],
+): CharacterArtwork[] => {
+  const roles = roleKeys(member.character);
+  if (!roles.length) return [];
+  const candidates = characters.filter((character) =>
+    roleKeys(character.name).some(
+      (role) =>
+        roles.includes(role) ||
+        (character.personName &&
+          nameKey(character.personName) === nameKey(member.name) &&
+          roles.some((memberRole) => romanizedKey(memberRole) === romanizedKey(role))),
+    ),
+  );
+  const actorMatches = candidates.filter(
+    (character) => character.personName && nameKey(character.personName) === nameKey(member.name),
+  );
+  const matches = actorMatches.length ? actorMatches : candidates;
+  return new Set(matches.map((character) => character.imageUrl)).size === 1 ? matches : [];
+};
+
 /** Match unambiguous role artwork, using actor identity to resolve aliases. */
 export function withCharacterArtwork<
   T extends { name: string; character: string; characterImageUrl?: string },
 >(cast: T[], characters: CharacterArtwork[]): T[] {
   return cast.map((member) => {
-    const roles = roleKeys(member.character);
-    if (!roles.length) return member;
-    const candidates = characters.filter((character) =>
-      roleKeys(character.name).some(
-        (role) =>
-          roles.includes(role) ||
-          (character.personName &&
-            nameKey(character.personName) === nameKey(member.name) &&
-            roles.some((memberRole) => romanizedKey(memberRole) === romanizedKey(role))),
-      ),
-    );
-    const actorMatches = candidates.filter(
-      (character) => character.personName && nameKey(character.personName) === nameKey(member.name),
-    );
-    const images = new Set(
-      (actorMatches.length ? actorMatches : candidates).map((character) => character.imageUrl),
-    );
-    const characterImageUrl = images.size === 1 ? [...images][0] : undefined;
+    const characterImageUrl = artworkForMember(member, characters)[0]?.imageUrl;
     return characterImageUrl ? { ...member, characterImageUrl } : member;
   });
 }
@@ -66,21 +71,19 @@ export function withAllCharacterArtwork(
   characters: CharacterArtwork[],
 ) {
   const merged = withCharacterArtwork(cast, characters);
-  const images = new Set(merged.flatMap((member) => member.characterImageUrl ?? []));
   const roles = new Set(
-    characters
-      .filter((character) => images.has(character.imageUrl))
+    cast
+      .flatMap((member) => artworkForMember(member, characters))
       .flatMap((character) => roleKeys(character.name)),
   );
   for (const character of characters) {
     const keys = roleKeys(character.name);
-    if (images.has(character.imageUrl) || keys.some((key) => roles.has(key))) continue;
+    if (keys.every((key) => roles.has(key))) continue;
     merged.push({
       name: character.personName ?? 'Unknown actor',
       character: character.name,
       characterImageUrl: character.imageUrl,
     });
-    images.add(character.imageUrl);
     keys.forEach((key) => roles.add(key));
   }
   return merged;
