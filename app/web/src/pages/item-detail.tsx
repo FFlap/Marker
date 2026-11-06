@@ -1,3 +1,4 @@
+import { ExpandableOverview } from "@/components/expandable-overview";
 import { usePendingTasks } from "@/hooks/use-pending-tasks";
 import { useTaskState } from "@/hooks/use-task-state";
 import { castForDisplay } from "@marker/shared/castPresentation";
@@ -340,11 +341,7 @@ export function ItemDetailPage() {
       </section>
 
       {overview && (
-        <section className="mt-9">
-          <p className="text-[15px] leading-6 text-muted-foreground">
-            {overview}
-          </p>
-        </section>
+        <ExpandableOverview key={`${item._id}:${overview}`} text={overview} />
       )}
 
       {titleFailed && (
