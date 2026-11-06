@@ -1,6 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
-import { mapCharacterArtwork, withCharacterArtwork } from '../../convex/characterArtwork';
+import {
+  mapCharacterArtwork,
+  withAllCharacterArtwork,
+  withCharacterArtwork,
+} from '../../convex/characterArtwork';
 import { resolveFreshTitle } from '../../convex/resolvedMetadata/titleResolution';
 import { selectTitleMatch, verifiedTmdbRemoteMovie } from '../../convex/tvdbParsing';
 import type { ActionCtx } from '../../convex/_generated/server';
@@ -359,7 +363,7 @@ it('waits for movie artwork and passes the original title before publishing', as
   expect(runAction).toHaveBeenCalledTimes(2);
 });
 
-it('does not repeat a completed empty artwork lookup or look up artwork for an empty cast', async () => {
+it('does not repeat a completed empty artwork lookup', async () => {
   const runAction = vi
     .fn()
     .mockResolvedValueOnce({ title: 'Pokemon', genres: ['Animation'], cast })
@@ -373,13 +377,88 @@ it('does not repeat a completed empty artwork lookup or look up artwork for an e
   );
   expect(result.value.cast).toEqual(cast);
   expect(runAction).toHaveBeenCalledTimes(2);
-  runAction.mockReset().mockResolvedValueOnce({ title: 'Movie', genres: ['Animation'], cast: [] });
-  await resolveFreshTitle(
+  runAction
+    .mockReset()
+    .mockResolvedValueOnce({ title: 'Movie', genres: ['Animation'], cast: [] })
+    .mockResolvedValueOnce(characters);
+  const emptyCast = await resolveFreshTitle(
     { runAction } as unknown as ActionCtx,
     { mediaType: 'movie', tmdbId: 77 },
     null,
     null,
     false,
   );
-  expect(runAction).toHaveBeenCalledTimes(1);
+  expect(runAction).toHaveBeenCalledTimes(2);
+  expect(emptyCast.value.cast).toEqual([
+    { name: 'Ikue Otani', character: 'Pikachu', characterImageUrl: characters[0].imageUrl },
+  ]);
+});
+
+// Role and actor names from TVDB series 337936. URLs are fixture artwork.
+const takagiRoles = [
+  ['Nishikata', 'Yuki Kaji'],
+  ['Takagi', 'Rie Takahashi'],
+  ['Sanae Tsukimoto', 'Yui Ogura'],
+  ['Mano', 'Kotori Koiwai'],
+  ['Mina Hibino', 'Konomi Kohara'],
+  ['Yukari Amakawa', 'M・A・O'],
+  ['Takao', 'Nobuhiko Okamoto'],
+  ['Nakai', 'Yuma Uchida'],
+  ['Kimura', 'Fukushi Ochiai'],
+  ['Tanabe-sensei', 'Hinata Tadokoro'],
+  ['Houjou', 'Aoi Yuki'],
+  ['Hamaguchi', 'Koki Uchiyama'],
+].map(([name, personName], index) => ({
+  name,
+  personName,
+  imageUrl: `https://example.com/takagi-${index}.jpg`,
+}));
+
+it('publishes all illustrated Takagi-san roles despite missing or differently named TMDB roles', async () => {
+  const runAction = vi
+    .fn()
+    .mockResolvedValueOnce({
+      title: 'Teasing Master Takagi-san',
+      genres: ['Animation'],
+      cast: [
+        { name: 'Yuki Kaji', character: 'Nishikata (voice)' },
+        { name: 'Konomi Kohara', character: 'Mina (voice)' },
+      ],
+    })
+    .mockResolvedValueOnce({ anime: null, characters: takagiRoles });
+  const { value } = await resolveFreshTitle(
+    { runAction } as unknown as ActionCtx,
+    { mediaType: 'tv', tmdbId: 75865 },
+    null,
+    null,
+    false,
+  );
+  const illustrated = value.cast.filter((member) => member.characterImageUrl);
+  expect(illustrated).toHaveLength(12);
+  expect(new Set(illustrated.map((member) => member.characterImageUrl))).toEqual(
+    new Set(takagiRoles.map((role) => role.imageUrl)),
+  );
+  runAction
+    .mockReset()
+    .mockResolvedValueOnce({ title: 'Teasing Master Takagi-san', genres: ['Animation'], cast: [] })
+    .mockRejectedValue(new Error('TVDB unavailable'));
+  const refreshed = await resolveFreshTitle(
+    { runAction } as unknown as ActionCtx,
+    { mediaType: 'tv', tmdbId: 75865 },
+    { ...value, _id: 'fixture', _creationTime: 0 } as unknown as Parameters<
+      typeof resolveFreshTitle
+    >[2],
+    null,
+    false,
+  );
+  expect(refreshed.value.cast).toEqual(illustrated);
+});
+
+it('does not duplicate matched roles, aliases, or repeated TVDB artwork', () => {
+  const matched = withAllCharacterArtwork(cast, [
+    ...characters,
+    { ...characters[0], name: 'ピカチュウ / Pikachu' },
+    { ...characters[0], personName: 'Dub actor', imageUrl: 'https://example.com/alternate.jpg' },
+  ]);
+  expect(matched).toEqual(withCharacterArtwork(cast, characters));
 });

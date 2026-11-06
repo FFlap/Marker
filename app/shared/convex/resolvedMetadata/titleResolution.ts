@@ -5,7 +5,11 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getClerkUserId } from '../clerkAuth';
-import { withCharacterArtwork, type CharacterArtwork } from '../characterArtwork';
+import {
+  withAllCharacterArtwork,
+  withCharacterArtwork,
+  type CharacterArtwork,
+} from '../characterArtwork';
 import { validateTmdbId } from '../providerValidation';
 import { refreshLeaseKey, requestKey } from './requests';
 import { resolveAndCommitCanonical } from './seasonResolution';
@@ -147,8 +151,12 @@ export async function resolveFreshTitle(
       const seasons = anime ? anime.seasons : (tmdb.seasons ?? []);
       const selectedSeason =
         anime?.selectedSeason ?? seasons.find((entry) => entry.season > 0)?.season;
+      const animated = [...(tmdb.genres ?? []), ...(anime?.genres ?? [])].some((genre) =>
+        /^(animation|anime)$/i.test(genre),
+      );
+      const mergeArtwork = animated ? withAllCharacterArtwork : withCharacterArtwork;
       if (current)
-        tmdb.cast = withCharacterArtwork(
+        tmdb.cast = mergeArtwork(
           tmdb.cast ?? [],
           current.cast.flatMap((member) =>
             member.characterImageUrl
@@ -165,13 +173,7 @@ export async function resolveFreshTitle(
       // The series identity response already includes artwork. Only request it
       // separately when that response did not provide it (for example, movies).
       let characters = extrasResult.ok ? extrasResult.value.characters : undefined;
-      if (
-        characters === undefined &&
-        (tmdb.cast?.length ?? 0) > 0 &&
-        [...(tmdb.genres ?? []), ...(anime?.genres ?? [])].some((genre) =>
-          /^(animation|anime)$/i.test(genre),
-        )
-      ) {
+      if (characters === undefined && animated) {
         const artwork = yield* providerOutcome(
           attempt(
             () =>
@@ -186,7 +188,7 @@ export async function resolveFreshTitle(
         );
         if (artwork.ok) characters = artwork.value;
       }
-      if (characters?.length) tmdb.cast = withCharacterArtwork(tmdb.cast ?? [], characters);
+      if (characters?.length) tmdb.cast = mergeArtwork(tmdb.cast ?? [], characters);
       const refreshedAt = Date.now();
       const value = mergeTitle(
         args.tmdbId,

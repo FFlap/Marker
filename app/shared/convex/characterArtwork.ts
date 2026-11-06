@@ -59,3 +59,29 @@ export function withCharacterArtwork<
     return characterImageUrl ? { ...member, characterImageUrl } : member;
   });
 }
+
+/** Keep illustrated TVDB roles even when TMDB omits them or names them differently. */
+export function withAllCharacterArtwork(
+  cast: { name: string; character: string; profilePath?: string; characterImageUrl?: string }[],
+  characters: CharacterArtwork[],
+) {
+  const merged = withCharacterArtwork(cast, characters);
+  const images = new Set(merged.flatMap((member) => member.characterImageUrl ?? []));
+  const roles = new Set(
+    merged
+      .filter((member) => member.characterImageUrl)
+      .flatMap((member) => roleKeys(member.character)),
+  );
+  for (const character of characters) {
+    const keys = roleKeys(character.name);
+    if (images.has(character.imageUrl) || keys.some((key) => roles.has(key))) continue;
+    merged.push({
+      name: character.personName ?? 'Unknown actor',
+      character: character.name,
+      characterImageUrl: character.imageUrl,
+    });
+    images.add(character.imageUrl);
+    keys.forEach((key) => roles.add(key));
+  }
+  return merged;
+}
