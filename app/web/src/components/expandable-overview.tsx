@@ -14,13 +14,19 @@ export function ExpandableOverview({ text }: { text: string }) {
       setTruncated(element.scrollHeight > lineHeight * 3 + 1);
     };
     measure();
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", measure);
-      return () => window.removeEventListener("resize", measure);
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
+    // A font swap can change wrapping without changing the clamped element's size.
+    document.fonts?.addEventListener("loadingdone", measure);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(measure);
+    observer?.observe(element);
+    if (!observer) window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+      document.fonts?.removeEventListener("loadingdone", measure);
+    };
   }, [text]);
 
   return (
