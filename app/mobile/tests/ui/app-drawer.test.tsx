@@ -2,12 +2,16 @@ import React from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import {
   Animated,
+  Dimensions,
   PanResponder,
   type GestureResponderEvent,
   type PanResponderGestureState,
 } from 'react-native';
 
-jest.mock('../../src/hooks/use-reduced-motion', () => ({ useReducedMotion: () => true }));
+let mockReducedMotion = true;
+jest.mock('../../src/hooks/use-reduced-motion', () => ({
+  useReducedMotion: () => mockReducedMotion,
+}));
 
 let mockProfile: { username: string } | null | undefined;
 jest.mock('convex/react', () => ({
@@ -54,7 +58,8 @@ it.each([
 
 // Exercise the responder callbacks with real Animated values so the tests check
 // finger tracking as well as the final open/closed state.
-async function openDraggableDrawer() {
+async function openDraggableDrawer(reducedMotion = true) {
+  mockReducedMotion = reducedMotion;
   mockProfile = { username: 'marker' };
   const ref = React.createRef<AppDrawerHandle>();
   const view = await render(
@@ -71,6 +76,7 @@ async function openDraggableDrawer() {
 }
 
 beforeEach(() => {
+  mockReducedMotion = true;
   responderSpy = jest.spyOn(PanResponder, 'create');
   timingSpy = jest.spyOn(Animated, 'timing').mockImplementation((value, config) => ({
     start: (callback) => {
@@ -133,4 +139,70 @@ it('keeps menu navigation and backdrop dismissal working without a drag', async 
     view.getByRole('button', { name: 'Close account menu', includeHiddenElements: true }),
   );
   expect(view.queryByTestId('account-menu-panel')).toBeNull();
+});
+
+it('buffers movement and release until the native animation position arrives', async () => {
+  const { view, handlers, event, gesture } = await openDraggableDrawer();
+  let stopped: ((value: number) => void) | undefined;
+  const stopSpy = jest
+    .spyOn(Animated.Value.prototype, 'stopAnimation')
+    .mockImplementation((callback) => {
+      stopped = callback;
+    });
+  await act(() => handlers.onPanResponderGrant?.(event, gesture(0)));
+  await act(() => handlers.onPanResponderMove?.(event, gesture(-40)));
+  expect(view.getByTestId('account-menu-panel')).toHaveStyle({ transform: [{ translateX: 0 }] });
+  const width = Math.min(Dimensions.get('window').width * 0.82, 320);
+  await act(() => stopped?.(0.6));
+  expect(view.getByTestId('account-menu-panel')).toHaveStyle({
+    transform: [{ translateX: -width * 0.4 - 40 }],
+  });
+  await act(() => handlers.onPanResponderTerminate?.(event, gesture(-40)));
+
+  await act(() => handlers.onPanResponderGrant?.(event, gesture(0)));
+  const lateStop = stopped;
+  await act(() => handlers.onPanResponderRelease?.(event, gesture(-20, 0, -0.8)));
+  expect(view.getByTestId('account-menu-panel')).toBeTruthy();
+  await act(() => lateStop?.(0.9));
+  expect(view.queryByTestId('account-menu-panel')).toBeNull();
+  stopSpy.mockRestore();
+});
+
+it('ignores a stale native position after cancellation', async () => {
+  const { view, handlers, event, gesture } = await openDraggableDrawer();
+  let stopped: ((value: number) => void) | undefined;
+  const stopSpy = jest
+    .spyOn(Animated.Value.prototype, 'stopAnimation')
+    .mockImplementation((callback) => {
+      stopped = callback;
+    });
+  await act(() => handlers.onPanResponderGrant?.(event, gesture(0)));
+  await act(() => handlers.onPanResponderMove?.(event, gesture(-100)));
+  await act(() => handlers.onPanResponderTerminate?.(event, gesture(-100)));
+  await act(() => stopped?.(0.4));
+  expect(view.getByTestId('account-menu-panel')).toHaveStyle({ transform: [{ translateX: 0 }] });
+  stopSpy.mockRestore();
+});
+
+it('does not interrupt Android Back dismissal with an active drag', async () => {
+  const frameSpy = jest.spyOn(global, 'requestAnimationFrame').mockImplementation((callback) => {
+    callback(0);
+    return 0;
+  });
+  const { view, handlers, event, gesture } = await openDraggableDrawer(false);
+  await act(() => handlers.onPanResponderGrant?.(event, gesture(0)));
+  await act(() => handlers.onPanResponderMove?.(event, gesture(-40)));
+  timingSpy.mockClear();
+  // Keep the closing animation in flight while more touch events arrive.
+  timingSpy.mockImplementationOnce(() => ({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() }));
+  await fireEvent(view.getByTestId('account-menu-modal'), 'requestClose');
+  const valueSpy = jest.spyOn(Animated.Value.prototype, 'setValue');
+  await act(() => handlers.onPanResponderMove?.(event, gesture(-80)));
+  await act(() => handlers.onPanResponderRelease?.(event, gesture(-80)));
+  await act(() => handlers.onPanResponderTerminate?.(event, gesture(-80)));
+  expect(valueSpy).not.toHaveBeenCalled();
+  expect(timingSpy).toHaveBeenCalledTimes(1);
+  expect(handlers.onMoveShouldSetPanResponder?.(event, gesture(-30))).toBe(false);
+  valueSpy.mockRestore();
+  frameSpy.mockRestore();
 });

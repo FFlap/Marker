@@ -49,7 +49,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const [progress] = useState(() => new Animated.Value(0));
   const pendingClose = useRef<(() => void) | undefined>(undefined);
   const closing = useRef(false);
-  const dragStart = useRef(1);
+  const drag = useRef<{ start?: number; dx: number; releaseVelocity?: number } | undefined>(
+    undefined,
+  );
   const { width: windowWidth } = useWindowDimensions();
   const drawerWidth = Math.min(windowWidth * 0.82, 320);
   const { profileReady } = useAccountLoading();
@@ -67,6 +69,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       callback();
       return;
     }
+    drag.current = undefined;
     closing.current = false;
     progress.stopAnimation();
     progress.setValue(motionReduced ? 1 : 0);
@@ -85,6 +88,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
 
   const closeDrawer = useCallback(
     (onClosed?: () => void) => {
+      drag.current = undefined;
       closing.current = true;
       pendingClose.current = onClosed ?? pendingClose.current;
       progress.stopAnimation();
@@ -121,35 +125,56 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
     }).start();
   }, [motionReduced, progress]);
 
-  const swipe = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          !closing.current &&
-          gesture.numberActiveTouches === 1 &&
-          gesture.dx < -6 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
-        onPanResponderGrant: () => {
-          progress.stopAnimation((value) => {
-            dragStart.current = value;
-          });
-        },
-        onPanResponderMove: (_, gesture) => {
-          progress.setValue(Math.max(0, Math.min(1, dragStart.current + gesture.dx / drawerWidth)));
-        },
-        onPanResponderRelease: (_, gesture) => {
-          const position = Math.max(0, Math.min(1, dragStart.current + gesture.dx / drawerWidth));
-          if (gesture.vx <= -0.55 || (position <= 0.75 && gesture.vx < 0.55)) {
-            closeDrawer();
-          } else {
-            settleOpen();
-          }
-        },
-        onPanResponderTerminate: settleOpen,
-        onPanResponderTerminationRequest: () => false,
-      }),
-    [closeDrawer, drawerWidth, progress, settleOpen],
-  );
+  const swipe = useMemo(() => {
+    const updateDrag = () => {
+      const active = drag.current;
+      if (!active || active.start === undefined || closing.current) return;
+      const position = Math.max(0, Math.min(1, active.start + active.dx / drawerWidth));
+      progress.setValue(position);
+      if (active.releaseVelocity === undefined) return;
+      drag.current = undefined;
+      if (active.releaseVelocity <= -0.55 || (position <= 0.75 && active.releaseVelocity < 0.55)) {
+        closeDrawer();
+      } else {
+        settleOpen();
+      }
+    };
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        !closing.current &&
+        gesture.numberActiveTouches === 1 &&
+        gesture.dx < -6 &&
+        Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
+      onPanResponderGrant: () => {
+        if (closing.current) return;
+        const active = { dx: 0 } as NonNullable<typeof drag.current>;
+        drag.current = active;
+        // Native-driven animations report their stopped position asynchronously.
+        // Buffer movement until it arrives and ignore callbacks from older drags.
+        progress.stopAnimation((value) => {
+          if (drag.current !== active || closing.current) return;
+          active.start = value;
+          updateDrag();
+        });
+      },
+      onPanResponderMove: (_, gesture) => {
+        if (!drag.current || closing.current) return;
+        drag.current.dx = gesture.dx;
+        updateDrag();
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (!drag.current || closing.current) return;
+        drag.current.dx = gesture.dx;
+        drag.current.releaseVelocity = gesture.vx;
+        updateDrag();
+      },
+      onPanResponderTerminate: () => {
+        drag.current = undefined;
+        if (!closing.current) settleOpen();
+      },
+      onPanResponderTerminationRequest: () => false,
+    });
+  }, [closeDrawer, drawerWidth, progress, settleOpen]);
 
   useImperativeHandle(ref, () => ({ open: openDrawer }), [openDrawer]);
 
@@ -186,6 +211,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       </NativePressable>
 
       <Modal
+        testID="account-menu-modal"
         visible={visible}
         transparent
         animationType="none"
