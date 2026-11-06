@@ -87,7 +87,7 @@ describe('calendar library revision', () => {
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
   });
 
-  it('invalidates corrected release dates and display metadata, but not runtime-only refreshes', async () => {
+  it('invalidates corrected release dates and display metadata, but not cast-only refreshes', async () => {
     const { t, viewer } = await setup();
     await viewer.mutation(api.library.items.addItem, movie);
     const titleId = await t.run((ctx) =>
@@ -116,7 +116,9 @@ describe('calendar library revision', () => {
     await t.run((ctx) => ctx.db.patch(titleId, { title: 'Renamed movie', posterPath: '/new.jpg' }));
     await refresh();
     expect(await viewer.query(api.calendarLibrary.revision, {})).toBe(3);
-    await t.run((ctx) => ctx.db.patch(titleId, { runtime: 120 }));
+    await t.run((ctx) =>
+      ctx.db.patch(titleId, { cast: [{ name: 'Actor', character: 'Character' }] }),
+    );
     await refresh();
     expect(await viewer.query(api.calendarLibrary.revision, {})).toBe(3);
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
