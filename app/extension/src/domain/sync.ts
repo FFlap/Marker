@@ -1,3 +1,9 @@
+import {
+  outboxLifecycle,
+  retryLifecycle,
+  type DeliveryState,
+  type RetryEvent,
+} from "./sync-lifecycle";
 import { DateTime, Effect, Exit, Schema } from "effect";
 import {
   ExtensionStorage,
@@ -30,7 +36,9 @@ const Coordinate = Schema.Number.check(
 );
 const decodeHttpUrl = Schema.decodeUnknownExit(
   Schema.URLFromString.check(
-    Schema.makeFilter((url) => url.protocol === "https:" || url.protocol === "http:"),
+    Schema.makeFilter(
+      (url) => url.protocol === "https:" || url.protocol === "http:",
+    ),
   ),
 );
 export const WatchPayloadSchema = Schema.Struct({
@@ -43,13 +51,16 @@ export const WatchPayloadSchema = Schema.Struct({
   url: Schema.optional(
     Schema.Trim.check(
       Schema.isMaxLength(URL_MAX),
-      Schema.makeFilter((url) => url === "" || Exit.isSuccess(decodeHttpUrl(url))),
+      Schema.makeFilter(
+        (url) => url === "" || Exit.isSuccess(decodeHttpUrl(url)),
+      ),
     ),
   ),
 }).check(
   Schema.makeFilter(
     (payload) =>
-      (payload.seasonNumber !== undefined && payload.episodeNumber !== undefined) ||
+      (payload.seasonNumber !== undefined &&
+        payload.episodeNumber !== undefined) ||
       Boolean(payload.episodeTitle),
   ),
 );
@@ -110,7 +121,15 @@ export function buildWatchPayload(
 export function parseWatchPayload(value: unknown): WatchPayload | null {
   const decoded = decodeWatchPayload(value, { onExcessProperty: "error" });
   if (Exit.isFailure(decoded)) return null;
-  const { service, seriesTitle, seasonTitle, seasonNumber, episodeNumber, episodeTitle, url } = decoded.value;
+  const {
+    service,
+    seriesTitle,
+    seasonTitle,
+    seasonNumber,
+    episodeNumber,
+    episodeTitle,
+    url,
+  } = decoded.value;
   return {
     service,
     seriesTitle,
@@ -140,9 +159,9 @@ const sameEpisode = (left: WatchPayload, right: WatchPayload) => {
   }
   return Boolean(
     left.episodeTitle &&
-      right.episodeTitle &&
-      normalizeIdentity(left.episodeTitle) ===
-        normalizeIdentity(right.episodeTitle),
+    right.episodeTitle &&
+    normalizeIdentity(left.episodeTitle) ===
+      normalizeIdentity(right.episodeTitle),
   );
 };
 
@@ -196,8 +215,7 @@ export function createOutboxManager(
     task: Effect.Effect<A, ExtensionFailure, ExtensionStorage>,
     prepare = true,
   ) {
-    if (prepare && options.prepare)
-      yield* options.prepare();
+    if (prepare && options.prepare) yield* options.prepare();
     return yield* task;
   }, fifo);
   const alarm = (action: "clear" | "schedule", when = 0) =>
@@ -205,23 +223,21 @@ export function createOutboxManager(
       if (action === "clear") await options.alarms?.clear(SYNC_RETRY_ALARM);
       else await options.alarms?.schedule(SYNC_RETRY_ALARM, when);
     });
-  const updateSchedule = Effect.fnUntraced(function* (
-    complete: boolean,
-    resetAttempt = false,
-  ) {
+  const updateSchedule = Effect.fnUntraced(function* (event: RetryEvent) {
     const db = yield* ExtensionStorage;
-    if (complete) {
+    if (event === "delivered") {
       yield* db.set({ [SYNC_RETRY_KEY]: null });
       yield* alarm("clear");
       return;
     }
     const stored = yield* db.get(SYNC_RETRY_KEY);
     const previous = retryState(stored[SYNC_RETRY_KEY]);
-    const attempt = resetAttempt
-      ? 0
-      : previous
-        ? Math.max(1, previous.attempt + 1)
-        : 1;
+    const attempt =
+      event === "enqueued"
+        ? 0
+        : previous
+          ? Math.max(1, previous.attempt + 1)
+          : 1;
     const delay =
       RETRY_DELAYS_MS[
         Math.min(Math.max(0, attempt - 1), RETRY_DELAYS_MS.length - 1)
@@ -231,10 +247,12 @@ export function createOutboxManager(
     yield* alarm("schedule", retry.nextRetryAt);
   });
   let generation = 0;
-  let flushing: Effect.Effect<boolean, ExtensionFailure> | undefined;
+  let delivery: DeliveryState<Effect.Effect<boolean, ExtensionFailure>> = {
+    state: "idle",
+  };
   const flushEffect = Effect.gen(function* () {
-    if (flushing) {
-      const pending = flushing;
+    if (delivery.state === "flushing") {
+      const pending = delivery.effect;
       // Account notifications must prepare storage even when sharing delivery.
       if (options.prepare) yield* provide(serialize(Effect.void));
       return yield* pending;
@@ -256,9 +274,9 @@ export function createOutboxManager(
           if (!isCurrent()) break;
           const account = stored[SYNC_ACCOUNT_KEY];
           // Typed integration failures retry; defects propagate after persisting the retry schedule.
-          const result = yield* (typeof account === "string"
-            ? post(payload, account)
-            : post(payload)).pipe(
+          const result = yield* (
+            typeof account === "string" ? post(payload, account) : post(payload)
+          ).pipe(
             Effect.catchTag("ExtensionFailure", () =>
               Effect.succeed({ ok: false, retryable: true }),
             ),
@@ -293,8 +311,13 @@ export function createOutboxManager(
           Effect.gen(function* () {
             const latest = yield* db.get(SYNC_OUTBOX_KEY);
             const complete =
-              normalizeOutbox(latest[SYNC_OUTBOX_KEY]).length === 0;
-            if (isCurrent()) yield* updateSchedule(complete);
+              outboxLifecycle(
+                normalizeOutbox(latest[SYNC_OUTBOX_KEY]).length,
+                null,
+                yield* now,
+              ).state === "empty";
+            if (isCurrent())
+              yield* updateSchedule(complete ? "delivered" : "failed");
             return complete;
           }),
           false,
@@ -303,20 +326,21 @@ export function createOutboxManager(
         Effect.onError(() =>
           serialize(
             Effect.suspend(() =>
-              isCurrent() ? updateSchedule(false) : Effect.void,
+              isCurrent() ? updateSchedule("failed") : Effect.void,
             ),
             false,
           ).pipe(Effect.catch(() => Effect.void)),
         ),
         Effect.ensuring(
           Effect.sync(() => {
-            flushing = undefined;
+            delivery = { state: "idle" };
           }),
         ),
       ),
     );
-    flushing = yield* Effect.cached(batch);
-    return yield* flushing;
+    const effect = yield* Effect.cached(batch);
+    delivery = { state: "flushing", effect };
+    return yield* effect;
   });
   const effects = {
     flush: flushEffect,
@@ -336,7 +360,7 @@ export function createOutboxManager(
       const db = yield* ExtensionStorage;
       const stored = yield* db.get(SYNC_RETRY_KEY);
       const retry = retryState(stored[SYNC_RETRY_KEY]);
-      if (!retry || retry.nextRetryAt > (yield* now)) return false;
+      if (retryLifecycle(retry, yield* now).state !== "due") return false;
       return yield* flushEffect;
     }, provide),
     enqueue: Effect.fnUntraced(
@@ -351,7 +375,7 @@ export function createOutboxManager(
         yield* db.set({
           [SYNC_OUTBOX_KEY]: [...deduped, parsed].slice(-SYNC_OUTBOX_MAX),
         });
-        yield* updateSchedule(false, true);
+        yield* updateSchedule("enqueued");
       },
       (effect) => serialize(effect),
       provide,

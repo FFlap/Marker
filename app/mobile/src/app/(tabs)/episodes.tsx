@@ -1,3 +1,4 @@
+import { usePendingTasks } from '@/hooks/use-pending-tasks';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveLibrary, touchMetadata } from '@marker/shared/clientEffects';
@@ -73,8 +74,10 @@ function Episodes() {
   const [tagFilter, setTagFilter] = useState('all');
   const [expanded, setExpanded] = useState<string>();
   const [editing, setEditing] = useState<EpisodeHubItem>();
-  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
-  const episodeMutationQueues = useRef(new Map<string, Promise<unknown>>());
+  const [pending, setPending] = usePendingTasks();
+  const episodeMutationQueues = useRef(
+    new Map<string, { state: 'queued'; completion: Promise<unknown> }>(),
+  );
   const [draftRating, setDraftRating] = useState<number>();
   const [draftTags, setDraftTags] = useState<string[]>([]);
   const editor = useRef<EpisodeEditor | undefined>(undefined);
@@ -125,7 +128,7 @@ function Episodes() {
   ) => {
     const key = `${episode.itemId}:${episode.season}:${episode.episode}`;
     setPending((current) => new Set(current).add(key));
-    const previous = episodeMutationQueues.current.get(key) ?? Promise.resolve();
+    const previous = episodeMutationQueues.current.get(key)?.completion ?? Promise.resolve();
     const request = runOperation.write(
       Effect.promise(() => previous.catch(() => undefined)).pipe(
         Effect.andThen(
@@ -153,7 +156,7 @@ function Episodes() {
           toast.show('Couldn’t update this episode');
         },
         settled: () => {
-          if (episodeMutationQueues.current.get(key) === request) {
+          if (episodeMutationQueues.current.get(key)?.completion === request) {
             episodeMutationQueues.current.delete(key);
             setPending((current) => {
               const next = new Set(current);
@@ -164,7 +167,7 @@ function Episodes() {
         },
       },
     );
-    episodeMutationQueues.current.set(key, request);
+    episodeMutationQueues.current.set(key, { state: 'queued', completion: request });
     await request;
   };
 

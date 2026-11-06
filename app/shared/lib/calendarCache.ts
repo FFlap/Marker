@@ -8,19 +8,36 @@ import {
   type CalendarFetch,
   type CalendarResult,
 } from './calendar';
-type Snapshot = { result?: CalendarResult; loading: boolean; error: boolean };
+type Snapshot =
+  | { state: 'loading'; result?: CalendarResult; loading: true; error: false }
+  | { state: 'ready'; result: CalendarResult; loading: false; error: false }
+  | { state: 'failed'; result?: CalendarResult; loading: false; error: true };
+const loadingSnapshot = (result?: CalendarResult): Snapshot => ({
+  state: 'loading',
+  result,
+  loading: true,
+  error: false,
+});
+const failedSnapshot = (result?: CalendarResult): Snapshot => ({
+  state: 'failed',
+  result,
+  loading: false,
+  error: true,
+});
+const readySnapshot = (result: CalendarResult): Snapshot => ({
+  state: 'ready',
+  result,
+  loading: false,
+  error: false,
+});
 type Entry = {
   snapshot: Snapshot;
   updatedAt: number;
   pending?: Promise<void>;
   controller: AbortController;
 };
-const EMPTY: Snapshot = { loading: true, error: false };
-const PAST: Snapshot = {
-  loading: false,
-  error: false,
-  result: { events: [], failedTitles: { count: 0, names: [] } },
-};
+const EMPTY = loadingSnapshot();
+const PAST = readySnapshot({ events: [], failedTitles: { count: 0, names: [] } });
 const FRESH_MS = 5 * 60 * 1000;
 const MAX_MONTHS = 12;
 
@@ -104,11 +121,7 @@ export class CalendarCache {
     )
       return;
     const entry: Entry = {
-      snapshot: {
-        result: previous?.snapshot.result,
-        loading: true,
-        error: false,
-      },
+      snapshot: loadingSnapshot(previous?.snapshot.result),
       updatedAt: 0,
       controller: new AbortController(),
     };
@@ -132,11 +145,7 @@ export class CalendarCache {
         },
         (progress) => {
           if (!previous?.snapshot.result) {
-            entry.snapshot = {
-              result: progress,
-              loading: true,
-              error: false,
-            };
+            entry.snapshot = loadingSnapshot(progress);
             notify();
           }
         },
@@ -144,37 +153,26 @@ export class CalendarCache {
       if (!force && result.needsRefresh) {
         const saved = previous?.snapshot.result ?? result;
         const hasSavedEvents = saved.events.length > 0;
-        entry.snapshot = {
-          result: { ...saved, needsRefresh: true },
-          loading: true,
-          error: false,
-        };
+        entry.snapshot = loadingSnapshot({ ...saved, needsRefresh: true });
         notify();
         result = yield* loadCalendarPagesEffect(fetch, args, (progress) => {
           if (!hasSavedEvents) {
-            entry.snapshot = {
-              result: progress,
-              loading: true,
-              error: false,
-            };
+            entry.snapshot = loadingSnapshot(progress);
             notify();
           }
         });
       }
       // The server retains stale data only for failed providers. Merging here
       // would resurrect removed titles or episodes whose release date moved.
-      entry.snapshot = {
-        result,
-        loading: false,
-        error: result.needsRefresh === true,
-      };
+      entry.snapshot =
+        result.needsRefresh === true ? failedSnapshot(result) : readySnapshot(result);
     });
     const notify = () => {
       if (current()) this.listeners.get(key)?.forEach((listener) => listener());
     };
     const failed = () =>
       Effect.sync(() => {
-        if (current()) entry.snapshot = { ...entry.snapshot, loading: false, error: true };
+        if (current()) entry.snapshot = failedSnapshot(entry.snapshot.result);
       });
     const load = program.pipe(
       Effect.catchTags({
@@ -187,8 +185,7 @@ export class CalendarCache {
           entry.updatedAt = DateTime.toEpochMillis(now);
           entry.pending = undefined;
           if (current()) {
-            if (Exit.isFailure(exit))
-              entry.snapshot = { ...entry.snapshot, loading: false, error: true };
+            if (Exit.isFailure(exit)) entry.snapshot = failedSnapshot(entry.snapshot.result);
             this.prune();
             notify();
           }

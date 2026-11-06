@@ -1,3 +1,4 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { useOperation } from "@/hooks/use-operation";
 import { saveLibrary } from "@marker/shared/clientEffects";
 import { useState, type ReactNode } from "react";
@@ -47,8 +48,12 @@ export function EpisodeDialog({
   );
   const [tags, setTags] = useState<string[]>(() => episode.tags ?? []);
   const runOperation = useOperation();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const {
+    pending: busy,
+    error,
+    setPending: setBusy,
+    setError,
+  } = useTaskState();
 
   const mutate = async (
     patch: {

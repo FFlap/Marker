@@ -1,3 +1,4 @@
+import { accountBoundaryState } from '@/lib/accountLifecycle';
 import { ScreenView } from '@/components/ScreenLayout';
 import type { ReactNode } from 'react';
 import { Redirect } from 'expo-router';
@@ -23,8 +24,6 @@ export function AuthBoundary({ children, routeName }: { children: ReactNode; rou
     signOut,
     cachedContent,
   } = useAccount();
-  const publicRoute = routeName === 'sign-in' || routeName.startsWith('u/');
-  const setupRoute = routeName === 'profile-setup';
   const libraryRoute = routeName === 'index';
   const loading = (
     <AccountLoadingContext.Provider
@@ -36,24 +35,21 @@ export function AuthBoundary({ children, routeName }: { children: ReactNode; rou
       {libraryRoute || routeName === 'profile' ? children : <LibraryScreen />}
     </AccountLoadingContext.Provider>
   );
-  if (!clerkLoaded) return loading;
-  // Clerk can publish an expired session as signed out before Convex clears its cached
-  // auth state; checking Convex loading first can leave protected screens stuck.
-  if (!isSignedIn) {
-    if (!publicRoute) return <Redirect href="/sign-in" />;
-    return children;
-  }
-  // Only the two screens backed by a complete, matching saved snapshot can render early.
-  // Other routes retain the server-authentication gate.
-  if (cachedContent && profile?.username && (libraryRoute || routeName === 'profile')) {
-    return (
-      <AccountLoadingContext.Provider value={{ profileReady: true, libraryReady: true }}>
-        {children}
-      </AccountLoadingContext.Provider>
-    );
-  }
-  if (isLoading) return loading;
-  if (accountError)
+  const boundary = accountBoundaryState({
+    routeName,
+    clerkLoaded,
+    isSignedIn,
+    isAuthenticated,
+    isLoading,
+    accountReady,
+    accountError,
+    cachedContent,
+    profile,
+  });
+  if (boundary.state === 'loading') return loading;
+  if (boundary.state === 'public') return children;
+  if (boundary.state === 'redirect') return <Redirect href={boundary.destination} />;
+  if (boundary.state === 'error')
     return (
       <ScreenView style={styles.errorScreen}>
         <Text style={styles.title}>We couldn’t finish setting up your account</Text>
@@ -64,13 +60,6 @@ export function AuthBoundary({ children, routeName }: { children: ReactNode; rou
         </View>
       </ScreenView>
     );
-  if (!isAuthenticated && !publicRoute) return <Redirect href="/sign-in" />;
-  if (isAuthenticated && (!accountReady || profile === undefined)) return loading;
-  if (isAuthenticated && !profile?.username && !setupRoute)
-    return <Redirect href="/profile-setup" />;
-  if (isAuthenticated && profile?.username && (routeName === 'sign-in' || setupRoute)) {
-    return <Redirect href="/(tabs)" />;
-  }
   return (
     <AccountLoadingContext.Provider value={{ profileReady: true, libraryReady: true }}>
       {children}

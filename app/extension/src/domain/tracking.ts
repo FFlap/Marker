@@ -15,9 +15,12 @@ const saveDetectedEpisode = Effect.fn("saveDetectedEpisode")(function* (
   );
   return yield* Schema.decodeUnknownEffect(SavedResponse)(response).pipe(
     Effect.map((value) => value.changed),
-    Effect.mapError(() => new BookmarkSaveError({
-      message: "The background could not save the episode",
-    })),
+    Effect.mapError(
+      () =>
+        new BookmarkSaveError({
+          message: "The background could not save the episode",
+        }),
+    ),
   );
 });
 export function persistDetectedEpisode(
@@ -26,8 +29,42 @@ export function persistDetectedEpisode(
     browser.runtime.sendMessage(message),
   signal?: AbortSignal,
 ): Promise<boolean> {
-  return runExtension(
-    saveDetectedEpisode(bookmark, send),
-    signal,
-  );
+  return runExtension(saveDetectedEpisode(bookmark, send), signal);
+}
+
+export type InspectionState =
+  | { state: "waiting" | "tracked" | "error"; lastEpisode: string | null }
+  | { state: "saving"; lastEpisode: string | null; inspectAgain: boolean };
+export type InspectionEvent =
+  | { type: "navigate" }
+  | { type: "inspect" }
+  | { type: "save" }
+  | { type: "saved"; episodeId: string }
+  | { type: "failed" };
+
+/** A single-flight inspection owns deduplication and the deferred inspection. */
+export function transitionInspection(
+  current: InspectionState,
+  event: InspectionEvent,
+): InspectionState {
+  switch (event.type) {
+    case "navigate":
+      return { ...current, lastEpisode: null };
+    case "inspect":
+      return current.state === "saving"
+        ? { ...current, inspectAgain: true }
+        : current;
+    case "save":
+      return current.state === "saving"
+        ? current
+        : {
+            state: "saving",
+            lastEpisode: current.lastEpisode,
+            inspectAgain: false,
+          };
+    case "saved":
+      return { state: "tracked", lastEpisode: event.episodeId };
+    case "failed":
+      return { state: "error", lastEpisode: current.lastEpisode };
+  }
 }

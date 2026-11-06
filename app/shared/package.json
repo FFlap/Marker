@@ -16,7 +16,8 @@
     "./calendarCache": "./lib/calendarCache.ts",
     "./clientOperations": "./lib/clientOperations.ts",
     "./clientEffects": "./lib/clientEffects.ts",
-    "./castPresentation": "./lib/castPresentation.ts"
+    "./castPresentation": "./lib/castPresentation.ts",
+    "./lifecycle": "./lib/lifecycle.ts"
   },
   "scripts": {
     "dev": "convex dev",

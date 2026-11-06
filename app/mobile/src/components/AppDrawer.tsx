@@ -47,8 +47,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const [visible, setVisible] = useState(false);
   const motionReduced = useReducedMotion();
   const [progress] = useState(() => new Animated.Value(0));
-  const pendingClose = useRef<(() => void) | undefined>(undefined);
-  const closing = useRef(false);
+  const navigation = useRef<{ state: 'idle' } | { state: 'closing'; onClosed?: () => void }>({
+    state: 'idle',
+  });
   const drag = useRef<{ start?: number; dx: number; releaseVelocity?: number } | undefined>(
     undefined,
   );
@@ -61,16 +62,17 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
 
   const openDrawer = useCallback(() => {
     if (!canOpen) return;
-    if (pendingClose.current) {
+    if (navigation.current.state === 'closing' && navigation.current.onClosed) {
       progress.stopAnimation();
       setVisible(false);
-      const callback = pendingClose.current;
-      pendingClose.current = undefined;
-      callback();
+      const callback =
+        navigation.current.state === 'closing' ? navigation.current.onClosed : undefined;
+      navigation.current = { state: 'idle' };
+      callback?.();
       return;
     }
     drag.current = undefined;
-    closing.current = false;
+    navigation.current = { state: 'idle' };
     progress.stopAnimation();
     progress.setValue(motionReduced ? 1 : 0);
     setVisible(true);
@@ -89,14 +91,19 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const closeDrawer = useCallback(
     (onClosed?: () => void) => {
       drag.current = undefined;
-      closing.current = true;
-      pendingClose.current = onClosed ?? pendingClose.current;
+      navigation.current = {
+        state: 'closing',
+        onClosed:
+          onClosed ??
+          (navigation.current.state === 'closing' ? navigation.current.onClosed : undefined),
+      };
       progress.stopAnimation();
       if (motionReduced) {
         progress.setValue(0);
         setVisible(false);
-        const callback = pendingClose.current;
-        pendingClose.current = undefined;
+        const callback =
+          navigation.current.state === 'closing' ? navigation.current.onClosed : undefined;
+        navigation.current = { state: 'idle' };
         callback?.();
         return;
       }
@@ -108,8 +115,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       }).start(({ finished }) => {
         if (!finished) return;
         setVisible(false);
-        const callback = pendingClose.current;
-        pendingClose.current = undefined;
+        const callback =
+          navigation.current.state === 'closing' ? navigation.current.onClosed : undefined;
+        navigation.current = { state: 'idle' };
         callback?.();
       });
     },
@@ -128,7 +136,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
   const swipe = useMemo(() => {
     const updateDrag = () => {
       const active = drag.current;
-      if (!active || active.start === undefined || closing.current) return;
+      if (!active || active.start === undefined || navigation.current.state === 'closing') return;
       const position = Math.max(0, Math.min(1, active.start + active.dx / drawerWidth));
       progress.setValue(position);
       if (active.releaseVelocity === undefined) return;
@@ -141,36 +149,37 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
     };
     return PanResponder.create({
       onMoveShouldSetPanResponder: (_, gesture) =>
-        !closing.current &&
+        navigation.current.state === 'idle' &&
         gesture.numberActiveTouches === 1 &&
         gesture.dx < -6 &&
         Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.25,
       onPanResponderGrant: () => {
-        if (closing.current) return;
+        if (navigation.current.state === 'closing') return;
         const active = { dx: 0 } as NonNullable<typeof drag.current>;
         drag.current = active;
         // Native-driven animations report their stopped position asynchronously.
         // Buffer movement until it arrives and ignore callbacks from older drags.
         progress.stopAnimation((value) => {
-          if (drag.current !== active || closing.current) return;
+          if (drag.current !== active || navigation.current.state === 'closing') return;
           active.start = value;
           updateDrag();
         });
       },
       onPanResponderMove: (_, gesture) => {
-        if (!drag.current || closing.current) return;
+        if (!drag.current || navigation.current.state === 'closing') return;
         drag.current.dx = gesture.dx;
         updateDrag();
       },
       onPanResponderRelease: (_, gesture) => {
-        if (!drag.current || closing.current) return;
+        if (!drag.current || navigation.current.state === 'closing') return;
         drag.current.dx = gesture.dx;
         drag.current.releaseVelocity = gesture.vx;
         updateDrag();
       },
       onPanResponderTerminate: () => {
+        if (!drag.current) return;
         drag.current = undefined;
-        if (!closing.current) settleOpen();
+        if (navigation.current.state === 'idle') settleOpen();
       },
       onPanResponderTerminationRequest: () => false,
     });

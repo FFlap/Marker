@@ -27,6 +27,7 @@ export type NativeGridDragMotion = NativePosterDragMotion & {
 };
 
 type DragSession<T> = {
+  state: 'awaitingPreview' | 'dragging';
   bounds: { bottom: number; top: number };
   from: number;
   itemKey: string;
@@ -145,7 +146,6 @@ export function NativeDraggableGrid<T>({
   const touchTranslate = useSharedValue(0);
   const isTouchActiveNative = useSharedValue(false);
   const [previewReady, setPreviewReady] = useState(false);
-  const previewReadyRef = useRef(false);
   const pointer = useSharedValue({ x: 0, y: 0 });
   const scrollPosition = useSharedValue(0);
   const scrollBounds = useSharedValue({ top: 0, bottom: 0 });
@@ -202,8 +202,8 @@ export function NativeDraggableGrid<T>({
 
   const onPreviewReady = useCallback(() => {
     const current = session.current;
-    if (!current || previewReadyRef.current) return;
-    previewReadyRef.current = true;
+    if (!current || current.state === 'dragging') return;
+    current.state = 'dragging';
     setPreviewReady(true);
     setDragOrder(moveGridItem(current.order, current.from, current.over));
   }, []);
@@ -233,6 +233,7 @@ export function NativeDraggableGrid<T>({
       const bounds = autoScrollRef.current?.getBounds() ?? { top: 0, bottom: 0 };
       const maxOffset = autoScrollRef.current?.getMaxOffset() ?? 0;
       const current: DragSession<T> = {
+        state: onMotionInit ? 'awaitingPreview' : 'dragging',
         bounds,
         from: index,
         itemKey,
@@ -256,7 +257,6 @@ export function NativeDraggableGrid<T>({
             : new Map(slotLayouts.current),
       };
       session.current = current;
-      previewReadyRef.current = !onMotionInit;
       setPreviewReady(false);
       setDragOrder(order);
       setActiveKey(itemKey);
@@ -316,7 +316,8 @@ export function NativeDraggableGrid<T>({
       const target = nearestGridSlot(current.slots, { x: localX, y: localY }, current.over);
       if (target === current.over) return;
       current.over = target;
-      if (previewReadyRef.current) setDragOrder(moveGridItem(current.order, current.from, target));
+      if (current.state === 'dragging')
+        setDragOrder(moveGridItem(current.order, current.from, target));
     },
     [maxScrollOffset, scrollBounds],
   );

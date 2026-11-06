@@ -1,3 +1,4 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { saveProfile } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
 import { useState } from "react";
@@ -18,8 +19,12 @@ export function ProfileSetupPage() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { next?: string };
   const [username, setUsername] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const {
+    pending: busy,
+    error,
+    setPending: setBusy,
+    setError,
+  } = useTaskState();
   const {
     pending: photoPending,
     upload,

@@ -1,3 +1,4 @@
+import { transitionDraft, type DraftState } from '@marker/shared/lifecycle';
 import { useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import {
@@ -62,23 +63,16 @@ function LibraryEntryDrawerSession({
   open,
   onOpenChange,
 }: LibraryEntryDrawerProps) {
-  const [editor, setEditor] = useState<{
-    draft: LibraryEntryDraft;
-    dirty: boolean;
-  }>(() => ({
+  const [editor, setEditor] = useState<DraftState<LibraryEntryDraft>>(() => ({
+    state: 'clean',
     draft: { ...initial, tags: [...initial.tags] },
-    dirty: false,
   }));
-  const submitted = useRef(false);
+  const submission = useRef<'ready' | 'submitted'>('ready');
   const { draft } = editor;
 
   const title = mode === 'add' ? 'Add to library' : 'Edit entry';
   const updateDraft = (update: (current: LibraryEntryDraft) => LibraryEntryDraft) => {
-    setEditor((current) => ({
-      ...current,
-      draft: update(current.draft),
-      dirty: true,
-    }));
+    setEditor((current) => transitionDraft(current, { type: 'edit', update }));
   };
   const setStatus = (status: Status) => {
     updateDraft((current) => ({
@@ -106,8 +100,9 @@ function LibraryEntryDrawerSession({
       onOpenChange={(nextOpen) => {
         if (nextOpen) return;
         onOpenChange(false);
-        if (mode === 'update' && editor.dirty && !submitted.current) {
-          submitted.current = true;
+        if (mode === 'update' && editor.state === 'dirty' && submission.current === 'ready') {
+          submission.current = 'submitted';
+          setEditor((current) => transitionDraft(current, { type: 'submit' }));
           void onSubmit(draft);
         }
       }}
@@ -150,8 +145,9 @@ function LibraryEntryDrawerSession({
                 title={saving ? 'Adding…' : 'Add to library'}
                 disabled={saving}
                 onPress={() => {
-                  if (submitted.current) return;
-                  submitted.current = true;
+                  if (submission.current === 'submitted') return;
+                  submission.current = 'submitted';
+                  setEditor((current) => transitionDraft(current, { type: 'submit' }));
                   onOpenChange(false);
                   void onSubmit(draft);
                 }}
