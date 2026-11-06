@@ -483,6 +483,7 @@ export default function TagDetailScreen() {
                     <NativeDraggableGrid
                       key={`${view}-${view === 'posters' ? gridColumns : listColumns}`}
                       autoScroll={nativePosterAutoScroll}
+                      sectionTop={sectionLayouts[status]?.top}
                       contentContainerStyle={
                         view === 'posters' ? s.grid : { rowGap: listColumns === 2 ? 12 : 0 }
                       }

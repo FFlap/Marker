@@ -131,6 +131,7 @@ export function NativeDraggableGrid<T>({
   onTouchStateChange,
   renderItem,
   rowHeight,
+  sectionTop,
 }: {
   autoScroll?: NativeGridAutoScroll;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -150,6 +151,8 @@ export function NativeDraggableGrid<T>({
   renderItem: (event: { index: number; isActive: boolean; item: T }) => ReactNode;
   /** Uniform single-column rows can be windowed within the existing parent scroll view. */
   rowHeight?: number;
+  /** Remeasure when an earlier section changes height without relaying out this grid. */
+  sectionTop?: number;
 }) {
   const horizontalTranslate = useSharedValue(0);
   const touchTranslate = useSharedValue(0);
@@ -205,7 +208,7 @@ export function NativeDraggableGrid<T>({
     },
     [windowed, updateRowWindow],
   );
-  useEffect(measureGridOrigin, [measureGridOrigin]);
+  useEffect(measureGridOrigin, [measureGridOrigin, sectionTop]);
   const cellRefs = useRef(new Map<string, View>());
   const slotLayouts = useRef(new Map<number, LayoutRectangle>());
   const slotOwners = useRef(new Map<number, string>());
@@ -220,6 +223,13 @@ export function NativeDraggableGrid<T>({
       if (!externalPlaceholderRef.current) dropSlots.current = new Map(slotLayouts.current);
       const slots = dropSlots.current;
       const point = { x: x - gridOrigin.current.x, y: y + offset - gridOrigin.current.y };
+      if (windowed && rowHeight) {
+        const height = dataRef.current.length * rowHeight;
+        return {
+          index: Math.max(0, Math.min(dataRef.current.length, Math.floor(point.y / rowHeight))),
+          distance: Math.max(-point.y, point.y - height, 0),
+        };
+      }
       const index = nearestGridSlot(slots, point, 0);
       const slot = slots.get(index);
       if (!slot) return { index: 0, distance: Number.POSITIVE_INFINITY };
@@ -236,7 +246,7 @@ export function NativeDraggableGrid<T>({
       };
     });
     return () => onDropTarget?.(undefined);
-  }, [columns, onDropTarget]);
+  }, [columns, onDropTarget, rowHeight, windowed]);
 
   const onPreviewReady = useCallback(() => {
     const current = session.current;

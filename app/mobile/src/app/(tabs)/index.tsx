@@ -203,6 +203,7 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
     setPosterMotion: setNativePosterMotion,
     setRootHeight,
     setSectionLayouts,
+    sectionLayouts,
     targetStatus: nativeTargetStatus,
     updateTarget: updateNativeDragTarget,
   } = reordering.drag;
@@ -336,6 +337,7 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                     <NativeDraggableGrid
                       key={`${view}-${view === 'posters' ? gridColumns : listColumns}`}
                       autoScroll={nativePosterAutoScroll}
+                      sectionTop={sectionLayouts[status]?.top}
                       contentContainerStyle={view === 'posters' ? s.grid : { rowGap: 0 }}
                       onDropTarget={(target) => {
                         insertion.targets.current[status] = target;

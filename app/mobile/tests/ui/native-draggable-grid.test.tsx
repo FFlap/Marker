@@ -1,5 +1,6 @@
 import { render, fireEvent } from '@testing-library/react-native';
 import { Text } from 'react-native';
+import type { NativeGridAutoScroll, NativeGridDropTarget } from '@/components/NativeDraggableGrid';
 import {
   NativeDraggableGrid,
   moveGridItem,
@@ -70,5 +71,39 @@ describe('cross-section grid targets', () => {
     );
     expect(view.getByTestId('native-grid-drop-placeholder')).toBeTruthy();
     expect(target?.(150, 75, 0).index).toBe(1);
+  });
+});
+
+describe('windowed cross-section targets', () => {
+  it('keeps targeting unmounted rows when scrolling beyond the initial window', async () => {
+    let target: NativeGridDropTarget | undefined;
+    const data = Array.from({ length: 100 }, (_, index) => ({ id: String(index) }));
+    const props = {
+      data,
+      disabled: false,
+      columns: 1,
+      rowHeight: 50,
+      autoScroll: {
+        getBounds: () => ({ top: 0, bottom: 700 }),
+        getMaxOffset: () => 4300,
+        offset: { value: 0 },
+        scrollRef: { current: null },
+      } as NativeGridAutoScroll,
+      keyExtractor: (item: { id: string }) => item.id,
+      onDragBegin: jest.fn(),
+      onDragEnd: jest.fn(),
+      onDropTarget: (next: NativeGridDropTarget | undefined) => {
+        target = next;
+      },
+      renderItem: ({ item }: { item: { id: string } }) => <Text>{item.id}</Text>,
+    };
+    const view = await render(<NativeDraggableGrid {...props} />);
+    expect(target?.(150, 75, 0).index).toBe(1);
+    await view.rerender(
+      <NativeDraggableGrid {...props} externalPlaceholder={{ index: 1, height: 50 }} />,
+    );
+    expect(target?.(150, 75, 3000)).toEqual({ index: 61, distance: 0 });
+    expect(target?.(150, 75, 5000).index).toBe(100);
+    expect(target?.(150, -10, 0).index).toBe(0);
   });
 });
