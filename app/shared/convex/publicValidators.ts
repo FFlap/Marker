@@ -54,8 +54,6 @@ export const resolvedTitleValidator = v.object({
   overview: v.optional(v.string()),
   releaseDate: v.optional(v.string()),
   firstAirDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-  runtime: v.optional(v.number()),
   episodeRunTime: v.array(v.number()),
   genres: v.array(v.string()),
   cast: v.array(castMemberValidator),

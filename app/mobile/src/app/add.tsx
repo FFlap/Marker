@@ -104,12 +104,10 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
     ) ?? [];
   const visibleResults =
     filter === 'all' ? results : results.filter((result) => result.mediaType === filter);
-  const resolvedRuntime =
-    resolvedTitle?.runtime ??
-    (resolvedTitle?.episodeRunTime?.length
-      ? resolvedTitle.episodeRunTime.reduce((total, value) => total + value, 0) /
-        resolvedTitle.episodeRunTime.length
-      : undefined);
+  const resolvedRuntime = resolvedTitle?.episodeRunTime?.length
+    ? resolvedTitle.episodeRunTime.reduce((total, value) => total + value, 0) /
+      resolvedTitle.episodeRunTime.length
+    : undefined;
   const submit = async () => {
     if (!picked || resolvedTitle === undefined || submitting) return;
     setSubmitting(true);

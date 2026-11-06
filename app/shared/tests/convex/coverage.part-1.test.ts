@@ -245,7 +245,6 @@ describe('TMDB mappers', () => {
     ).toMatchObject({
       id: 299534,
       posterPath: '/endgame.jpg',
-      runtime: 181,
       genres: ['Adventure'],
     });
     expect(

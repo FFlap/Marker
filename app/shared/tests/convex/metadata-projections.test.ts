@@ -10,7 +10,7 @@ const modules = import.meta.glob('../../convex/**/*.ts');
 afterEach(() => vi.useRealTimers());
 
 it.each(['movie', 'tv'] as const)(
-  'updates watched minutes when published %s metadata corrects the runtime',
+  'preserves movie watch time and refreshes TV runtime from episode metadata',
   async (mediaType) => {
     vi.useFakeTimers();
     const t = convexTest(schema, modules);
@@ -40,7 +40,6 @@ it.each(['movie', 'tv'] as const)(
         tmdbId: 77,
         mediaType,
         title: 'Runtime correction',
-        ...(mediaType === 'movie' && { runtime: 35 }),
         episodeRunTime: mediaType === 'tv' ? [30, 40] : [],
         genres: [],
         cast: [],
@@ -53,8 +52,11 @@ it.each(['movie', 'tv'] as const)(
     });
     await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
-    expect((await t.run((ctx) => ctx.db.get(itemId)))?.runtime).toBe(35);
-    expect((await viewer.query(api.stats.profile, {})).totalWatchMinutes).toBe(35 * watchedCount);
+    const expectedRuntime = mediaType === 'movie' ? 20 : 35;
+    expect((await t.run((ctx) => ctx.db.get(itemId)))?.runtime).toBe(expectedRuntime);
+    expect((await viewer.query(api.stats.profile, {})).totalWatchMinutes).toBe(
+      expectedRuntime * watchedCount,
+    );
   },
 );
 
