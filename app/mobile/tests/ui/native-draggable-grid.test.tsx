@@ -1,6 +1,6 @@
 import { render, fireEvent } from '@testing-library/react-native';
 import { Text } from 'react-native';
-import type { NativeGridAutoScroll, NativeGridDropTarget } from '@/components/NativeDraggableGrid';
+import type { NativeGridDropTarget } from '@/components/NativeDraggableGrid';
 import {
   NativeDraggableGrid,
   moveGridItem,
@@ -45,7 +45,7 @@ describe('NativeDraggableGrid', () => {
 
 describe('cross-section grid targets', () => {
   it('opens the hovered slot and exposes an append position beyond the last row', async () => {
-    let target: import('@/components/NativeDraggableGrid').NativeGridDropTarget | undefined;
+    let target: NativeGridDropTarget | undefined;
     const props = {
       data: items,
       disabled: false,
@@ -74,36 +74,42 @@ describe('cross-section grid targets', () => {
   });
 });
 
-describe('windowed cross-section targets', () => {
-  it('keeps targeting unmounted rows when scrolling beyond the initial window', async () => {
-    let target: NativeGridDropTarget | undefined;
-    const data = Array.from({ length: 100 }, (_, index) => ({ id: String(index) }));
-    const props = {
-      data,
-      disabled: false,
-      columns: 1,
-      rowHeight: 50,
-      autoScroll: {
-        getBounds: () => ({ top: 0, bottom: 700 }),
-        getMaxOffset: () => 4300,
-        offset: { value: 0 },
-        scrollRef: { current: null },
-      } as NativeGridAutoScroll,
-      keyExtractor: (item: { id: string }) => item.id,
-      onDragBegin: jest.fn(),
-      onDragEnd: jest.fn(),
-      onDropTarget: (next: NativeGridDropTarget | undefined) => {
-        target = next;
-      },
-      renderItem: ({ item }: { item: { id: string } }) => <Text>{item.id}</Text>,
-    };
-    const view = await render(<NativeDraggableGrid {...props} />);
-    expect(target?.(150, 75, 0).index).toBe(1);
-    await view.rerender(
-      <NativeDraggableGrid {...props} externalPlaceholder={{ index: 1, height: 50 }} />,
-    );
-    expect(target?.(150, 75, 3000)).toEqual({ index: 61, distance: 0 });
-    expect(target?.(150, 75, 5000).index).toBe(100);
-    expect(target?.(150, -10, 0).index).toBe(0);
+it('targets the extra poster row created by a cross-section placeholder', async () => {
+  let target: NativeGridDropTarget | undefined;
+  const data = [...items, { id: 'd' }];
+  const props = {
+    data,
+    disabled: false,
+    columns: 2,
+    keyExtractor: (item: { id: string }) => item.id,
+    onDragBegin: jest.fn(),
+    onDragEnd: jest.fn(),
+    onDropTarget: (next: NativeGridDropTarget | undefined) => {
+      target = next;
+    },
+    renderItem: ({ item }: { item: { id: string } }) => <Text>{item.id}</Text>,
+  };
+  const view = await render(<NativeDraggableGrid {...props} />);
+  const layoutCards = async (shift: number) => {
+    for (let index = 0; index < data.length; index++) {
+      const slot = index + shift;
+      await fireEvent(view.getByTestId(`native-grid-item-${data[index].id}`).parent!, 'layout', {
+        nativeEvent: {
+          layout: { x: (slot % 2) * 120, y: Math.floor(slot / 2) * 170, width: 100, height: 150 },
+        },
+      });
+    }
+  };
+  await layoutCards(0);
+  expect(target?.(50, 75, 0).index).toBe(0);
+  await view.rerender(
+    <NativeDraggableGrid {...props} externalPlaceholder={{ index: 0, height: 150 }} />,
+  );
+  await fireEvent(view.getByTestId('native-grid-drop-placeholder'), 'layout', {
+    nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 150 } },
   });
+  await layoutCards(1);
+  expect(target?.(50, 75, 0).index).toBe(0);
+  expect(target?.(230, 245, 0).index).toBe(3);
+  expect(target?.(50, 415, 0)).toEqual({ index: 4, distance: 0 });
 });

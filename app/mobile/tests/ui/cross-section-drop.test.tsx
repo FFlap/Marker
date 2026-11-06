@@ -31,3 +31,20 @@ describe('cross-section insertion', () => {
     expect(result.current.pendingIndex.current).toBe(0);
   });
 });
+
+it('rejects an unmeasured nonempty target without losing a measured first slot', async () => {
+  const { result } = await renderHook(useCrossSectionDrop);
+  result.current.targets.current.watched = () => ({ index: 0, distance: Number.POSITIVE_INFINITY });
+  let status;
+  await act(() => {
+    status = result.current.update('watched', 40, 200, 0);
+  });
+  expect(status).toBeUndefined();
+  expect(result.current.indexRef.current).toBeUndefined();
+  result.current.targets.current.watched = () => ({ index: 0, distance: 0 });
+  await act(() => {
+    status = result.current.update('watched', 40, 200, 0);
+  });
+  expect(status).toBe('watched');
+  expect(result.current.indexRef.current).toBe(0);
+});

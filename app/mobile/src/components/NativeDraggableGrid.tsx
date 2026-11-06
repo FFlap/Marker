@@ -168,7 +168,9 @@ export function NativeDraggableGrid<T>({
   const dataRef = useRef(data);
   const gridRef = useRef<View>(null);
   const gridOrigin = useRef({ x: 0, y: 0 });
-  const dropSlots = useRef(new Map<number, LayoutRectangle>());
+  const placeholderLayout = useRef<{ index: number; layout: LayoutRectangle } | undefined>(
+    undefined,
+  );
   const externalPlaceholderRef = useRef(externalPlaceholder);
   externalPlaceholderRef.current = externalPlaceholder;
   const contentTop = useRef<number | null>(null);
@@ -219,16 +221,30 @@ export function NativeDraggableGrid<T>({
   const [activeKey, setActiveKey] = useState<string>();
 
   useEffect(() => {
+    // Empty groups use their section bounds and the only valid insertion index, zero.
+    if (!data.length) {
+      onDropTarget?.(undefined);
+      return;
+    }
     onDropTarget?.((x, y, offset) => {
-      if (!externalPlaceholderRef.current) dropSlots.current = new Map(slotLayouts.current);
-      const slots = dropSlots.current;
       const point = { x: x - gridOrigin.current.x, y: y + offset - gridOrigin.current.y };
+      const placeholder = externalPlaceholderRef.current;
       if (windowed && rowHeight) {
-        const height = dataRef.current.length * rowHeight;
+        if (contentTop.current === null) return { index: 0, distance: Number.POSITIVE_INFINITY };
+        const height = (dataRef.current.length + (placeholder ? 1 : 0)) * rowHeight;
         return {
           index: Math.max(0, Math.min(dataRef.current.length, Math.floor(point.y / rowHeight))),
           distance: Math.max(-point.y, point.y - height, 0),
         };
+      }
+      // Destination cards keep their data order but move around the gap.
+      // Use their current visual slots, including any new row created by it.
+      const slots = new Map<number, LayoutRectangle>();
+      if (placeholder && placeholderLayout.current?.index === placeholder.index) {
+        slots.set(placeholder.index, placeholderLayout.current.layout);
+      }
+      for (const [index, layout] of slotLayouts.current) {
+        slots.set(placeholder && index >= placeholder.index ? index + 1 : index, layout);
       }
       const index = nearestGridSlot(slots, point, 0);
       const slot = slots.get(index);
@@ -236,17 +252,21 @@ export function NativeDraggableGrid<T>({
       // Match same-section reordering: hovering a card opens its slot.
       // Advance beyond the final slot only when the pointer passes its edge.
       const after =
+        !placeholder &&
         index === dataRef.current.length - 1 &&
         (point.y > slot.y + slot.height || (columns > 1 && point.x > slot.x + slot.width));
       const top = Math.min(...Array.from(slots.values(), (layout) => layout.y));
       const bottom = Math.max(...Array.from(slots.values(), (layout) => layout.y + layout.height));
       return {
-        index: Math.min(dataRef.current.length, index + (after ? 1 : 0)),
+        index:
+          placeholder && placeholderLayout.current?.index !== placeholder.index
+            ? placeholder.index
+            : Math.min(dataRef.current.length, index + (after ? 1 : 0)),
         distance: Math.max(top - point.y, point.y - bottom, 0),
       };
     });
     return () => onDropTarget?.(undefined);
-  }, [columns, onDropTarget, rowHeight, windowed]);
+  }, [columns, data.length, onDropTarget, rowHeight, windowed]);
 
   const onPreviewReady = useCallback(() => {
     const current = session.current;
@@ -426,7 +446,7 @@ export function NativeDraggableGrid<T>({
   }, [clearDrag, onDragCancel]);
 
   const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
-  if (!externalPlaceholder) dropSlots.current = new Map(slotLayouts.current);
+  if (!externalPlaceholder) placeholderLayout.current = undefined;
   const displayed = dragOrder ?? data;
   const placeholderIndex = externalPlaceholder?.index;
   const placeholder = externalPlaceholder ? (
@@ -434,6 +454,12 @@ export function NativeDraggableGrid<T>({
       key="drop-placeholder"
       testID="native-grid-drop-placeholder"
       accessibilityLabel="Drop title here"
+      onLayout={(event) => {
+        placeholderLayout.current = {
+          index: externalPlaceholder.index,
+          layout: event.nativeEvent.layout,
+        };
+      }}
       style={[
         { width: itemWidth, height: externalPlaceholder.height },
         windowed && { position: 'absolute', left: 0, top: externalPlaceholder.index * rowHeight! },

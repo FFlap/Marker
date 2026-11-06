@@ -28,9 +28,11 @@ let dropTarget: NativeGridDropTarget | undefined;
 function LibraryRows({
   data = items,
   sectionTop = 0,
+  externalPlaceholder,
 }: {
   data?: typeof items;
   sectionTop?: number;
+  externalPlaceholder?: { index: number; height: number };
 }) {
   const offset = useSharedValue(0);
   const scrollRef = useAnimatedRef<ScrollView>();
@@ -43,6 +45,7 @@ function LibraryRows({
         getMaxOffset: () => 22_000,
       }}
       sectionTop={sectionTop}
+      externalPlaceholder={externalPlaceholder}
       onDropTarget={(target) => {
         dropTarget = target;
       }}
@@ -120,4 +123,19 @@ it('refreshes drop bounds when a preceding section grows without a local grid la
   await view.rerender(<LibraryRows data={data} sectionTop={200} />);
   expect(dropTarget?.(150, 266, 0)).toEqual({ index: 1, distance: 0 });
   expect(dropTarget?.(150, 66, 0).distance).toBeGreaterThan(0);
+});
+
+it('waits for the grid origin and keeps targeting unmounted rows after auto-scrolling', async () => {
+  const data = items.slice(0, 100);
+  const view = await render(<LibraryRows data={data} />);
+  expect(dropTarget?.(150, 66, 0).distance).toBe(Number.POSITIVE_INFINITY);
+  mockMeasured = true;
+  await fireEvent(view.getByTestId('native-grid'), 'layout', {
+    nativeEvent: { layout: { width: 400, height: 4400 } },
+  });
+  expect(dropTarget?.(150, 66, 0).index).toBe(1);
+  await view.rerender(<LibraryRows data={data} externalPlaceholder={{ index: 1, height: 44 }} />);
+  expect(dropTarget?.(150, 66, 2640)).toEqual({ index: 61, distance: 0 });
+  expect(dropTarget?.(150, 66, 5000).index).toBe(100);
+  expect(dropTarget?.(150, -10, 0).index).toBe(0);
 });

@@ -10,13 +10,18 @@ export function useCrossSectionDrop() {
   const pendingIndex = useRef<number | undefined>(undefined);
   const update = (status: Status | undefined, x: number, y: number, offset: number) => {
     // Window geometry accounts for parent padding and the current scroll offset.
+    let selected: ReturnType<NativeGridDropTarget> | undefined;
     for (const [key, target] of Object.entries(targets.current)) {
-      if (target?.(x, y, offset).distance === 0) {
+      const candidate = target?.(x, y, offset);
+      if (key === status) selected = candidate;
+      if (candidate?.distance === 0) {
         status = key as Status;
+        selected = candidate;
         break;
       }
     }
-    const next = status ? (targets.current[status]?.(x, y, offset).index ?? 0) : undefined;
+    if (selected && !Number.isFinite(selected.distance)) status = undefined;
+    const next = status ? (selected?.index ?? 0) : undefined;
     indexRef.current = next;
     setIndex(next);
     return status;
