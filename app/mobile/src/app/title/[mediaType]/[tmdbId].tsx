@@ -1,3 +1,4 @@
+import { ExpandableOverview } from '@/components/ExpandableOverview';
 import { useTaskState } from '@/hooks/use-task-state';
 import { castForDisplay } from '@marker/shared/castPresentation';
 import { localDateKey } from '@/hooks/use-local-today';
@@ -377,9 +378,12 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               </View>
             </View>
             {overview ? (
-              <Text testID="title-detail-overview" style={s.overview}>
-                {overview}
-              </Text>
+              <ExpandableOverview
+                key={`${mediaType}:${tmdbId}:${overview}`}
+                text={overview}
+                testID="title-detail-overview"
+                style={s.overview}
+              />
             ) : null}
 
             {loading && heroOwner !== 'preview' && <TitleSkeleton />}

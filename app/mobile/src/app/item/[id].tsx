@@ -1,3 +1,4 @@
+import { ExpandableOverview } from '@/components/ExpandableOverview';
 import { usePendingTasks } from '@/hooks/use-pending-tasks';
 import { useTaskState } from '@/hooks/use-task-state';
 import { castForDisplay } from '@marker/shared/castPresentation';
@@ -384,7 +385,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 ) : null}
               </View>
             </View>
-            {overview ? <Text style={s.overview}>{overview}</Text> : null}
+            {overview ? (
+              <ExpandableOverview key={overview} text={overview} style={s.overview} />
+            ) : null}
             {detailsError && !title && (
               <View style={s.inlineError}>
                 <Text style={s.errorText}>Title details couldn’t be loaded.</Text>
