@@ -49,8 +49,8 @@ describe('Explore title metadata subscriptions', () => {
       const previewOverview = view.getByTestId('title-detail-overview');
       const previewPosterSource = view.getByTestId('title-detail-poster').props.source;
       expect(view.getByLabelText('Loading genres')).toBeTruthy();
-      expect(view.getByLabelText('Loading runtime')).toBeTruthy();
-      expect(view.getByLabelText('Loading rating')).toBeTruthy();
+      expect(view.queryByLabelText('Loading runtime')).toBeNull();
+      expect(view.queryByLabelText('Loading rating')).toBeNull();
       expect(view.getByLabelText('Loading cast')).toBeTruthy();
       expect(view.getByLabelText('Loading seasons')).toBeTruthy();
       expect(view.getByLabelText('Loading episodes')).toBeTruthy();
@@ -75,8 +75,9 @@ describe('Explore title metadata subscriptions', () => {
       expect(view.getByTestId('title-detail-name').props.children).toBe('Canonical Frieren');
       expect(view.getByText('Canonical overview that must not replace the preview.')).toBeTruthy();
       expect(view.getByText('Animation')).toBeTruthy();
-      expect(view.getByText('24 min')).toBeTruthy();
-      expect(view.getByText('8.7')).toBeTruthy();
+      expect(view.queryByText('Runtime')).toBeNull();
+      expect(view.queryByText('8.7')).toBeNull();
+      expect(view.queryByText('Rating')).toBeNull();
       expect(view.getByText('Atsumi Tanezaki')).toBeTruthy();
       expect(view.getByText('The Journey')).toBeTruthy();
       expect(view.queryByLabelText('Loading genres')).toBeNull();

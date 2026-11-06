@@ -262,3 +262,60 @@ export const pruneRequestThrottle = internalMutation({
     return { deleted, isDone: page.isDone };
   },
 });
+
+/** Remove retired catalog facts, including copies staged during a season refresh. */
+export const removeTitleFacts = internalMutation({
+  args: {
+    phase: v.union(v.literal('titles'), v.literal('snapshots'), v.literal('seasons')),
+    cursor: v.optional(v.string()),
+  },
+  returns: v.object({ updated: v.number(), isDone: v.boolean(), cursor: v.string() }),
+  handler: async (ctx, { phase, cursor }) => {
+    const strip = <T extends object>(value: T): T => {
+      const clean = { ...value };
+      Reflect.deleteProperty(clean, 'runtime');
+      Reflect.deleteProperty(clean, 'voteAverage');
+      return clean;
+    };
+    const hasFacts = (value: object) =>
+      Reflect.has(value, 'runtime') || Reflect.has(value, 'voteAverage');
+    let updated = 0;
+    if (phase === 'titles') {
+      const page = await ctx.db
+        .query('resolvedTitles')
+        .paginate({ cursor: cursor ?? null, numItems: 100 });
+      for (const row of page.page) {
+        if (!hasFacts(row)) continue;
+        await ctx.db.replace(row._id, strip(row));
+        updated++;
+      }
+      return { updated, isDone: page.isDone, cursor: page.continueCursor };
+    }
+    if (phase === 'snapshots') {
+      const page = await ctx.db
+        .query('providerSnapshots')
+        .paginate({ cursor: cursor ?? null, numItems: 100 });
+      for (const row of page.page) {
+        const entry = row.entry;
+        if ((entry.kind !== 'tmdbMovie' && entry.kind !== 'tmdbTv') || !hasFacts(entry.value))
+          continue;
+        const clean =
+          entry.kind === 'tmdbMovie'
+            ? { kind: entry.kind, value: strip(entry.value) }
+            : { kind: entry.kind, value: strip(entry.value) };
+        await ctx.db.patch(row._id, { entry: clean });
+        updated++;
+      }
+      return { updated, isDone: page.isDone, cursor: page.continueCursor };
+    }
+    const page = await ctx.db
+      .query('resolvedSeasons')
+      .paginate({ cursor: cursor ?? null, numItems: 100 });
+    for (const row of page.page) {
+      if (!row.stagingTitle || !hasFacts(row.stagingTitle)) continue;
+      await ctx.db.patch(row._id, { stagingTitle: strip(row.stagingTitle) });
+      updated++;
+    }
+    return { updated, isDone: page.isDone, cursor: page.continueCursor };
+  },
+});
