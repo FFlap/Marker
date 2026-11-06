@@ -29,8 +29,6 @@ export const providerMovieValidator = v.object({
   posterPath: v.optional(v.string()),
   overview: v.optional(v.string()),
   releaseDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
-  runtime: v.optional(v.number()),
   genres: v.array(v.string()),
   cast: v.array(castMember),
 });
@@ -43,7 +41,6 @@ export const providerTvValidator = v.object({
   posterPath: v.optional(v.string()),
   overview: v.optional(v.string()),
   firstAirDate: v.optional(v.string()),
-  voteAverage: v.optional(v.number()),
   episodeRunTime: v.array(v.number()),
   genres: v.array(v.string()),
   seasons: v.array(season),

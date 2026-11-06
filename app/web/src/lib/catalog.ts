@@ -35,8 +35,8 @@ export const parseTitlePreview = (value: string | undefined): SearchResult | und
   Option.getOrUndefined(Schema.decodeUnknownOption(TitlePreview)(value));
 
 export function titleRuntime(
-  title: Pick<TitleDetail, "runtime" | "episodeRunTime"> | null | undefined,
+  title: Pick<TitleDetail, "episodeRunTime"> | null | undefined,
   fallback?: number,
 ) {
-  return title?.runtime ?? title?.episodeRunTime.find((value) => value > 0) ?? fallback;
+  return title?.episodeRunTime.find((value) => value > 0) ?? fallback;
 }
