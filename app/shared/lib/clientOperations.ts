@@ -1,10 +1,8 @@
 import {
   transitionOwner,
   transitionSession,
-  transitionExecution,
   type OwnedState,
   type SessionState,
-  type ExecutionState,
 } from './lifecycle';
 import * as Context from 'effect/Context';
 import * as Cause from 'effect/Cause';
@@ -102,8 +100,6 @@ export class ClientOperations {
   ): Promise<void> => {
     if (this.owner.state !== 'active') return Promise.resolve();
     const generation = this.owner.generation;
-    let execution: ExecutionState = { state: 'accepted' };
-    execution = transitionExecution(execution, 'start');
     const controller = new AbortController();
     if (!write) this.pending.add(controller);
     const observable = () =>
@@ -116,11 +112,9 @@ export class ClientOperations {
         Effect.matchEffect({
           onSuccess: (value) =>
             Effect.sync(() => {
-              execution = transitionExecution(execution, 'succeed');
               if (observable()) handlers.success?.(value);
             }),
           onFailure: (error) => {
-            execution = transitionExecution(execution, 'fail');
             return handlers.failure && observable()
               ? Effect.sync(() => {
                   if (observable()) handlers.failure?.(error);
@@ -130,7 +124,6 @@ export class ClientOperations {
         }),
         Effect.ensuring(
           Effect.sync(() => {
-            execution = transitionExecution(execution, 'interrupt');
             this.pending.delete(controller);
             if (observable()) handlers.settled?.();
           }),

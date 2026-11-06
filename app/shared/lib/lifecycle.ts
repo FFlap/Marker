@@ -91,22 +91,6 @@ export function transitionPresence(
   }
 }
 
-/** One synchronous owner for every Effect operation, including interruption. */
-export type ExecutionState =
-  | { state: 'accepted' }
-  | { state: 'running' }
-  | { state: 'succeeded' }
-  | { state: 'failed' }
-  | { state: 'interrupted' };
-export function transitionExecution(
-  current: ExecutionState,
-  event: 'start' | 'succeed' | 'fail' | 'interrupt',
-): ExecutionState {
-  if (event === 'start') return current.state === 'accepted' ? { state: 'running' } : current;
-  if (current.state !== 'running') return current;
-  return { state: event === 'succeed' ? 'succeeded' : event === 'fail' ? 'failed' : 'interrupted' };
-}
-
 export type AccountAccess =
   | { state: 'loading' }
   | { state: 'error' }
