@@ -1,3 +1,4 @@
+import { leaseState, refreshRequestState } from '../lifecycles';
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx } from '../_generated/server';
@@ -25,7 +26,7 @@ export const claimRefresh = internalMutation({
       .query('metadataRefreshLeases')
       .withIndex('by_key', (query) => query.eq('key', key))
       .unique();
-    if (existing && existing.expiresAt > now) return false;
+    if (leaseState(existing, now).state === 'owned') return false;
     const value = { key, token, expiresAt: now + Math.min(Math.max(leaseMs, 1_000), 120_000) };
     if (existing) await ctx.db.replace(existing._id, value);
     else await ctx.db.insert('metadataRefreshLeases', value);
@@ -115,7 +116,8 @@ export function visibleRequestState(row: Doc<'metadataRefreshRequests'> | null) 
     ...(row.retryAt !== undefined && { retryAt: row.retryAt }),
     expiresAt: row.expiresAt,
   };
-  if (row.state === 'inFlight' && row.expiresAt > now)
+  const lifecycle = refreshRequestState(row, now, FAILED_TOUCH_BACKOFF_MS);
+  if (lifecycle.state === 'running')
     return { ...visible, delayMs: Math.max(0, row.expiresAt - now) };
   if (row.state === 'failed') {
     const retryAt =

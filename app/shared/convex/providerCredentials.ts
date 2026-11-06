@@ -1,3 +1,4 @@
+import { credentialState } from './lifecycles';
 import { v } from 'convex/values';
 import { internalQuery, internalMutation } from './_generated/server';
 
@@ -10,8 +11,9 @@ export const get = internalQuery({
       .query('providerCredentials')
       .withIndex('by_key', (q) => q.eq('keyHash', keyHash))
       .unique();
-    return row && row.expiresAt > Date.now() + 60_000
-      ? { token: row.token, expiresAt: row.expiresAt }
+    const credential = credentialState(row, Date.now());
+    return credential.state === 'usable'
+      ? { token: credential.token, expiresAt: credential.expiresAt }
       : null;
   },
 });

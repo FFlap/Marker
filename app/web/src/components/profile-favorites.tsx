@@ -65,7 +65,7 @@ export function ProfileFavorites({
   const removeFavorite = useMutation(api.profileFavorites.remove);
   const reorderFavorite = useMutation(api.profileFavorites.reorder);
   const [pending, setPending] = useState<string>();
-  const reorderPending = useRef(false);
+  const reorderPending = useRef<"idle" | "pending">("idle");
   const [orders, setOrders] = useState<
     Partial<Record<FavoriteSection, string[]>>
   >({});
@@ -96,7 +96,7 @@ export function ProfileFavorites({
     const displayed = displayedFor(section);
     if (
       pending ||
-      reorderPending.current ||
+      reorderPending.current === "pending" ||
       from === to ||
       to < 0 ||
       to >= displayed.length
@@ -110,7 +110,7 @@ export function ProfileFavorites({
       ...current,
       [section]: next.map((favorite) => favorite._id),
     }));
-    reorderPending.current = true;
+    reorderPending.current = "pending";
     setPending(moved._id);
     setError("");
     await runOperation.write(
@@ -129,7 +129,7 @@ export function ProfileFavorites({
         },
         settled: () => {
           setOrders((current) => ({ ...current, [section]: undefined }));
-          reorderPending.current = false;
+          reorderPending.current = "idle";
           setPending(undefined);
         },
       },

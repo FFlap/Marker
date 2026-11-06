@@ -1,3 +1,4 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { localDateKey } from "@/hooks/use-local-today";
 import { Effect } from "effect";
 import { saveLibrary } from "@marker/shared/clientEffects";
@@ -53,7 +54,7 @@ function VisibilityDialog({
   const runOperation = useOperation();
   const visibility = useQuery(api.tags.visibility, { tag });
   const setVisibility = useMutation(api.tags.setVisibility);
-  const [pending, setPending] = useState(false);
+  const { pending, setPending } = useTaskState();
   const [dialogError, setDialogError] = useState("");
   const update = async (isPublic: boolean) => {
     if (pending || visibility?.isPublic === isPublic) return;
@@ -153,8 +154,8 @@ function TagDetail({ tag }: { tag: string }) {
     Partial<Record<(typeof statuses)[number], string[]>>
   >({});
   const [moving, setMoving] = useState<string>();
-  const movePending = useRef(false);
-  const [error, setError] = useState("");
+  const { error, setError } = useTaskState();
+  const movePending = useRef<"idle" | "pending">("idle");
   const { view } = useSessionLibraryView(settings?.defaultView ?? "list");
   const gridColumns = settings?.gridColumns ?? 3;
   const listColumns = settings?.listColumns ?? 1;
@@ -210,7 +211,7 @@ function TagDetail({ tag }: { tag: string }) {
   ) => {
     if (
       filtersActive ||
-      movePending.current ||
+      movePending.current === "pending" ||
       moving ||
       to < 0 ||
       to >= items.length ||
@@ -225,7 +226,7 @@ function TagDetail({ tag }: { tag: string }) {
       ...current,
       [status]: next.map((item) => String(item._id)),
     }));
-    movePending.current = true;
+    movePending.current = "pending";
     setMoving(String(moved._id));
     setError("");
     await runOperation.write(
@@ -249,7 +250,7 @@ function TagDetail({ tag }: { tag: string }) {
         },
         settled: () => {
           setOrders((current) => ({ ...current, [status]: undefined }));
-          movePending.current = false;
+          movePending.current = "idle";
           setMoving(undefined);
         },
       },
@@ -262,7 +263,7 @@ function TagDetail({ tag }: { tag: string }) {
   ) => {
     if (
       filtersActive ||
-      movePending.current ||
+      movePending.current === "pending" ||
       moving ||
       item.status === status
     )
@@ -270,7 +271,7 @@ function TagDetail({ tag }: { tag: string }) {
     const target = (library ?? [])
       .filter((entry) => entry.status === status && entry._id !== item._id)
       .toSorted((left, right) => left.rank - right.rank);
-    movePending.current = true;
+    movePending.current = "pending";
     setMoving(String(item._id));
     setError("");
     await runOperation.write(
@@ -301,7 +302,7 @@ function TagDetail({ tag }: { tag: string }) {
           );
         },
         settled: () => {
-          movePending.current = false;
+          movePending.current = "idle";
           setMoving(undefined);
         },
       },

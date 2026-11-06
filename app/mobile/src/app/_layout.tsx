@@ -82,10 +82,10 @@ export function AppRoutes() {
 }
 // Context adds no native surface and stays above both navigation and its error fallback.
 export function StartupSplashBoundary({ children }: { children: ReactNode }) {
-  const dismissed = useRef(false);
+  const splash = useRef<'waiting' | 'dismissed'>('waiting');
   const reportReady = useCallback(() => {
-    if (dismissed.current) return;
-    dismissed.current = true;
+    if (splash.current === 'dismissed') return;
+    splash.current = 'dismissed';
     SplashScreen.hide();
   }, []);
   return <ScreenReadinessContext value={reportReady}>{children}</ScreenReadinessContext>;

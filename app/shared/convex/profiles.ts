@@ -1,3 +1,4 @@
+import { avatarState, transitionFollow } from './lifecycles';
 import { getClerkUserId, requireUser } from './clerkAuth';
 import { internal } from './_generated/api';
 import { internalMutation, mutation, query } from './_generated/server';
@@ -124,9 +125,7 @@ export const pendingAvatarUpload = internalMutation({
     if (
       !upload ||
       upload.userId !== userId ||
-      upload.status !== 'pending' ||
-      upload.storageId !== undefined ||
-      upload.createdAt < Date.now() - AVATAR_UPLOAD_TTL_MS
+      avatarState(upload, Date.now(), AVATAR_UPLOAD_TTL_MS).state !== 'reserved'
     )
       throw new Error('Avatar upload is invalid or expired');
     return null;
@@ -144,9 +143,7 @@ export const completeAvatarUpload = internalMutation({
     if (
       !upload ||
       upload.userId !== userId ||
-      upload.status !== 'pending' ||
-      upload.storageId !== undefined ||
-      upload.createdAt < Date.now() - AVATAR_UPLOAD_TTL_MS
+      avatarState(upload, Date.now(), AVATAR_UPLOAD_TTL_MS).state !== 'reserved'
     )
       throw new Error('Avatar upload is invalid or expired');
     await ctx.db.patch(uploadId, { storageId });
@@ -176,8 +173,7 @@ export const setAvatar = mutation({
     if (
       !upload ||
       upload.userId !== userId ||
-      upload.status !== 'pending' ||
-      upload.createdAt < Date.now() - AVATAR_UPLOAD_TTL_MS
+      avatarState(upload, Date.now(), AVATAR_UPLOAD_TTL_MS).state !== 'uploaded'
     )
       throw new Error('Avatar upload was not created by this account');
     const metadata = await ctx.db.system.get('_storage', storageId);
@@ -317,7 +313,11 @@ export const follow = mutation({
     const follower = await ctx.db.get(followerId);
     if (!follower) throw new Error('Account not found');
     const existing = await relationship(ctx, followerId, following._id);
-    const status = following.isPublic === true ? ('accepted' as const) : ('pending' as const);
+    const status = transitionFollow(
+      existing?.status ?? 'none',
+      following.isPublic === true ? 'requestPublic' : 'requestPrivate',
+    );
+    if (status === 'none') throw new Error('Invalid follow transition');
     if (existing?.status === 'accepted') return 'accepted' as const;
     if (existing) {
       if (existing.status === 'pending' && status === 'accepted') {

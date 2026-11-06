@@ -56,7 +56,7 @@ export const upload = httpAction((ctx, request) =>
         return json({ error: 'invalid-image' }, 413);
       const blob = yield* attempt(() => request.blob());
       if (blob.size > MAX_AVATAR_BYTES) return json({ error: 'invalid-image' }, 413);
-      let published = false;
+      let ownership: 'unclaimed' | 'published' = 'unclaimed';
       return yield* Effect.acquireUseRelease(
         attempt(() => ctx.storage.store(blob)),
         (storageId) =>
@@ -69,14 +69,14 @@ export const upload = httpAction((ctx, request) =>
                   storageId,
                 });
                 // Record publication before the non-cancellable RPC yields back.
-                published = true;
+                ownership = 'published';
               }),
             );
             if (!completed.ok) return json({ error: 'invalid-upload' }, 400);
             return json({ storageId }, 200);
           }),
         (storageId) =>
-          published
+          ownership === 'published'
             ? Effect.void
             : attempt(() => ctx.storage.delete(storageId)).pipe(
                 // Cleanup must not replace the failed upload's response.

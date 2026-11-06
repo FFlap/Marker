@@ -21,17 +21,17 @@ export function ScreenErrorBoundary({ children, message = 'Something went wrong.
 
 class ErrorBoundaryContent extends React.Component<
   Props & { onRetry: () => void },
-  { failed: boolean }
+  { status: 'rendering' | 'failed' }
 > {
-  state = { failed: false };
+  state: { status: 'rendering' | 'failed' } = { status: 'rendering' };
   static getDerivedStateFromError() {
-    return { failed: true };
+    return { status: 'failed' };
   }
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ScreenErrorBoundary]', error, info.componentStack);
   }
   render() {
-    if (!this.state.failed) return this.props.children;
+    if (this.state.status === 'rendering') return this.props.children;
     return (
       <ScreenView style={styles.root}>
         <Text style={styles.title}>{this.props.message}</Text>

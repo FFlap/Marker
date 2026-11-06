@@ -1,3 +1,4 @@
+import { usePendingTasks } from '@/hooks/use-pending-tasks';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
@@ -40,7 +41,7 @@ function ProfileContent() {
   const requests = useQuery(api.profiles.followRequests);
   const respond = useMutation(api.profiles.respondToFollow);
   const toast = useToast();
-  const [requestPending, setRequestPending] = useState<ReadonlySet<string>>(() => new Set());
+  const [requestPending, setRequestPending] = usePendingTasks();
   const [tab, setTab] = useState<ProfileTab>('collection');
   if (profile === undefined || stats === undefined) {
     return (

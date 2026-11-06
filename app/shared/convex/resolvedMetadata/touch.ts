@@ -1,3 +1,4 @@
+import { refreshRequestState } from '../lifecycles';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -52,17 +53,15 @@ export async function requestRefresh(
   const decideFromRequestRow = (
     row: Doc<'metadataRefreshRequests'> | null,
   ): RejectedDecision | undefined => {
-    if (row?.state === 'inFlight' && row.expiresAt > now)
+    const lifecycle = refreshRequestState(row, now, FAILED_TOUCH_BACKOFF_MS);
+    if (lifecycle.state === 'running')
       return {
         scheduled: false as const,
         reason: 'inFlight' as const,
-        expiresAt: row.expiresAt,
-        delayMs: row.expiresAt - now,
+        expiresAt: lifecycle.until,
+        delayMs: lifecycle.until - now,
       };
-    const failedUntil =
-      row?.state === 'failed'
-        ? (row.retryAt ?? (row.completedAt ?? row.lastRequestedAt) + FAILED_TOUCH_BACKOFF_MS)
-        : 0;
+    const failedUntil = lifecycle.state === 'backoff' ? lifecycle.until : 0;
     if (!args.force && failedUntil > now)
       return {
         scheduled: false as const,

@@ -1,3 +1,4 @@
+import { useTaskState } from '@/hooks/use-task-state';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
@@ -27,7 +28,7 @@ export default function PublicProfile() {
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
   const toast = useToast();
-  const [pending, setPending] = useState(false);
+  const { pending, setPending } = useTaskState();
   const [tab, setTab] = useState<ProfileTab>('collection');
   if (result === undefined)
     return (

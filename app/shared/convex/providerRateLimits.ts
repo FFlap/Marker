@@ -13,12 +13,13 @@ export async function consumeWindowBudget(
     .query('requestThrottle')
     .withIndex('by_key', (query) => query.eq('key', key))
     .unique();
-  if (!row) {
+  const window = !row ? 'missing' : now - row.windowStart >= windowMs ? 'expired' : 'active';
+  if (window === 'missing' || !row) {
     if (amount > maximum) return false;
     await ctx.db.insert('requestThrottle', { key, windowStart: now, count: amount });
     return true;
   }
-  if (now - row.windowStart >= windowMs) {
+  if (window === 'expired') {
     if (amount > maximum) return false;
     await ctx.db.patch(row._id, { windowStart: now, count: amount });
     return true;

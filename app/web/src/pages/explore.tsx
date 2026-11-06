@@ -1,3 +1,4 @@
+import { usePendingTasks } from "@/hooks/use-pending-tasks";
 import { Effect } from "effect";
 import { saveProfile } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
@@ -180,9 +181,7 @@ export function ExplorePage() {
   const [debounced, setDebounced] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [followError, setError] = useState("");
-  const [pendingPeople, setPendingPeople] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [pendingPeople, setPendingPeople] = usePendingTasks();
   const follow = useMutation(api.profiles.follow);
   const unfollow = useMutation(api.profiles.unfollow);
   const library = useQuery(api.library.items.listItems, {});

@@ -1,3 +1,4 @@
+import { publicationState } from './lifecycles';
 import type { Doc } from './_generated/dataModel';
 import type { QueryCtx } from './_generated/server';
 
@@ -21,9 +22,7 @@ export async function activeResolvedTitle(ctx: QueryCtx, item: MediaIdentity) {
       )
       .unique(),
   ]);
-  return title && (mapping?.orderEpoch === undefined || title.orderEpoch === mapping.orderEpoch)
-    ? title
-    : null;
+  return title && publicationState(title, mapping).state === 'current' ? title : null;
 }
 
 export async function activeResolvedTitles(

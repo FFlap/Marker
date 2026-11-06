@@ -1,3 +1,4 @@
+import { usePendingTasks } from "@/hooks/use-pending-tasks";
 import { touchMetadata, saveLibrary } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
 import { useEffect, useMemo, useState } from "react";
@@ -29,7 +30,7 @@ export function EpisodesPage() {
   const [showType, setShowType] = useState<"all" | "anime" | "other">("all");
   const [minimumRating, setMinimumRating] = useState(0);
   const [tag, setTag] = useState("all");
-  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  const [pending, setPending] = usePendingTasks();
   const [error, setError] = useState("");
   const [expandedEpisode, setExpandedEpisode] = useState<string>();
   useEffect(() => {

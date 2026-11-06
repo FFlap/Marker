@@ -1,3 +1,4 @@
+import { summaryRebuildState } from './lifecycles';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
@@ -336,8 +337,8 @@ export const rebuildEpisodeSummary = internalMutation({
   args: { summaryId: v.id('episodeSummaries'), revision: v.number() },
   handler: async (ctx, args) => {
     const summary = await ctx.db.get(args.summaryId);
-    if (!summary || summary.rebuildIdentityKey === undefined) return { work: 0, isDone: true };
-    if (summary.rebuildRevision !== args.revision) return { work: 0, isDone: true };
+    const rebuild = summaryRebuildState(summary, args.revision);
+    if (!summary || rebuild.state !== 'rebuilding') return { work: 0, isDone: true };
     const identity = await currentSummaryIdentity(ctx, summary.itemId, summary.season);
     if (!identity) {
       await ctx.db.patch(summary._id, {
@@ -366,7 +367,7 @@ export const rebuildEpisodeSummary = internalMutation({
       return { work: 0, isDone: false };
     }
 
-    const offset = summary.rebuildOffset ?? 0;
+    const offset = rebuild.offset;
     const batch = await canonicalEpisodeBatch(ctx, identity.season, offset);
     if (offset < identity.episodeCount && batch.length === 0) {
       await beginEpisodeSummaryRebuild(
