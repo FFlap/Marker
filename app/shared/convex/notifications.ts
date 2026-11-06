@@ -39,20 +39,22 @@ export const feed = query({
   handler: async (ctx) => {
     const viewerId = await getClerkUserId(ctx);
     if (!viewerId) throw new Error('Authentication required');
-    const settings = await ctx.db
-      .query('settings')
-      .withIndex('by_user', (query) => query.eq('userId', viewerId))
-      .unique();
+    const [settings, follows] = await Promise.all([
+      ctx.db
+        .query('settings')
+        .withIndex('by_user', (query) => query.eq('userId', viewerId))
+        .unique(),
+      ctx.db
+        .query('follows')
+        .withIndex('by_follower_status', (query) =>
+          query.eq('followerId', viewerId).eq('status', 'accepted'),
+        )
+        .order('desc')
+        .take(MAX_FOLLOWS),
+    ]);
     const showRatings = settings?.activityRatings ?? true;
     const showStatuses = settings?.activityWatching ?? true;
     const showWatched = settings?.activityWatched ?? true;
-    const follows = await ctx.db
-      .query('follows')
-      .withIndex('by_follower_status', (query) =>
-        query.eq('followerId', viewerId).eq('status', 'accepted'),
-      )
-      .order('desc')
-      .take(MAX_FOLLOWS);
 
     const actors = await Promise.all(
       follows.map(async (follow) => {
