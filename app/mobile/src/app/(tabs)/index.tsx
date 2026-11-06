@@ -183,6 +183,7 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
   } = reordering;
   const { item: pendingWatchedMove, pending: statusMovePending } = reordering.confirmation;
   const {
+    insertion,
     autoScroll: nativePosterAutoScroll,
     begin: beginNativePosterDrag,
     cancel: cancelNativePosterDrag,
@@ -308,7 +309,7 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                     setSectionLayouts((current) => ({
                       ...current,
                       [status]: {
-                        top: y,
+                        top: y + TOOLBAR_HEIGHT,
                         height,
                       },
                     }));
@@ -325,7 +326,8 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                     <Text style={s.sectionTitle}>{label}</Text>
                     <Text style={s.count}>{data.length.toString().padStart(2, '0')}</Text>
                   </View>
-                  {!data.length ? (
+                  {!data.length &&
+                  !(nativeDrag && nativeTargetStatus === status && nativeDrag.status !== status) ? (
                     <EmptyState
                       title={active ? 'No matches' : 'Nothing here yet'}
                       detail={active ? 'Try a broader filter.' : 'Add a title when you’re ready.'}
@@ -335,6 +337,17 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                       key={`${view}-${view === 'posters' ? gridColumns : listColumns}`}
                       autoScroll={nativePosterAutoScroll}
                       contentContainerStyle={view === 'posters' ? s.grid : { rowGap: 0 }}
+                      onDropTarget={(target) => {
+                        insertion.targets.current[status] = target;
+                      }}
+                      externalPlaceholder={
+                        nativeDrag && nativeTargetStatus === status && nativeDrag.status !== status
+                          ? {
+                              index: insertion.index ?? 0,
+                              height: nativeDragPreviewLayout?.height ?? rowHeight,
+                            }
+                          : undefined
+                      }
                       data={data}
                       disabled={active || statusMovePending}
                       columns={view === 'posters' ? gridColumns : listColumns}
@@ -354,8 +367,14 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                         beginNativePosterDrag(item, status, index, status === 'watched')
                       }
                       onDragLayout={positionNativePosterDrag}
-                      onDragMove={({ absoluteY, scrollOffset }) =>
-                        updateNativeDragTarget(status, contentYFromWindow(absoluteY, scrollOffset))
+                      onDragMove={({ absoluteX, absoluteY, scrollOffset }) =>
+                        updateNativeDragTarget(
+                          status,
+                          contentYFromWindow(absoluteY, scrollOffset),
+                          absoluteX,
+                          absoluteY,
+                          scrollOffset,
+                        )
                       }
                       onDragCancel={cancelNativePosterDrag}
                       onDragEnd={({ data: next, from, to }) =>
@@ -414,7 +433,9 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
               onPress={() => {
                 if (!pendingWatchedMove || statusMovePending) return;
                 const item = pendingWatchedMove;
-                void performCategoryMove(item, 'watched').finally(reordering.confirmation.close);
+                void performCategoryMove(item, 'watched', reordering.confirmation.index).finally(
+                  reordering.confirmation.close,
+                );
               }}
             />
           </DrawerContent>

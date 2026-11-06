@@ -1,4 +1,7 @@
+import { render, fireEvent } from '@testing-library/react-native';
+import { Text } from 'react-native';
 import {
+  NativeDraggableGrid,
   moveGridItem,
   nearestGridSlot,
   nativeGridAutoScrollVelocity,
@@ -36,5 +39,36 @@ describe('NativeDraggableGrid', () => {
     expect(nativeRowWindow(500, 44, 4400, 5104)).toEqual({ start: 84, end: 132 });
     expect(nativeRowWindow(500, 44, -22000, -21296)).toEqual({ start: 0, end: 0 });
     expect(nativeRowWindow(500, 44, 23000, 23704)).toEqual({ start: 500, end: 500 });
+  });
+});
+
+describe('cross-section grid targets', () => {
+  it('opens the hovered slot and exposes an append position beyond the last row', async () => {
+    let target: import('@/components/NativeDraggableGrid').NativeGridDropTarget | undefined;
+    const props = {
+      data: items,
+      disabled: false,
+      columns: 1,
+      keyExtractor: (item: { id: string }) => item.id,
+      onDragBegin: jest.fn(),
+      onDragEnd: jest.fn(),
+      onDropTarget: (next: typeof target) => {
+        target = next;
+      },
+      renderItem: ({ item }: { item: { id: string } }) => <Text>{item.id}</Text>,
+    };
+    const view = await render(<NativeDraggableGrid {...props} />);
+    for (let index = 0; index < items.length; index++) {
+      await fireEvent(view.getByTestId(`native-grid-item-${items[index].id}`).parent!, 'layout', {
+        nativeEvent: { layout: { x: 0, y: index * 50, width: 300, height: 50 } },
+      });
+    }
+    expect(target?.(150, 75, 0).index).toBe(1);
+    expect(target?.(150, 151, 0).index).toBe(3);
+    await view.rerender(
+      <NativeDraggableGrid {...props} externalPlaceholder={{ index: 1, height: 50 }} />,
+    );
+    expect(view.getByTestId('native-grid-drop-placeholder')).toBeTruthy();
+    expect(target?.(150, 75, 0).index).toBe(1);
   });
 });

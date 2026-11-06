@@ -37,6 +37,12 @@ type DragSession<T> = {
   slots: Map<number, DragLayout>;
 };
 
+export type NativeGridDropTarget = (
+  x: number,
+  y: number,
+  offset: number,
+) => { index: number; distance: number };
+
 type DragLayout = {
   height: number;
   width: number;
@@ -112,6 +118,8 @@ export function NativeDraggableGrid<T>({
   contentContainerStyle,
   data,
   disabled,
+  externalPlaceholder,
+  onDropTarget,
   columns,
   keyExtractor,
   onDragBegin,
@@ -128,6 +136,8 @@ export function NativeDraggableGrid<T>({
   contentContainerStyle?: StyleProp<ViewStyle>;
   data: T[];
   disabled: boolean;
+  externalPlaceholder?: { index: number; height: number };
+  onDropTarget?: (target: NativeGridDropTarget | undefined) => void;
   columns: number;
   keyExtractor: (item: T) => string;
   onDragBegin: (event: { index: number; item: T }) => void;
@@ -154,6 +164,10 @@ export function NativeDraggableGrid<T>({
   const scrollRef = autoScroll?.scrollRef;
   const dataRef = useRef(data);
   const gridRef = useRef<View>(null);
+  const gridOrigin = useRef({ x: 0, y: 0 });
+  const dropSlots = useRef(new Map<number, LayoutRectangle>());
+  const externalPlaceholderRef = useRef(externalPlaceholder);
+  externalPlaceholderRef.current = externalPlaceholder;
   const contentTop = useRef<number | null>(null);
   const windowed = !!autoScroll && columns === 1 && !!rowHeight && data.length > 40;
   // Measure the full-height container before mounting rows, including distant sections.
@@ -176,9 +190,10 @@ export function NativeDraggableGrid<T>({
     [autoScroll, data.length, rowHeight, windowed],
   );
   const measureGridOrigin = useCallback(() => {
-    gridRef.current?.measureInWindow((_x, y, width, height) => {
+    gridRef.current?.measureInWindow((x, y, width, height) => {
       if (width <= 0 || height <= 0) return;
       const offset = nativeScrollOffset?.value ?? 0;
+      gridOrigin.current = { x, y: y + offset };
       contentTop.current = y + offset;
       updateRowWindow(offset);
     });
@@ -199,6 +214,29 @@ export function NativeDraggableGrid<T>({
   const autoScrollRef = useRef(autoScroll);
   const [dragOrder, setDragOrder] = useState<T[]>();
   const [activeKey, setActiveKey] = useState<string>();
+
+  useEffect(() => {
+    onDropTarget?.((x, y, offset) => {
+      if (!externalPlaceholderRef.current) dropSlots.current = new Map(slotLayouts.current);
+      const slots = dropSlots.current;
+      const point = { x: x - gridOrigin.current.x, y: y + offset - gridOrigin.current.y };
+      const index = nearestGridSlot(slots, point, 0);
+      const slot = slots.get(index);
+      if (!slot) return { index: 0, distance: Number.POSITIVE_INFINITY };
+      // Match same-section reordering: hovering a card opens its slot.
+      // Advance beyond the final slot only when the pointer passes its edge.
+      const after =
+        index === dataRef.current.length - 1 &&
+        (point.y > slot.y + slot.height || (columns > 1 && point.x > slot.x + slot.width));
+      const top = Math.min(...Array.from(slots.values(), (layout) => layout.y));
+      const bottom = Math.max(...Array.from(slots.values(), (layout) => layout.y + layout.height));
+      return {
+        index: Math.min(dataRef.current.length, index + (after ? 1 : 0)),
+        distance: Math.max(top - point.y, point.y - bottom, 0),
+      };
+    });
+    return () => onDropTarget?.(undefined);
+  }, [columns, onDropTarget]);
 
   const onPreviewReady = useCallback(() => {
     const current = session.current;
@@ -376,7 +414,21 @@ export function NativeDraggableGrid<T>({
     onDragCancel?.();
   }, [clearDrag, onDragCancel]);
 
+  const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
+  if (!externalPlaceholder) dropSlots.current = new Map(slotLayouts.current);
   const displayed = dragOrder ?? data;
+  const placeholderIndex = externalPlaceholder?.index;
+  const placeholder = externalPlaceholder ? (
+    <View
+      key="drop-placeholder"
+      testID="native-grid-drop-placeholder"
+      accessibilityLabel="Drop title here"
+      style={[
+        { width: itemWidth, height: externalPlaceholder.height },
+        windowed && { position: 'absolute', left: 0, top: externalPlaceholder.index * rowHeight! },
+      ]}
+    />
+  ) : null;
   const visible = windowed
     ? displayed.flatMap((item, index) =>
         (rowWindow && index >= rowWindow.start && index < rowWindow.end) ||
@@ -385,7 +437,7 @@ export function NativeDraggableGrid<T>({
           : [],
       )
     : displayed.map((item, index) => ({ item, index }));
-  const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
+
   return (
     <View
       ref={gridRef}
@@ -398,12 +450,13 @@ export function NativeDraggableGrid<T>({
         styles.grid,
         { columnGap: gap },
         contentContainerStyle,
-        windowed && { height: displayed.length * rowHeight! },
+        windowed && { height: (displayed.length + (externalPlaceholder ? 1 : 0)) * rowHeight! },
       ]}
     >
-      {visible.map(({ item, index }) => {
+      {visible.flatMap(({ item, index }) => {
         const itemKey = keyExtractor(item);
-        return (
+        return [
+          index === placeholderIndex ? placeholder : null,
           <NativeGridCell
             key={itemKey}
             active={itemKey === activeKey}
@@ -416,7 +469,15 @@ export function NativeDraggableGrid<T>({
             itemWidth={itemWidth}
             position={
               windowed
-                ? { position: 'absolute', left: 0, top: index * rowHeight!, height: rowHeight }
+                ? {
+                    position: 'absolute',
+                    left: 0,
+                    top:
+                      (index +
+                        (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0)) *
+                      rowHeight!,
+                    height: rowHeight,
+                  }
                 : undefined
             }
             horizontalTranslate={horizontalTranslate}
@@ -433,9 +494,10 @@ export function NativeDraggableGrid<T>({
             renderItem={renderItem}
             slotLayouts={slotLayouts}
             slotOwners={slotOwners}
-          />
-        );
+          />,
+        ];
       })}
+      {placeholderIndex === displayed.length && placeholder}
     </View>
   );
 }
