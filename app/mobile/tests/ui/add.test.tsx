@@ -141,9 +141,7 @@ describe('add flow', () => {
       title: 'Avengers: Endgame',
     });
     await fireEvent.press(view.getByTestId('add-submit'));
-    expect(mockAddItem).toHaveBeenCalledWith(
-      expect.objectContaining({ genres: ['Action'] }),
-    );
+    expect(mockAddItem).toHaveBeenCalledWith(expect.objectContaining({ genres: ['Action'] }));
   });
 
   it('marks every episode watched when a TV show is added as Watched', async () => {
