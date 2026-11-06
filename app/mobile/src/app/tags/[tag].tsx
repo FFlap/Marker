@@ -326,6 +326,7 @@ export default function TagDetailScreen() {
     setNativePosterDragActive(false);
     setNativeDragPreview(undefined);
     setNativeTargetStatus(undefined);
+    if (dragged && !target) return;
     if (dragged && target && target !== status) {
       requestCategoryMove(String(dragged.item._id), target, index);
       return;

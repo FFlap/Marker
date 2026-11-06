@@ -7,6 +7,7 @@ const mockReorderItem = jest.fn();
 const mockUseMutation = jest.fn(() => mockReorderItem);
 const mockMoveItemToWatched = jest.fn();
 let mockQueryShouldThrow = false;
+let mockDropTargetMeasured = true;
 const mockUseQuery = jest.fn((ref: unknown) =>
   mockQueryShouldThrow
     ? (() => {
@@ -199,7 +200,10 @@ jest.mock('@/components/NativeDraggableGrid', () => {
       onDragEnd: (event: { data: typeof items; from: number; to: number }) => void;
     }) => {
       React.useEffect(() => {
-        onDropTarget(() => ({ index: 1, distance: data[0]?.status === 'watched' ? 0 : 999 }));
+        onDropTarget(() => ({
+          index: 1,
+          distance: data[0]?.status === 'watched' ? (mockDropTargetMeasured ? 0 : Infinity) : 999,
+        }));
         return () => onDropTarget(undefined);
       }, [onDropTarget, data]);
       return (
@@ -248,6 +252,7 @@ describe('Marker library', () => {
     mockDragBegins.clear();
     mockDragMoves.clear();
     mockQueryShouldThrow = false;
+    mockDropTargetMeasured = true;
     mockUseQuery.mockImplementation((ref: unknown) => {
       if (mockQueryShouldThrow) throw new Error('query failed');
       if (String(ref).includes('getSettings')) return { defaultView: 'list' };
@@ -643,6 +648,16 @@ describe('Marker library', () => {
       finish();
     });
     expect(q.queryByText('Mark as watched?')).toBeNull();
+  });
+
+  it('cancels an unmeasured cross-status drop without reordering the source', async () => {
+    mockDropTargetMeasured = false;
+    await view();
+    await act(() => mockDragBegins.get('b,f')!({ item: items[1], index: 0 }));
+    await act(() => mockDragMoves.get('b,f')!({ absoluteX: 150, absoluteY: 100, scrollOffset: 0 }));
+    await act(() => mockDragEnds.get('b,f')!({ data: [items[5], items[1]], from: 0, to: 1 }));
+    expect(mockMoveItemToWatched).not.toHaveBeenCalled();
+    expect(mockReorderItem).not.toHaveBeenCalled();
   });
 
   it('moves directly into non-watched categories', async () => {

@@ -257,6 +257,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     const target = targetStatusRef.current;
     const index = insertion.indexRef.current;
     cancelDrag();
+    if (dragged && !target) return;
     if (dragged && target && target !== source) requestStatusMove(dragged.item._id, target, index);
     else if (from !== to) void saveOrder(data, to);
   };
