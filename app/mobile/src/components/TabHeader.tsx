@@ -32,6 +32,7 @@ const s = createAppStyles(
   {
     header: {
       width: '100%',
+      minHeight: 68,
       alignSelf: 'center',
       flexDirection: 'row',
       alignItems: 'center',
