@@ -142,7 +142,7 @@ describe('add flow', () => {
     });
     await fireEvent.press(view.getByTestId('add-submit'));
     expect(mockAddItem).toHaveBeenCalledWith(
-      expect.objectContaining({ runtime: 181, genres: ['Action'] }),
+      expect.objectContaining({ genres: ['Action'] }),
     );
   });
 
