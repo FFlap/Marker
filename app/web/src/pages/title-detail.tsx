@@ -1,3 +1,4 @@
+import { ExpandableOverview } from "@/components/expandable-overview";
 import { castForDisplay } from "@marker/shared/castPresentation";
 import { CastPortrait } from "@/components/cast-portrait";
 import { touchMetadata } from "@marker/shared/clientEffects";
@@ -218,9 +219,10 @@ export function TitleDetailPage() {
             </div>
           </section>
           {meta.overview && (
-            <p className="mt-9 text-[15px] leading-6 text-muted-foreground">
-              {meta.overview}
-            </p>
+            <ExpandableOverview
+              key={`${mediaType}:${tmdbId}:${meta.overview}`}
+              text={meta.overview}
+            />
           )}
           <div className="mt-8 grid grid-cols-2 gap-4 border-y border-border py-6">
             <div>

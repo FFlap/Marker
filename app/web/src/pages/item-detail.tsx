@@ -1,3 +1,4 @@
+import { ExpandableOverview } from "@/components/expandable-overview";
 import { castForDisplay } from "@marker/shared/castPresentation";
 import { CastPortrait } from "@/components/cast-portrait";
 import { Effect } from "effect";
@@ -339,11 +340,7 @@ export function ItemDetailPage() {
       </section>
 
       {overview && (
-        <section className="mt-9">
-          <p className="text-[15px] leading-6 text-muted-foreground">
-            {overview}
-          </p>
-        </section>
+        <ExpandableOverview key={`${item._id}:${overview}`} text={overview} />
       )}
 
       {titleFailed && (

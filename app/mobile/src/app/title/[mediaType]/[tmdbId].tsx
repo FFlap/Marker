@@ -1,3 +1,4 @@
+import { ExpandableOverview } from '@/components/ExpandableOverview';
 import { castForDisplay } from '@marker/shared/castPresentation';
 import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
@@ -378,9 +379,12 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               </View>
             </View>
             {overview ? (
-              <Text testID="title-detail-overview" style={s.overview}>
-                {overview}
-              </Text>
+              <ExpandableOverview
+                key={`${mediaType}:${tmdbId}:${overview}`}
+                text={overview}
+                testID="title-detail-overview"
+                style={s.overview}
+              />
             ) : null}
 
             <View style={s.facts}>
