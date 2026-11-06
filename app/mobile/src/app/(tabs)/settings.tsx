@@ -1,3 +1,4 @@
+import { usePendingTasks } from '@/hooks/use-pending-tasks';
 import { ScreenView } from '@/components/ScreenLayout';
 import { startupSnapshotStore } from '@/lib/startupSnapshotStorage';
 import * as Effect from 'effect/Effect';
@@ -41,7 +42,7 @@ export default function Settings() {
   const setSettings = useMutation(api.settings.setSettings);
   const { signOut } = useClerk();
   const toast = useToast();
-  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  const [pending, setPending] = usePendingTasks();
   const [optimistic, setOptimistic] = useState<Record<string, unknown>>({});
   const current = { ...DEFAULT_DISPLAY_PREFERENCES, ...settings, ...optimistic };
 

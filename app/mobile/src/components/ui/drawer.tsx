@@ -1,3 +1,4 @@
+import { transitionPresence, type PresenceState } from '@marker/shared/lifecycle';
 import { cn } from '@/lib/utils';
 import { colors } from '@/constants/colors';
 import * as DialogPrimitive from '@rn-primitives/dialog';
@@ -61,7 +62,10 @@ function Drawer({
   const requestedOpen = isControlled ? openProp : defaultOpen;
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(() => Boolean(requestedOpen));
-  const [closing, setClosing] = React.useState(false);
+  const [presence, setPresence] = React.useState<PresenceState>({
+    state: requestedOpen ? 'open' : 'closed',
+  });
+  const closing = presence.state === 'closing';
   const progress = useSharedValue(0);
   const effectiveRequestedOpen = isControlled ? Boolean(openProp) : uncontrolledOpen;
   const previousOpen = React.useRef(false);
@@ -91,13 +95,18 @@ function Drawer({
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen) {
       clearCloseTimer();
-      setClosing(false);
+      setPresence((current) => transitionPresence(current, 'open'));
       if (!isControlled) setUncontrolledOpen(true);
       onOpenChange?.(true);
       return;
     }
     clearCloseTimer();
-    setClosing(true);
+    setPresence((current) =>
+      transitionPresence(
+        current.state === 'closed' && effectiveRequestedOpen ? { state: 'open' } : current,
+        'close',
+      ),
+    );
     progress.set(
       withTiming(0, {
         duration: exitDuration,
@@ -109,7 +118,7 @@ function Drawer({
       closeTimer.current = null;
       if (!isControlled) setUncontrolledOpen(false);
       onOpenChange?.(false);
-      setClosing(false);
+      setPresence((current) => transitionPresence(current, 'closed'));
     }, exitDuration);
   }
 

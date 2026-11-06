@@ -1,4 +1,5 @@
 import { ExpandableOverview } from '@/components/ExpandableOverview';
+import { useTaskState } from '@/hooks/use-task-state';
 import { castForDisplay } from '@marker/shared/castPresentation';
 import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
@@ -123,7 +124,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const failed = !detail && (titleRequestState?.state === 'failed' || touchError !== undefined);
   const [entryOpen, setEntryOpen] = useState(false);
   const [tagPrefix, setTagPrefix] = useState('');
-  const [entrySaving, setEntrySaving] = useState(false);
+  const { pending: entrySaving, setPending: setEntrySaving } = useTaskState();
   const canonicalSeason = useSeasonView(
     mediaType === 'tv' && validId ? { tmdbId, season } : undefined,
   );

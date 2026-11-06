@@ -1,3 +1,4 @@
+import { credentialState } from './lifecycles';
 import { Clock, Effect, Schema } from 'effect';
 import { batchedProviderBudget } from './providerBudget';
 import { attempt, providerOutcome, type ActionCallFailure } from './actionEffects';
@@ -173,7 +174,7 @@ const loginEffect = Effect.fnUntraced(function* (ctx: TvdbRequestCtx) {
   if (
     credentials &&
     credentialApiKey === apikey &&
-    credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000
+    credentialState(credentials, yield* Clock.currentTimeMillis).state === 'usable'
   )
     return credentials.token;
   const keyHash = yield* Effect.promise(async () => {
@@ -182,7 +183,7 @@ const loginEffect = Effect.fnUntraced(function* (ctx: TvdbRequestCtx) {
   });
   if (
     credentials?.keyHash === keyHash &&
-    credentials.expiresAt > (yield* Clock.currentTimeMillis) + 60_000
+    credentialState(credentials, yield* Clock.currentTimeMillis).state === 'usable'
   )
     return credentials.token;
   const cached = yield* attempt(() => ctx.runQuery(internal.providerCredentials.get, { keyHash }));
@@ -251,7 +252,7 @@ const requestEffect = Effect.fnUntraced(function* (
   ProviderTransportFailure | ProviderIntegrationFailure | TvdbNotFoundError | ActionCallFailure
 > {
   // Authentication gets one refresh, independently of idempotent transport retries.
-  for (let authAttempt = 0; authAttempt < 2; authAttempt++) {
+  for (const authAttempt of ['initial', 'refreshed'] as const) {
     const token = yield* loginEffect(ctx);
     const response = yield* providerFetchEffect(
       `${API_ROOT}${path}`,
@@ -269,7 +270,7 @@ const requestEffect = Effect.fnUntraced(function* (
             })),
       },
     );
-    if (response.status === 401 && authAttempt === 0) {
+    if (response.status === 401 && authAttempt === 'initial') {
       if (credentials)
         yield* attempt(() =>
           ctx.runMutation(internal.providerCredentials.invalidate, {

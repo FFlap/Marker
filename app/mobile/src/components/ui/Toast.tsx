@@ -16,17 +16,20 @@ type ToastValue = { show: (message: string) => void };
 const ToastContext = createContext<ToastValue>({ show: () => undefined });
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [message, setMessage] = useState('');
+  const [toast, setToast] = useState<{ state: 'hidden' } | { state: 'visible'; message: string }>({
+    state: 'hidden',
+  });
+  const message = toast.state === 'visible' ? toast.message : '';
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const dismiss = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = undefined;
-    setMessage('');
+    setToast({ state: 'hidden' });
   }, []);
   const show = useCallback(
     (nextMessage: string) => {
       if (timer.current) clearTimeout(timer.current);
-      setMessage(nextMessage);
+      setToast(nextMessage ? { state: 'visible', message: nextMessage } : { state: 'hidden' });
       timer.current = setTimeout(dismiss, 4000);
       (timer.current as unknown as { unref?: () => void }).unref?.();
     },

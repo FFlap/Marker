@@ -1,3 +1,4 @@
+import { cursorJobState, itemLifecycle } from './lifecycles';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
@@ -49,7 +50,7 @@ export const requestMissingMetadata = internalMutation({
       !item ||
       item.mediaType !== 'tv' ||
       item.status !== 'watching' ||
-      item.deletingAt !== undefined
+      itemLifecycle(item).state !== 'active'
     )
       return;
     await requestRefresh(ctx, {
@@ -291,7 +292,7 @@ export async function refreshNextEpisode(
 ): Promise<RefreshResult> {
   const item =
     typeof itemOrId === 'string' ? await ctx.db.get(itemOrId) : await ctx.db.get(itemOrId._id);
-  if (!item || item.mediaType !== 'tv' || item.deletingAt !== undefined)
+  if (!item || item.mediaType !== 'tv' || itemLifecycle(item).state !== 'active')
     return { state: 'skipped', chunkPairsRead: 0 };
   const [context, existing] = await Promise.all([
     loadRefreshContext(ctx, item),
@@ -338,9 +339,9 @@ export const continueNextEpisodeRefresh = internalMutation({
     if (
       !item ||
       item.mediaType !== 'tv' ||
-      item.deletingAt !== undefined ||
+      itemLifecycle(item).state !== 'active' ||
       !refresh ||
-      refresh.token !== args.token ||
+      cursorJobState(refresh, args.token).state !== 'running' ||
       refresh.season !== args.season ||
       refresh.chunkIndex !== args.chunkIndex
     )

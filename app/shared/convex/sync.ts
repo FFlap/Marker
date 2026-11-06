@@ -1,3 +1,4 @@
+import { transitionRematch } from './lifecycles';
 import { Effect } from 'effect';
 import { actionFailureCause, attempt, runActionEffect } from './actionEffects';
 import {
@@ -345,12 +346,12 @@ export async function commitWatchWithOneRematch<T>(
       Effect.catch((error) =>
         Effect.gen(function* () {
           const staleCode = convexErrorCode(actionFailureCause(error));
-          if (staleCode !== 'stale_season_version' && staleCode !== 'stale_epoch')
-            return yield* Effect.fail(error);
-          if (staleCode === 'stale_epoch') yield* attempt(refreshEpoch);
+          const retry = transitionRematch({ state: 'initial' }, staleCode);
+          if (retry.state !== 'rematching') return yield* Effect.fail(error);
+          if (retry.refreshEpoch) yield* attempt(refreshEpoch);
           const rematched = yield* attempt(rematch);
           if (!rematched)
-            return yield* Effect.fail(new ConvexError({ code: staleCode, retryable: true }));
+            return yield* Effect.fail(new ConvexError({ code: retry.code, retryable: true }));
           // Exactly one rematch, never a blanket retry of the write workflow.
           const recorded = yield* attempt(() => commit(rematched));
           return { resolved: rematched, recorded };

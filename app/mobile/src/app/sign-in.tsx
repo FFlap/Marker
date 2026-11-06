@@ -1,3 +1,10 @@
+import { useTaskState } from '@/hooks/use-task-state';
+import {
+  transitionAuthScreen,
+  type AuthScreen,
+  type AuthFlow,
+  type RecoveryStage,
+} from '@marker/shared/lifecycle';
 import { ScreenKeyboardScrollView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import * as Option from 'effect/Option';
@@ -99,8 +106,6 @@ const friendly = (e: unknown, context: AuthErrorContext) => {
   return 'We couldn’t complete that request. Try again.';
 };
 
-type RecoveryStage = 'identifier' | 'code' | 'password';
-
 function GoogleIcon() {
   return (
     <Svg width={18} height={18} viewBox="0 0 24 24">
@@ -128,16 +133,22 @@ export default function SignIn() {
   const { signIn } = useSignIn();
   const { signUp } = useSignUp();
   const { startSSOFlow } = useSSO();
-  const [flow, setFlow] = useState<'choose' | 'signIn' | 'signUp'>('choose');
+  const [authScreen, setAuthScreen] = useState<AuthScreen>({ state: 'form', flow: 'choose' });
+  const flow = authScreen.flow;
+  const verification = authScreen.state === 'verification' ? authScreen.verification : null;
+  const recovery = authScreen.state === 'recovery' ? authScreen.stage : null;
+  const setFlow = (flow: AuthFlow) =>
+    setAuthScreen((current) => transitionAuthScreen(current, { type: 'choose', flow }));
+  const setVerification = (verification: 'signUp' | 'clientTrust' | null) =>
+    setAuthScreen((current) => transitionAuthScreen(current, { type: 'verify', verification }));
+  const setRecovery = (stage: RecoveryStage | null) =>
+    setAuthScreen((current) => transitionAuthScreen(current, { type: 'recover', stage }));
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [code, setCode] = useState('');
-  const [verification, setVerification] = useState<'signUp' | 'clientTrust' | null>(null);
-  const [recovery, setRecovery] = useState<RecoveryStage | null>(null);
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { pending: busy, error, setPending: setBusy, setError } = useTaskState();
 
   const openSignedInApp = () => router.replace('/');
 

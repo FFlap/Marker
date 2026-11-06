@@ -1,3 +1,4 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { localDateKey } from "@/hooks/use-local-today";
 import { Effect } from "effect";
 import { touchMetadata, saveLibrary } from "@marker/shared/clientEffects";
@@ -53,8 +54,12 @@ export function AddTitleDialog({
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [selected, setSelected] = useState(initialSelection);
   const [draft, setDraft] = useState(initialDraft);
-  const [busy, setBusy] = useState(false);
-  const [saveError, setSaveError] = useState("");
+  const {
+    pending: busy,
+    error: saveError,
+    setPending: setBusy,
+    setError: setSaveError,
+  } = useTaskState();
   const { status, rating, timesWatched, tags } = draft;
   const {
     results,
@@ -130,10 +135,10 @@ export function AddTitleDialog({
         const itemId =
           selected.mediaType === "tv" && status === "watched"
             ? yield* saveLibrary(() =>
-                  addItemAndMarkWatched({
-                    ...addArgs,
-                    activityDate: localDateKey(),
-                  }),
+                addItemAndMarkWatched({
+                  ...addArgs,
+                  activityDate: localDateKey(),
+                }),
               )
             : yield* saveLibrary(() => addItem(addArgs));
         return itemId;

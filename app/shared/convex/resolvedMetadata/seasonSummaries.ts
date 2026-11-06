@@ -1,3 +1,4 @@
+import { publicationState } from '../lifecycles';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction, internalMutation } from '../_generated/server';
@@ -71,8 +72,7 @@ export const publish = internalMutation({
       .unique();
     if (
       !current ||
-      current.refreshedAt !== args.refreshedAt ||
-      current.orderEpoch !== args.orderEpoch ||
+      publicationState(current, mapping, args).state !== 'current' ||
       current.tvdbId !== args.tvdbId ||
       current.seasonOrder !== args.seasonOrder ||
       (mapping &&

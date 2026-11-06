@@ -56,19 +56,20 @@ export function NativePosterDragPreview({
   posterPath?: string;
   title: string;
 }) {
-  const [ready, setReady] = useState(false);
-  const readyRef = useRef(false);
-  const [imageFailed, setImageFailed] = useState(false);
+  const [image, setImage] = useState<'loading' | 'displayed' | 'failed'>('loading');
+  const readiness = useRef<'waiting' | 'reported'>('waiting');
+  const ready = image !== 'loading';
+  const imageFailed = image === 'failed';
   const onPreviewReady = motion.onPreviewReady;
   const onDisplay = useCallback(() => {
-    if (readyRef.current) return;
-    readyRef.current = true;
+    if (readiness.current === 'reported') return;
+    readiness.current = 'reported';
     // Batch the preview reveal and the original card placeholder in React.
-    setReady(true);
+    setImage((current) => (current === 'failed' ? current : 'displayed'));
     onPreviewReady?.();
   }, [onPreviewReady]);
   const onError = useCallback(() => {
-    setImageFailed(true);
+    setImage('failed');
     onDisplay();
   }, [onDisplay]);
   const motionStyle = useAnimatedStyle(() => {

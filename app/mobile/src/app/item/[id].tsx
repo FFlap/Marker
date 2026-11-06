@@ -1,4 +1,6 @@
 import { ExpandableOverview } from '@/components/ExpandableOverview';
+import { usePendingTasks } from '@/hooks/use-pending-tasks';
+import { useTaskState } from '@/hooks/use-task-state';
 import { castForDisplay } from '@marker/shared/castPresentation';
 import { RemoveTitleDialog } from '@/components/RemoveTitleDialog';
 import { ScreenView } from '@/components/ScreenLayout';
@@ -84,15 +86,15 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [expanded, setExpanded] = useState<string>();
   const [editingEpisode, setEditingEpisode] = useState<string>();
   const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
-  const [pendingEpisodes, setPendingEpisodes] = useState<Set<string>>(() => new Set());
-  const [removePending, setRemovePending] = useState(false);
+  const [pendingEpisodes, setPendingEpisodes] = usePendingTasks();
+  const { pending: removePending, setPending: setRemovePending } = useTaskState();
   const [removeError, setRemoveError] = useState<string>();
   const [removeOpen, setRemoveOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
   const [tagPrefix, setTagPrefix] = useState('');
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
-  const [entrySaving, setEntrySaving] = useState(false);
-  const [seasonPending, setSeasonPending] = useState(false);
+  const { pending: entrySaving, setPending: setEntrySaving } = useTaskState();
+  const { pending: seasonPending, setPending: setSeasonPending } = useTaskState();
   const draft = item;
   const [episodeDrafts, setEpisodeDrafts] = useState<Record<string, PendingEpisodeDraft>>({});
   // IDs are allocated only in event handlers and never reused after acknowledgment.

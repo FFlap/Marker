@@ -1,3 +1,4 @@
+import { itemLifecycle } from '../lifecycles';
 import { internalMutation, mutation, query, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -281,7 +282,7 @@ export const removeItem = mutation({
     const item = await ctx.db.get(itemId);
     if (!item) return;
     if (item.userId !== userId) throw new Error('Item not found');
-    if (item.deletingAt === undefined) {
+    if (itemLifecycle(item).state === 'active') {
       await ctx.db.patch(itemId, { deletingAt: Date.now() });
       await bumpCalendarRevision(ctx, userId);
       await updateProfileStatsForItem(ctx, item, null);
@@ -292,17 +293,44 @@ export const removeItem = mutation({
 
 const REMOVE_BATCH_SIZE = 500;
 
+async function deletionWork(ctx: MutationCtx, itemId: Id<'items'>) {
+  const episodes = await ctx.db
+    .query('episodes')
+    .withIndex('by_item', (query) => query.eq('itemId', itemId))
+    .take(REMOVE_BATCH_SIZE);
+  if (episodes.length) return { state: 'episodes', rows: episodes } as const;
+  const summaries = await ctx.db
+    .query('episodeSummaries')
+    .withIndex('by_item', (query) => query.eq('itemId', itemId))
+    .take(REMOVE_BATCH_SIZE);
+  if (summaries.length) return { state: 'summaries', rows: summaries } as const;
+  const tagMemberships = await ctx.db
+    .query('tagMemberships')
+    .withIndex('by_item', (query) => query.eq('itemId', itemId))
+    .take(REMOVE_BATCH_SIZE);
+  if (tagMemberships.length) return { state: 'memberships', rows: tagMemberships } as const;
+  const profileFavorites = await ctx.db
+    .query('profileFavorites')
+    .withIndex('by_item', (query) => query.eq('itemId', itemId))
+    .take(REMOVE_BATCH_SIZE);
+  if (profileFavorites.length) return { state: 'favorites', rows: profileFavorites } as const;
+  const projectionRepairs = await ctx.db
+    .query('episodeProjectionRepairs')
+    .withIndex('by_item', (query) => query.eq('itemId', itemId))
+    .take(REMOVE_BATCH_SIZE);
+  if (projectionRepairs.length) return { state: 'repairs', rows: projectionRepairs } as const;
+  return { state: 'finalize' } as const;
+}
+
 export const continueRemoveItem = internalMutation({
   args: { itemId: v.id('items') },
   returns: v.object({ deleted: v.number(), done: v.boolean() }),
   handler: async (ctx, { itemId }) => {
     const item = await ctx.db.get(itemId);
-    if (!item || item.deletingAt === undefined) return { deleted: 0, done: true };
-    const episodes = await ctx.db
-      .query('episodes')
-      .withIndex('by_item', (query) => query.eq('itemId', itemId))
-      .take(REMOVE_BATCH_SIZE);
-    if (episodes.length > 0) {
+    if (!item || itemLifecycle(item).state !== 'deleting') return { deleted: 0, done: true };
+    const work = await deletionWork(ctx, itemId);
+    if (work.state === 'episodes') {
+      const episodes = work.rows;
       const activityCounts = new Map<string, number>();
       for (const episode of episodes) {
         if (episode.watched && episode.activityDate !== undefined)
@@ -317,20 +345,14 @@ export const continueRemoveItem = internalMutation({
       await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: episodes.length, done: false };
     }
-    const summaries = await ctx.db
-      .query('episodeSummaries')
-      .withIndex('by_item', (query) => query.eq('itemId', itemId))
-      .take(REMOVE_BATCH_SIZE);
-    if (summaries.length > 0) {
+    if (work.state === 'summaries') {
+      const summaries = work.rows;
       for (const summary of summaries) await ctx.db.delete(summary._id);
       await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: summaries.length, done: false };
     }
-    const tagMemberships = await ctx.db
-      .query('tagMemberships')
-      .withIndex('by_item', (query) => query.eq('itemId', itemId))
-      .take(REMOVE_BATCH_SIZE);
-    if (tagMemberships.length > 0) {
+    if (work.state === 'memberships') {
+      const tagMemberships = work.rows;
       const collectionDeltas: TagCollectionDeltas = new Map();
       for (const membership of tagMemberships) {
         await ctx.db.delete(membership._id);
@@ -343,20 +365,14 @@ export const continueRemoveItem = internalMutation({
       await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: tagMemberships.length, done: false };
     }
-    const profileFavorites = await ctx.db
-      .query('profileFavorites')
-      .withIndex('by_item', (query) => query.eq('itemId', itemId))
-      .take(REMOVE_BATCH_SIZE);
-    if (profileFavorites.length > 0) {
+    if (work.state === 'favorites') {
+      const profileFavorites = work.rows;
       for (const favorite of profileFavorites) await ctx.db.delete(favorite._id);
       await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: profileFavorites.length, done: false };
     }
-    const projectionRepairs = await ctx.db
-      .query('episodeProjectionRepairs')
-      .withIndex('by_item', (query) => query.eq('itemId', itemId))
-      .take(REMOVE_BATCH_SIZE);
-    if (projectionRepairs.length) {
+    if (work.state === 'repairs') {
+      const projectionRepairs = work.rows;
       for (const repair of projectionRepairs) await ctx.db.delete(repair._id);
       await ctx.scheduler.runAfter(0, internal.library.items.continueRemoveItem, { itemId });
       return { deleted: projectionRepairs.length, done: false };

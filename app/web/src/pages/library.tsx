@@ -145,7 +145,7 @@ export function LibraryPage() {
     Partial<Record<WebLibraryItem["status"], string[]>>
   >({});
   const [moving, setMoving] = useState<string>();
-  const movePending = useRef(false);
+  const movePending = useRef<"idle" | "pending">("idle");
   const [error, setError] = useState("");
   const [announcement, setAnnouncement] = useState("");
   const allTags = useMemo(
@@ -189,7 +189,7 @@ export function LibraryPage() {
   ) => {
     if (
       filtersActive ||
-      movePending.current ||
+      movePending.current === "pending" ||
       from === to ||
       to < 0 ||
       to >= section.length
@@ -207,7 +207,7 @@ export function LibraryPage() {
       ...current,
       [status]: next.map((item) => String(item._id)),
     }));
-    movePending.current = true;
+    movePending.current = "pending";
     setMoving(String(moved._id));
     await runOperation.write(
       Effect.gen(function* () {
@@ -226,7 +226,7 @@ export function LibraryPage() {
         },
         settled: () => {
           setOrders((current) => ({ ...current, [status]: undefined }));
-          movePending.current = false;
+          movePending.current = "idle";
           setMoving(undefined);
         },
       },
@@ -237,7 +237,12 @@ export function LibraryPage() {
     status: WebLibraryItem["status"],
     targetIndex?: number,
   ) => {
-    if (filtersActive || movePending.current || item.status === status) return;
+    if (
+      filtersActive ||
+      movePending.current === "pending" ||
+      item.status === status
+    )
+      return;
     const target = (items ?? [])
       .filter((entry) => entry.status === status && entry._id !== item._id)
       .toSorted((left, right) => left.rank - right.rank);
@@ -247,7 +252,7 @@ export function LibraryPage() {
     );
     const placed = [...target];
     placed.splice(insertion, 0, item);
-    movePending.current = true;
+    movePending.current = "pending";
     setMoving(String(item._id));
     setError("");
     await runOperation.write(
@@ -279,7 +284,7 @@ export function LibraryPage() {
           );
         },
         settled: () => {
-          movePending.current = false;
+          movePending.current = "idle";
           setMoving(undefined);
         },
       },

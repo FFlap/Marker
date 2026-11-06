@@ -1,3 +1,4 @@
+import { usePendingTasks } from '@/hooks/use-pending-tasks';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
@@ -62,7 +63,7 @@ export default function Explore() {
     results: mediaResults,
     loading: mediaLoading,
   } = useTitleSearch(query, { enabled: filter !== 'people' && filter !== 'tags' });
-  const [pendingPeople, setPendingPeople] = useState<Set<string>>(() => new Set());
+  const [pendingPeople, setPendingPeople] = usePendingTasks();
   const library = useQuery(api.library.items.listItems);
   const people = useQuery(
     api.profiles.search,
