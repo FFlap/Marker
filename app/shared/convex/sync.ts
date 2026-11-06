@@ -465,12 +465,21 @@ async function recordWatchForUser(
       season,
     });
     const episodes: CanonicalEpisode[] = matchedSeason?.episodes ? [...matchedSeason.episodes] : [];
-    for (let chunkIndex = 1; chunkIndex < (matchedSeason?.chunkCount ?? 0); chunkIndex += 1) {
-      const chunk = await ctx.runQuery(internal.resolvedMetadata.reads.readSeasonChunk, {
-        tmdbId: item!.tmdbId,
-        season,
-        chunkIndex,
-      });
+    const chunks = await runActionEffect(
+      Effect.forEach(
+        Array.from({ length: Math.max(0, (matchedSeason?.chunkCount ?? 0) - 1) }, (_, i) => i + 1),
+        (chunkIndex) =>
+          attempt(() =>
+            ctx.runQuery(internal.resolvedMetadata.reads.readSeasonChunk, {
+              tmdbId: item!.tmdbId,
+              season,
+              chunkIndex,
+            }),
+          ),
+        { concurrency: 4 },
+      ),
+    );
+    for (const chunk of chunks) {
       if (!chunk) break;
       episodes.push(...chunk.episodes);
     }

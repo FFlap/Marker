@@ -47,10 +47,19 @@ export const overview = query({
   handler: async (ctx, { today }) => {
     requireLocalDate(today);
     const userId = await requireUser(ctx);
-    const watching = await ctx.db
-      .query('items')
-      .withIndex('by_user_status', (q) => q.eq('userId', userId).eq('status', 'watching'))
-      .take(200);
+    const [watching, rated] = await Promise.all([
+      ctx.db
+        .query('items')
+        .withIndex('by_user_status', (q) => q.eq('userId', userId).eq('status', 'watching'))
+        .take(200),
+      ctx.db
+        .query('episodes')
+        .withIndex('by_user_watched_rating', (q) =>
+          q.eq('userId', userId).eq('watched', true).gt('rating', undefined),
+        )
+        .order('desc')
+        .take(200),
+    ]);
     const released = watching.filter(
       (item) =>
         item.mediaType === 'tv' &&
@@ -60,7 +69,7 @@ export const overview = query({
           ? item.nextEpisode.airDate <= today
           : item.nextEpisode.undatedReleased === true),
     );
-    const nextEpisodes = await Promise.all(
+    const nextEpisodesPromise = Promise.all(
       released.map(async (item) => {
         const coordinate = item.nextEpisode!;
         const saved = await ctx.db
@@ -99,20 +108,13 @@ export const overview = query({
       }),
     );
 
-    const rated = await ctx.db
-      .query('episodes')
-      .withIndex('by_user_watched_rating', (q) =>
-        q.eq('userId', userId).eq('watched', true).gt('rating', undefined),
-      )
-      .order('desc')
-      .take(200);
     const itemIds = [...new Set(rated.map((episode) => episode.itemId))];
+    const [nextEpisodes, itemRows] = await Promise.all([
+      nextEpisodesPromise,
+      Promise.all(itemIds.map(async (itemId) => [itemId, await ctx.db.get(itemId)] as const)),
+    ]);
     const items = new Map(
-      (
-        await Promise.all(
-          itemIds.map(async (itemId) => [itemId, await ctx.db.get(itemId)] as const),
-        )
-      ).filter(
+      itemRows.filter(
         (entry): entry is readonly [(typeof entry)[0], NonNullable<(typeof entry)[1]>] =>
           entry[1] !== null && entry[1].userId === userId && entry[1].deletingAt === undefined,
       ),
