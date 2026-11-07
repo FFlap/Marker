@@ -159,27 +159,34 @@ describe('Explore title metadata subscriptions', () => {
   });
 
   it('hides the previous season while the selected season is still loading', async () => {
-    const view = await screen();
-    const nextSeason = mockState.mockSeasonView[2];
-    mockState.mockSeasonView[2] = mockState.mockSeasonView[1];
+    jest.useFakeTimers();
+    try {
+      const view = await screen();
+      const nextSeason = mockState.mockSeasonView[2];
+      mockState.mockSeasonView[2] = mockState.mockSeasonView[1];
 
-    await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
-    await fireEvent.press(view.getByLabelText('Select Season 2'));
-    expect(view.queryByText('The Journey')).toBeNull();
-    expect(view.queryByText('A New Journey')).toBeNull();
-    expect(view.getByLabelText('Loading')).toBeTruthy();
+      await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
+      await fireEvent.press(view.getByLabelText('Select Season 2'));
+      await act(async () => jest.advanceTimersByTime(100));
+      expect(view.queryByText('The Journey')).toBeNull();
+      expect(view.queryByText('A New Journey')).toBeNull();
+      expect(view.getByLabelText('Loading')).toBeTruthy();
 
-    mockState.mockSeasonView[2] = nextSeason;
-    await act(async () =>
-      view.rerender(
-        <ToastProvider>
-          <TitleDetail />
-        </ToastProvider>,
-      ),
-    );
-    expect(view.getByText('A New Journey')).toBeTruthy();
-    expect(view.queryByText('The Journey')).toBeNull();
-    expect(view.queryByLabelText('Loading')).toBeNull();
+      mockState.mockSeasonView[2] = nextSeason;
+      await act(async () =>
+        view.rerender(
+          <ToastProvider>
+            <TitleDetail />
+          </ToastProvider>,
+        ),
+      );
+      expect(view.getByText('A New Journey')).toBeTruthy();
+      expect(view.queryByText('The Journey')).toBeNull();
+      expect(view.queryByLabelText('Loading')).toBeNull();
+    } finally {
+      await cleanup();
+      jest.useRealTimers();
+    }
   });
 
   it('uses a server-relative delay even when the client clock is fast', async () => {

@@ -8,6 +8,7 @@ import { SectionHeader } from './SectionHeader';
 
 type Member = { name: string; character: string; profilePath?: string; characterImageUrl?: string };
 
+/** Cover artwork until native display completes; failed URLs fall back to initials. */
 function CastPortrait({ member }: { member: Member }) {
   const [displayed, setDisplayed] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -47,8 +48,8 @@ export function CastSection({ members, loading }: { members: Member[]; loading: 
       <SectionHeader title="Cast" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         {members.length ? (
-          members.map((member) => (
-            <View key={`${member.name}-${member.character}`} style={styles.member}>
+          members.map((member, index) => (
+            <View key={`${member.name}-${member.character}-${index}`} style={styles.member}>
               <CastPortrait
                 key={member.characterImageUrl ?? member.profilePath ?? ''}
                 member={member}

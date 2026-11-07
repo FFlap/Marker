@@ -49,3 +49,15 @@ it('keeps existing cast visible during a refresh without an image skeleton when 
   expect(view.queryByLabelText('Loading cast')).toBeNull();
   expect(view.queryByLabelText('Loading artwork for Actor')).toBeNull();
 });
+
+it('renders duplicate credits and keeps the remaining portrait loading after one is removed', async () => {
+  const duplicate = { ...member, characterImageUrl: 'https://example.com/duplicate.jpg' };
+  const view = await render(<CastSection members={[member, duplicate]} loading={false} />);
+  expect(view.getAllByText('Hero')).toHaveLength(2);
+  await fireEvent(view.getAllByTestId('cast-portrait-Hero')[0], 'display');
+  expect(view.getAllByLabelText('Loading artwork for Hero')).toHaveLength(1);
+
+  await view.rerender(<CastSection members={[duplicate]} loading={false} />);
+  expect(view.getAllByText('Hero')).toHaveLength(1);
+  expect(view.getByLabelText('Loading artwork for Hero')).toBeTruthy();
+});
