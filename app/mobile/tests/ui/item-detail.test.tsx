@@ -429,6 +429,26 @@ describe('item detail metadata subscriptions', () => {
     expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
   });
 
+  it('reserves cast space while empty cached metadata refreshes and clears it when no cast is found', async () => {
+    itemView = {
+      item,
+      title: { ...title, cast: [] },
+      requestState: { title: { state: 'inFlight' } },
+    };
+    const view = await renderScreen();
+    expect(view.getByText('Cast')).toBeTruthy();
+    expect(view.getByLabelText('Loading cast')).toBeTruthy();
+
+    itemView = { ...itemView, requestState: { title: { state: 'succeeded' } } };
+    await view.rerender(
+      <ToastProvider>
+        <ItemDetail />
+      </ToastProvider>,
+    );
+    expect(view.queryByText('Cast')).toBeNull();
+    expect(view.queryByLabelText('Loading cast')).toBeNull();
+  });
+
   it('shows a skeleton on a cold title and renders when the subscription delivers', async () => {
     itemView = { item, title: null, requestState: { title: undefined } };
     mockSeasonView = { 1: null };

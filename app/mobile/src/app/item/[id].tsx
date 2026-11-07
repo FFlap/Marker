@@ -1,3 +1,4 @@
+import { CastSection } from '@/features/title/components/CastSection';
 import { ExpandableOverview } from '@/components/ExpandableOverview';
 import { usePendingTasks } from '@/hooks/use-pending-tasks';
 import { useTaskState } from '@/hooks/use-task-state';
@@ -8,7 +9,7 @@ import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
-import { FlatList, Linking, Pressable, ScrollView, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Linking, Pressable, RefreshControl, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import Pencil from 'lucide-react-native/icons/pencil';
@@ -459,29 +460,15 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 removePending={removePending}
               />
             )}
-            {visibleCast.length > 0 && (
-              <>
-                <SectionHeader title="Cast" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {visibleCast.map((c) => (
-                    <View key={`${c.name}-${c.character}`} style={s.cast}>
-                      <PosterImage
-                        path={c.profilePath}
-                        imageUrl={c.characterImageUrl}
-                        title={c.name}
-                        style={{ width: 72, height: 96 }}
-                      />
-                      <Text numberOfLines={1} style={s.castName}>
-                        {c.name}
-                      </Text>
-                      <Text numberOfLines={1} style={s.castRole}>
-                        {c.character}
-                      </Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              </>
-            )}
+            <CastSection
+              members={visibleCast}
+              loading={
+                (!detail || titleRequestState?.state === 'inFlight') &&
+                titleRequestState?.state !== 'failed' &&
+                touchError === undefined
+              }
+            />
+
             {item.mediaType === 'tv' && (
               <>
                 <SectionHeader title="Episodes" />
