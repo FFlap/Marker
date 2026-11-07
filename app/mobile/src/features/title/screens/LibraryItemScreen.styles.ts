@@ -31,9 +31,6 @@ export const libraryItemScreenStyles = createAppStyles(
     entryValue: { color: colors.text, fontSize: 14, fontWeight: '600', marginTop: 6 },
     entryTags: { gap: 8 },
     noTags: { color: colors.muted, fontSize: 13, lineHeight: 24 },
-    cast: { width: 82, marginRight: 12 },
-    castName: { color: colors.text, fontSize: 11, fontWeight: '600', marginTop: 7 },
-    castRole: { color: colors.muted, fontSize: 10, marginTop: 3 },
     episode: { borderBottomWidth: 1, borderColor: colors.border, paddingVertical: 14 },
     epRow: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 12 },
     episodeArtwork: {
@@ -142,8 +139,6 @@ export const libraryItemScreenStyles = createAppStyles(
     'entryLabel',
     'entryValue',
     'noTags',
-    'castName',
-    'castRole',
     'episodeImageNumber',
     'epNo',
     'epName',
