@@ -12,15 +12,16 @@ import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   default as Animated,
-  LinearTransition,
   runOnJS,
   scrollTo,
   type AnimatedRef,
   type FrameInfo,
   type SharedValue,
   useAnimatedReaction,
+  useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
 import type { NativePosterDragMotion } from '@/components/NativePosterDragPreview';
 
@@ -605,6 +606,21 @@ function NativeGridCellImpl<T>({
   slotOwners: { current: Map<number, string> };
   touchTranslate: SharedValue<number>;
 }) {
+  const layoutTranslateX = useSharedValue(0);
+  const layoutTranslateY = useSharedValue(0);
+  const previousLayout = useRef<LayoutRectangle | undefined>(undefined);
+  const positionStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: animateLayout ? layoutTranslateX.value : 0 },
+      { translateY: animateLayout ? layoutTranslateY.value : 0 },
+    ],
+  }));
+  useEffect(() => {
+    if (!animateLayout) {
+      layoutTranslateX.value = 0;
+      layoutTranslateY.value = 0;
+    }
+  }, [animateLayout, layoutTranslateX, layoutTranslateY]);
   const cellMap = cellRefs.current;
   const slotMap = slotLayouts.current;
   const ownerMap = slotOwners.current;
@@ -619,8 +635,18 @@ function NativeGridCellImpl<T>({
     (layout: LayoutRectangle) => {
       slotMap.set(index, layout);
       ownerMap.set(index, itemKey);
+      const previous = previousLayout.current;
+      previousLayout.current = layout;
+      // Animate only the visual offset. Native flex layout and hit testing keep
+      // the final slot dimensions, including wrapped rows and section heights.
+      if (animateLayout && previous) {
+        layoutTranslateX.value += previous.x - layout.x;
+        layoutTranslateY.value += previous.y - layout.y;
+        layoutTranslateX.value = withTiming(0, { duration: 160 });
+        layoutTranslateY.value = withTiming(0, { duration: 160 });
+      }
     },
-    [index, itemKey, ownerMap, slotMap],
+    [animateLayout, index, itemKey, layoutTranslateX, layoutTranslateY, ownerMap, slotMap],
   );
   useEffect(
     () => () => {
@@ -686,9 +712,8 @@ function NativeGridCellImpl<T>({
 
   return (
     <Animated.View
-      layout={animateLayout ? LinearTransition.duration(160) : undefined}
       onLayout={(event) => saveSlotLayout(event.nativeEvent.layout)}
-      style={[styles.cell, { width: itemWidth }, position]}
+      style={[styles.cell, { width: itemWidth }, position, positionStyle]}
     >
       <GestureDetector gesture={gesture}>
         <View

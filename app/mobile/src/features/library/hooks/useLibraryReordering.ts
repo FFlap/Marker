@@ -250,6 +250,13 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         }
       }
       nearest = insertion.update(nearest, x, y, offset);
+      const sourceLayout = sectionLayouts[sourceStatus];
+      if (
+        nearest === sourceStatus &&
+        sourceLayout &&
+        (contentY < sourceLayout.top || contentY > sourceLayout.top + sourceLayout.height)
+      )
+        nearest = undefined;
       if (nearest !== targetStatusRef.current) {
         targetStatusRef.current = nearest;
         setTargetStatus(nearest);

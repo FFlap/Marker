@@ -682,6 +682,30 @@ describe('Marker library', () => {
     expect(mockMoveItemToWatched).not.toHaveBeenCalled();
   });
 
+  it('does not save a reorder in the gap outside the nearest source section', async () => {
+    const q = await view();
+    await fireEvent(
+      q
+        .getAllByText('Watched')
+        .map((node) => node.parent!.parent!)
+        .find((node) => node.props.onLayout)!,
+      'layout',
+      {
+        nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 100 } },
+      },
+    );
+    await act(() => mockDragBegins.get('a,d,e')!({ item: items[0], index: 0 }));
+    await act(() => {
+      expect(
+        mockDragMoves.get('a,d,e')!({ absoluteX: 150, absoluteY: 10000, scrollOffset: 0 }),
+      ).toBe(false);
+    });
+    await act(() =>
+      mockDragEnds.get('a,d,e')!({ data: [items[3], items[4], items[0]], from: 0, to: 2 }),
+    );
+    expect(mockReorderItem).not.toHaveBeenCalled();
+  });
+
   it('cancels an unmeasured cross-status drop without reordering the source', async () => {
     mockDropTargetMeasured = false;
     await view();

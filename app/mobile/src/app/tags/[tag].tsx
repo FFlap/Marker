@@ -310,6 +310,13 @@ export default function TagDetailScreen() {
         }
       }
       target = insertion.update(target, x, y, offset);
+      const sourceLayout = sectionLayouts[sourceStatus];
+      if (
+        target === sourceStatus &&
+        sourceLayout &&
+        (contentY < sourceLayout.top || contentY > sourceLayout.top + sourceLayout.height)
+      )
+        target = undefined;
       if (target !== nativeTargetRef.current) {
         nativeTargetRef.current = target;
         setNativeTargetStatus(target);
