@@ -60,3 +60,32 @@ it('prefers the section under the pointer when an earlier grid still reports ove
   expect(status).toBe('watching');
   expect(result.current.indexRef.current).toBe(1);
 });
+
+it('retains the destination during conflicting measurements and switches after they settle', async () => {
+  const { result } = await renderHook(useCrossSectionDrop);
+  let watchedDistance = 0;
+  let watchingDistance = 200;
+  result.current.targets.current.watched = () => ({ index: 2, distance: watchedDistance });
+  result.current.targets.current.watching = () => ({ index: 1, distance: watchingDistance });
+  await act(() => {
+    expect(result.current.update('watched', 140, 300, 0)).toBe('watched');
+  });
+  watchingDistance = 0;
+  await act(() => {
+    expect(result.current.update('watching', 140, 300, 0)).toBe('watched');
+  });
+  expect(result.current.index).toBe(2);
+  expect(result.current.indexRef.current).toBe(2);
+  watchedDistance = 180;
+  await act(() => {
+    expect(result.current.update('watching', 140, 300, 0)).toBe('watching');
+  });
+  expect(result.current.index).toBe(1);
+  expect(result.current.indexRef.current).toBe(1);
+  // A new drag must not inherit the previous destination.
+  await act(() => result.current.clear());
+  watchedDistance = 0;
+  await act(() => {
+    expect(result.current.update('watched', 140, 300, 0)).toBe('watched');
+  });
+});
