@@ -11,7 +11,12 @@ export function useCrossSectionDrop() {
   /** Resolve a measured slot from window coordinates and the parent scroll offset. */
   const update = (status: Status | undefined, x: number, y: number, offset: number) => {
     // Window geometry accounts for parent padding and the current scroll offset.
-    let selected: ReturnType<NativeGridDropTarget> | undefined;
+    let selected = status ? targets.current[status]?.(x, y, offset) : undefined;
+    if (selected?.distance === 0) {
+      indexRef.current = selected.index;
+      setIndex(selected.index);
+      return status;
+    }
     for (const [key, target] of Object.entries(targets.current)) {
       const candidate = target?.(x, y, offset);
       if (key === status) selected = candidate;

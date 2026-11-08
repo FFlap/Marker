@@ -229,7 +229,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   };
 
   const updateDragTarget = useCallback(
-    (_sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
+    (sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
       if (!draggedItemRef.current) return;
       let nearest: Status | undefined;
       let nearestDistance = Number.POSITIVE_INFINITY;
@@ -245,9 +245,11 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         }
       }
       nearest = insertion.update(nearest, x, y, offset);
-      if (nearest === targetStatusRef.current) return;
-      targetStatusRef.current = nearest;
-      setTargetStatus(nearest);
+      if (nearest !== targetStatusRef.current) {
+        targetStatusRef.current = nearest;
+        setTargetStatus(nearest);
+      }
+      return nearest === sourceStatus;
     },
     [sectionLayouts, insertion],
   );

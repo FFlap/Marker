@@ -11,6 +11,8 @@ import {
 import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
+  default as Animated,
+  LinearTransition,
   runOnJS,
   scrollTo,
   type AnimatedRef,
@@ -146,7 +148,11 @@ export function NativeDraggableGrid<T>({
   onDragCancel?: () => void;
   onDragEnd: (event: { data: T[]; from: number; to: number }) => void;
   onDragLayout?: (layout: DragLayout) => void;
-  onDragMove?: (event: { absoluteX: number; absoluteY: number; scrollOffset: number }) => void;
+  onDragMove?: (event: {
+    absoluteX: number;
+    absoluteY: number;
+    scrollOffset: number;
+  }) => boolean | void;
   onMotionInit?: (motion: NativeGridDragMotion) => void;
   onTouchStateChange?: (touching: boolean) => void;
   renderItem: (event: { index: number; isActive: boolean; item: T }) => ReactNode;
@@ -376,7 +382,15 @@ export function NativeDraggableGrid<T>({
           maxScrollOffset.value = maxOffset;
         }
       }
-      onDragMoveRef.current?.({ absoluteX, absoluteY, scrollOffset });
+      const reorderHere = onDragMoveRef.current?.({ absoluteX, absoluteY, scrollOffset });
+      // Crossing a section must not shuffle the source toward its nearest edge.
+      if (reorderHere === false) {
+        if (current.over !== current.from) {
+          current.over = current.from;
+          if (current.state === 'dragging') setDragOrder(current.order);
+        }
+        return;
+      }
       if (!current.origin) return;
       const localX = absoluteX - current.origin.x;
       const scrollDelta = scrollOffset - current.origin.scrollOffset;
@@ -668,7 +682,8 @@ function NativeGridCellImpl<T>({
   );
 
   return (
-    <View
+    <Animated.View
+      layout={LinearTransition.duration(160)}
       onLayout={(event) => saveSlotLayout(event.nativeEvent.layout)}
       style={[styles.cell, { width: itemWidth }, position]}
     >
@@ -681,7 +696,7 @@ function NativeGridCellImpl<T>({
           {renderItem({ item, index, isActive: active })}
         </View>
       </GestureDetector>
-    </View>
+    </Animated.View>
   );
 }
 

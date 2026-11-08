@@ -493,3 +493,38 @@ it('does not jump to an old slot while a scrolled grid is being measured', async
   await act(() => gesture.onEnd({ absoluteX: 150, absoluteY: 66 }, true));
   expect(onDragEnd).toHaveBeenLastCalledWith(expect.objectContaining({ from: 101, to: 102 }));
 });
+
+it('restores the source order outside its section and resumes reordering on return', async () => {
+  let reorderHere = true;
+  const onDragEnd = jest.fn();
+  const view = await render(
+    <NativeDraggableGrid
+      columns={1}
+      data={['a', 'b']}
+      disabled={false}
+      keyExtractor={(item) => item}
+      onDragBegin={jest.fn()}
+      onDragMove={() => reorderHere}
+      onDragEnd={onDragEnd}
+      renderItem={({ item }) => <Text>{item}</Text>}
+    />,
+  );
+  for (const [index, item] of ['a', 'b'].entries()) {
+    await fireEvent(view.getByTestId(`native-grid-item-${item}`).parent!, 'layout', {
+      nativeEvent: { layout: { x: 0, y: index * 44, width: 300, height: 44 } },
+    });
+  }
+  const gesture = mockGestures.get('native-grid-item-a')!;
+  await act(() => gesture.onStart({ absoluteX: 150, absoluteY: 22 }));
+  const move = () =>
+    gesture.onUpdate({ absoluteX: 150, absoluteY: 66, translationX: 0, translationY: 44 });
+  await act(move);
+  expect(view.getAllByText(/^[ab]$/).map((node) => node.props.children)).toEqual(['b', 'a']);
+  reorderHere = false;
+  await act(move);
+  expect(view.getAllByText(/^[ab]$/).map((node) => node.props.children)).toEqual(['a', 'b']);
+  reorderHere = true;
+  await act(move);
+  await act(() => gesture.onEnd({ absoluteX: 150, absoluteY: 66 }, true));
+  expect(onDragEnd).toHaveBeenCalledWith({ data: ['b', 'a'], from: 0, to: 1 });
+});

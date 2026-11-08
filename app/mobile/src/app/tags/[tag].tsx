@@ -294,7 +294,7 @@ export default function TagDetailScreen() {
     void performCategoryMove(item, targetStatus, index);
   };
   const updateNativeDragTarget = useCallback(
-    (_sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
+    (sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
       if (!nativeDragRef.current) return;
       let target: Status | undefined;
       let nearestDistance = Number.POSITIVE_INFINITY;
@@ -310,9 +310,11 @@ export default function TagDetailScreen() {
         }
       }
       target = insertion.update(target, x, y, offset);
-      if (target === nativeTargetRef.current) return;
-      nativeTargetRef.current = target;
-      setNativeTargetStatus(target);
+      if (target !== nativeTargetRef.current) {
+        nativeTargetRef.current = target;
+        setNativeTargetStatus(target);
+      }
+      return target === sourceStatus;
     },
     [sectionLayouts, insertion],
   );

@@ -48,3 +48,15 @@ it('rejects an unmeasured nonempty target without losing a measured first slot',
   expect(status).toBe('watched');
   expect(result.current.indexRef.current).toBe(0);
 });
+
+it('prefers the section under the pointer when an earlier grid still reports overlapping bounds', async () => {
+  const { result } = await renderHook(useCrossSectionDrop);
+  result.current.targets.current.watched = () => ({ index: 2, distance: 0 });
+  result.current.targets.current.watching = () => ({ index: 1, distance: 0 });
+  let status;
+  await act(() => {
+    status = result.current.update('watching', 140, 300, 0);
+  });
+  expect(status).toBe('watching');
+  expect(result.current.indexRef.current).toBe(1);
+});
