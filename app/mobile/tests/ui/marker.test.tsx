@@ -653,6 +653,42 @@ describe('Marker library', () => {
       finish();
     });
     expect(q.queryByText('Mark as watched?')).toBeNull();
+    const titles = () =>
+      q
+        .getAllByRole('button')
+        .map((node) => node.props.accessibilityLabel)
+        .filter((title) => items.some((item) => item.title === title));
+    expect(titles().slice(0, 4)).toEqual([
+      'Avengers: Endgame',
+      'Daredevil',
+      'The Middle',
+      'Oshi no Ko',
+    ]);
+    // The successful action can resolve before the subscribed query updates.
+    const query = mockUseQuery.getMockImplementation()!;
+    mockUseQuery.mockImplementation((ref) =>
+      String(ref).includes('listItems')
+        ? items.map((item) => (item._id === 'b' ? { ...item, status: 'watched', rank: 1.5 } : item))
+        : query(ref),
+    );
+    await q.rerender(
+      <ToastProvider>
+        <Library />
+      </ToastProvider>,
+    );
+    expect(titles().slice(0, 4)).toEqual([
+      'Avengers: Endgame',
+      'Daredevil',
+      'The Middle',
+      'Oshi no Ko',
+    ]);
+    mockUseQuery.mockImplementation(query);
+    await q.rerender(
+      <ToastProvider>
+        <Library />
+      </ToastProvider>,
+    );
+    expect(titles().slice(0, 3)).toEqual(['Avengers: Endgame', 'The Middle', 'Oshi no Ko']);
   });
 
   it('restores the source position when a Watched drop is cancelled', async () => {

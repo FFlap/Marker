@@ -498,4 +498,22 @@ describe('Tags screens', () => {
     expect(view.getByLabelText('Weekend Movie')).toBeTruthy();
     expect(mockMoveItemToWatched).not.toHaveBeenCalled();
   });
+
+  it('keeps a saved status move visible until the library query acknowledges it', async () => {
+    const view = await render(<TagDetailScreen />);
+    await fireEvent(view.getByLabelText('2. Second Show'), 'accessibilityAction', {
+      nativeEvent: { actionName: 'moveTo:watching' },
+    });
+    expect(mockReorderTag).toHaveBeenCalled();
+    expect(view.getByLabelText('Second Show')).toBeTruthy();
+    mockLibraryItems = mockItems.map((item) =>
+      item._id === 'b' ? { ...item, status: 'watching' as typeof item.status } : item,
+    );
+    await view.rerender(<TagDetailScreen />);
+    expect(view.getByLabelText('Second Show')).toBeTruthy();
+    // Once acknowledged, subsequent server changes become authoritative again.
+    mockLibraryItems = mockItems;
+    await view.rerender(<TagDetailScreen />);
+    expect(view.getByLabelText('2. Second Show')).toBeTruthy();
+  });
 });

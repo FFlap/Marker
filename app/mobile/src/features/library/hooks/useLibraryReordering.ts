@@ -67,11 +67,22 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const draggedItemRef = useRef<typeof draggedItem>(undefined);
   const targetStatusRef = useRef<Status | undefined>(undefined);
 
+  const unacknowledgedStatuses = Object.entries(optimisticStatuses).filter(([id, status]) => {
+    const saved = items.find((item) => item._id === id);
+    return saved && saved.status !== status;
+  });
+  const awaitingStatusQuery = unacknowledgedStatuses.length > 0;
+  if (
+    !statusMovePending &&
+    unacknowledgedStatuses.length !== Object.keys(optimisticStatuses).length
+  )
+    setOptimisticStatuses(Object.fromEntries(unacknowledgedStatuses));
+
   // Wait for the latest save and its query render. A rapid reverse move can
   // match a stale query while an earlier save is still in flight.
   const acknowledgedOrders = useMemo(
     () =>
-      statusMovePending
+      statusMovePending || awaitingStatusQuery
         ? []
         : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
             const order = optimisticOrders[status];
@@ -85,7 +96,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
               pendingReorders[status],
             );
           }),
-    [items, optimisticOrders, pendingReorders, statusMovePending],
+    [awaitingStatusQuery, items, optimisticOrders, pendingReorders, statusMovePending],
   );
   if (acknowledgedOrders.length) {
     const next = { ...optimisticOrders };
@@ -204,8 +215,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
               ? 'Couldn’t mark every episode watched'
               : 'Couldn’t move this title',
           );
-        },
-        settled: () => {
           setOptimisticStatuses((current) => {
             const next = { ...current };
             delete next[item._id];
@@ -217,6 +226,8 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
             delete next[target];
             return next;
           });
+        },
+        settled: () => {
           publishMove({ state: 'idle' });
         },
       },
