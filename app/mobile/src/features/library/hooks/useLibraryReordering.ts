@@ -101,7 +101,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const orderedForStatus = (status: Status) => {
     const order = optimisticOrders[status];
     const orderIndex = new Map(order?.map((id, index) => [id, index]));
-    return items
+    const ordered = items
       .filter((item) => effectiveStatus(item) === status)
       .sort((left, right) => {
         if (!order) return left.rank - right.rank;
@@ -111,6 +111,11 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         if (rightIndex === -1) return -1;
         return leftIndex - rightIndex;
       });
+    if (statusMove.state !== 'confirming') return ordered;
+    const preview = ordered.filter((item) => item._id !== statusMove.item._id);
+    if (status === 'watched')
+      preview.splice(insertion.pendingIndex.current ?? preview.length, 0, statusMove.item);
+    return preview;
   };
 
   const saveOrder = async (data: LibraryItem[], to: number) => {

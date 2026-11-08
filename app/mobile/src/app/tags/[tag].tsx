@@ -446,7 +446,16 @@ export default function TagDetailScreen() {
             onChange={updateGridColumns}
           >
             {visibleStatuses.map(([status, label]) => {
-              const items = sectionItems(status);
+              let items = sectionItems(status);
+              if (pendingWatchedMove && !statusMovePending) {
+                items = items.filter((item) => item._id !== pendingWatchedMove._id);
+                if (status === 'watched')
+                  items.splice(
+                    insertion.pendingIndex.current ?? items.length,
+                    0,
+                    pendingWatchedMove,
+                  );
+              }
               return (
                 <View
                   key={status}

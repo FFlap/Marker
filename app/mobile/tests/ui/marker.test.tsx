@@ -231,7 +231,9 @@ jest.mock('../../src/components/ui/drawer', () => {
   const Container = ({ children }: { children: React.ReactNode }) => <View>{children}</View>;
   const Label = ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>;
   return {
-    Drawer: Passthrough,
+    Drawer: (props: { children: React.ReactNode; onOpenChange?: (open: boolean) => void }) => (
+      <View {...props} testID="confirmation-drawer" />
+    ),
     DrawerClose: Passthrough,
     DrawerContent: Container,
     DrawerHeader: Container,
@@ -632,6 +634,9 @@ describe('Marker library', () => {
     await act(() => mockDragEnds.get('b,f')!({ data: [items[1], items[5]], from: 0, to: 0 }));
     expect(q.getByText('Mark as watched?')).toBeTruthy();
     expect(mockMoveItemToWatched).not.toHaveBeenCalled();
+    // Keep the dropped title between its destination neighbors during confirmation.
+    expect(mockDragBegins.has('a,b,d,e')).toBe(true);
+    expect(mockDragBegins.has('f')).toBe(true);
     await act(async () => {
       fireEvent.press(q.getByText('Mark watched'));
       await Promise.resolve();
@@ -648,6 +653,33 @@ describe('Marker library', () => {
       finish();
     });
     expect(q.queryByText('Mark as watched?')).toBeNull();
+  });
+
+  it('restores the source position when a Watched drop is cancelled', async () => {
+    const q = await view();
+    const titles = () =>
+      q
+        .getAllByRole('button')
+        .map((node) => node.props.accessibilityLabel)
+        .filter((title) => items.some((item) => item.title === title));
+    const before = titles();
+    await act(() => mockDragBegins.get('b,f')!({ item: items[1], index: 0 }));
+    await act(() => mockDragMoves.get('b,f')!({ absoluteX: 150, absoluteY: 100, scrollOffset: 0 }));
+    await act(() => mockDragEnds.get('b,f')!({ data: [items[1], items[5]], from: 0, to: 0 }));
+    expect(titles().slice(0, 4)).toEqual([
+      'Avengers: Endgame',
+      'Daredevil',
+      'The Middle',
+      'Oshi no Ko',
+    ]);
+    await fireEvent(
+      q.getAllByTestId('confirmation-drawer').find((node) => node.props.open)!,
+      'openChange',
+      false,
+    );
+    expect(titles()).toEqual(before);
+    expect(q.queryByText('Mark as watched?')).toBeNull();
+    expect(mockMoveItemToWatched).not.toHaveBeenCalled();
   });
 
   it('cancels an unmeasured cross-status drop without reordering the source', async () => {

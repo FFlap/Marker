@@ -511,6 +511,7 @@ export function NativeDraggableGrid<T>({
           <NativeGridCell
             key={itemKey}
             active={itemKey === activeKey}
+            animateLayout={activeKey !== undefined || !!externalPlaceholder}
             cellRefs={cellRefs}
             disabled={disabled}
             previewReady={itemKey === activeKey && previewReady}
@@ -555,6 +556,7 @@ export function NativeDraggableGrid<T>({
 
 function NativeGridCellImpl<T>({
   active,
+  animateLayout,
   cellRefs,
   disabled,
   previewReady,
@@ -579,6 +581,7 @@ function NativeGridCellImpl<T>({
   touchTranslate,
 }: {
   active: boolean;
+  animateLayout: boolean;
   cellRefs: { current: Map<string, View> };
   disabled: boolean;
   previewReady: boolean;
@@ -683,7 +686,7 @@ function NativeGridCellImpl<T>({
 
   return (
     <Animated.View
-      layout={LinearTransition.duration(160)}
+      layout={animateLayout ? LinearTransition.duration(160) : undefined}
       onLayout={(event) => saveSlotLayout(event.nativeEvent.layout)}
       style={[styles.cell, { width: itemWidth }, position]}
     >
