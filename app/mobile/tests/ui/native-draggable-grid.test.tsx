@@ -1,9 +1,9 @@
 import { render, fireEvent } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import type { NativeGridDropTarget } from '@/components/NativeDraggableGrid';
 import {
   NativeDraggableGrid,
-  nativeGridPositionTransition,
+  nativeGridGeometry,
   moveGridItem,
   nearestGridSlot,
   nativeGridAutoScrollVelocity,
@@ -49,6 +49,7 @@ describe('cross-section grid targets', () => {
     let target: NativeGridDropTarget | undefined;
     const props = {
       data: items,
+      contentContainerStyle: { rowGap: 0 },
       disabled: false,
       columns: 1,
       keyExtractor: (item: { id: string }) => item.id,
@@ -106,22 +107,66 @@ it('targets the extra poster row created by a cross-section placeholder', async 
   await view.rerender(
     <NativeDraggableGrid {...props} externalPlaceholder={{ index: 0, height: 150 }} />,
   );
-  await fireEvent(view.getByTestId('native-grid-drop-placeholder'), 'layout', {
-    nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 150 } },
-  });
   await layoutCards(1);
   expect(target?.(50, 75, 0).index).toBe(0);
   expect(target?.(230, 245, 0).index).toBe(3);
   expect(target?.(50, 415, 0)).toEqual({ index: 4, distance: 0 });
 });
 
-it('moves a card without interpolating its dimensions or preview opacity', () => {
-  const transition = nativeGridPositionTransition({
-    currentOriginX: 120,
-    currentOriginY: 0,
-    targetOriginX: 0,
-    targetOriginY: 170,
-  });
-  expect(transition.initialValues).toEqual({ originX: 120, originY: 0 });
-  expect(transition.animations).toEqual({ originX: 0, originY: 170 });
+it('keeps wrapped cards inside a grid sized from the same slot coordinates', () => {
+  const geometry = nativeGridGeometry([150, 180, 160, 140], 2, 100, 20, 12, 16, 4);
+  expect(geometry.slots.get(1)).toEqual({ x: 120, y: 16, width: 100, height: 180 });
+  expect(geometry.slots.get(2)).toEqual({ x: 0, y: 208, width: 100, height: 160 });
+  expect(geometry.height).toBe(372);
+  for (let columns = 1; columns <= 5; columns++) {
+    const { slots, height } = nativeGridGeometry(
+      [200, 150, 180, 160, 140, 170, 150, 190, 130],
+      columns,
+      100,
+      20,
+      12,
+      16,
+      4,
+    );
+    for (const slot of slots.values()) {
+      expect(slot.x).toBeGreaterThanOrEqual(0);
+      expect(slot.x + slot.width).toBeLessThanOrEqual(columns * 100 + (columns - 1) * 20);
+      expect(slot.y).toBeGreaterThanOrEqual(16);
+      expect(slot.y + slot.height).toBeLessThanOrEqual(height - 4);
+    }
+  }
+});
+
+it('waits for complete row measurements before revealing later rows', () => {
+  expect(nativeGridGeometry([150, undefined, 160, 140], 2, 100, 20, 12).readyThrough).toBe(0);
+  expect(nativeGridGeometry([150, 180, undefined, 140], 2, 100, 20, 12).readyThrough).toBe(2);
+});
+
+it('uses grid coordinates instead of the window coordinates of moving cards', async () => {
+  let target: NativeGridDropTarget | undefined;
+  const view = await render(
+    <NativeDraggableGrid
+      data={items}
+      columns={2}
+      disabled={false}
+      keyExtractor={(item) => item.id}
+      onDragBegin={jest.fn()}
+      onDragEnd={jest.fn()}
+      onDropTarget={(value) => {
+        target = value;
+      }}
+      renderItem={({ item }) => <Text>{item.id}</Text>}
+    />,
+  );
+  for (const item of items) {
+    await fireEvent(view.getByTestId(`native-grid-item-${item.id}`).parent!, 'layout', {
+      nativeEvent: { layout: { x: 900, y: 1200, width: 100, height: 150 } },
+    });
+  }
+  expect(StyleSheet.flatten(view.getByTestId('native-grid').props.style).overflow).toBe('hidden');
+  expect(StyleSheet.flatten(view.getByTestId('native-grid-item-a').parent!.props.style)).toEqual(
+    expect.objectContaining({ position: 'absolute', left: 0, top: 0 }),
+  );
+  expect(target?.(50, 75, 0)).toEqual({ index: 0, distance: 0 });
+  expect(target?.(50, 240, 0).index).toBe(2);
 });

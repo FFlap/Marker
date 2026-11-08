@@ -12,13 +12,13 @@ import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   default as Animated,
-  type LayoutAnimationsValues,
   runOnJS,
   scrollTo,
   type AnimatedRef,
   type FrameInfo,
   type SharedValue,
   useAnimatedReaction,
+  useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
   withTiming,
@@ -61,24 +61,37 @@ export type NativeGridAutoScroll = {
   scrollRef: AnimatedRef<ScrollView>;
 };
 
-/**
- * Animate positions before layout is applied; keep native card sizes and opacity intact.
- * Keep this registered so cancelled drags and removed gaps retarget ongoing animations.
- */
-export function nativeGridPositionTransition(
-  values: Pick<
-    LayoutAnimationsValues,
-    'currentOriginX' | 'currentOriginY' | 'targetOriginX' | 'targetOriginY'
-  >,
+/** One grid-local coordinate system for rendering, hit testing, and section height. */
+export function nativeGridGeometry(
+  heights: readonly (number | undefined)[],
+  columns: number,
+  width: number,
+  gap: number,
+  rowGap: number,
+  paddingTop = 0,
+  paddingBottom = 0,
+  fallbackHeight = 1,
 ) {
-  'worklet';
-  return {
-    initialValues: { originX: values.currentOriginX, originY: values.currentOriginY },
-    animations: {
-      originX: withTiming(values.targetOriginX, { duration: 160 }),
-      originY: withTiming(values.targetOriginY, { duration: 160 }),
-    },
-  };
+  const slots = new Map<number, DragLayout>();
+  let y = paddingTop;
+  let readyThrough = 0;
+  let ready = width > 0;
+  for (let start = 0; start < heights.length; start += columns) {
+    const row = heights.slice(start, start + columns);
+    const rowHeight = Math.max(...row.map((height) => height ?? fallbackHeight));
+    ready = ready && row.every((height) => height !== undefined && height > 0);
+    for (let column = 0; column < row.length; column++) {
+      slots.set(start + column, {
+        x: column * (width + gap),
+        y,
+        width,
+        height: row[column] ?? fallbackHeight,
+      });
+    }
+    if (ready) readyThrough = start + row.length;
+    y += rowHeight + (start + columns < heights.length ? rowGap : 0);
+  }
+  return { slots, readyThrough, height: y + paddingBottom };
 }
 
 const AUTO_SCROLL_EDGE_SIZE = 88;
@@ -195,9 +208,6 @@ export function NativeDraggableGrid<T>({
   const dataRef = useRef(data);
   const gridRef = useRef<View>(null);
   const gridOrigin = useRef({ x: 0, y: 0 });
-  const placeholderLayout = useRef<{ index: number; layout: LayoutRectangle } | undefined>(
-    undefined,
-  );
   const externalPlaceholderRef = useRef(externalPlaceholder);
   externalPlaceholderRef.current = externalPlaceholder;
   const contentTop = useRef<number | null>(null);
@@ -240,12 +250,64 @@ export function NativeDraggableGrid<T>({
   useEffect(measureGridOrigin, [measureGridOrigin, sectionTop]);
   const cellRefs = useRef(new Map<string, View>());
   const slotLayouts = useRef(new Map<number, LayoutRectangle>());
-  const slotOwners = useRef(new Map<number, string>());
   const session = useRef<DragSession<T> | undefined>(undefined);
   const onDragMoveRef = useRef(onDragMove);
   const autoScrollRef = useRef(autoScroll);
   const [dragOrder, setDragOrder] = useState<T[]>();
   const [activeKey, setActiveKey] = useState<string>();
+  const measuredHeights = useRef(new Map<string, number>());
+  const measuredWidth = useRef(0);
+  const [measurement, setMeasurement] = useState<LayoutRectangle>();
+  const measureCard = useCallback((key: string, layout: LayoutRectangle) => {
+    if (layout.width <= 0 || layout.height <= 0) return;
+    if (
+      measuredHeights.current.get(key) === layout.height &&
+      measuredWidth.current === layout.width
+    )
+      return;
+    measuredHeights.current.set(key, layout.height);
+    measuredWidth.current = layout.width;
+    setMeasurement({ ...layout });
+  }, []);
+  const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
+  const displayed = dragOrder ?? data;
+  const placeholderIndex = externalPlaceholder?.index;
+  const gridStyle = StyleSheet.flatten(contentContainerStyle);
+  const rowGap = rowHeight ? 0 : typeof gridStyle?.rowGap === 'number' ? gridStyle.rowGap : 12;
+  const paddingTop = typeof gridStyle?.paddingTop === 'number' ? gridStyle.paddingTop : 0;
+  const paddingBottom = typeof gridStyle?.paddingBottom === 'number' ? gridStyle.paddingBottom : 0;
+  const geometry = useMemo(() => {
+    const heights = displayed.map(
+      (item) => rowHeight ?? measuredHeights.current.get(keyExtractor(item)),
+    );
+    if (externalPlaceholder)
+      heights.splice(externalPlaceholder.index, 0, rowHeight ?? externalPlaceholder.height);
+    return nativeGridGeometry(
+      heights,
+      columns,
+      typeof itemWidth === 'number' ? itemWidth : (measurement?.width ?? 0),
+      typeof gap === 'number' ? gap : 0,
+      rowGap,
+      paddingTop,
+      paddingBottom,
+      rowHeight ?? Math.max(1, ...measuredHeights.current.values()),
+    );
+  }, [
+    columns,
+    displayed,
+    externalPlaceholder,
+    gap,
+    itemWidth,
+    keyExtractor,
+    measurement,
+    paddingBottom,
+    paddingTop,
+    rowGap,
+    rowHeight,
+  ]);
+  slotLayouts.current = new Map(
+    [...geometry.slots].filter(([index]) => index < geometry.readyThrough),
+  );
 
   useEffect(() => {
     // Empty groups use their section bounds and the only valid insertion index, zero.
@@ -264,15 +326,7 @@ export function NativeDraggableGrid<T>({
           distance: Math.max(-point.y, point.y - height, 0),
         };
       }
-      // Destination cards keep their data order but move around the gap.
-      // Use their current visual slots, including any new row created by it.
-      const slots = new Map<number, LayoutRectangle>();
-      if (placeholder && placeholderLayout.current?.index === placeholder.index) {
-        slots.set(placeholder.index, placeholderLayout.current.layout);
-      }
-      for (const [index, layout] of slotLayouts.current) {
-        slots.set(placeholder && index >= placeholder.index ? index + 1 : index, layout);
-      }
+      const slots = slotLayouts.current;
       const index = nearestGridSlot(slots, point, 0);
       const slot = slots.get(index);
       if (!slot) return { index: 0, distance: Number.POSITIVE_INFINITY };
@@ -285,10 +339,7 @@ export function NativeDraggableGrid<T>({
       const top = Math.min(...Array.from(slots.values(), (layout) => layout.y));
       const bottom = Math.max(...Array.from(slots.values(), (layout) => layout.y + layout.height));
       return {
-        index:
-          placeholder && placeholderLayout.current?.index !== placeholder.index
-            ? placeholder.index
-            : Math.min(dataRef.current.length, index + (after ? 1 : 0)),
+        index: Math.min(dataRef.current.length, index + (after ? 1 : 0)),
         distance: Math.max(top - point.y, point.y - bottom, 0),
       };
     });
@@ -480,25 +531,20 @@ export function NativeDraggableGrid<T>({
     onDragCancel?.();
   }, [clearDrag, onDragCancel]);
 
-  const { onLayout: onGridLayout, gap, itemWidth } = useGridMetrics(columns);
-  if (!externalPlaceholder) placeholderLayout.current = undefined;
-  const displayed = dragOrder ?? data;
-  const placeholderIndex = externalPlaceholder?.index;
   const placeholder = externalPlaceholder ? (
     <View
       key="drop-placeholder"
       testID="native-grid-drop-placeholder"
       accessibilityLabel="Drop title here"
-      onLayout={(event) => {
-        placeholderLayout.current = {
-          index: externalPlaceholder.index,
-          layout: event.nativeEvent.layout,
-        };
+      pointerEvents="none"
+      style={{
+        opacity: 0,
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: itemWidth,
+        height: externalPlaceholder.height,
       }}
-      style={[
-        { width: itemWidth, height: externalPlaceholder.height },
-        windowed && { position: 'absolute', left: 0, top: externalPlaceholder.index * rowHeight! },
-      ]}
     />
   ) : null;
   const visible = windowed
@@ -522,7 +568,7 @@ export function NativeDraggableGrid<T>({
         styles.grid,
         { columnGap: gap },
         contentContainerStyle,
-        windowed && { height: (displayed.length + (externalPlaceholder ? 1 : 0)) * rowHeight! },
+        { height: Math.max(1, geometry.height), overflow: 'hidden' },
       ]}
     >
       {visible.flatMap(({ item, index }) => {
@@ -539,19 +585,22 @@ export function NativeDraggableGrid<T>({
             item={item}
             itemKey={itemKey}
             itemWidth={itemWidth}
-            position={
-              windowed
-                ? {
-                    position: 'absolute',
-                    left: 0,
-                    top:
-                      (index +
-                        (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0)) *
-                      rowHeight!,
-                    height: rowHeight,
-                  }
-                : undefined
+            fixedHeight={rowHeight}
+            targetX={
+              geometry.slots.get(
+                index + (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0),
+              )?.x ?? 0
             }
+            targetY={
+              geometry.slots.get(
+                index + (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0),
+              )?.y ?? 0
+            }
+            positionReady={
+              index + (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0) <
+              geometry.readyThrough
+            }
+            onMeasure={measureCard}
             horizontalTranslate={horizontalTranslate}
             touchTranslate={touchTranslate}
             isTouchActiveNative={isTouchActiveNative}
@@ -564,8 +613,6 @@ export function NativeDraggableGrid<T>({
             onMove={moveDrag}
             onTouchStateChange={onTouchStateChange}
             renderItem={renderItem}
-            slotLayouts={slotLayouts}
-            slotOwners={slotOwners}
           />,
         ];
       })}
@@ -584,7 +631,11 @@ function NativeGridCellImpl<T>({
   item,
   itemKey,
   itemWidth,
-  position,
+  fixedHeight,
+  targetX,
+  targetY,
+  positionReady,
+  onMeasure,
   isTouchActiveNative,
   pointer,
   scrollPosition,
@@ -595,8 +646,6 @@ function NativeGridCellImpl<T>({
   onMove,
   onTouchStateChange,
   renderItem,
-  slotLayouts,
-  slotOwners,
   touchTranslate,
 }: {
   active: boolean;
@@ -608,7 +657,11 @@ function NativeGridCellImpl<T>({
   item: T;
   itemKey: string;
   itemWidth: DimensionValue;
-  position?: ViewStyle;
+  fixedHeight?: number;
+  targetX: number;
+  targetY: number;
+  positionReady: boolean;
+  onMeasure: (key: string, layout: LayoutRectangle) => void;
   isTouchActiveNative: SharedValue<boolean>;
   pointer: SharedValue<{ x: number; y: number }>;
   scrollPosition: SharedValue<number>;
@@ -619,13 +672,9 @@ function NativeGridCellImpl<T>({
   onMove: (absoluteX: number, absoluteY: number, scrollOffset: number) => void;
   onTouchStateChange?: (touching: boolean) => void;
   renderItem: (event: { index: number; isActive: boolean; item: T }) => ReactNode;
-  slotLayouts: { current: Map<number, LayoutRectangle> };
-  slotOwners: { current: Map<number, string> };
   touchTranslate: SharedValue<number>;
 }) {
   const cellMap = cellRefs.current;
-  const slotMap = slotLayouts.current;
-  const ownerMap = slotOwners.current;
   const setCellRef = useCallback(
     (node: View | null) => {
       if (node) cellMap.set(itemKey, node);
@@ -633,22 +682,21 @@ function NativeGridCellImpl<T>({
     },
     [cellMap, itemKey],
   );
-  const saveSlotLayout = useCallback(
-    (layout: LayoutRectangle) => {
-      slotMap.set(index, layout);
-      ownerMap.set(index, itemKey);
-    },
-    [index, itemKey, ownerMap, slotMap],
-  );
-  useEffect(
-    () => () => {
-      if (ownerMap.get(index) === itemKey) {
-        ownerMap.delete(index);
-        slotMap.delete(index);
-      }
-    },
-    [index, itemKey, ownerMap, slotMap],
-  );
+  const x = useSharedValue(0);
+  const y = useSharedValue(0);
+  const positioned = useSharedValue(false);
+  const hasPosition = useRef(false);
+  useEffect(() => {
+    if (!positionReady) return;
+    x.value = hasPosition.current ? withTiming(targetX, { duration: 160 }) : targetX;
+    y.value = hasPosition.current ? withTiming(targetY, { duration: 160 }) : targetY;
+    positioned.value = true;
+    hasPosition.current = true;
+  }, [positionReady, positioned, targetX, targetY, x, y]);
+  const positionStyle = useAnimatedStyle(() => ({
+    opacity: positioned.value ? 1 : 0,
+    transform: [{ translateX: x.value }, { translateY: y.value }],
+  }));
   const gesture = useMemo(
     () =>
       Gesture.Pan()
@@ -704,9 +752,9 @@ function NativeGridCellImpl<T>({
 
   return (
     <Animated.View
-      layout={nativeGridPositionTransition}
-      onLayout={(event) => saveSlotLayout(event.nativeEvent.layout)}
-      style={[styles.cell, { width: itemWidth }, position]}
+      onLayout={(event) => onMeasure(itemKey, event.nativeEvent.layout)}
+      pointerEvents={positionReady ? 'auto' : 'none'}
+      style={[styles.cell, { width: itemWidth, height: fixedHeight }, positionStyle]}
     >
       <GestureDetector gesture={gesture}>
         <View
@@ -725,11 +773,9 @@ const NativeGridCell = memo(NativeGridCellImpl) as typeof NativeGridCellImpl;
 
 const styles = StyleSheet.create({
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: 12,
+    overflow: 'hidden',
   },
-  cell: { minWidth: 0, flexGrow: 0, flexShrink: 0 },
+  cell: { position: 'absolute', left: 0, top: 0, minWidth: 0 },
   cellContent: { width: '100%' },
   placeholder: { opacity: 0 },
 });

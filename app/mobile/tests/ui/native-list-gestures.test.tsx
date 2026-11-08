@@ -179,6 +179,7 @@ it.each([1, 3])(
       const screen = await render(
         <NativeDraggableGrid
           autoScroll={autoScroll}
+          contentContainerStyle={{ paddingTop: 100, rowGap: 0 }}
           columns={columns}
           data={data}
           disabled={false}
