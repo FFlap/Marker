@@ -3,6 +3,7 @@ import { Text } from 'react-native';
 import type { NativeGridDropTarget } from '@/components/NativeDraggableGrid';
 import {
   NativeDraggableGrid,
+  nativeGridPositionTransition,
   moveGridItem,
   nearestGridSlot,
   nativeGridAutoScrollVelocity,
@@ -112,4 +113,15 @@ it('targets the extra poster row created by a cross-section placeholder', async 
   expect(target?.(50, 75, 0).index).toBe(0);
   expect(target?.(230, 245, 0).index).toBe(3);
   expect(target?.(50, 415, 0)).toEqual({ index: 4, distance: 0 });
+});
+
+it('moves a card without interpolating its dimensions or preview opacity', () => {
+  const transition = nativeGridPositionTransition({
+    currentOriginX: 120,
+    currentOriginY: 0,
+    targetOriginX: 0,
+    targetOriginY: 170,
+  });
+  expect(transition.initialValues).toEqual({ originX: 120, originY: 0 });
+  expect(transition.animations).toEqual({ originX: 0, originY: 170 });
 });

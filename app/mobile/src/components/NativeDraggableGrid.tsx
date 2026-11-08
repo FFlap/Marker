@@ -12,13 +12,13 @@ import { useGridMetrics } from '@/hooks/use-grid-metrics';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import {
   default as Animated,
+  type LayoutAnimationsValues,
   runOnJS,
   scrollTo,
   type AnimatedRef,
   type FrameInfo,
   type SharedValue,
   useAnimatedReaction,
-  useAnimatedStyle,
   useFrameCallback,
   useSharedValue,
   withTiming,
@@ -60,6 +60,26 @@ export type NativeGridAutoScroll = {
   offset: SharedValue<number>;
   scrollRef: AnimatedRef<ScrollView>;
 };
+
+/**
+ * Animate positions before layout is applied; keep native card sizes and opacity intact.
+ * Keep this registered so cancelled drags and removed gaps retarget ongoing animations.
+ */
+export function nativeGridPositionTransition(
+  values: Pick<
+    LayoutAnimationsValues,
+    'currentOriginX' | 'currentOriginY' | 'targetOriginX' | 'targetOriginY'
+  >,
+) {
+  'worklet';
+  return {
+    initialValues: { originX: values.currentOriginX, originY: values.currentOriginY },
+    animations: {
+      originX: withTiming(values.targetOriginX, { duration: 160 }),
+      originY: withTiming(values.targetOriginY, { duration: 160 }),
+    },
+  };
+}
 
 const AUTO_SCROLL_EDGE_SIZE = 88;
 const AUTO_SCROLL_MAX_SPEED = 760;
@@ -512,7 +532,6 @@ export function NativeDraggableGrid<T>({
           <NativeGridCell
             key={itemKey}
             active={itemKey === activeKey}
-            animateLayout={activeKey !== undefined || !!externalPlaceholder}
             cellRefs={cellRefs}
             disabled={disabled}
             previewReady={itemKey === activeKey && previewReady}
@@ -557,7 +576,6 @@ export function NativeDraggableGrid<T>({
 
 function NativeGridCellImpl<T>({
   active,
-  animateLayout,
   cellRefs,
   disabled,
   previewReady,
@@ -582,7 +600,6 @@ function NativeGridCellImpl<T>({
   touchTranslate,
 }: {
   active: boolean;
-  animateLayout: boolean;
   cellRefs: { current: Map<string, View> };
   disabled: boolean;
   previewReady: boolean;
@@ -606,21 +623,6 @@ function NativeGridCellImpl<T>({
   slotOwners: { current: Map<number, string> };
   touchTranslate: SharedValue<number>;
 }) {
-  const layoutTranslateX = useSharedValue(0);
-  const layoutTranslateY = useSharedValue(0);
-  const previousLayout = useRef<LayoutRectangle | undefined>(undefined);
-  const positionStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: animateLayout ? layoutTranslateX.value : 0 },
-      { translateY: animateLayout ? layoutTranslateY.value : 0 },
-    ],
-  }));
-  useEffect(() => {
-    if (!animateLayout) {
-      layoutTranslateX.value = 0;
-      layoutTranslateY.value = 0;
-    }
-  }, [animateLayout, layoutTranslateX, layoutTranslateY]);
   const cellMap = cellRefs.current;
   const slotMap = slotLayouts.current;
   const ownerMap = slotOwners.current;
@@ -635,18 +637,8 @@ function NativeGridCellImpl<T>({
     (layout: LayoutRectangle) => {
       slotMap.set(index, layout);
       ownerMap.set(index, itemKey);
-      const previous = previousLayout.current;
-      previousLayout.current = layout;
-      // Animate only the visual offset. Native flex layout and hit testing keep
-      // the final slot dimensions, including wrapped rows and section heights.
-      if (animateLayout && previous) {
-        layoutTranslateX.value += previous.x - layout.x;
-        layoutTranslateY.value += previous.y - layout.y;
-        layoutTranslateX.value = withTiming(0, { duration: 160 });
-        layoutTranslateY.value = withTiming(0, { duration: 160 });
-      }
     },
-    [animateLayout, index, itemKey, layoutTranslateX, layoutTranslateY, ownerMap, slotMap],
+    [index, itemKey, ownerMap, slotMap],
   );
   useEffect(
     () => () => {
@@ -712,8 +704,9 @@ function NativeGridCellImpl<T>({
 
   return (
     <Animated.View
+      layout={nativeGridPositionTransition}
       onLayout={(event) => saveSlotLayout(event.nativeEvent.layout)}
-      style={[styles.cell, { width: itemWidth }, position, positionStyle]}
+      style={[styles.cell, { width: itemWidth }, position]}
     >
       <GestureDetector gesture={gesture}>
         <View
