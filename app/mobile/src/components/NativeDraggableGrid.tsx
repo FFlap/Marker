@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   type DimensionValue,
   type LayoutRectangle,
@@ -686,16 +695,25 @@ function NativeGridCellImpl<T>({
   const y = useSharedValue(0);
   const positioned = useSharedValue(false);
   const hasPosition = useRef(false);
-  useEffect(() => {
+  const wasActive = useRef(false);
+  const snapToSlot = active || wasActive.current;
+  useLayoutEffect(() => {
     if (!positionReady) return;
-    x.value = hasPosition.current ? withTiming(targetX, { duration: 160 }) : targetX;
-    y.value = hasPosition.current ? withTiming(targetY, { duration: 160 }) : targetY;
+    const animate = hasPosition.current && !snapToSlot;
+    x.value = animate ? withTiming(targetX, { duration: 160 }) : targetX;
+    y.value = animate ? withTiming(targetY, { duration: 160 }) : targetY;
     positioned.value = true;
     hasPosition.current = true;
-  }, [positionReady, positioned, targetX, targetY, x, y]);
+    wasActive.current = active;
+  }, [active, positionReady, positioned, snapToSlot, targetX, targetY, x, y]);
   const positionStyle = useAnimatedStyle(() => ({
     opacity: positioned.value ? 1 : 0,
-    transform: [{ translateX: x.value }, { translateY: y.value }],
+    // The floating preview covers the active cell. Reveal it directly at the
+    // final slot, including a last move and release in the same React commit.
+    transform: [
+      { translateX: snapToSlot ? targetX : x.value },
+      { translateY: snapToSlot ? targetY : y.value },
+    ],
   }));
   const gesture = useMemo(
     () =>

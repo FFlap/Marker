@@ -454,7 +454,7 @@ export default function TagDetailScreen() {
           >
             {visibleStatuses.map(([status, label]) => {
               let items = sectionItems(status);
-              if (pendingWatchedMove && !statusMovePending) {
+              if (pendingWatchedMove && !statusMovePending && !filtersActive) {
                 items = items.filter((item) => item._id !== pendingWatchedMove._id);
                 if (status === 'watched')
                   items.splice(

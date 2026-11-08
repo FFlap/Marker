@@ -484,4 +484,18 @@ describe('Tags screens', () => {
       beforeId: 'b',
     });
   });
+
+  it('keeps the source title visible if filters change before a watched confirmation closes', async () => {
+    mockRouteTag = 'Weekend';
+    const view = await render(<TagDetailScreen />);
+    await fireEvent(view.getByLabelText('Weekend Movie'), 'accessibilityAction', {
+      nativeEvent: { actionName: 'moveTo:watched' },
+    });
+    expect(view.getByLabelText('3. Weekend Movie')).toBeTruthy();
+    await fireEvent.changeText(view.getByLabelText('Search titles in Weekend'), 'Weekend');
+    // Filtering disables moves and hides the other statuses. The pending
+    // preview must not remove the matching title from its original section.
+    expect(view.getByLabelText('Weekend Movie')).toBeTruthy();
+    expect(mockMoveItemToWatched).not.toHaveBeenCalled();
+  });
 });

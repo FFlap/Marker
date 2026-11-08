@@ -49,7 +49,7 @@ it('rejects an unmeasured nonempty target without losing a measured first slot',
   expect(result.current.indexRef.current).toBe(0);
 });
 
-it('prefers the section under the pointer when an earlier grid still reports overlapping bounds', async () => {
+it('gives an earlier expanded grid priority over a later stale origin', async () => {
   const { result } = await renderHook(useCrossSectionDrop);
   result.current.targets.current.watched = () => ({ index: 2, distance: 0 });
   result.current.targets.current.watching = () => ({ index: 1, distance: 0 });
@@ -57,11 +57,11 @@ it('prefers the section under the pointer when an earlier grid still reports ove
   await act(() => {
     status = result.current.update('watching', 140, 300, 0);
   });
-  expect(status).toBe('watching');
-  expect(result.current.indexRef.current).toBe(1);
+  expect(status).toBe('watched');
+  expect(result.current.indexRef.current).toBe(2);
 });
 
-it('retains the destination during conflicting measurements and switches after they settle', async () => {
+it('resolves an expansion in section order and switches after measurements settle', async () => {
   const { result } = await renderHook(useCrossSectionDrop);
   let watchedDistance = 0;
   let watchingDistance = 200;
@@ -88,4 +88,20 @@ it('retains the destination during conflicting measurements and switches after t
   await act(() => {
     expect(result.current.update('watched', 140, 300, 0)).toBe('watched');
   });
+});
+
+it('does not retain a later source on a rapid return into an expanded earlier destination', async () => {
+  const { result } = await renderHook(useCrossSectionDrop);
+  let watchedDistance = 100;
+  // Register in reverse order to ensure mount history does not decide overlaps.
+  result.current.targets.current.watching = () => ({ index: 4, distance: 0 });
+  result.current.targets.current.watched = () => ({ index: 0, distance: watchedDistance });
+  await act(() => {
+    expect(result.current.update('watching', 40, 400, 0)).toBe('watching');
+  });
+  watchedDistance = 0;
+  await act(() => {
+    expect(result.current.update('watching', 40, 400, 0)).toBe('watched');
+  });
+  expect(result.current.indexRef.current).toBe(0);
 });
