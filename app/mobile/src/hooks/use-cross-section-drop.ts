@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { NativeGridDropTarget } from '@/components/NativeDraggableGrid';
 import type { Status } from '@/types';
+import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
 
 /** Share insertion hit testing between library and tag collections. */
 export function useCrossSectionDrop() {
@@ -11,15 +12,18 @@ export function useCrossSectionDrop() {
   /** Resolve a measured slot from window coordinates and the parent scroll offset. */
   const update = (status: Status | undefined, x: number, y: number, offset: number) => {
     // Window geometry accounts for parent padding and the current scroll offset.
-    let selected: ReturnType<NativeGridDropTarget> | undefined;
-    for (const [key, target] of Object.entries(targets.current)) {
-      const candidate = target?.(x, y, offset);
-      if (key === status) selected = candidate;
-      if (candidate?.distance === 0) {
-        status = key as Status;
-        selected = candidate;
-        break;
-      }
+    const measured = LIBRARY_STATUSES.map(([key]) => ({
+      status: key,
+      target: targets.current[key]?.(x, y, offset),
+    }));
+    let selected = measured.find((entry) => entry.status === status)?.target;
+    // Sections flow downward. An earlier grid's measured expansion owns the
+    // overlap until the later grid's origin catches up, even on a rapid return
+    // from that later source. Hover history must not override that geometry.
+    const match = measured.find((entry) => entry.target?.distance === 0);
+    if (match) {
+      status = match.status;
+      selected = match.target;
     }
     if (selected && !Number.isFinite(selected.distance)) status = undefined;
     const next = status ? (selected?.index ?? 0) : undefined;

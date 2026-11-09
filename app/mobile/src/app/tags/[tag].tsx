@@ -115,9 +115,20 @@ export default function TagDetailScreen() {
     type,
     visibleStatuses,
   } = collection;
+  const unacknowledgedStatuses = Object.entries(optimisticStatuses).filter(([id, status]) => {
+    const saved = library?.find((item) => String(item._id) === id);
+    return saved && saved.status !== status;
+  });
+  const awaitingStatusQuery = unacknowledgedStatuses.length > 0;
+  if (
+    library &&
+    !statusMovePending &&
+    unacknowledgedStatuses.length !== Object.keys(optimisticStatuses).length
+  )
+    setOptimisticStatuses(Object.fromEntries(unacknowledgedStatuses));
   const acknowledgedOrders = useMemo(
     () =>
-      optimisticState.tagKey !== tagKey || statusMovePending
+      optimisticState.tagKey !== tagKey || statusMovePending || awaitingStatusQuery
         ? []
         : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
             const order = optimisticState.orders[status];
@@ -128,7 +139,7 @@ export default function TagDetailScreen() {
               saved.map((item) => String(item._id)),
             );
           }),
-    [members, optimisticState, pendingReorders, statusMovePending, tagKey],
+    [awaitingStatusQuery, members, optimisticState, pendingReorders, statusMovePending, tagKey],
   );
   if (acknowledgedOrders.length) {
     const orders = { ...optimisticState.orders };
@@ -205,6 +216,19 @@ export default function TagDetailScreen() {
     const index = Math.min(targetIndex ?? targetItems.length, targetItems.length);
     const nextTarget = [...targetItems];
     nextTarget.splice(index, 0, { ...item, status: targetStatus });
+    const clearMoveOrder = () =>
+      setOptimisticState((current) =>
+        current.tagKey === tagKey
+          ? {
+              tagKey,
+              orders: {
+                ...current.orders,
+                [sourceStatus]: undefined,
+                [targetStatus]: undefined,
+              },
+            }
+          : current,
+      );
 
     statusMovePendingRef.current = true;
     setStatusMovePending(true);
@@ -249,7 +273,10 @@ export default function TagDetailScreen() {
       }),
       {
         success: (ordered) => {
-          if (!ordered) toast.show('Title moved, but its tag order couldn’t be saved');
+          if (!ordered) {
+            clearMoveOrder();
+            toast.show('Title moved, but its tag order couldn’t be saved');
+          }
         },
         failure: () => {
           toast.show(
@@ -257,25 +284,14 @@ export default function TagDetailScreen() {
               ? 'Couldn’t mark every episode watched'
               : 'Couldn’t move this title',
           );
-        },
-        settled: () => {
           setOptimisticStatuses((current) => {
             const next = { ...current };
             delete next[String(item._id)];
             return next;
           });
-          setOptimisticState((current) =>
-            current.tagKey === tagKey
-              ? {
-                  tagKey,
-                  orders: {
-                    ...current.orders,
-                    [sourceStatus]: undefined,
-                    [targetStatus]: undefined,
-                  },
-                }
-              : current,
-          );
+          clearMoveOrder();
+        },
+        settled: () => {
           statusMovePendingRef.current = false;
           setStatusMovePending(false);
         },
@@ -294,7 +310,7 @@ export default function TagDetailScreen() {
     void performCategoryMove(item, targetStatus, index);
   };
   const updateNativeDragTarget = useCallback(
-    (_sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
+    (sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
       if (!nativeDragRef.current) return;
       let target: Status | undefined;
       let nearestDistance = Number.POSITIVE_INFINITY;
@@ -310,9 +326,18 @@ export default function TagDetailScreen() {
         }
       }
       target = insertion.update(target, x, y, offset);
-      if (target === nativeTargetRef.current) return;
-      nativeTargetRef.current = target;
-      setNativeTargetStatus(target);
+      const sourceLayout = sectionLayouts[sourceStatus];
+      if (
+        target === sourceStatus &&
+        sourceLayout &&
+        (contentY < sourceLayout.top || contentY > sourceLayout.top + sourceLayout.height)
+      )
+        target = undefined;
+      if (target !== nativeTargetRef.current) {
+        nativeTargetRef.current = target;
+        setNativeTargetStatus(target);
+      }
+      return target === sourceStatus;
     },
     [sectionLayouts, insertion],
   );
@@ -444,7 +469,16 @@ export default function TagDetailScreen() {
             onChange={updateGridColumns}
           >
             {visibleStatuses.map(([status, label]) => {
-              const items = sectionItems(status);
+              let items = sectionItems(status);
+              if (pendingWatchedMove && !statusMovePending && !filtersActive) {
+                items = items.filter((item) => item._id !== pendingWatchedMove._id);
+                if (status === 'watched')
+                  items.splice(
+                    insertion.pendingIndex.current ?? items.length,
+                    0,
+                    pendingWatchedMove,
+                  );
+              }
               return (
                 <View
                   key={status}

@@ -67,11 +67,22 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const draggedItemRef = useRef<typeof draggedItem>(undefined);
   const targetStatusRef = useRef<Status | undefined>(undefined);
 
+  const unacknowledgedStatuses = Object.entries(optimisticStatuses).filter(([id, status]) => {
+    const saved = items.find((item) => item._id === id);
+    return saved && saved.status !== status;
+  });
+  const awaitingStatusQuery = unacknowledgedStatuses.length > 0;
+  if (
+    !statusMovePending &&
+    unacknowledgedStatuses.length !== Object.keys(optimisticStatuses).length
+  )
+    setOptimisticStatuses(Object.fromEntries(unacknowledgedStatuses));
+
   // Wait for the latest save and its query render. A rapid reverse move can
   // match a stale query while an earlier save is still in flight.
   const acknowledgedOrders = useMemo(
     () =>
-      statusMovePending
+      statusMovePending || awaitingStatusQuery
         ? []
         : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
             const order = optimisticOrders[status];
@@ -85,7 +96,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
               pendingReorders[status],
             );
           }),
-    [items, optimisticOrders, pendingReorders, statusMovePending],
+    [awaitingStatusQuery, items, optimisticOrders, pendingReorders, statusMovePending],
   );
   if (acknowledgedOrders.length) {
     const next = { ...optimisticOrders };
@@ -101,7 +112,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const orderedForStatus = (status: Status) => {
     const order = optimisticOrders[status];
     const orderIndex = new Map(order?.map((id, index) => [id, index]));
-    return items
+    const ordered = items
       .filter((item) => effectiveStatus(item) === status)
       .sort((left, right) => {
         if (!order) return left.rank - right.rank;
@@ -111,6 +122,11 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         if (rightIndex === -1) return -1;
         return leftIndex - rightIndex;
       });
+    if (statusMove.state !== 'confirming') return ordered;
+    const preview = ordered.filter((item) => item._id !== statusMove.item._id);
+    if (status === 'watched')
+      preview.splice(insertion.pendingIndex.current ?? preview.length, 0, statusMove.item);
+    return preview;
   };
 
   const saveOrder = async (data: LibraryItem[], to: number) => {
@@ -199,8 +215,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
               ? 'Couldn’t mark every episode watched'
               : 'Couldn’t move this title',
           );
-        },
-        settled: () => {
           setOptimisticStatuses((current) => {
             const next = { ...current };
             delete next[item._id];
@@ -212,6 +226,8 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
             delete next[target];
             return next;
           });
+        },
+        settled: () => {
           publishMove({ state: 'idle' });
         },
       },
@@ -229,7 +245,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   };
 
   const updateDragTarget = useCallback(
-    (_sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
+    (sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
       if (!draggedItemRef.current) return;
       let nearest: Status | undefined;
       let nearestDistance = Number.POSITIVE_INFINITY;
@@ -245,9 +261,18 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         }
       }
       nearest = insertion.update(nearest, x, y, offset);
-      if (nearest === targetStatusRef.current) return;
-      targetStatusRef.current = nearest;
-      setTargetStatus(nearest);
+      const sourceLayout = sectionLayouts[sourceStatus];
+      if (
+        nearest === sourceStatus &&
+        sourceLayout &&
+        (contentY < sourceLayout.top || contentY > sourceLayout.top + sourceLayout.height)
+      )
+        nearest = undefined;
+      if (nearest !== targetStatusRef.current) {
+        targetStatusRef.current = nearest;
+        setTargetStatus(nearest);
+      }
+      return nearest === sourceStatus;
     },
     [sectionLayouts, insertion],
   );

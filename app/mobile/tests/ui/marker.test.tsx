@@ -231,7 +231,9 @@ jest.mock('../../src/components/ui/drawer', () => {
   const Container = ({ children }: { children: React.ReactNode }) => <View>{children}</View>;
   const Label = ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>;
   return {
-    Drawer: Passthrough,
+    Drawer: (props: { children: React.ReactNode; onOpenChange?: (open: boolean) => void }) => (
+      <View {...props} testID="confirmation-drawer" />
+    ),
     DrawerClose: Passthrough,
     DrawerContent: Container,
     DrawerHeader: Container,
@@ -632,6 +634,9 @@ describe('Marker library', () => {
     await act(() => mockDragEnds.get('b,f')!({ data: [items[1], items[5]], from: 0, to: 0 }));
     expect(q.getByText('Mark as watched?')).toBeTruthy();
     expect(mockMoveItemToWatched).not.toHaveBeenCalled();
+    // Keep the dropped title between its destination neighbors during confirmation.
+    expect(mockDragBegins.has('a,b,d,e')).toBe(true);
+    expect(mockDragBegins.has('f')).toBe(true);
     await act(async () => {
       fireEvent.press(q.getByText('Mark watched'));
       await Promise.resolve();
@@ -648,6 +653,93 @@ describe('Marker library', () => {
       finish();
     });
     expect(q.queryByText('Mark as watched?')).toBeNull();
+    const titles = () =>
+      q
+        .getAllByRole('button')
+        .map((node) => node.props.accessibilityLabel)
+        .filter((title) => items.some((item) => item.title === title));
+    expect(titles().slice(0, 4)).toEqual([
+      'Avengers: Endgame',
+      'Daredevil',
+      'The Middle',
+      'Oshi no Ko',
+    ]);
+    // The successful action can resolve before the subscribed query updates.
+    const query = mockUseQuery.getMockImplementation()!;
+    mockUseQuery.mockImplementation((ref) =>
+      String(ref).includes('listItems')
+        ? items.map((item) => (item._id === 'b' ? { ...item, status: 'watched', rank: 1.5 } : item))
+        : query(ref),
+    );
+    await q.rerender(
+      <ToastProvider>
+        <Library />
+      </ToastProvider>,
+    );
+    expect(titles().slice(0, 4)).toEqual([
+      'Avengers: Endgame',
+      'Daredevil',
+      'The Middle',
+      'Oshi no Ko',
+    ]);
+    mockUseQuery.mockImplementation(query);
+    await q.rerender(
+      <ToastProvider>
+        <Library />
+      </ToastProvider>,
+    );
+    expect(titles().slice(0, 3)).toEqual(['Avengers: Endgame', 'The Middle', 'Oshi no Ko']);
+  });
+
+  it('restores the source position when a Watched drop is cancelled', async () => {
+    const q = await view();
+    const titles = () =>
+      q
+        .getAllByRole('button')
+        .map((node) => node.props.accessibilityLabel)
+        .filter((title) => items.some((item) => item.title === title));
+    const before = titles();
+    await act(() => mockDragBegins.get('b,f')!({ item: items[1], index: 0 }));
+    await act(() => mockDragMoves.get('b,f')!({ absoluteX: 150, absoluteY: 100, scrollOffset: 0 }));
+    await act(() => mockDragEnds.get('b,f')!({ data: [items[1], items[5]], from: 0, to: 0 }));
+    expect(titles().slice(0, 4)).toEqual([
+      'Avengers: Endgame',
+      'Daredevil',
+      'The Middle',
+      'Oshi no Ko',
+    ]);
+    await fireEvent(
+      q.getAllByTestId('confirmation-drawer').find((node) => node.props.open)!,
+      'openChange',
+      false,
+    );
+    expect(titles()).toEqual(before);
+    expect(q.queryByText('Mark as watched?')).toBeNull();
+    expect(mockMoveItemToWatched).not.toHaveBeenCalled();
+  });
+
+  it('does not save a reorder in the gap outside the nearest source section', async () => {
+    const q = await view();
+    await fireEvent(
+      q
+        .getAllByText('Watched')
+        .map((node) => node.parent!.parent!)
+        .find((node) => node.props.onLayout)!,
+      'layout',
+      {
+        nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 100 } },
+      },
+    );
+    await act(() => mockDragBegins.get('a,d,e')!({ item: items[0], index: 0 }));
+    await act(() => {
+      expect(
+        mockDragMoves.get('a,d,e')!({ absoluteX: 150, absoluteY: 10000, scrollOffset: 0 }),
+      ).toBe(false);
+    });
+    await act(() =>
+      mockDragEnds.get('a,d,e')!({ data: [items[3], items[4], items[0]], from: 0, to: 2 }),
+    );
+    expect(mockReorderItem).not.toHaveBeenCalled();
   });
 
   it('cancels an unmeasured cross-status drop without reordering the source', async () => {

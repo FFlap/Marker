@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import * as Reanimated from 'react-native-reanimated';
 import { NativeDraggableGrid, type NativeGridAutoScroll } from '@/components/NativeDraggableGrid';
 
@@ -77,6 +77,48 @@ jest.mock('react-native-gesture-handler', () => ({
   },
 }));
 beforeEach(() => mockGestures.clear());
+it('reveals a released poster at its final slot even while neighboring animations are unfinished', async () => {
+  function Grid() {
+    const [data, setData] = useState(['a', 'b']);
+    return (
+      <NativeDraggableGrid
+        columns={1}
+        rowHeight={44}
+        data={data}
+        disabled={false}
+        keyExtractor={(item) => item}
+        onDragBegin={jest.fn()}
+        onDragEnd={({ data: next }) => setData(next)}
+        renderItem={({ item }) => <Text>{item}</Text>}
+      />
+    );
+  }
+  const view = await render(<Grid />);
+  for (const item of ['a', 'b']) {
+    await fireEvent(view.getByTestId(`native-grid-item-${item}`), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 44 } },
+    });
+  }
+  const timing = jest.spyOn(Reanimated, 'withTiming').mockImplementation(() => -999 as never);
+  try {
+    const gesture = mockGestures.get('native-grid-item-a')!;
+    await act(() => gesture.onStart({ absoluteX: 150, absoluteY: 22 }));
+    // The last move and release can be batched before the hidden cell renders
+    // its new target. A timing mock deliberately keeps other cards in flight.
+    await act(() => {
+      gesture.onUpdate({ absoluteX: 150, absoluteY: 66, translationX: 0, translationY: 44 });
+      gesture.onEnd({ absoluteX: 150, absoluteY: 66 }, true);
+      gesture.onFinalize({}, true);
+    });
+    const cell = view.getByTestId('native-grid-item-a').parent!;
+    expect(StyleSheet.flatten(cell.props.style).transform).toEqual([
+      { translateX: 0 },
+      { translateY: 44 },
+    ]);
+  } finally {
+    timing.mockRestore();
+  }
+});
 it.each([1, 2])(
   'keeps a pre-hold scroll out of reorder mode in a %i-column list',
   async (columns) => {
@@ -179,6 +221,7 @@ it.each([1, 3])(
       const screen = await render(
         <NativeDraggableGrid
           autoScroll={autoScroll}
+          contentContainerStyle={{ paddingTop: 100, rowGap: 0 }}
           columns={columns}
           data={data}
           disabled={false}
@@ -492,4 +535,39 @@ it('does not jump to an old slot while a scrolled grid is being measured', async
   await act(() => mockGridMeasurements.shift()!());
   await act(() => gesture.onEnd({ absoluteX: 150, absoluteY: 66 }, true));
   expect(onDragEnd).toHaveBeenLastCalledWith(expect.objectContaining({ from: 101, to: 102 }));
+});
+
+it('restores the source order outside its section and resumes reordering on return', async () => {
+  let reorderHere = true;
+  const onDragEnd = jest.fn();
+  const view = await render(
+    <NativeDraggableGrid
+      columns={1}
+      data={['a', 'b']}
+      disabled={false}
+      keyExtractor={(item) => item}
+      onDragBegin={jest.fn()}
+      onDragMove={() => reorderHere}
+      onDragEnd={onDragEnd}
+      renderItem={({ item }) => <Text>{item}</Text>}
+    />,
+  );
+  for (const [index, item] of ['a', 'b'].entries()) {
+    await fireEvent(view.getByTestId(`native-grid-item-${item}`).parent!, 'layout', {
+      nativeEvent: { layout: { x: 0, y: index * 44, width: 300, height: 44 } },
+    });
+  }
+  const gesture = mockGestures.get('native-grid-item-a')!;
+  await act(() => gesture.onStart({ absoluteX: 150, absoluteY: 22 }));
+  const move = () =>
+    gesture.onUpdate({ absoluteX: 150, absoluteY: 66, translationX: 0, translationY: 44 });
+  await act(move);
+  expect(view.getAllByText(/^[ab]$/).map((node) => node.props.children)).toEqual(['b', 'a']);
+  reorderHere = false;
+  await act(move);
+  expect(view.getAllByText(/^[ab]$/).map((node) => node.props.children)).toEqual(['a', 'b']);
+  reorderHere = true;
+  await act(move);
+  await act(() => gesture.onEnd({ absoluteX: 150, absoluteY: 66 }, true));
+  expect(onDragEnd).toHaveBeenCalledWith({ data: ['b', 'a'], from: 0, to: 1 });
 });
