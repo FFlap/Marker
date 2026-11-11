@@ -148,7 +148,7 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
       }
     };
     return PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) =>
+      onMoveShouldSetPanResponderCapture: (_, gesture) =>
         navigation.current.state === 'idle' &&
         gesture.numberActiveTouches === 1 &&
         gesture.dx < -6 &&

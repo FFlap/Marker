@@ -95,10 +95,10 @@ afterEach(() => {
 
 it('tracks a horizontal drag, clamps at the open position, and restores a short drag', async () => {
   const { view, handlers, event, gesture } = await openDraggableDrawer();
-  expect(handlers.onMoveShouldSetPanResponder?.(event, gesture(-30))).toBe(true);
-  expect(handlers.onMoveShouldSetPanResponder?.(event, gesture(0, 30))).toBe(false);
-  expect(handlers.onMoveShouldSetPanResponder?.(event, gesture(-30, 60))).toBe(false);
-  expect(handlers.onMoveShouldSetPanResponder?.(event, gesture(0))).toBe(false);
+  expect(handlers.onMoveShouldSetPanResponderCapture?.(event, gesture(-30))).toBe(true);
+  expect(handlers.onMoveShouldSetPanResponderCapture?.(event, gesture(0, 30))).toBe(false);
+  expect(handlers.onMoveShouldSetPanResponderCapture?.(event, gesture(-30, 60))).toBe(false);
+  expect(handlers.onMoveShouldSetPanResponderCapture?.(event, gesture(0))).toBe(false);
 
   await act(() => handlers.onPanResponderGrant?.(event, gesture(0)));
   await act(() => handlers.onPanResponderMove?.(event, gesture(-40)));
@@ -202,7 +202,7 @@ it('does not interrupt Android Back dismissal with an active drag', async () => 
   await act(() => handlers.onPanResponderTerminate?.(event, gesture(-80)));
   expect(valueSpy).not.toHaveBeenCalled();
   expect(timingSpy).toHaveBeenCalledTimes(1);
-  expect(handlers.onMoveShouldSetPanResponder?.(event, gesture(-30))).toBe(false);
+  expect(handlers.onMoveShouldSetPanResponderCapture?.(event, gesture(-30))).toBe(false);
   valueSpy.mockRestore();
   frameSpy.mockRestore();
 });

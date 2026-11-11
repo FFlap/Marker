@@ -15,6 +15,7 @@ import Animated, {
   Easing,
   ReduceMotion,
   runOnJS,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -156,17 +157,26 @@ const DrawerSheet = React.forwardRef<
   const { onOpenChange } = DialogPrimitive.useRootContext();
   const sheetHeight = useSharedValue(windowHeight);
   const dragStart = useSharedValue(1);
+  const scrollOffset = useSharedValue(0);
+  const dragging = useSharedValue(false);
+  const touchX = useSharedValue(0);
+  const touchY = useSharedValue(0);
+  const { bottom: bottomInset } = useSafeAreaInsets();
+  const onScroll = useAnimatedScrollHandler((event) => {
+    scrollOffset.set(Math.max(0, event.contentOffset.y));
+  });
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - progress.get()) * sheetHeight.get() }],
   }));
-  const dragGesture = React.useMemo(
+  const createDragGesture = React.useCallback(
     () =>
       Gesture.Pan()
         .enabled(interactive)
         .maxPointers(1)
         .activeOffsetY([-10_000, 4])
         .failOffsetX([-32, 32])
-        .onBegin(() => {
+        .onStart(() => {
+          dragging.set(true);
           dragStart.set(progress.get());
         })
         .onUpdate((event) => {
@@ -199,6 +209,7 @@ const DrawerSheet = React.forwardRef<
           );
         })
         .onFinalize((_event, success) => {
+          dragging.set(false);
           if (success) return;
           progress.set(
             withTiming(1, {
@@ -208,7 +219,44 @@ const DrawerSheet = React.forwardRef<
             }),
           );
         }),
-    [dragStart, interactive, onOpenChange, progress, sheetHeight],
+    [dragging, dragStart, interactive, onOpenChange, progress, sheetHeight],
+  );
+
+  const headerGesture = React.useMemo(() => createDragGesture(), [createDragGesture]);
+  const bodyGesture = React.useMemo(
+    () =>
+      createDragGesture()
+        .manualActivation(true)
+        .onTouchesDown((event, manager) => {
+          'worklet';
+          if (event.allTouches.length !== 1) {
+            manager.fail();
+            return;
+          }
+          touchX.set(event.allTouches[0].absoluteX);
+          touchY.set(event.allTouches[0].absoluteY);
+        })
+        .onTouchesMove((event, manager) => {
+          'worklet';
+          if (dragging.get()) return;
+          if (event.allTouches.length !== 1) {
+            manager.fail();
+            return;
+          }
+          const dx = event.allTouches[0].absoluteX - touchX.get();
+          const dy = event.allTouches[0].absoluteY - touchY.get();
+          // Let the content scroll normally unless pulling down from its top.
+          if (scrollOffset.get() > 1 || dy < -4 || Math.abs(dx) > 16) {
+            manager.fail();
+          } else if (dy > 4 && dy > Math.abs(dx)) {
+            manager.activate();
+          }
+        }),
+    [createDragGesture, dragging, scrollOffset, touchX, touchY],
+  );
+  const scrollGesture = React.useMemo(
+    () => Gesture.Native().requireExternalGestureToFail(bodyGesture),
+    [bodyGesture],
   );
 
   return (
@@ -221,10 +269,27 @@ const DrawerSheet = React.forwardRef<
       }}
       style={[styles.sheet, props.style, animatedStyle]}
     >
-      <GestureDetector gesture={dragGesture}>
+      <GestureDetector gesture={headerGesture}>
         <View collapsable={false}>{grabber}</View>
       </GestureDetector>
-      {children}
+      <GestureDetector gesture={bodyGesture}>
+        <Animated.View style={styles.scrollBody} collapsable={false}>
+          <GestureDetector gesture={scrollGesture}>
+            <KeyboardScrollView
+              testID="drawer-scroll-view"
+              mode="layout"
+              extraKeyboardSpace={Platform.OS === 'ios' ? 0 : -bottomInset}
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              onScroll={onScroll}
+              scrollEventThrottle={16}
+              contentContainerStyle={styles.content}
+            >
+              <View className="gap-6">{children}</View>
+            </KeyboardScrollView>
+          </GestureDetector>
+        </Animated.View>
+      </GestureDetector>
     </Animated.View>
   );
 });
@@ -273,7 +338,6 @@ function MountedDrawerContent({
 }: DrawerContentProps) {
   const motion = useDrawerMotion();
   const { height: windowHeight } = useWindowDimensions();
-  const { bottom: bottomInset } = useSafeAreaInsets();
   const contentChildren = React.Children.toArray(children);
   const header =
     contentChildren[0] &&
@@ -305,16 +369,7 @@ function MountedDrawerContent({
                 </>
               }
             >
-              <KeyboardScrollView
-                testID="drawer-scroll-view"
-                mode="layout"
-                extraKeyboardSpace={Platform.OS === 'ios' ? 0 : -bottomInset}
-                bounces={false}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.content}
-              >
-                <View className="gap-6">{body}</View>
-              </KeyboardScrollView>
+              {body}
             </DrawerSheet>
           </DialogPrimitive.Content>
         </DrawerOverlay>
@@ -382,6 +437,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     alignItems: 'center',
   },
+  scrollBody: { flexShrink: 1 },
   content: {
     paddingHorizontal: 24,
     paddingTop: 8,
