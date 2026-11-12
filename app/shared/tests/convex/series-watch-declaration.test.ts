@@ -466,3 +466,23 @@ it('clears the negative progress override when extension playback follows an exp
     { date: '2026-11-05', episodes: 2 },
   ]);
 });
+
+it('keeps a season unwatch authoritative over pre-existing unwatched rows', async () => {
+  const { user, itemId, declare, hydrate } = await setup();
+  await user.mutation(api.library.episodes.setEpisodeState, {
+    itemId,
+    season: 1,
+    episode: 1,
+    watched: false,
+  });
+  await declare();
+  await user.action(api.library.seasonWatched.setSeasonWatched, {
+    itemId,
+    season: 1,
+    watched: false,
+  });
+  const states = () => user.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
+  expect((await states()).map((episode) => episode.watched)).toEqual([false, false, false]);
+  await hydrate();
+  expect((await states()).map((episode) => episode.watched)).toEqual([false, false, false]);
+});

@@ -274,6 +274,7 @@ async function applySeasonWatchedBatch(
       )
         return;
       if (
+        (args.generation !== undefined || !item.seriesWatch) &&
         summaryIsCurrent &&
         saved?.watched === args.watched &&
         identityAvailable &&
