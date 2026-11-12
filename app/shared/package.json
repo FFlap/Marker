@@ -30,7 +30,10 @@
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "audit:prod": "npm audit --omit=dev --audit-level=high"
+    "audit:prod": "npm audit --omit=dev --audit-level=high",
+    "bench:series-watched": "vitest run --config vitest.benchmark.config.ts",
+    "bench:series-capture": "node scripts/capture-series-benchmark.mjs",
+    "bench:series-engine": "node scripts/benchmark-series-engine.mjs"
   },
   "dependencies": {
     "convex": "1.42.1",

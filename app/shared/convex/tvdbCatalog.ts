@@ -1,6 +1,9 @@
 import { Effect } from 'effect';
 import { internal } from './_generated/api';
-import type { ActionCtx } from './_generated/server';
+import { internalQuery, type ActionCtx, type QueryCtx } from './_generated/server';
+import { v } from 'convex/values';
+import { animeEpisodeValidator } from './providerValidators';
+import { MAX_SEASON_EPISODES } from './seasonStorage';
 import { runActionEffect } from './actionEffects';
 import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
 import type { AnimeEpisode } from './tvdbParsing';
@@ -10,6 +13,60 @@ const keyFor = (id: number, order: string) => `tvdb:catalog:v1:${id}:${order}:en
 const CHUNK_SIZE = 120;
 const MAX_CHUNKS = 500;
 const CHUNK_CONCURRENCY = 8;
+
+// One query can safely read at most 16 snapshots of <=700 KiB each. Larger
+// catalogs retain the paged action path rather than exceeding a transaction's read limit.
+const SEASON_QUERY_MAX_CHUNKS = 16;
+
+export const readFreshSeason = internalQuery({
+  args: { id: v.number(), order: v.string(), season: v.number() },
+  returns: v.union(v.null(), v.array(animeEpisodeValidator)),
+  handler: readFreshCatalogSnapshot,
+});
+
+/** Read one immutable, bounded generation within the caller's database snapshot. */
+export async function readFreshCatalogSnapshot(
+  ctx: Pick<QueryCtx, 'db'>,
+  { id, order, season }: { id: number; order: string; season?: number },
+): Promise<AnimeEpisode[] | null> {
+  const stored = await ctx.db
+    .query('providerSnapshots')
+    .withIndex('by_key', (q) => q.eq('key', keyFor(id, order)))
+    .unique();
+  if (
+    !stored ||
+    stored.entry.kind !== 'tvdbCatalog' ||
+    stored.refreshedAt <= Date.now() - SNAPSHOT_TTL_MS
+  )
+    return null;
+  const manifest = stored.entry.value;
+  if (manifest.chunks > SEASON_QUERY_MAX_CHUNKS || manifest.count > manifest.chunks * CHUNK_SIZE)
+    return null;
+  const chunks = await Promise.all(
+    Array.from({ length: manifest.chunks }, (_, index) =>
+      ctx.db
+        .query('providerSnapshots')
+        .withIndex('by_key', (q) =>
+          q.eq('key', `tvdb:season:catalog:${manifest.generation}:${index}`),
+        )
+        .unique(),
+    ),
+  );
+  const selected: AnimeEpisode[] = [];
+  let count = 0;
+  for (const chunk of chunks) {
+    if (!chunk || chunk.entry.kind !== 'episodes') return null;
+    for (const episode of chunk.entry.value) {
+      if (!('id' in episode)) return null;
+      count += 1;
+      if (season === undefined || episode.season === season) selected.push(episode);
+    }
+  }
+  if (count !== manifest.count) return null;
+  if (selected.length > MAX_SEASON_EPISODES)
+    throw new Error('TVDB season exceeded the safety limit');
+  return selected;
+}
 
 /** A manifest is published only after every immutable generation chunk is durable. */
 export async function reusableCatalog(

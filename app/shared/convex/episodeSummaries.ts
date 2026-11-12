@@ -5,6 +5,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import { EPISODES_PER_CHUNK } from './seasonStorage';
 import { refreshNextEpisode } from './nextEpisode';
+import { currentSeriesOverride } from './library/seriesWatchState';
 import { applyProfileStatsDelta } from './profileStatsRefresh';
 
 type EpisodeSummaryDelta = {
@@ -132,8 +133,11 @@ async function beginEpisodeSummaryRebuild(
   force = false,
   restart = false,
 ) {
+  const item = await ctx.db.get(summary.itemId);
+  const seriesGeneration = item?.seriesWatch?.generation;
   if (
     !force &&
+    summary.rebuildSeriesWatchGeneration === seriesGeneration &&
     summary.rebuildIdentityKey === identityKey &&
     summary.rebuildSeasonVersion === seasonVersion
   )
@@ -158,6 +162,8 @@ async function beginEpisodeSummaryRebuild(
     rebuildOffset: 0,
     rebuildTotal: 0,
     rebuildWatchedCount: 0,
+    rebuildSeriesUnwatchedCount: 0,
+    rebuildSeriesWatchGeneration: seriesGeneration,
     rebuildRevision: revision,
     rebuildAttempts,
   });
@@ -271,48 +277,114 @@ export async function updateSummaryForEpisodeUpsert(
   existing?: Doc<'episodes'> | null,
   identity?: CurrentEpisodeIdentityDelta,
   next?: { runtime?: number; unverified?: boolean; tags?: string[] },
+  series?: EpisodeSummaryUpsert['series'],
 ) {
+  return updateSummaryForEpisodeUpserts(ctx, userId, itemId, season, [
+    { watched, existing, identity, next, series },
+  ]);
+}
+
+export type EpisodeSummaryUpsert = {
+  series?: { generation: string; beforeUnwatched: boolean; afterUnwatched: boolean };
+  watched: boolean;
+  existing?: Doc<'episodes'> | null;
+  identity?: CurrentEpisodeIdentityDelta;
+  next?: { runtime?: number; unverified?: boolean; tags?: string[] };
+};
+
+/** Apply counters once per chunk rather than once per episode. */
+export async function updateSummaryForEpisodeUpserts(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  itemId: Id<'items'>,
+  season: number,
+  upserts: EpisodeSummaryUpsert[],
+) {
+  if (upserts.length === 0) return;
   const before = await ctx.db
     .query('episodeSummaries')
     .withIndex('by_item', (query) => query.eq('itemId', itemId).eq('season', season))
     .unique();
-  const existingCounted = existing !== undefined && existing !== null;
-  const beforeRuntime = runtimeContribution({
-    watched: existing?.watched ?? false,
-    runtime: existing?.runtime,
-    unverified: existing?.unverified,
-  });
-  const afterRuntime = runtimeContribution({
-    watched,
-    runtime: next && 'runtime' in next ? next.runtime : existing?.runtime,
-    unverified: next?.unverified ?? existing?.unverified,
-  });
-  await applyEpisodeSummaryDelta(ctx, {
+  const delta: EpisodeSummaryDelta = {
     userId,
     itemId,
     season,
-    total: existingCounted ? 0 : 1,
-    watchedCount: Number(watched) - (existingCounted ? Number(existing.watched) : 0),
-    watchedRuntimeMinutes: afterRuntime.minutes - beforeRuntime.minutes,
-    watchedRuntimeFallbackCount: afterRuntime.fallback - beforeRuntime.fallback,
-    tagDeltas: tagDelta(existing?.tags ?? [], next?.tags ?? existing?.tags ?? []),
-  });
+    total: 0,
+    watchedCount: 0,
+    watchedRuntimeMinutes: 0,
+    watchedRuntimeFallbackCount: 0,
+    tagDeltas: [],
+  };
+  const tags = new Map<string, { tag: string; count: number }>();
+  const identity = upserts[0]!.identity;
+  let currentWatchedDelta = 0;
+  let newCurrentWatched = 0;
+  for (const { watched, existing, identity: entryIdentity, next } of upserts) {
+    if (
+      entryIdentity?.key !== identity?.key ||
+      entryIdentity?.seasonVersion !== identity?.seasonVersion ||
+      entryIdentity?.total !== identity?.total
+    )
+      throw new Error('Episode summary batches must share one metadata identity');
+    const beforeRuntime = runtimeContribution({
+      watched: existing?.watched ?? false,
+      runtime: existing?.runtime,
+      unverified: existing?.unverified,
+    });
+    const afterRuntime = runtimeContribution({
+      watched,
+      runtime: next && 'runtime' in next ? next.runtime : existing?.runtime,
+      unverified: next?.unverified ?? existing?.unverified,
+    });
+    delta.total += Number(!existing);
+    delta.watchedCount += Number(watched) - Number(existing?.watched ?? false);
+    delta.watchedRuntimeMinutes += afterRuntime.minutes - beforeRuntime.minutes;
+    delta.watchedRuntimeFallbackCount += afterRuntime.fallback - beforeRuntime.fallback;
+    for (const change of tagDelta(existing?.tags ?? [], next?.tags ?? existing?.tags ?? [])) {
+      const key = change.tag.toLocaleLowerCase();
+      const current = tags.get(key);
+      tags.set(key, {
+        tag: current?.tag ?? change.tag,
+        count: (current?.count ?? 0) + change.count,
+      });
+    }
+    newCurrentWatched += Number(Boolean(entryIdentity?.nextMatches && watched));
+    currentWatchedDelta +=
+      Number(Boolean(entryIdentity?.nextMatches && watched)) -
+      Number(Boolean(entryIdentity?.existingMatches && existing?.watched));
+  }
+  delta.tagDeltas = [...tags.values()].filter((entry) => entry.count !== 0);
+  await applyEpisodeSummaryDelta(ctx, delta);
   const summary = await ctx.db
     .query('episodeSummaries')
     .withIndex('by_item', (query) => query.eq('itemId', itemId).eq('season', season))
     .unique();
+  if (summary && upserts[0]!.series) {
+    const generation = upserts[0]!.series.generation;
+    const delta = upserts.reduce(
+      (sum, upsert) =>
+        sum + Number(upsert.series?.afterUnwatched) - Number(upsert.series?.beforeUnwatched),
+      0,
+    );
+    await ctx.db.patch(summary._id, {
+      seriesWatchGeneration: generation,
+      seriesUnwatchedCount: Math.max(
+        0,
+        (summary.seriesWatchGeneration === generation ? (summary.seriesUnwatchedCount ?? 0) : 0) +
+          delta,
+      ),
+    });
+  }
   if (!summary || !identity) return;
-
   if (!before) {
     await ctx.db.patch(summary._id, {
       currentIdentityKey: identity.key,
       currentSeasonVersion: identity.seasonVersion,
       currentTotal: identity.total,
-      currentWatchedCount: Number(identity.nextMatches && watched),
+      currentWatchedCount: newCurrentWatched,
     });
     return;
   }
-
   const sameIdentity =
     summary.currentIdentityKey === identity.key &&
     summary.currentSeasonVersion === identity.seasonVersion;
@@ -320,12 +392,8 @@ export async function updateSummaryForEpisodeUpsert(
     await beginEpisodeSummaryRebuild(ctx, summary, identity.key, identity.seasonVersion, true);
     return;
   }
-
   const currentTotal = identity.total;
-  const currentWatchedCount =
-    (summary.currentWatchedCount ?? 0) +
-    Number(Boolean(identity.nextMatches && watched)) -
-    Number(Boolean(identity.existingMatches && existing?.watched));
+  const currentWatchedCount = (summary.currentWatchedCount ?? 0) + currentWatchedDelta;
   if (currentTotal < 0 || currentWatchedCount < 0 || currentWatchedCount > currentTotal)
     throw new Error('Current episode summary counters would become invalid');
   await ctx.db.patch(summary._id, { currentTotal, currentWatchedCount });
@@ -354,7 +422,8 @@ export const rebuildEpisodeSummary = internalMutation({
     }
     if (
       identity.key !== summary.rebuildIdentityKey ||
-      identity.seasonVersion !== summary.rebuildSeasonVersion
+      identity.seasonVersion !== summary.rebuildSeasonVersion ||
+      identity.item.seriesWatch?.generation !== summary.rebuildSeriesWatchGeneration
     ) {
       await beginEpisodeSummaryRebuild(
         ctx,
@@ -395,8 +464,18 @@ export const rebuildEpisodeSummary = internalMutation({
     );
     let total = summary.rebuildTotal ?? 0;
     let watchedCount = summary.rebuildWatchedCount ?? 0;
+    let seriesUnwatchedCount = summary.rebuildSeriesUnwatchedCount ?? 0;
     for (const [index, episode] of batch.entries()) {
       const row = saved[index];
+      if (
+        currentSeriesOverride(identity.item.seriesWatch, row, {
+          metadataProvider: identity.season.metadataProvider,
+          seasonOrder: identity.mapping.seasonOrder,
+          providerEpisodeId: episode.providerEpisodeId,
+        }) &&
+        !row!.watched
+      )
+        seriesUnwatchedCount += 1;
       if (
         !episodeMatchesCanonicalIdentity(
           row,
@@ -416,6 +495,10 @@ export const rebuildEpisodeSummary = internalMutation({
         currentSeasonVersion: identity.seasonVersion,
         currentTotal: identity.episodeCount,
         currentWatchedCount: watchedCount,
+        seriesWatchGeneration: identity.item.seriesWatch?.generation,
+        seriesUnwatchedCount,
+        rebuildSeriesWatchGeneration: undefined,
+        rebuildSeriesUnwatchedCount: undefined,
         rebuildIdentityKey: undefined,
         rebuildSeasonVersion: undefined,
         rebuildOffset: undefined,
@@ -431,6 +514,7 @@ export const rebuildEpisodeSummary = internalMutation({
       rebuildOffset: nextOffset,
       rebuildTotal: total,
       rebuildWatchedCount: watchedCount,
+      rebuildSeriesUnwatchedCount: seriesUnwatchedCount,
     });
     await ctx.scheduler.runAfter(0, internal.episodeSummaries.rebuildEpisodeSummary, args);
     return { work: batch.length, isDone: false };
@@ -462,6 +546,11 @@ export const reconcileSeasonSummaries = internalMutation({
         .unique();
       const identity = await currentSummaryIdentity(ctx, item._id, args.season);
       if (!identity) continue;
+      if (item.seriesWatch)
+        await ctx.scheduler.runAfter(0, internal.library.seasonWatched.resumeSeriesWatch, {
+          itemId: item._id,
+          refreshedAt: identity.season.refreshedAt,
+        });
       if (!summary) {
         await ctx.db.insert('episodeSummaries', {
           userId: item.userId,

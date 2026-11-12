@@ -4,7 +4,7 @@ import schema from '../../convex/schema';
 import { api, internal } from '../../convex/_generated/api';
 import { EPISODES_PER_CHUNK } from '../../convex/seasonStorage';
 import { activityDateFromDayNumber, activityDayNumber } from '../../lib/watchActivityStats';
-import { putSeason } from './metadata-fixtures';
+import { putSeason, hydrateDeclaredWatch } from './metadata-fixtures';
 
 const modules = import.meta.glob('../../convex/**/*.ts');
 
@@ -380,6 +380,7 @@ it.each(['move', 'add'] as const)(
         activityDate: '2026-10-09',
       });
     }
+    expect((await hydrateDeclaredWatch(t, watchedItemId))?.hydration).toBe('complete');
     const expected =
       operation === 'move'
         ? [
@@ -393,6 +394,7 @@ it.each(['move', 'add'] as const)(
       itemId: watchedItemId,
       activityDate: '2026-10-11',
     });
+    expect((await hydrateDeclaredWatch(t, watchedItemId))?.hydration).toBe('complete');
     expect((await user.query(api.stats.profile, {})).watchActivity).toEqual(expected);
     for (const season of [1, 2])
       await user.action(api.library.seasonWatched.setSeasonWatched, {

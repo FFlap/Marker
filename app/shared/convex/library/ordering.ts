@@ -2,7 +2,7 @@ import { internalMutation, internalQuery, mutation, type MutationCtx } from '../
 import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
 import { refreshTagCollectionSummary } from '../tagCollectionsModel';
-import { itemActivityBase, writeActivityEvents } from '../activityEvents';
+import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
 import { updateProfileStatsForItem } from '../profileStatsRefresh';
 import { bumpCalendarRevision } from '../calendarLibrary';
 import { statusValidator as status } from '../publicValidators';
@@ -119,7 +119,12 @@ async function rebalanceStatusWindow(
   return { beforeRank, afterRank };
 }
 
-async function moveItemToSlot(ctx: MutationCtx, userId: Id<'users'>, args: MoveItemArgs) {
+export async function moveItemToSlot(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  args: MoveItemArgs,
+  activityEvents?: ActivityEventWrite[],
+) {
   const item = await ownedItem(ctx, args.itemId, userId);
   const targetStatus = args.status ?? item.status;
   const [claimedBefore, claimedAfter] = await Promise.all([
@@ -187,14 +192,15 @@ async function moveItemToSlot(ctx: MutationCtx, userId: Id<'users'>, args: MoveI
     timesWatched: targetStatus === 'watched' ? Math.max(1, item.timesWatched) : item.timesWatched,
   });
   if (targetStatus !== item.status) await bumpCalendarRevision(ctx, userId);
-  if (targetStatus !== item.status)
-    await writeActivityEvents(ctx, [
-      {
-        ...itemActivityBase(item),
-        kind: targetStatus === 'watched' ? 'finished' : 'status',
-        status: targetStatus,
-      },
-    ]);
+  if (targetStatus !== item.status) {
+    const event: ActivityEventWrite = {
+      ...itemActivityBase(item),
+      kind: targetStatus === 'watched' ? 'finished' : 'status',
+      status: targetStatus,
+    };
+    if (activityEvents) activityEvents.push(event);
+    else await writeActivityEvents(ctx, [event]);
+  }
   return rank;
 }
 

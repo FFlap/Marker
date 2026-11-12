@@ -15,7 +15,8 @@ export type ActivityEventWrite = {
 };
 
 const HISTORY_LIMIT = 200;
-const MAX_WRITE_BATCH = 120;
+// One atomic whole-series update may write 2,000 episodes and a finish event.
+const MAX_WRITE_BATCH = 2_001;
 
 export async function writeActivityEvents(ctx: MutationCtx, events: ActivityEventWrite[]) {
   if (events.length === 0) return;
@@ -37,18 +38,26 @@ export async function writeActivityEvents(ctx: MutationCtx, events: ActivityEven
     previousCount = history.length;
   }
   const now = Date.now();
-  for (const [index, event] of events.entries()) {
-    const { createdAt = now + index / 1_000, ...value } = event;
-    await ctx.db.insert('activityEvents', { ...value, createdAt });
-  }
-  const count = previousCount + events.length;
+  // Only the newest 200 incoming events can survive retention. Avoid inserting
+  // thousands of episode events that would be evicted in this same transaction.
+  const incoming = events
+    .map((event, index) => ({ event, index, createdAt: event.createdAt ?? now + index / 1_000 }))
+    .sort((a, b) => a.createdAt - b.createdAt || a.index - b.index)
+    .slice(-HISTORY_LIMIT)
+    .sort((a, b) => a.index - b.index);
+  await Promise.all(
+    incoming.map(({ event, createdAt }) =>
+      ctx.db.insert('activityEvents', { ...event, createdAt }),
+    ),
+  );
+  const count = previousCount + incoming.length;
   if (count > HISTORY_LIMIT) {
     const stale = await ctx.db
       .query('activityEvents')
       .withIndex('by_actor_time', (q) => q.eq('userId', userId))
       .order('asc')
       .take(count - HISTORY_LIMIT);
-    for (const event of stale) await ctx.db.delete(event._id);
+    await Promise.all(stale.map((event) => ctx.db.delete(event._id)));
   }
   const retainedCount = Math.min(count, HISTORY_LIMIT);
   if (!counter) await ctx.db.insert('activityEventCounts', { userId, count: retainedCount });

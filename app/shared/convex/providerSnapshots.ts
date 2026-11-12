@@ -4,7 +4,7 @@ import { internal } from './_generated/api';
 import { providerSnapshotEntryValidator, catalogManifestValidator } from './providerValidators';
 
 export const SNAPSHOT_TTL_MS = 15 * 60 * 1000;
-const MAX_SNAPSHOT_BYTES = 700 * 1024;
+export const MAX_SNAPSHOT_BYTES = 700 * 1024;
 
 type TruncatedSnapshot = {
   __truncatedProviderSnapshot: true;
@@ -84,6 +84,29 @@ export const get = internalQuery({
       .withIndex('by_key', (query) => query.eq('key', key))
       .unique();
     return stored ? { ...stored.entry, refreshedAt: stored.refreshedAt } : null;
+  },
+});
+
+/** Check a TMDB append request's season cache without returning episode payloads. */
+export const getFreshTmdbSeasonSnapshots = internalQuery({
+  args: { keys: v.array(v.string()) },
+  returns: v.array(v.boolean()),
+  handler: async (ctx, { keys }) => {
+    if (keys.length > 20 || keys.some((key) => !/^tmdb:season:\d+:\d+$/.test(key)))
+      throw new Error('Invalid TMDB season snapshot keys');
+    return Promise.all(
+      keys.map(async (key) => {
+        const stored = await ctx.db
+          .query('providerSnapshots')
+          .withIndex('by_key', (q) => q.eq('key', key))
+          .unique();
+        return (
+          !!stored &&
+          stored.entry.kind === 'episodes' &&
+          stored.refreshedAt > Date.now() - SNAPSHOT_TTL_MS
+        );
+      }),
+    );
   },
 });
 
