@@ -231,7 +231,7 @@ async function waitForTitle(
 
 async function getOrRefreshTitle(
   ctx: ActionCtx & Parameters<typeof getClerkUserId>[0],
-  args: { mediaType: MediaType; tmdbId: number; title: string },
+  args: { mediaType: MediaType; tmdbId: number; title: string; deferEpisodes?: boolean },
   userIdOverride?: Id<'users'>,
 ) {
   validateTmdbId(args.tmdbId);
@@ -289,7 +289,7 @@ async function getOrRefreshTitle(
     const result = await resolveAndCommitCanonical(ctx, {
       ...args,
       force: false,
-      includeSelectedSeason: true,
+      includeSelectedSeason: !args.deferEpisodes,
       keys: adoptedKeys,
       attemptToken: token,
       leaseKey: key,
@@ -316,7 +316,13 @@ async function getOrRefreshTitle(
 }
 
 export const resolveTitleForUser = internalAction({
-  args: { userId: v.id('users'), mediaType, tmdbId: v.number(), title: v.string() },
+  args: {
+    userId: v.id('users'),
+    mediaType,
+    tmdbId: v.number(),
+    title: v.string(),
+    deferEpisodes: v.optional(v.boolean()),
+  },
   handler: (ctx, { userId, ...args }): Promise<ResolvedTitle> =>
     getOrRefreshTitle(ctx, args, userId),
 });

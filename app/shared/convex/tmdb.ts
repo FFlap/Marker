@@ -317,6 +317,41 @@ export const refreshTvDetails = internalAction({
       : snapshot(ctx, `tmdb:tv:full:v3:${tmdbId}`, load);
   },
 });
+/** TMDB supports up to 20 appended endpoints in one series request. */
+export const prefetchSeasonDetails = internalAction({
+  args: { tmdbId: v.number(), seasons: v.array(v.number()) },
+  returns: v.null(),
+  handler: async (ctx, { tmdbId, seasons }): Promise<null> => {
+    validateTmdbId(tmdbId);
+    if (seasons.length > 20) throw new Error('A season prefetch is limited to 20 seasons');
+    for (const season of seasons) validateInteger('season', season, 10_000);
+    const unique = [...new Set(seasons)];
+    const fresh = await ctx.runQuery(internal.providerSnapshots.getFreshTmdbSeasonSnapshots, {
+      keys: unique.map((season) => `tmdb:season:${tmdbId}:${season}`),
+    });
+    const missing = unique.filter((_, index) => !fresh[index]);
+    if (missing.length === 0) return null;
+    const append = missing.map((season) => `season/${season}`).join(',');
+    const payload = await runProviderEffect(
+      requestEffect(ctx, `/tv/${tmdbId}?append_to_response=${append}`),
+    );
+    for (const season of missing) {
+      const value = record(payload[`season/${season}`]);
+      // An omitted or failed appended endpoint falls back to the normal resolver.
+      if (!value || !Array.isArray(value.episodes)) continue;
+      const episodes = await runProviderEffect(
+        parseProvider(() => mapSeasonDetails(value).map(boundedEpisode)),
+      );
+      await putNonFatal(ctx, {
+        key: `tmdb:season:${tmdbId}:${season}`,
+        value: episodes,
+        metricKey: 'tmdb',
+      });
+    }
+    return null;
+  },
+});
+
 export const refreshSeasonDetails = internalAction({
   args: { tmdbId: v.number(), season: v.number(), force: v.optional(v.boolean()) },
   returns: v.array(resolvedEpisodeValidator),

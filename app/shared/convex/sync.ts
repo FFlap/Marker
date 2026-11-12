@@ -16,6 +16,8 @@ import { seasonSummaryIdentityKey, updateSummaryForEpisodeUpsert } from './episo
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from './activityEvents';
 import { refreshNextEpisode } from './nextEpisode';
 import { updateProfileStatsForItem } from './profileStatsRefresh';
+import { currentSeriesOverride, effectiveEpisodeWatched } from './library/seriesWatchState';
+import { recordWatchActivity } from './watchActivity';
 import { bumpCalendarRevision } from './calendarLibrary';
 
 const resolvedTvArgs = {
@@ -182,6 +184,13 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
     imageUrl: canonicalEpisode?.imageUrl,
     airDate: canonicalEpisode?.airDate,
   };
+  const declaredImplicit =
+    !old?.watched &&
+    !!item.seriesWatch &&
+    !!canonicalEpisode &&
+    effectiveEpisodeWatched(item.seriesWatch, old, canonicalEpisode, stamp);
+  const watchTime = declaredImplicit ? item.seriesWatch!.watchedAt : Date.now();
+  const watchDay = declaredImplicit ? item.seriesWatch!.activityDate : undefined;
   await updateSummaryForEpisodeUpsert(
     ctx,
     a.userId,
@@ -207,11 +216,20 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
       unverified: a.unverified,
       tags: old?.tags ?? [],
     },
+    item.seriesWatch
+      ? {
+          generation: item.seriesWatch.generation,
+          beforeUnwatched: currentSeriesOverride(item.seriesWatch, old, stamp) && !old!.watched,
+          afterUnwatched: false,
+        }
+      : undefined,
   );
   if (old)
     await ctx.db.patch(old._id, {
       watched: true,
-      ...(!old.watched && { watchedAt: Date.now() }),
+      ...(!old.watched && { watchedAt: watchTime }),
+      ...(!old.watched && watchDay !== undefined && { activityDate: watchDay }),
+      ...(item.seriesWatch && { seriesWatchOverride: item.seriesWatch.generation }),
       ...(display.seasonName !== undefined && { seasonName: display.seasonName }),
       ...(display.name !== undefined && { name: display.name }),
       ...(display.overview !== undefined && { overview: display.overview }),
@@ -235,9 +253,13 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
       unverified: a.unverified,
       watched: true,
       tags: [],
-      watchedAt: Date.now(),
+      watchedAt: watchTime,
+      ...(watchDay !== undefined && { activityDate: watchDay }),
+      ...(item.seriesWatch && { seriesWatchOverride: item.seriesWatch.generation }),
       ...stamp,
     });
+  if (declaredImplicit && watchDay !== undefined)
+    await recordWatchActivity(ctx, a.userId, watchDay, 1);
   const movingToWatching = item.status !== 'watched' && item.status !== 'watching';
   if (movingToWatching) await bumpCalendarRevision(ctx, a.userId);
   await ctx.db.patch(item._id, {
@@ -250,6 +272,7 @@ async function recordWatchForItem(ctx: MutationCtx, a: WatchCommit, item: Doc<'i
     events.push({
       ...itemActivityBase(item),
       kind: 'episode',
+      ...(declaredImplicit && { createdAt: item.seriesWatch!.watchedAt - 0.001 }),
       season: a.season,
       episode: a.episode,
     });

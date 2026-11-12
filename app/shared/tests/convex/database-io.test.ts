@@ -549,3 +549,49 @@ it('refreshes top-tag spelling after a case-only edit', async () => {
   expect((await stats())?.topTags).toEqual([{ tag: 'Anime', count: 1 }]);
   expect((await stats())?.tagCounts).toEqual([{ tag: 'Anime', count: 1 }]);
 });
+
+it('retains the same newest history when a large batch includes old timestamps and ties', async () => {
+  const { t, userId, asUser } = await setup();
+  const itemId = await asUser.mutation(api.library.items.addItem, {
+    ...movie(1),
+    status: 'watchlist',
+  });
+  await t.run(async (ctx) => {
+    for (const event of await ctx.db.query('activityEvents').collect())
+      await ctx.db.delete(event._id);
+    for (const count of await ctx.db.query('activityEventCounts').collect())
+      await ctx.db.delete(count._id);
+    for (let index = 0; index < 200; index += 1)
+      await ctx.db.insert('activityEvents', {
+        userId,
+        itemId,
+        kind: 'status',
+        title: `Old ${index}`,
+        createdAt: index,
+      });
+    await ctx.db.insert('activityEventCounts', { userId, count: 200 });
+    await writeActivityEvents(
+      ctx,
+      Array.from({ length: 500 }, (_, index) => ({
+        userId,
+        itemId,
+        kind: 'episode' as const,
+        title: `New ${index - 300}`,
+        createdAt: index - 300,
+      })),
+    );
+  });
+  const retained = await t.run((ctx) =>
+    ctx.db
+      .query('activityEvents')
+      .withIndex('by_actor_time', (q) => q.eq('userId', userId))
+      .collect(),
+  );
+  expect(retained).toHaveLength(200);
+  expect(retained.filter((event) => event.kind === 'status')).toHaveLength(100);
+  expect(retained.filter((event) => event.kind === 'episode')).toHaveLength(100);
+  expect(retained.every((event) => event.createdAt >= 100)).toBe(true);
+  expect(await t.run((ctx) => ctx.db.query('activityEventCounts').first())).toMatchObject({
+    count: 200,
+  });
+});

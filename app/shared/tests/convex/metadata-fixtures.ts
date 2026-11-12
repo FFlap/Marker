@@ -157,3 +157,31 @@ async function writeChunkedSeason(
   else await ctx.db.insert('resolvedSeasons', parent);
   return { episodeCount: value.episodes.length, chunkCount: chunks.length };
 }
+
+/** Execute one persisted hydration attempt without conflating it with declaration latency. */
+export async function hydrateDeclaredWatch(
+  t: Backend,
+  itemId: import('../../convex/_generated/dataModel').Id<'items'>,
+) {
+  // Cancel a not-yet-started scheduled attempt, or wait for the one already
+  // executing, rather than racing a second copy of the same hydration.
+  await t.run(async (ctx) => {
+    for await (const job of ctx.db.system.query('_scheduled_functions')) {
+      if (job.state.kind === 'pending' && job.name === 'library/seasonWatched:hydrateSeriesWatch')
+        await ctx.scheduler.cancel(job._id);
+    }
+  });
+  await t.finishInProgressScheduledFunctions();
+  const item = await t.run((ctx) => ctx.db.get(itemId));
+  if (!item?.seriesWatch) throw new Error('Missing series watch declaration');
+  const watch = item.seriesWatch;
+  if (watch.hydration !== 'pending' || watch.attempts > 0) return watch;
+  await t.action(internal.library.seasonWatched.hydrateSeriesWatch, {
+    userId: item.userId,
+    itemId,
+    generation: watch.generation,
+    token: watch.hydrationToken,
+    attempt: watch.attempts,
+  });
+  return (await t.run((ctx) => ctx.db.get(itemId)))?.seriesWatch;
+}

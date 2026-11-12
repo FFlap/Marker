@@ -2,10 +2,16 @@ import { mutation, query, type MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
 import { EPISODES_PER_CHUNK, MAX_SEASON_EPISODES } from '../seasonStorage';
-import { seasonSummaryIdentityKey, updateSummaryForEpisodeUpsert } from '../episodeSummaries';
+import {
+  seasonSummaryIdentityKey,
+  updateSummaryForEpisodeUpsert,
+  type EpisodeSummaryUpsert,
+} from '../episodeSummaries';
 import { itemActivityBase, writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
-import { episodeValidator } from '../publicValidators';
+import { episodeStateValidator } from '../publicValidators';
+import { isEpisodeReleased } from '../episodeAvailability';
 import { refreshNextEpisode } from '../nextEpisode';
+import { currentSeriesOverride, effectiveEpisodeWatched } from './seriesWatchState';
 import { recordWatchActivity, resolveActivityDate } from '../watchActivity';
 import {
   boundedOptional,
@@ -61,6 +67,8 @@ export async function setEpisode(
     existing: Doc<'episodes'> | null;
     activityEvents: ActivityEventWrite[];
     watchActivityDeltas: Map<string, number>;
+    summaryUpdates?: EpisodeSummaryUpsert[];
+    seriesGeneration?: string;
   },
 ) {
   if (!Number.isInteger(args.season) || args.season < 0 || args.season > 10_000)
@@ -84,7 +92,6 @@ export async function setEpisode(
           q.eq('itemId', args.itemId).eq('season', args.season).eq('episode', args.episode),
         )
         .unique();
-  const watched = args.watched ?? existing?.watched ?? false;
   const nextRating = args.clearRating
     ? undefined
     : args.rating !== undefined
@@ -92,7 +99,6 @@ export async function setEpisode(
       : existing?.rating;
   const stamp = args.stamp ?? (await episodeMetadataStamp(ctx, item, args.season, args.episode));
   const { activityDate } = args;
-  const materializeDisplay = watched || nextRating !== undefined;
   const display = {
     seasonName: stamp.seasonName ?? args.seasonName,
     name: stamp.name ?? args.name,
@@ -101,8 +107,30 @@ export async function setEpisode(
     imageUrl: stamp.imageUrl ?? args.imageUrl,
     airDate: stamp.airDate ?? args.airDate,
   };
+  const canonical = {
+    episode: args.episode,
+    name: display.name ?? existing?.name,
+    overview: display.overview ?? existing?.overview,
+    imageUrl: display.imageUrl ?? existing?.imageUrl,
+    airDate: display.airDate ?? existing?.airDate,
+    providerEpisodeId: stamp.providerEpisodeId,
+  };
+  const beforeDeclared = item.seriesWatch
+    ? effectiveEpisodeWatched(item.seriesWatch, existing, canonical, stamp)
+    : (existing?.watched ?? false);
+  const watched = args.watched ?? beforeDeclared;
+  const explicitOverride =
+    !!item.seriesWatch && !batch?.seriesGeneration && args.watched !== undefined;
+  const nextOverride = explicitOverride
+    ? item.seriesWatch!.generation
+    : existing?.seriesWatchOverride;
+  const declaredImplicit = item.seriesWatch && beforeDeclared && !existing?.watched;
+  const watchDay = declaredImplicit ? item.seriesWatch!.activityDate : activityDate;
+  const watchTime = declaredImplicit ? item.seriesWatch!.watchedAt : Date.now();
+  const materializeDisplay = watched || nextRating !== undefined;
   const values = {
     watched,
+    ...(explicitOverride && { seriesWatchOverride: nextOverride }),
     ...(args.clearRating
       ? { rating: undefined }
       : args.rating !== undefined && { rating: args.rating }),
@@ -116,21 +144,25 @@ export async function setEpisode(
     ...(materializeDisplay && display.runtime !== undefined && { runtime: display.runtime }),
     ...(materializeDisplay && display.imageUrl !== undefined && { imageUrl: display.imageUrl }),
     ...(materializeDisplay && display.airDate !== undefined && { airDate: display.airDate }),
-    ...(watched && !existing?.watched && { watchedAt: Date.now() }),
-    ...(watched && !existing?.watched && activityDate !== undefined && { activityDate }),
+    ...(watched && !existing?.watched && { watchedAt: watchTime }),
+    ...(watched && !existing?.watched && watchDay !== undefined && { activityDate: watchDay }),
     ...(!watched && existing?.watched && { watchedAt: undefined, activityDate: undefined }),
     metadataProvider: stamp.metadataProvider,
     seasonOrder: stamp.seasonOrder,
     providerEpisodeId: stamp.providerEpisodeId,
   };
-  await updateSummaryForEpisodeUpsert(
-    ctx,
-    userId,
-    args.itemId,
-    args.season,
+  const summaryUpdate: EpisodeSummaryUpsert = {
     watched,
+    series: item.seriesWatch
+      ? {
+          generation: item.seriesWatch.generation,
+          beforeUnwatched:
+            currentSeriesOverride(item.seriesWatch, existing, stamp) && !existing!.watched,
+          afterUnwatched: nextOverride === item.seriesWatch.generation && !watched,
+        }
+      : undefined,
     existing,
-    stamp.summaryIdentityKey
+    identity: stamp.summaryIdentityKey
       ? {
           key: stamp.summaryIdentityKey,
           seasonVersion: stamp.summarySeasonVersion!,
@@ -139,17 +171,31 @@ export async function setEpisode(
           nextMatches: true,
         }
       : undefined,
-    {
+    next: {
       runtime: display.runtime ?? existing?.runtime,
       unverified: existing?.unverified,
       tags: tags ?? existing?.tags ?? [],
     },
-  );
+  };
+  if (batch?.summaryUpdates) batch.summaryUpdates.push(summaryUpdate);
+  else
+    await updateSummaryForEpisodeUpsert(
+      ctx,
+      userId,
+      args.itemId,
+      args.season,
+      watched,
+      existing,
+      summaryUpdate.identity,
+      summaryUpdate.next,
+      summaryUpdate.series,
+    );
   const semanticEvents: ActivityEventWrite[] = [];
   if (!existing?.watched && watched)
     semanticEvents.push({
       ...itemActivityBase(item),
       kind: 'episode',
+      ...(declaredImplicit && { createdAt: item.seriesWatch!.watchedAt - 0.001 }),
       season: args.season,
       episode: args.episode,
     });
@@ -164,7 +210,7 @@ export async function setEpisode(
   if (batch) batch.activityEvents.push(...semanticEvents);
   else await writeActivityEvents(ctx, semanticEvents);
   if (watched !== (existing?.watched ?? false)) {
-    const date = watched ? activityDate : existing?.activityDate;
+    const date = watched ? watchDay : existing?.activityDate;
     if (date !== undefined) {
       const delta = watched ? 1 : -1;
       if (batch)
@@ -221,7 +267,7 @@ const matchesCurrentEpisodeIdentity = (
 
 export const listEpisodes = query({
   args: { itemId: v.id('items'), season: v.number(), pageCount: v.optional(v.number()) },
-  returns: v.array(episodeValidator),
+  returns: v.array(episodeStateValidator),
   handler: async (ctx, { itemId, season, pageCount = 1 }) => {
     const userId = await requireUser(ctx);
     const item = await ownedItem(ctx, itemId, userId);
@@ -281,16 +327,64 @@ export const listEpisodes = query({
       canonicalEpisodes.map((episode) => [episode.episode, episode.providerEpisodeId]),
     );
     const episodeLimit = pageCount * EPISODES_PER_CHUNK;
-    const episodeCandidates = await ctx.db
-      .query('episodes')
-      .withIndex('by_item_identity', (query) =>
-        query
-          .eq('itemId', itemId)
-          .eq('season', season)
-          .eq('metadataProvider', provider)
-          .eq('seasonOrder', provider === 'tvdb' ? mapping?.seasonOrder : undefined),
-      )
-      .take(MAX_SEASON_EPISODES);
+    const episodeCandidates = item.seriesWatch
+      ? await ctx.db
+          .query('episodes')
+          .withIndex('by_item', (q) => q.eq('itemId', itemId).eq('season', season))
+          .take(MAX_SEASON_EPISODES)
+      : await ctx.db
+          .query('episodes')
+          .withIndex('by_item_identity', (q) =>
+            q
+              .eq('itemId', itemId)
+              .eq('season', season)
+              .eq('metadataProvider', provider)
+              .eq('seasonOrder', provider === 'tvdb' ? mapping?.seasonOrder : undefined),
+          )
+          .take(MAX_SEASON_EPISODES);
+    if (item.seriesWatch && canonicalIdentityKnown) {
+      const savedByNumber = new Map(episodeCandidates.map((episode) => [episode.episode, episode]));
+      return canonicalEpisodes.slice(0, episodeLimit).map((episode) => {
+        const { stillPath: _stillPath, ...displayEpisode } = episode;
+        const saved = savedByNumber.get(episode.episode);
+        const matches =
+          saved &&
+          matchesCurrentEpisodeIdentity(
+            saved,
+            provider,
+            mapping,
+            true,
+            true,
+            episode.providerEpisodeId,
+          );
+        const identity = {
+          metadataProvider: provider,
+          seasonOrder: provider === 'tvdb' ? mapping?.seasonOrder : undefined,
+          providerEpisodeId: episode.providerEpisodeId,
+        };
+        const watched = effectiveEpisodeWatched(item.seriesWatch, saved, episode, identity);
+        return {
+          ...(matches ? saved : {}),
+          userId,
+          itemId,
+          ...displayEpisode,
+          metadataProvider: provider,
+          seasonOrder: identity.seasonOrder,
+          tags: matches ? saved.tags : [],
+          watched,
+          watchedAt: watched
+            ? matches && saved.watched
+              ? saved.watchedAt
+              : item.seriesWatch!.watchedAt
+            : undefined,
+          activityDate: watched
+            ? matches && saved.watched
+              ? saved.activityDate
+              : item.seriesWatch!.activityDate
+            : undefined,
+        };
+      });
+    }
     return episodeCandidates
       .filter((episode) =>
         matchesCurrentEpisodeIdentity(
@@ -302,7 +396,34 @@ export const listEpisodes = query({
           canonicalIds.get(episode.episode),
         ),
       )
-      .slice(0, episodeLimit);
+      .slice(0, episodeLimit)
+      .map((saved) => {
+        if (!item.seriesWatch) return saved;
+        const released = isEpisodeReleased(
+          { ...saved, name: saved.name ?? `Episode ${saved.episode}` },
+          item.seriesWatch.watchedAt,
+        );
+        const watched = effectiveEpisodeWatched(
+          released ? item.seriesWatch : undefined,
+          saved,
+          saved,
+          saved,
+        );
+        return {
+          ...saved,
+          watched,
+          watchedAt: watched
+            ? saved.watched
+              ? saved.watchedAt
+              : item.seriesWatch.watchedAt
+            : undefined,
+          activityDate: watched
+            ? saved.watched
+              ? saved.activityDate
+              : item.seriesWatch.activityDate
+            : undefined,
+        };
+      });
   },
 });
 
@@ -339,8 +460,18 @@ export const listEpisodeProgress = query({
         .take(10_001),
     ]);
     const seasonByNumber = new Map(seasons.map((season) => [season.season, season]));
-    return summaries.map((summary) => {
-      const resolved = seasonByNumber.get(summary.season);
+    const summaryBySeason = new Map(summaries.map((summary) => [summary.season, summary]));
+    const coordinates = item.seriesWatch
+      ? [
+          ...new Set([
+            ...summaries.map((summary) => summary.season),
+            ...seasons.map((season) => season.season),
+          ]),
+        ].sort((a, b) => a - b)
+      : summaries.map((summary) => summary.season);
+    return coordinates.map((seasonNumber) => {
+      const summary = summaryBySeason.get(seasonNumber);
+      const resolved = seasonByNumber.get(seasonNumber);
       const active =
         resolved &&
         mapping !== null &&
@@ -354,14 +485,36 @@ export const listEpisodeProgress = query({
         ? seasonSummaryIdentityKey(active, mapping?.seasonOrder)
         : undefined;
       const identityStale =
-        currentIdentityKey === undefined || summary.currentIdentityKey !== currentIdentityKey;
+        currentIdentityKey === undefined ||
+        summary?.currentIdentityKey !== currentIdentityKey ||
+        (!!item.seriesWatch && summary?.currentSeasonVersion !== active?.seasonVersion);
+      const declarationCoversAll =
+        item.seriesWatch &&
+        active &&
+        new Date(active.refreshedAt).toISOString().slice(0, 10) <=
+          new Date(item.seriesWatch.watchedAt).toISOString().slice(0, 10);
+      const currentGeneration = summary?.seriesWatchGeneration === item.seriesWatch?.generation;
+      const canInfer = declarationCoversAll && (!currentGeneration || !identityStale);
+      const inferredCount = Math.max(
+        0,
+        (active?.episodeCount ?? 0) -
+          (currentGeneration ? (summary?.seriesUnwatchedCount ?? 0) : 0),
+      );
       return {
-        season: summary.season,
-        watchedCount: summary.watchedCount,
-        total: summary.total,
-        currentWatchedCount: identityStale ? 0 : (summary.currentWatchedCount ?? 0),
-        currentTotal: identityStale ? 0 : (summary.currentTotal ?? 0),
-        identityStale,
+        season: seasonNumber,
+        watchedCount: summary?.watchedCount ?? 0,
+        total: summary?.total ?? 0,
+        currentWatchedCount: canInfer
+          ? inferredCount
+          : identityStale
+            ? 0
+            : (summary?.currentWatchedCount ?? 0),
+        currentTotal: canInfer
+          ? (active?.episodeCount ?? 0)
+          : identityStale
+            ? 0
+            : (summary?.currentTotal ?? 0),
+        identityStale: canInfer ? false : identityStale,
       };
     });
   },

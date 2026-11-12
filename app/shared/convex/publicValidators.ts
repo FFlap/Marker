@@ -90,6 +90,19 @@ export const itemValidator = v.object({
   updatedAt: v.number(),
   deletingAt: v.optional(v.number()),
   nextEpisode: v.optional(nextEpisodeValidator),
+  seriesWatch: v.optional(
+    v.object({
+      generation: v.string(),
+      hydrationToken: v.string(),
+      watchedAt: v.number(),
+      activityDate: v.string(),
+      hydration: v.union(v.literal('pending'), v.literal('complete'), v.literal('failed')),
+      attempts: v.number(),
+      retryAt: v.optional(v.number()),
+      leaseUntil: v.optional(v.number()),
+      hydratedAt: v.optional(v.number()),
+    }),
+  ),
 });
 export const episodeValidator = v.object({
   _id: v.id('episodes'),
@@ -113,6 +126,12 @@ export const episodeValidator = v.object({
   metadataProvider: metadataProviderValidator,
   seasonOrder: v.optional(v.string()),
   providerEpisodeId: v.optional(v.number()),
+  seriesWatchOverride: v.optional(v.string()),
+});
+export const episodeStateValidator = v.object({
+  ...episodeValidator.fields,
+  _id: v.optional(v.id('episodes')),
+  _creationTime: v.optional(v.number()),
 });
 const favoriteValidator = v.object({
   _id: v.id('items'),

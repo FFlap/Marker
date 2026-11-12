@@ -644,6 +644,14 @@ async function loadSeasonCatalog(
   season: number,
   force = false,
 ): Promise<AnimeEpisode[]> {
+  if (!force) {
+    const cached = await ctx.runQuery(internal.tvdbCatalog.readFreshSeason, {
+      id: tvdbId,
+      order,
+      season,
+    });
+    if (cached !== null) return cached;
+  }
   const catalog = await reusableCatalog(
     ctx,
     tvdbId,

@@ -87,6 +87,29 @@ export const get = internalQuery({
   },
 });
 
+/** Check a TMDB append request's season cache without returning episode payloads. */
+export const getFreshTmdbSeasonSnapshots = internalQuery({
+  args: { keys: v.array(v.string()) },
+  returns: v.array(v.boolean()),
+  handler: async (ctx, { keys }) => {
+    if (keys.length > 20 || keys.some((key) => !/^tmdb:season:\d+:\d+$/.test(key)))
+      throw new Error('Invalid TMDB season snapshot keys');
+    return Promise.all(
+      keys.map(async (key) => {
+        const stored = await ctx.db
+          .query('providerSnapshots')
+          .withIndex('by_key', (q) => q.eq('key', key))
+          .unique();
+        return (
+          !!stored &&
+          stored.entry.kind === 'episodes' &&
+          stored.refreshedAt > Date.now() - SNAPSHOT_TTL_MS
+        );
+      }),
+    );
+  },
+});
+
 export const CALENDAR_SNAPSHOT_BATCH_SIZE = 20;
 
 export const getCalendarSnapshots = internalQuery({

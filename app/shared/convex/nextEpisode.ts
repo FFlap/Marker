@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, type MutationCtx } from './_generated/server';
+import { effectiveEpisodeWatched } from './library/seriesWatchState';
 import { isEpisodeReleased } from './episodeAvailability';
 import { episodeMatchesCanonicalIdentity, seasonSummaryIdentityKey } from './episodeSummaries';
 import { requestRefresh } from './resolvedMetadata/touch';
@@ -226,18 +227,45 @@ async function continueRefreshPage(
     if (canonical.length) {
       const firstEpisode = canonical[0]!.episode;
       const lastEpisode = canonical[canonical.length - 1]!.episode;
-      const saved = await ctx.db
-        .query('episodes')
-        .withIndex('by_item_identity', (query) =>
-          query
-            .eq('itemId', item._id)
-            .eq('season', seasonInfo.season)
-            .eq('metadataProvider', season.metadataProvider)
-            .eq('seasonOrder', seasonOrder)
-            .gte('episode', firstEpisode)
-            .lte('episode', lastEpisode),
-        )
-        .take(EPISODES_PER_CHUNK + 1);
+      const saved = item.seriesWatch
+        ? lastEpisode - firstEpisode >= EPISODES_PER_CHUNK
+          ? (
+              await Promise.all(
+                canonical.map((episode) =>
+                  ctx.db
+                    .query('episodes')
+                    .withIndex('by_item', (q) =>
+                      q
+                        .eq('itemId', item._id)
+                        .eq('season', seasonInfo.season)
+                        .eq('episode', episode.episode),
+                    )
+                    .unique(),
+                ),
+              )
+            ).filter((row): row is Doc<'episodes'> => row !== null)
+          : await ctx.db
+              .query('episodes')
+              .withIndex('by_item', (q) =>
+                q
+                  .eq('itemId', item._id)
+                  .eq('season', seasonInfo.season)
+                  .gte('episode', firstEpisode)
+                  .lte('episode', lastEpisode),
+              )
+              .take(EPISODES_PER_CHUNK + 1)
+        : await ctx.db
+            .query('episodes')
+            .withIndex('by_item_identity', (query) =>
+              query
+                .eq('itemId', item._id)
+                .eq('season', seasonInfo.season)
+                .eq('metadataProvider', season.metadataProvider)
+                .eq('seasonOrder', seasonOrder)
+                .gte('episode', firstEpisode)
+                .lte('episode', lastEpisode),
+            )
+            .take(EPISODES_PER_CHUNK + 1);
       if (saved.length > EPISODES_PER_CHUNK)
         throw new Error('A canonical episode chunk has too many saved coordinates in its range');
       const savedByEpisode = new Map(saved.map((entry) => [entry.episode, entry]));
@@ -249,7 +277,14 @@ async function continueRefreshPage(
           seasonOrder,
           candidate.providerEpisodeId,
         );
-        if (!state?.watched || !matches) {
+        const watched = item.seriesWatch
+          ? effectiveEpisodeWatched(item.seriesWatch, state, candidate, {
+              metadataProvider: season.metadataProvider,
+              seasonOrder,
+              providerEpisodeId: candidate.providerEpisodeId,
+            })
+          : state?.watched && matches;
+        if (!watched) {
           const nextEpisode: NonNullable<Doc<'items'>['nextEpisode']> = {
             season: candidate.season,
             episode: candidate.episode,
