@@ -49,8 +49,8 @@ describe('Explore title metadata subscriptions', () => {
       const previewOverview = view.getByTestId('title-detail-overview');
       const previewPosterSource = view.getByTestId('title-detail-poster').props.source;
       expect(view.getByLabelText('Loading genres')).toBeTruthy();
-      expect(view.getByLabelText('Loading runtime')).toBeTruthy();
-      expect(view.getByLabelText('Loading rating')).toBeTruthy();
+      expect(view.queryByLabelText('Loading runtime')).toBeNull();
+      expect(view.queryByLabelText('Loading rating')).toBeNull();
       expect(view.getByLabelText('Loading cast')).toBeTruthy();
       expect(view.getByLabelText('Loading seasons')).toBeTruthy();
       expect(view.getByLabelText('Loading episodes')).toBeTruthy();
@@ -75,8 +75,9 @@ describe('Explore title metadata subscriptions', () => {
       expect(view.getByTestId('title-detail-name').props.children).toBe('Canonical Frieren');
       expect(view.getByText('Canonical overview that must not replace the preview.')).toBeTruthy();
       expect(view.getByText('Animation')).toBeTruthy();
-      expect(view.getByText('24 min')).toBeTruthy();
-      expect(view.getByText('8.7')).toBeTruthy();
+      expect(view.queryByText('Runtime')).toBeNull();
+      expect(view.queryByText('8.7')).toBeNull();
+      expect(view.queryByText('Rating')).toBeNull();
       expect(view.getByText('Atsumi Tanezaki')).toBeTruthy();
       expect(view.getByText('The Journey')).toBeTruthy();
       expect(view.queryByLabelText('Loading genres')).toBeNull();
@@ -158,27 +159,34 @@ describe('Explore title metadata subscriptions', () => {
   });
 
   it('hides the previous season while the selected season is still loading', async () => {
-    const view = await screen();
-    const nextSeason = mockState.mockSeasonView[2];
-    mockState.mockSeasonView[2] = mockState.mockSeasonView[1];
+    jest.useFakeTimers();
+    try {
+      const view = await screen();
+      const nextSeason = mockState.mockSeasonView[2];
+      mockState.mockSeasonView[2] = mockState.mockSeasonView[1];
 
-    await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
-    await fireEvent.press(view.getByLabelText('Select Season 2'));
-    expect(view.queryByText('The Journey')).toBeNull();
-    expect(view.queryByText('A New Journey')).toBeNull();
-    expect(view.getByLabelText('Loading')).toBeTruthy();
+      await fireEvent.press(view.getByLabelText('Choose season, current Season 1'));
+      await fireEvent.press(view.getByLabelText('Select Season 2'));
+      await act(async () => jest.advanceTimersByTime(100));
+      expect(view.queryByText('The Journey')).toBeNull();
+      expect(view.queryByText('A New Journey')).toBeNull();
+      expect(view.getByLabelText('Loading')).toBeTruthy();
 
-    mockState.mockSeasonView[2] = nextSeason;
-    await act(async () =>
-      view.rerender(
-        <ToastProvider>
-          <TitleDetail />
-        </ToastProvider>,
-      ),
-    );
-    expect(view.getByText('A New Journey')).toBeTruthy();
-    expect(view.queryByText('The Journey')).toBeNull();
-    expect(view.queryByLabelText('Loading')).toBeNull();
+      mockState.mockSeasonView[2] = nextSeason;
+      await act(async () =>
+        view.rerender(
+          <ToastProvider>
+            <TitleDetail />
+          </ToastProvider>,
+        ),
+      );
+      expect(view.getByText('A New Journey')).toBeTruthy();
+      expect(view.queryByText('The Journey')).toBeNull();
+      expect(view.queryByLabelText('Loading')).toBeNull();
+    } finally {
+      await cleanup();
+      jest.useRealTimers();
+    }
   });
 
   it('uses a server-relative delay even when the client clock is fast', async () => {

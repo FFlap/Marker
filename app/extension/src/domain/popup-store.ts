@@ -1,3 +1,4 @@
+import { transitionHydration, type HydrationState } from "./sync-lifecycle";
 import {
   BOOKMARKS_STORAGE_KEY,
   normalizeBookmarkStore,
@@ -31,7 +32,10 @@ export function createPopupStore(
 ) {
   let snapshot: PopupSnapshot = { bookmarks: [], signedIn: false };
   const listeners = new Set<() => void>();
-  let stop: (() => void) | undefined;
+  let subscription:
+    { state: "stopped" } | { state: "subscribed"; stop: () => void } = {
+    state: "stopped",
+  };
   let statusRevision = 0;
 
   const update = (patch: Partial<PopupSnapshot>) => {
@@ -42,13 +46,16 @@ export function createPopupStore(
   const start = () => {
     const controller = new AbortController();
     const revision = ++statusRevision;
-    let bookmarksChanged = false;
-    let lastResultChanged = false;
+    let bookmarkHydration: HydrationState = "pending";
+    let resultHydration: HydrationState = "pending";
     const active = () => !controller.signal.aborted;
     const onStorageChanged: StorageListener = (changes, areaName) => {
       if (areaName !== "local") return;
       if (changes[BOOKMARKS_STORAGE_KEY]) {
-        bookmarksChanged = true;
+        bookmarkHydration = transitionHydration(
+          bookmarkHydration,
+          "storageChanged",
+        );
         update({
           bookmarks: sortBookmarks(
             normalizeBookmarkStore(changes[BOOKMARKS_STORAGE_KEY].newValue)
@@ -58,7 +65,10 @@ export function createPopupStore(
       }
       const lastResultChange = changes[SYNC_LAST_RESULT_KEY];
       if (lastResultChange) {
-        lastResultChanged = true;
+        resultHydration = transitionHydration(
+          resultHydration,
+          "storageChanged",
+        );
         update({ lastResult: parseLastResult(lastResultChange.newValue) });
       }
     };
@@ -66,19 +76,19 @@ export function createPopupStore(
 
     void client.bookmarks(controller.signal).then(
       (bookmarks) => {
-        if (active() && !bookmarksChanged) update({ bookmarks });
+        if (active() && bookmarkHydration === "pending") update({ bookmarks });
       },
       () => {
-        if (active() && !bookmarksChanged)
+        if (active() && bookmarkHydration === "pending")
           update({ bookmarkError: "Couldn’t read saved episodes" });
       },
     );
     void client.lastResult(controller.signal).then(
       (lastResult) => {
-        if (active() && !lastResultChanged) update({ lastResult });
+        if (active() && resultHydration === "pending") update({ lastResult });
       },
       () => {
-        if (active() && !lastResultChanged)
+        if (active() && resultHydration === "pending")
           update({ syncError: "Couldn’t read the last sync result" });
       },
     );
@@ -104,12 +114,13 @@ export function createPopupStore(
     getSnapshot: () => snapshot,
     subscribe: (listener: () => void) => {
       listeners.add(listener);
-      if (listeners.size === 1) stop = start();
+      if (listeners.size === 1)
+        subscription = { state: "subscribed", stop: start() };
       return () => {
         listeners.delete(listener);
         if (!listeners.size) {
-          stop?.();
-          stop = undefined;
+          if (subscription.state === "subscribed") subscription.stop();
+          subscription = { state: "stopped" };
         }
       };
     },

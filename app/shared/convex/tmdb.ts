@@ -96,8 +96,6 @@ export function mapMovieDetails(r: Json) {
     posterPath: string(r.poster_path),
     overview: string(r.overview),
     releaseDate: string(r.release_date),
-    voteAverage: number(r.vote_average),
-    runtime: number(r.runtime),
     genres: withAnimeGenre(r, genreNames),
     cast: mapCast(r.credits),
   };
@@ -125,7 +123,6 @@ export function mapTvDetails(r: Json) {
     posterPath: string(r.poster_path),
     overview: string(r.overview),
     firstAirDate: string(r.first_air_date),
-    voteAverage: number(r.vote_average),
     episodeRunTime: (array(r.episode_run_time) ?? []).flatMap((value) => {
       const runtime = number(value);
       return runtime === undefined ? [] : [runtime];

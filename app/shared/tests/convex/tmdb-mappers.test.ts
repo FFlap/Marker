@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mapSearchResponse, mapSeasonDetails, mapTvDetails } from '../../convex/tmdb';
+import {
+  mapMovieDetails,
+  mapSearchResponse,
+  mapSeasonDetails,
+  mapTvDetails,
+} from '../../convex/tmdb';
 
 describe('TMDB mapper contracts', () => {
   it('does not expose announced episode totals for seasons that have not premiered', () => {
@@ -83,4 +88,13 @@ describe('TMDB mapper contracts', () => {
       }),
     ).toEqual([expect.objectContaining({ season: 0, episode: 0 })]);
   });
+});
+
+it('omits retired title facts from provider metadata', () => {
+  const movie = mapMovieDetails({ id: 1, title: 'Movie', runtime: 120, vote_average: 8 });
+  const tv = mapTvDetails({ id: 2, name: 'Show', vote_average: 9, episode_run_time: [24] });
+  expect(movie).not.toHaveProperty('runtime');
+  expect(movie).not.toHaveProperty('voteAverage');
+  expect(tv).not.toHaveProperty('voteAverage');
+  expect(tv.episodeRunTime).toEqual([24]);
 });

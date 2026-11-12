@@ -1,7 +1,7 @@
+import { useTaskState } from '@/hooks/use-task-state';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
 import { useToast } from '@/components/ui/Toast';
@@ -11,7 +11,7 @@ export function useTagVisibility(tag: string) {
   const visibility = useQuery(api.tags.visibility, tag ? { tag } : 'skip');
   const setVisibility = useMutation(api.tags.setVisibility);
   const toast = useToast();
-  const [pending, setPending] = useState(false);
+  const { pending, setPending } = useTaskState();
   const loading = !tag || visibility === undefined;
 
   const update = async (isPublic: boolean) => {

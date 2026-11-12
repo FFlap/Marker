@@ -1,3 +1,4 @@
+import { advanceDiscovery } from './lifecycles';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
@@ -63,8 +64,8 @@ export const checkpoint = internalMutation({
           ...candidate,
         });
     }
-    const nextFeed = page >= totalPages ? feed + 1 : feed;
-    const done = nextFeed >= (region === 'tv' ? 1 : 2);
+    const next = advanceDiscovery(feed, page, totalPages, region === 'tv' ? 1 : 2);
+    const done = next.state === 'publish';
     await ctx.db.patch(
       row._id,
       done
@@ -85,8 +86,8 @@ export const checkpoint = internalMutation({
         : {
             stagingCount: count,
             discoveryFailures: 0,
-            discoveryFeed: nextFeed,
-            discoveryPage: nextFeed === feed ? page + 1 : 1,
+            discoveryFeed: next.state === 'next' ? next.feed : feed,
+            discoveryPage: next.state === 'next' ? next.page : page,
             leaseExpiresAt: Date.now() + 120_000,
           },
     );

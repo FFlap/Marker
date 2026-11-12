@@ -1,3 +1,7 @@
+import { CastSection } from '@/features/title/components/CastSection';
+import { ExpandableOverview } from '@/components/ExpandableOverview';
+import { usePendingTasks } from '@/hooks/use-pending-tasks';
+import { useTaskState } from '@/hooks/use-task-state';
 import { castForDisplay } from '@marker/shared/castPresentation';
 import { RemoveTitleDialog } from '@/components/RemoveTitleDialog';
 import { ScreenView } from '@/components/ScreenLayout';
@@ -5,7 +9,7 @@ import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
-import { FlatList, Linking, Pressable, ScrollView, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Linking, Pressable, RefreshControl, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import Pencil from 'lucide-react-native/icons/pencil';
@@ -83,15 +87,15 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [expanded, setExpanded] = useState<string>();
   const [editingEpisode, setEditingEpisode] = useState<string>();
   const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
-  const [pendingEpisodes, setPendingEpisodes] = useState<Set<string>>(() => new Set());
-  const [removePending, setRemovePending] = useState(false);
+  const [pendingEpisodes, setPendingEpisodes] = usePendingTasks();
+  const { pending: removePending, setPending: setRemovePending } = useTaskState();
   const [removeError, setRemoveError] = useState<string>();
   const [removeOpen, setRemoveOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
   const [tagPrefix, setTagPrefix] = useState('');
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
-  const [entrySaving, setEntrySaving] = useState(false);
-  const [seasonPending, setSeasonPending] = useState(false);
+  const { pending: entrySaving, setPending: setEntrySaving } = useTaskState();
+  const { pending: seasonPending, setPending: setSeasonPending } = useTaskState();
   const draft = item;
   const [episodeDrafts, setEpisodeDrafts] = useState<Record<string, PendingEpisodeDraft>>({});
   // IDs are allocated only in event handlers and never reused after acknowledgment.
@@ -382,7 +386,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 ) : null}
               </View>
             </View>
-            {overview ? <Text style={s.overview}>{overview}</Text> : null}
+            {overview ? (
+              <ExpandableOverview key={overview} text={overview} style={s.overview} />
+            ) : null}
             {detailsError && !title && (
               <View style={s.inlineError}>
                 <Text style={s.errorText}>Title details couldn’t be loaded.</Text>
@@ -454,29 +460,15 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 removePending={removePending}
               />
             )}
-            {visibleCast.length > 0 && (
-              <>
-                <SectionHeader title="Cast" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {visibleCast.map((c) => (
-                    <View key={`${c.name}-${c.character}`} style={s.cast}>
-                      <PosterImage
-                        path={c.profilePath}
-                        imageUrl={c.characterImageUrl}
-                        title={c.name}
-                        style={{ width: 72, height: 96 }}
-                      />
-                      <Text numberOfLines={1} style={s.castName}>
-                        {c.name}
-                      </Text>
-                      <Text numberOfLines={1} style={s.castRole}>
-                        {c.character}
-                      </Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              </>
-            )}
+            <CastSection
+              members={visibleCast}
+              loading={
+                (!detail || titleRequestState?.state === 'inFlight') &&
+                titleRequestState?.state !== 'failed' &&
+                touchError === undefined
+              }
+            />
+
             {item.mediaType === 'tv' && (
               <>
                 <SectionHeader title="Episodes" />

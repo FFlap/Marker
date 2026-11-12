@@ -1,3 +1,6 @@
+import { CastSection } from '@/features/title/components/CastSection';
+import { ExpandableOverview } from '@/components/ExpandableOverview';
+import { useTaskState } from '@/hooks/use-task-state';
 import { castForDisplay } from '@marker/shared/castPresentation';
 import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
@@ -6,7 +9,7 @@ import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import type { Episode } from '@/features/title/libraryItemTypes';
 import { useMemo, useState } from 'react';
-import { FlatList, Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { FlatList, Linking, Pressable, RefreshControl, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
@@ -41,7 +44,7 @@ function MetadataPlaceholder({
   kind,
 }: {
   label: string;
-  kind: 'chip' | 'stat' | 'cast' | 'episodes';
+  kind: 'chip' | 'stat' | 'episodes';
 }) {
   return (
     <View
@@ -122,7 +125,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const failed = !detail && (titleRequestState?.state === 'failed' || touchError !== undefined);
   const [entryOpen, setEntryOpen] = useState(false);
   const [tagPrefix, setTagPrefix] = useState('');
-  const [entrySaving, setEntrySaving] = useState(false);
+  const { pending: entrySaving, setPending: setEntrySaving } = useTaskState();
   const canonicalSeason = useSeasonView(
     mediaType === 'tv' && validId ? { tmdbId, season } : undefined,
   );
@@ -159,11 +162,9 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const visibleCast = castForDisplay(meta.cast ?? [], meta.genres);
   const overview = meta.overview?.trim();
   const availableSeasons = getAvailableSeasons(meta.seasons);
-  const averageRuntime =
-    detail?.runtime ??
-    (detail?.episodeRunTime?.length
-      ? detail.episodeRunTime.reduce((sum, value) => sum + value, 0) / detail.episodeRunTime.length
-      : undefined);
+  const averageRuntime = detail?.episodeRunTime?.length
+    ? detail.episodeRunTime.reduce((sum, value) => sum + value, 0) / detail.episodeRunTime.length
+    : undefined;
   const initialEntry: LibraryEntryDraft = {
     status: 'watchlist',
     rating: undefined,
@@ -378,34 +379,13 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               </View>
             </View>
             {overview ? (
-              <Text testID="title-detail-overview" style={s.overview}>
-                {overview}
-              </Text>
+              <ExpandableOverview
+                key={`${mediaType}:${tmdbId}:${overview}`}
+                text={overview}
+                testID="title-detail-overview"
+                style={s.overview}
+              />
             ) : null}
-
-            <View style={s.facts}>
-              {detail ? (
-                <>
-                  <View style={s.fact}>
-                    <Text style={s.factLabel}>Runtime</Text>
-                    <Text style={s.factValue}>
-                      {averageRuntime === undefined ? '—' : `${Math.round(averageRuntime)} min`}
-                    </Text>
-                  </View>
-                  <View style={s.fact}>
-                    <Text style={s.factLabel}>Rating</Text>
-                    <Text style={s.factValue}>
-                      {detail.voteAverage === undefined ? '—' : detail.voteAverage.toFixed(1)}
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <MetadataPlaceholder label="Loading runtime" kind="stat" />
-                  <MetadataPlaceholder label="Loading rating" kind="stat" />
-                </>
-              )}
-            </View>
 
             {loading && heroOwner !== 'preview' && <TitleSkeleton />}
             {failed && (
@@ -429,37 +409,14 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
             />
             <Text style={s.noEntry}>This title isn’t in your library yet.</Text>
 
-            {!detail ? (
-              <>
-                <SectionHeader title="Cast" />
-                <View style={s.castPlaceholders}>
-                  <MetadataPlaceholder label="Loading cast" kind="cast" />
-                  <MetadataPlaceholder label="Loading more cast" kind="cast" />
-                </View>
-              </>
-            ) : visibleCast.length > 0 ? (
-              <>
-                <SectionHeader title="Cast" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  {visibleCast.map((member) => (
-                    <View key={`${member.name}-${member.character}`} style={s.cast}>
-                      <PosterImage
-                        path={member.profilePath}
-                        imageUrl={member.characterImageUrl}
-                        title={member.name}
-                        style={s.castImage}
-                      />
-                      <Text numberOfLines={1} style={s.castName}>
-                        {member.name}
-                      </Text>
-                      <Text numberOfLines={1} style={s.castRole}>
-                        {member.character}
-                      </Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              </>
-            ) : null}
+            <CastSection
+              members={visibleCast}
+              loading={
+                (!detail || titleRequestState?.state === 'inFlight') &&
+                titleRequestState?.state !== 'failed' &&
+                touchError === undefined
+              }
+            />
 
             {mediaType === 'tv' && (
               <>

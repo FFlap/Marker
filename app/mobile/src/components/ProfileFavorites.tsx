@@ -66,7 +66,7 @@ export function ProfileFavorites({
   const toast = useToast();
   const [pendingId, setPendingId] = useState<string>();
   const [orders, setOrders] = useState<Partial<Record<FavoriteSection, string[]>>>({});
-  const reorderPending = useRef(false);
+  const reorderPending = useRef<'idle' | 'pending'>('idle');
   const persisted = useMemo(
     () => [...favorites].sort((left, right) => left.rank - right.rank),
     [favorites],
@@ -89,12 +89,12 @@ export function ProfileFavorites({
 
   const move = async (section: FavoriteSection, from: number, to: number) => {
     const displayed = displayedFor(section);
-    if (reorderPending.current) return;
+    if (reorderPending.current === 'pending') return;
     if (from === to || !displayed[from]) return;
     const next = [...displayed];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved!);
-    reorderPending.current = true;
+    reorderPending.current = 'pending';
     setOrders((current) => ({ ...current, [section]: next.map((favorite) => favorite._id) }));
     await runOperation.write(
       Effect.gen(function* () {
@@ -116,7 +116,7 @@ export function ProfileFavorites({
           toast.show(`Couldn’t save the ${sectionLabel(section)} order`);
         },
         settled: () => {
-          reorderPending.current = false;
+          reorderPending.current = 'idle';
         },
       },
     );

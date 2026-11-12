@@ -1,3 +1,4 @@
+import { transitionRematch } from './lifecycles';
 import { Effect } from 'effect';
 import { actionFailureCause, attempt, runActionEffect } from './actionEffects';
 import {
@@ -368,12 +369,12 @@ export async function commitWatchWithOneRematch<T>(
       Effect.catch((error) =>
         Effect.gen(function* () {
           const staleCode = convexErrorCode(actionFailureCause(error));
-          if (staleCode !== 'stale_season_version' && staleCode !== 'stale_epoch')
-            return yield* Effect.fail(error);
-          if (staleCode === 'stale_epoch') yield* attempt(refreshEpoch);
+          const retry = transitionRematch({ state: 'initial' }, staleCode);
+          if (retry.state !== 'rematching') return yield* Effect.fail(error);
+          if (retry.refreshEpoch) yield* attempt(refreshEpoch);
           const rematched = yield* attempt(rematch);
           if (!rematched)
-            return yield* Effect.fail(new ConvexError({ code: staleCode, retryable: true }));
+            return yield* Effect.fail(new ConvexError({ code: retry.code, retryable: true }));
           // Exactly one rematch, never a blanket retry of the write workflow.
           const recorded = yield* attempt(() => commit(rematched));
           return { resolved: rematched, recorded };
@@ -488,12 +489,21 @@ async function recordWatchForUser(
       season,
     });
     const episodes: CanonicalEpisode[] = matchedSeason?.episodes ? [...matchedSeason.episodes] : [];
-    for (let chunkIndex = 1; chunkIndex < (matchedSeason?.chunkCount ?? 0); chunkIndex += 1) {
-      const chunk = await ctx.runQuery(internal.resolvedMetadata.reads.readSeasonChunk, {
-        tmdbId: item!.tmdbId,
-        season,
-        chunkIndex,
-      });
+    const chunks = await runActionEffect(
+      Effect.forEach(
+        Array.from({ length: Math.max(0, (matchedSeason?.chunkCount ?? 0) - 1) }, (_, i) => i + 1),
+        (chunkIndex) =>
+          attempt(() =>
+            ctx.runQuery(internal.resolvedMetadata.reads.readSeasonChunk, {
+              tmdbId: item!.tmdbId,
+              season,
+              chunkIndex,
+            }),
+          ),
+        { concurrency: 4 },
+      ),
+    );
+    for (const chunk of chunks) {
       if (!chunk) break;
       episodes.push(...chunk.episodes);
     }

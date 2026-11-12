@@ -1,3 +1,4 @@
+import { useTaskState } from '@/hooks/use-task-state';
 import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
@@ -56,7 +57,7 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   const [rating, setRating] = useState<number>();
   const [times, setTimes] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const { pending: submitting, setPending: setSubmitting } = useTaskState();
   const changeStatus = (nextStatus: Status) => {
     setStatus(nextStatus);
     setTimes((current) =>
@@ -104,12 +105,10 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
     ) ?? [];
   const visibleResults =
     filter === 'all' ? results : results.filter((result) => result.mediaType === filter);
-  const resolvedRuntime =
-    resolvedTitle?.runtime ??
-    (resolvedTitle?.episodeRunTime?.length
-      ? resolvedTitle.episodeRunTime.reduce((total, value) => total + value, 0) /
-        resolvedTitle.episodeRunTime.length
-      : undefined);
+  const resolvedRuntime = resolvedTitle?.episodeRunTime?.length
+    ? resolvedTitle.episodeRunTime.reduce((total, value) => total + value, 0) /
+      resolvedTitle.episodeRunTime.length
+    : undefined;
   const submit = async () => {
     if (!picked || resolvedTitle === undefined || submitting) return;
     setSubmitting(true);

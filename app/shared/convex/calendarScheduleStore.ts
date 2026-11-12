@@ -1,3 +1,4 @@
+import { scheduleWriteState } from './lifecycles';
 import { v, type Infer } from 'convex/values';
 import {
   internalMutation,
@@ -69,11 +70,13 @@ export const writeChunk = internalMutation({
       .query('calendarSchedules')
       .withIndex('by_key', (q) => q.eq('key', key))
       .unique();
+    const write = scheduleWriteState(row);
     if (
       !row ||
-      row.stagingVersion !== token ||
-      row.stagingNextChunk !== chunk ||
-      row.stagingRefreshedAt !== refreshedAt
+      write.state !== 'writing' ||
+      write.token !== token ||
+      write.nextChunk !== chunk ||
+      write.refreshedAt !== refreshedAt
     )
       return false;
     await ctx.db.insert('calendarReleaseChunks', { key, month, version: token, chunk, events });

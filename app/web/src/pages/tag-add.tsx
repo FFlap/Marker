@@ -1,3 +1,4 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { Effect } from "effect";
 import { saveLibrary } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
@@ -21,8 +22,12 @@ export function TagAddPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<Id<"items">>>(() => new Set());
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const {
+    pending: saving,
+    error,
+    setPending: setSaving,
+    setError,
+  } = useTaskState();
   const tagKey = tag.trim().toLocaleLowerCase();
   const filtered = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();

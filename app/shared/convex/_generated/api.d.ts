@@ -35,6 +35,7 @@ import type * as library_seasonWatched from "../library/seasonWatched.js";
 import type * as library_seriesWatchState from "../library/seriesWatchState.js";
 import type * as library_shared from "../library/shared.js";
 import type * as library_watchMetadata from "../library/watchMetadata.js";
+import type * as lifecycles from "../lifecycles.js";
 import type * as mergePolicy from "../mergePolicy.js";
 import type * as nextEpisode from "../nextEpisode.js";
 import type * as notifications from "../notifications.js";
@@ -112,6 +113,7 @@ declare const fullApi: ApiFromModules<{
   "library/seriesWatchState": typeof library_seriesWatchState;
   "library/shared": typeof library_shared;
   "library/watchMetadata": typeof library_watchMetadata;
+  lifecycles: typeof lifecycles;
   mergePolicy: typeof mergePolicy;
   nextEpisode: typeof nextEpisode;
   notifications: typeof notifications;

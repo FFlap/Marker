@@ -1,3 +1,4 @@
+import { seasonWriteState } from './lifecycles';
 import type { Doc } from './_generated/dataModel';
 import type { MutationCtx, QueryCtx } from './_generated/server';
 import { internalQuery } from './_generated/server';
@@ -191,15 +192,13 @@ export async function appendPrechunkedSeasonChunk(
       query.eq('tmdbId', args.tmdbId).eq('season', args.season),
     )
     .unique();
+  const write = seasonWriteState(parent);
   if (
     !parent ||
-    parent.writeAttemptToken !== args.attemptToken ||
-    parent.stagingVersion !== args.attemptToken ||
-    parent.stagingOrderEpoch !== args.orderEpoch ||
-    parent.nextChunkIndex !== args.chunkIndex ||
-    parent.stagingChunkCount === undefined ||
-    parent.stagingRefreshedAt === undefined ||
-    args.chunkIndex >= parent.stagingChunkCount
+    write.state !== 'writing' ||
+    write.token !== args.attemptToken ||
+    write.orderEpoch !== args.orderEpoch ||
+    write.nextChunk !== args.chunkIndex
   )
     return false;
   const existing = await ctx.db
@@ -219,7 +218,7 @@ export async function appendPrechunkedSeasonChunk(
     orderEpoch: args.orderEpoch,
     seasonVersion: args.attemptToken,
     chunkIndex: args.chunkIndex,
-    refreshedAt: parent.stagingRefreshedAt,
+    refreshedAt: write.refreshedAt,
     episodes: args.episodes,
   });
   const nextChunkIndex = args.chunkIndex + 1;
@@ -237,30 +236,18 @@ export async function finalizePrechunkedSeasonWrite(
       query.eq('tmdbId', args.tmdbId).eq('season', args.season),
     )
     .unique();
-  if (
-    !parent ||
-    parent.writeAttemptToken !== args.attemptToken ||
-    parent.stagingVersion !== args.attemptToken ||
-    parent.stagingMetadataProvider === undefined ||
-    parent.stagingEpisodeCount === undefined ||
-    parent.stagingChunkCount === undefined ||
-    parent.stagingRefreshedAt === undefined ||
-    parent.stagingOrderEpoch === undefined ||
-    parent.nextChunkIndex !== parent.stagingChunkCount
-  )
-    return false;
+  const write = seasonWriteState(parent);
+  if (!parent || write.state !== 'ready' || write.token !== args.attemptToken) return false;
   const staged = await chunksForVersion(ctx, {
     tmdbId: args.tmdbId,
     season: args.season,
     seasonVersion: args.attemptToken,
-    limit: parent.stagingChunkCount + 1,
+    limit: write.chunkCount + 1,
   });
-  if (staged.length !== parent.stagingChunkCount) return false;
+  if (staged.length !== write.chunkCount) return false;
   staged.sort((left, right) => left.chunkIndex - right.chunkIndex);
   if (staged.some((chunk, index) => chunk.chunkIndex !== index)) return false;
-  if (
-    staged.reduce((total, chunk) => total + chunk.episodes.length, 0) !== parent.stagingEpisodeCount
-  )
+  if (staged.reduce((total, chunk) => total + chunk.episodes.length, 0) !== write.episodeCount)
     return false;
 
   let oldChunks: Awaited<ReturnType<typeof chunksForVersion>> = [];
@@ -280,14 +267,14 @@ export async function finalizePrechunkedSeasonWrite(
   }
   for (const chunk of oldChunks) await ctx.db.delete(chunk._id);
   await ctx.db.patch(parent._id, {
-    metadataProvider: parent.stagingMetadataProvider,
-    episodeCount: parent.stagingEpisodeCount,
-    chunkCount: parent.stagingChunkCount,
+    metadataProvider: write.metadataProvider,
+    episodeCount: write.episodeCount,
+    chunkCount: write.chunkCount,
     chunksComplete: true,
-    seasonVersion: parent.stagingVersion,
-    refreshedAt: parent.stagingRefreshedAt,
+    seasonVersion: write.token,
+    refreshedAt: write.refreshedAt,
     refreshAfter: parent.stagingRefreshAfter,
-    orderEpoch: parent.stagingOrderEpoch,
+    orderEpoch: write.orderEpoch,
     writeAttemptToken: undefined,
     nextChunkIndex: undefined,
     stagingVersion: undefined,

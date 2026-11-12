@@ -1,3 +1,4 @@
+import { useTaskState } from '@/hooks/use-task-state';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
@@ -31,7 +32,7 @@ export default function AddTitlesToTagScreen() {
   const toast = useToast();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
+  const { pending: saving, setPending: setSaving } = useTaskState();
   const tagKey = tag.trim().toLocaleLowerCase();
 
   const filtered = useMemo(() => {

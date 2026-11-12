@@ -1,3 +1,5 @@
+import { useCrossSectionDrop } from '@/hooks/use-cross-section-drop';
+import { useTaskState } from '@/hooks/use-task-state';
 import { localDateKey } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -43,6 +45,7 @@ import {
 } from '@/features/tags/components/TagScreenParts';
 
 export default function TagDetailScreen() {
+  const insertion = useCrossSectionDrop();
   const runOperation = useOperation();
   const params = useLocalSearchParams<{ tag?: string | string[] }>();
   const tag = Array.isArray(params.tag) ? params.tag[0] : (params.tag ?? '');
@@ -55,7 +58,7 @@ export default function TagDetailScreen() {
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
   const toast = useToast();
   const tagVisibility = useTagVisibility(tag);
-  const [statusMovePending, setStatusMovePending] = useState(false);
+  const { pending: statusMovePending, setPending: setStatusMovePending } = useTaskState();
   const statusMovePendingRef = useRef(false);
   const [pendingWatchedMove, setPendingWatchedMove] = useState<RankedItem>();
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});
@@ -112,9 +115,20 @@ export default function TagDetailScreen() {
     type,
     visibleStatuses,
   } = collection;
+  const unacknowledgedStatuses = Object.entries(optimisticStatuses).filter(([id, status]) => {
+    const saved = library?.find((item) => String(item._id) === id);
+    return saved && saved.status !== status;
+  });
+  const awaitingStatusQuery = unacknowledgedStatuses.length > 0;
+  if (
+    library &&
+    !statusMovePending &&
+    unacknowledgedStatuses.length !== Object.keys(optimisticStatuses).length
+  )
+    setOptimisticStatuses(Object.fromEntries(unacknowledgedStatuses));
   const acknowledgedOrders = useMemo(
     () =>
-      optimisticState.tagKey !== tagKey || statusMovePending
+      optimisticState.tagKey !== tagKey || statusMovePending || awaitingStatusQuery
         ? []
         : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
             const order = optimisticState.orders[status];
@@ -125,7 +139,7 @@ export default function TagDetailScreen() {
               saved.map((item) => String(item._id)),
             );
           }),
-    [members, optimisticState, pendingReorders, statusMovePending, tagKey],
+    [awaitingStatusQuery, members, optimisticState, pendingReorders, statusMovePending, tagKey],
   );
   if (acknowledgedOrders.length) {
     const orders = { ...optimisticState.orders };
@@ -187,7 +201,11 @@ export default function TagDetailScreen() {
       },
     );
   };
-  const performCategoryMove = async (item: RankedItem, targetStatus: Status) => {
+  const performCategoryMove = async (
+    item: RankedItem,
+    targetStatus: Status,
+    targetIndex?: number,
+  ) => {
     if (filtersActive || statusMovePendingRef.current || item.status === targetStatus) return;
     const sourceStatus = item.status;
     const sourceItems = sectionItems(sourceStatus).filter((entry) => entry._id !== item._id);
@@ -195,7 +213,22 @@ export default function TagDetailScreen() {
     const targetLibraryItems = (library ?? [])
       .filter((entry) => entry.status === targetStatus && entry._id !== item._id)
       .sort((left, right) => left.rank - right.rank);
-    const nextTarget = [...targetItems, { ...item, status: targetStatus }];
+    const index = Math.min(targetIndex ?? targetItems.length, targetItems.length);
+    const nextTarget = [...targetItems];
+    nextTarget.splice(index, 0, { ...item, status: targetStatus });
+    const clearMoveOrder = () =>
+      setOptimisticState((current) =>
+        current.tagKey === tagKey
+          ? {
+              tagKey,
+              orders: {
+                ...current.orders,
+                [sourceStatus]: undefined,
+                [targetStatus]: undefined,
+              },
+            }
+          : current,
+      );
 
     statusMovePendingRef.current = true;
     setStatusMovePending(true);
@@ -227,7 +260,12 @@ export default function TagDetailScreen() {
           );
         else yield* saveLibrary(() => reorderItem({ ...placement, status: targetStatus }));
         return yield* saveLibrary(() =>
-          reorderTagItem({ tag, itemId: item._id, beforeId: targetItems.at(-1)?._id }),
+          reorderTagItem({
+            tag,
+            itemId: item._id,
+            beforeId: targetItems[index - 1]?._id,
+            afterId: targetItems[index]?._id,
+          }),
         ).pipe(
           Effect.as(true),
           Effect.catchTag('LibraryError', () => Effect.succeed(false)),
@@ -235,7 +273,10 @@ export default function TagDetailScreen() {
       }),
       {
         success: (ordered) => {
-          if (!ordered) toast.show('Title moved, but its tag order couldn’t be saved');
+          if (!ordered) {
+            clearMoveOrder();
+            toast.show('Title moved, but its tag order couldn’t be saved');
+          }
         },
         failure: () => {
           toast.show(
@@ -243,43 +284,33 @@ export default function TagDetailScreen() {
               ? 'Couldn’t mark every episode watched'
               : 'Couldn’t move this title',
           );
-        },
-        settled: () => {
           setOptimisticStatuses((current) => {
             const next = { ...current };
             delete next[String(item._id)];
             return next;
           });
-          setOptimisticState((current) =>
-            current.tagKey === tagKey
-              ? {
-                  tagKey,
-                  orders: {
-                    ...current.orders,
-                    [sourceStatus]: undefined,
-                    [targetStatus]: undefined,
-                  },
-                }
-              : current,
-          );
+          clearMoveOrder();
+        },
+        settled: () => {
           statusMovePendingRef.current = false;
           setStatusMovePending(false);
         },
       },
     );
   };
-  const requestCategoryMove = (itemId: string, targetStatus: Status) => {
+  const requestCategoryMove = (itemId: string, targetStatus: Status, index?: number) => {
     if (filtersActive || statusMovePendingRef.current) return;
     const item = members.find((entry) => String(entry._id) === itemId);
     if (!item || item.status === targetStatus) return;
     if (targetStatus === 'watched') {
+      insertion.pendingIndex.current = index;
       setPendingWatchedMove(item);
       return;
     }
-    void performCategoryMove(item, targetStatus);
+    void performCategoryMove(item, targetStatus, index);
   };
   const updateNativeDragTarget = useCallback(
-    (_sourceStatus: Status, contentY: number) => {
+    (sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
       if (!nativeDragRef.current) return;
       let target: Status | undefined;
       let nearestDistance = Number.POSITIVE_INFINITY;
@@ -294,22 +325,35 @@ export default function TagDetailScreen() {
           target = status;
         }
       }
-      if (target === nativeTargetRef.current) return;
-      nativeTargetRef.current = target;
-      setNativeTargetStatus(target);
+      target = insertion.update(target, x, y, offset);
+      const sourceLayout = sectionLayouts[sourceStatus];
+      if (
+        target === sourceStatus &&
+        sourceLayout &&
+        (contentY < sourceLayout.top || contentY > sourceLayout.top + sourceLayout.height)
+      )
+        target = undefined;
+      if (target !== nativeTargetRef.current) {
+        nativeTargetRef.current = target;
+        setNativeTargetStatus(target);
+      }
+      return target === sourceStatus;
     },
-    [sectionLayouts],
+    [sectionLayouts, insertion],
   );
   const finishNativeDrag = (status: Status, _data: RankedItem[], from: number, to: number) => {
     const dragged = nativeDragRef.current;
     const target = nativeTargetRef.current;
+    const index = insertion.indexRef.current;
+    insertion.clear();
     nativeDragRef.current = undefined;
     nativeTargetRef.current = undefined;
     setNativePosterDragActive(false);
     setNativeDragPreview(undefined);
     setNativeTargetStatus(undefined);
+    if (dragged && !target) return;
     if (dragged && target && target !== status) {
-      requestCategoryMove(String(dragged.item._id), target);
+      requestCategoryMove(String(dragged.item._id), target, index);
       return;
     }
     if (from !== to) void reorder(status, sectionItems(status), from, to);
@@ -353,6 +397,7 @@ export default function TagDetailScreen() {
     });
   };
   const cancelNativePosterDrag = () => {
+    insertion.clear();
     nativeDragRef.current = undefined;
     nativeTargetRef.current = undefined;
     setNativePosterDragActive(false);
@@ -424,7 +469,16 @@ export default function TagDetailScreen() {
             onChange={updateGridColumns}
           >
             {visibleStatuses.map(([status, label]) => {
-              const items = sectionItems(status);
+              let items = sectionItems(status);
+              if (pendingWatchedMove && !statusMovePending && !filtersActive) {
+                items = items.filter((item) => item._id !== pendingWatchedMove._id);
+                if (status === 'watched')
+                  items.splice(
+                    insertion.pendingIndex.current ?? items.length,
+                    0,
+                    pendingWatchedMove,
+                  );
+              }
               return (
                 <View
                   key={status}
@@ -432,7 +486,7 @@ export default function TagDetailScreen() {
                     const { height, y } = event.nativeEvent.layout;
                     setSectionLayouts((current) => ({
                       ...current,
-                      [status]: { height, top: y },
+                      [status]: { height, top: y + TAG_HEADER_HEIGHT },
                     }));
                   }}
                   style={[
@@ -447,7 +501,12 @@ export default function TagDetailScreen() {
                     <Text style={s.sectionTitle}>{label}</Text>
                     <Text style={s.count}>{items.length.toString().padStart(2, '0')}</Text>
                   </View>
-                  {!items.length ? (
+                  {!items.length &&
+                  !(
+                    nativeDragRef.current &&
+                    nativeTargetStatus === status &&
+                    nativeDragRef.current.status !== status
+                  ) ? (
                     <EmptyState
                       title={filtersActive ? 'No matches' : 'Nothing here yet'}
                       detail={
@@ -460,8 +519,22 @@ export default function TagDetailScreen() {
                     <NativeDraggableGrid
                       key={`${view}-${view === 'posters' ? gridColumns : listColumns}`}
                       autoScroll={nativePosterAutoScroll}
+                      sectionTop={sectionLayouts[status]?.top}
                       contentContainerStyle={
                         view === 'posters' ? s.grid : { rowGap: listColumns === 2 ? 12 : 0 }
+                      }
+                      onDropTarget={(target) => {
+                        insertion.targets.current[status] = target;
+                      }}
+                      externalPlaceholder={
+                        nativeDragRef.current &&
+                        nativeTargetStatus === status &&
+                        nativeDragRef.current.status !== status
+                          ? {
+                              index: insertion.index ?? 0,
+                              height: nativeDragPreview?.layout.height ?? 48,
+                            }
+                          : undefined
                       }
                       data={items}
                       disabled={filtersActive || statusMovePending}
@@ -474,10 +547,13 @@ export default function TagDetailScreen() {
                         beginNativePosterDrag(item, index, status === 'watched', status)
                       }
                       onDragLayout={positionNativePosterDrag}
-                      onDragMove={({ absoluteY, scrollOffset }) =>
+                      onDragMove={({ absoluteX, absoluteY, scrollOffset }) =>
                         updateNativeDragTarget(
                           status,
                           absoluteY - rootWindowY.current + scrollOffset,
+                          absoluteX,
+                          absoluteY,
+                          scrollOffset,
                         )
                       }
                       onDragCancel={cancelNativePosterDrag}
@@ -510,7 +586,7 @@ export default function TagDetailScreen() {
         item={pendingWatchedMove}
         pending={statusMovePending}
         onClose={() => setPendingWatchedMove(undefined)}
-        onConfirm={(item) => performCategoryMove(item, 'watched')}
+        onConfirm={(item) => performCategoryMove(item, 'watched', insertion.pendingIndex.current)}
       />
       {!!nativeDragPreview && !!nativePosterMotion[nativeDragPreview.status] && (
         <NativePosterDragPreview

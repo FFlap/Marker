@@ -1,3 +1,4 @@
+import { ExpandableOverview } from "@/components/expandable-overview";
 import { castForDisplay } from "@marker/shared/castPresentation";
 import { CastPortrait } from "@/components/cast-portrait";
 import { touchMetadata } from "@marker/shared/clientEffects";
@@ -218,26 +219,11 @@ export function TitleDetailPage() {
             </div>
           </section>
           {meta.overview && (
-            <p className="mt-9 text-[15px] leading-6 text-muted-foreground">
-              {meta.overview}
-            </p>
+            <ExpandableOverview
+              key={`${mediaType}:${tmdbId}:${meta.overview}`}
+              text={meta.overview}
+            />
           )}
-          <div className="mt-8 grid grid-cols-2 gap-4 border-y border-border py-6">
-            <div>
-              <span className="text-xs text-muted-foreground">Runtime</span>
-              <strong className="mt-1.5 block text-base">
-                {runtime === undefined ? "—" : `${Math.round(runtime)} min`}
-              </strong>
-            </div>
-            <div>
-              <span className="text-xs text-muted-foreground">Rating</span>
-              <strong className="mt-1.5 block text-base">
-                {detail?.voteAverage === undefined
-                  ? "—"
-                  : detail.voteAverage.toFixed(1)}
-              </strong>
-            </div>
-          </div>
           {titleFailed && (
             <p className="mt-4 text-xs text-muted-foreground">
               Current preview shown; full metadata couldn’t be refreshed.

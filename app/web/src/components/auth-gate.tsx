@@ -1,3 +1,4 @@
+import { accountAccess } from "@marker/shared/lifecycle";
 import { useAuth } from "@clerk/react";
 import type { ReactNode } from "react";
 import { Navigate, useRouterState, useSearch } from "@tanstack/react-router";
@@ -33,28 +34,34 @@ function AccountGate({
   const search = useSearch({ strict: false });
   const location = useRouterState({ select: (state) => state.location });
 
-  if (accountError) return <AccountLinkError onRetry={retryAccountLink} />;
-  if (
-    isLoading ||
-    (isAuthenticated && (!accountReady || profile === undefined))
-  ) {
+  const access = accountAccess({
+    isLoading,
+    isAuthenticated,
+    accountReady,
+    accountError,
+    profileLoaded: profile !== undefined,
+    hasUsername: !!profile?.username,
+  });
+  if (access.state === "error")
+    return <AccountLinkError onRetry={retryAccountLink} />;
+  if (access.state === "loading") {
     return <AccountLoading />;
   }
 
   const next = `${location.pathname}${location.searchStr}`;
-  if (!isAuthenticated)
+  if (access.state === "signedOut")
     return location.pathname === "/login" ? (
       <AccountLoading />
     ) : (
       <Navigate to="/login" search={{ next }} replace />
     );
-  if (!profile?.username && !setup)
+  if (access.state === "setupRequired" && !setup)
     return location.pathname === "/setup" ? (
       <AccountLoading />
     ) : (
       <Navigate to="/setup" search={{ next }} replace />
     );
-  if (profile?.username && setup) {
+  if (access.state === "ready" && setup) {
     if (location.pathname !== "/setup") return <AccountLoading />;
     const searchNext = (search as { next?: unknown }).next;
     return (

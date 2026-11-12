@@ -54,6 +54,7 @@ jest.mock('react-native-reanimated', () => {
     scrollTo: jest.fn(),
     SlideInDown: chain,
     SlideOutDown: chain,
+    useAnimatedScrollHandler: (handler: unknown) => handler,
     useAnimatedStyle: (factory: () => unknown) => factory(),
     useAnimatedReaction: jest.fn(),
     useAnimatedRef: () => useRef(null),
@@ -73,7 +74,7 @@ jest.mock('react-native-gesture-handler', () => {
     },
   );
   return {
-    Gesture: { Pan: () => gesture, Pinch: () => gesture },
+    Gesture: { Pan: () => gesture, Pinch: () => gesture, Native: () => gesture },
     GestureDetector: ({ children }: { children: React.ReactNode }) =>
       React.createElement(React.Fragment, null, children),
   };

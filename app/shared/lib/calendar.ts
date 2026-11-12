@@ -70,6 +70,17 @@ export const currentCalendarMonth = () => {
   return DateTime.formatIsoDate(now).slice(0, 7);
 };
 
+type CalendarTraversal =
+  | { state: 'fetching'; cursor?: CalendarCursor; retries: number; refreshWaitMs: number }
+  | {
+      state: 'waiting';
+      cursor?: CalendarCursor;
+      retries: number;
+      refreshWaitMs: number;
+      delayMs: number;
+    }
+  | { state: 'complete' };
+
 export const loadCalendarPagesEffect = Effect.fn('calendar.loadPages')(function* (
   fetch: CalendarFetch,
   args: CalendarWindow,
@@ -79,14 +90,17 @@ export const loadCalendarPagesEffect = Effect.fn('calendar.loadPages')(function*
   const names = new Set<string>();
   let count = 0;
   let needsRefresh = false;
-  let cursor: CalendarCursor | undefined;
-  let retries = 0;
-  let refreshWaitMs = 0;
+  let traversal: CalendarTraversal = { state: 'fetching', retries: 0, refreshWaitMs: 0 };
+  const readTraversal = (): CalendarTraversal => traversal;
   let result: CalendarResult = {
     events: [],
     failedTitles: { count, names: [] },
   };
   while (true) {
+    const current = readTraversal();
+    if (current.state === 'complete') return result;
+    if (current.state === 'waiting') yield* Effect.sleep(current.delayMs);
+    const cursor = current.cursor;
     const page = yield* Effect.tryPromise({
       try: (signal) => fetch({ ...args, ...(cursor && { cursor }) }, { signal }),
       catch: (cause) => new CalendarRequestError({ cause }),
@@ -95,9 +109,13 @@ export const loadCalendarPagesEffect = Effect.fn('calendar.loadPages')(function*
       // Discovery can span several provider windows and has no replacement data
       // to publish over a saved view while pending.
       const delay = Math.min(Math.max(page.retryAfterMs ?? 1_000, 250), 60_000);
-      if (refreshWaitMs + delay > 5 * 60_000) return yield* new CalendarRefreshTimeout();
-      refreshWaitMs += delay;
-      yield* Effect.sleep(delay);
+      if (current.refreshWaitMs + delay > 5 * 60_000) return yield* new CalendarRefreshTimeout();
+      traversal = {
+        ...current,
+        state: 'waiting',
+        refreshWaitMs: current.refreshWaitMs + delay,
+        delayMs: delay,
+      };
       continue;
     }
     const merged = new Map(events);
@@ -114,17 +132,15 @@ export const loadCalendarPagesEffect = Effect.fn('calendar.loadPages')(function*
       ...((needsRefresh || page.needsRefresh) && { needsRefresh: true }),
     };
     onProgress(result);
-    if (page.retryAfterMs && retries < 2) {
-      retries++;
+    if (page.retryAfterMs && current.retries < 2) {
       const delay = Math.min(page.retryAfterMs, 60_000);
-      yield* Effect.sleep(delay);
+      traversal = { ...current, state: 'waiting', retries: current.retries + 1, delayMs: delay };
       continue;
     }
     if (page.truncated && !page.nextCursor)
       return yield* new CalendarPaginationError({
         message: 'The calendar backend must be updated to load the full library',
       });
-    retries = 0;
     needsRefresh ||= page.needsRefresh === true;
     for (const event of page.events) events.set(event.id, event);
     count += page.failedTitles.count;
@@ -132,8 +148,9 @@ export const loadCalendarPagesEffect = Effect.fn('calendar.loadPages')(function*
     const next = page.nextCursor ?? undefined;
     if (next && JSON.stringify(next) === JSON.stringify(cursor))
       return yield* new CalendarPaginationError({ message: 'Calendar pagination did not advance' });
-    cursor = next;
-    if (!cursor) return result;
+    traversal = next
+      ? { state: 'fetching', cursor: next, retries: 0, refreshWaitMs: current.refreshWaitMs }
+      : { state: 'complete' };
   }
 });
 

@@ -1,3 +1,4 @@
+import { useTaskState } from '@/hooks/use-task-state';
 import * as Effect from 'effect/Effect';
 import { useOperation } from '@/hooks/use-operation';
 import { AvatarError, avatarStep, uploadAvatar, saveProfile } from '@marker/shared/clientEffects';
@@ -52,9 +53,8 @@ function ProfileFormFields({
   const toast = useToast();
   const [username, setUsername] = useState(profile.username ?? '');
   const [isPublic, setIsPublic] = useState(profile.isPublic);
-  const [saving, setSaving] = useState(false);
-  const [photoPending, setPhotoPending] = useState(false);
-  const [error, setError] = useState('');
+  const { pending: saving, error, setPending: setSaving, setError } = useTaskState();
+  const { pending: photoPending, setPending: setPhotoPending } = useTaskState();
   const run = useOperation();
   const photoBusy = useRef(false);
 

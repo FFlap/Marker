@@ -1,6 +1,10 @@
 import { createContentLifetime } from "../src/domain/lifecycle";
 import { parseEpisodePage, parseWatchPath } from "../src/domain/episode-parser";
-import { persistDetectedEpisode } from "../src/domain/tracking";
+import {
+  persistDetectedEpisode,
+  transitionInspection,
+  type InspectionState,
+} from "../src/domain/tracking";
 
 export default defineContentScript({
   matches: ["https://www.crunchyroll.com/*"],
@@ -10,40 +14,45 @@ export default defineContentScript({
       ctx.onInvalidated(dispose),
     );
     document.documentElement.dataset.markerCrunchyroll = "loaded";
-    let lastSentEpisodeId: string | null = null;
+    let inspection: InspectionState = { state: "waiting", lastEpisode: null };
     let lastObservedUrl = location.href;
     let inspectionTimer: ReturnType<typeof setTimeout> | undefined;
-    let saveInFlight = false;
-    let inspectAgain = false;
 
     const inspect = async () => {
       if (!lifetime.active) return;
-      if (saveInFlight) {
-        inspectAgain = true;
+      if (inspection.state === "saving") {
+        inspection = transitionInspection(inspection, { type: "inspect" });
         return;
       }
       if (!parseWatchPath(location.pathname)) {
-        lastSentEpisodeId = null;
+        inspection = transitionInspection(inspection, { type: "navigate" });
         return;
       }
 
       const bookmark = parseEpisodePage(document, new URL(location.href));
-      if (bookmark && bookmark.episodeId !== lastSentEpisodeId) {
-        saveInFlight = true;
+      if (bookmark && bookmark.episodeId !== inspection.lastEpisode) {
+        inspection = transitionInspection(inspection, { type: "save" });
         document.documentElement.dataset.markerCrunchyroll = "saving";
+        let inspectAgain = false;
         try {
           await persistDetectedEpisode(bookmark, undefined, lifetime.signal);
           if (!lifetime.active) return;
-          lastSentEpisodeId = bookmark.episodeId;
+          inspectAgain =
+            inspection.state === "saving" && inspection.inspectAgain;
+          inspection = transitionInspection(inspection, {
+            type: "saved",
+            episodeId: bookmark.episodeId,
+          });
           document.documentElement.dataset.markerCrunchyroll = "tracked";
         } catch {
+          inspectAgain =
+            inspection.state === "saving" && inspection.inspectAgain;
+          inspection = transitionInspection(inspection, { type: "failed" });
           if (!lifetime.active) return;
           document.documentElement.dataset.markerCrunchyroll = "error";
           console.error("[Marker] Failed to save Crunchyroll episode");
         } finally {
-          saveInFlight = false;
           if (inspectAgain && lifetime.active) {
-            inspectAgain = false;
             scheduleInspect(0);
           }
         }
@@ -62,7 +71,7 @@ export default defineContentScript({
     };
 
     const handleNavigation = () => {
-      lastSentEpisodeId = null;
+      inspection = transitionInspection(inspection, { type: "navigate" });
       scheduleInspect(0);
     };
 

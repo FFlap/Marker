@@ -1,3 +1,5 @@
+import { Effect } from 'effect';
+import { attempt, runActionEffect } from './actionEffects';
 import { ConvexError, type Infer, v } from 'convex/values';
 import { action } from './_generated/server';
 import { internal } from './_generated/api';
@@ -151,41 +153,49 @@ export const upcoming = action({
     const savedByKey = new Map(
       page.titles.map((entry) => [scheduleKey(month, region, entry.item), entry.saved]),
     );
-    const failedNames: string[] = [];
-    for (const result of loaded.results) {
-      needsRefresh ||= result.needsRefresh;
-      const key = scheduleKey(month, region, result.item);
-      const previous = savedByKey.get(key);
-      const fallback =
-        previous && (result.unavailableTitle || result.missingSeasons.length)
-          ? (await readAll(ctx, key)).filter(
-              (event) =>
-                result.unavailableTitle ||
-                (event.season !== undefined && result.missingSeasons.includes(event.season)),
-            )
-          : [];
-      const releases = [...result.events, ...fallback].map(
-        ({ id, date, kind, season, episode, episodeName }) => ({
-          id,
-          date,
-          kind,
-          ...(season !== undefined && { season }),
-          ...(episode !== undefined && { episode }),
-          ...(episodeName !== undefined && { episodeName }),
-        }),
-      );
-      if (result.failed) failedNames.push(result.item.title);
-      if (previous || releases.length || (!result.failed && !result.needsRefresh)) {
-        const refreshedAt =
-          result.failed || result.needsRefresh
-            ? Math.max(
-                previous?.refreshedAt ?? 0,
-                Math.min(result.refreshedAt, Date.now() - CALENDAR_TTL_MS),
-              )
-            : result.refreshedAt;
-        if (!(await save(ctx, key, month, refreshedAt, releases))) needsRefresh = true;
-      }
-    }
+    const failedNames = loaded.results
+      .filter((result) => result.failed)
+      .map((result) => result.item.title);
+    await runActionEffect(
+      Effect.forEach(
+        loaded.results,
+        (result) =>
+          attempt(async () => {
+            needsRefresh ||= result.needsRefresh;
+            const key = scheduleKey(month, region, result.item);
+            const previous = savedByKey.get(key);
+            const fallback =
+              previous && (result.unavailableTitle || result.missingSeasons.length)
+                ? (await readAll(ctx, key)).filter(
+                    (event) =>
+                      result.unavailableTitle ||
+                      (event.season !== undefined && result.missingSeasons.includes(event.season)),
+                  )
+                : [];
+            const releases = [...result.events, ...fallback].map(
+              ({ id, date, kind, season, episode, episodeName }) => ({
+                id,
+                date,
+                kind,
+                ...(season !== undefined && { season }),
+                ...(episode !== undefined && { episode }),
+                ...(episodeName !== undefined && { episodeName }),
+              }),
+            );
+            if (previous || releases.length || (!result.failed && !result.needsRefresh)) {
+              const refreshedAt =
+                result.failed || result.needsRefresh
+                  ? Math.max(
+                      previous?.refreshedAt ?? 0,
+                      Math.min(result.refreshedAt, Date.now() - CALENDAR_TTL_MS),
+                    )
+                  : result.refreshedAt;
+              if (!(await save(ctx, key, month, refreshedAt, releases))) needsRefresh = true;
+            }
+          }),
+        { concurrency: 4, discard: true },
+      ),
+    );
     const releases = await ctx.runQuery(internal.calendarScheduleStore.releases, {
       month,
       region,

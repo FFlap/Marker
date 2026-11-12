@@ -1,3 +1,4 @@
+import { useTaskState } from "@/hooks/use-task-state";
 import { saveProfile } from "@marker/shared/clientEffects";
 import { useOperation } from "@/hooks/use-operation";
 import { useState } from "react";
@@ -18,8 +19,12 @@ export function ProfileEditPage() {
   const navigate = useNavigate();
   const [usernameDraft, setUsername] = useState<string>();
   const [isPublicDraft, setIsPublic] = useState<boolean>();
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const {
+    pending: saving,
+    error,
+    setPending: setSaving,
+    setError,
+  } = useTaskState();
   const {
     pending: photoPending,
     upload,

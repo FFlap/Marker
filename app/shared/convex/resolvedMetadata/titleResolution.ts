@@ -1,3 +1,4 @@
+import { mappingState } from '../lifecycles';
 import { Effect } from 'effect';
 import { actionFailureCause, attempt, providerOutcome, runActionEffect } from '../actionEffects';
 import { ConvexError, v } from 'convex/values';
@@ -5,7 +6,11 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getClerkUserId } from '../clerkAuth';
-import { withCharacterArtwork, type CharacterArtwork } from '../characterArtwork';
+import {
+  withAllCharacterArtwork,
+  withCharacterArtwork,
+  type CharacterArtwork,
+} from '../characterArtwork';
 import { validateTmdbId } from '../providerValidation';
 import { refreshLeaseKey, requestKey } from './requests';
 import { resolveAndCommitCanonical } from './seasonResolution';
@@ -68,14 +73,10 @@ export async function resolveFreshTitle(
   mapping: Doc<'titleMappings'> | null,
   force = false,
 ) {
-  const manuallyPinnedMapping =
-    mapping?.source === 'manual' &&
-    mapping.tvdbId !== undefined &&
-    mapping.seasonOrder !== undefined
-      ? mapping
-      : null;
+  const identity = mappingState(mapping);
+  const manuallyPinnedMapping = identity.state === 'manualTvdb' ? identity.mapping : null;
   const knownTvdbId = mapping?.tvdbId;
-  const manualWithoutTvdbIdentity = mapping?.source === 'manual' && !manuallyPinnedMapping;
+  const manualWithoutTvdbIdentity = identity.state === 'manualTmdb';
   return runActionEffect(
     Effect.gen(function* () {
       const loadTmdb = attempt(
@@ -147,31 +148,18 @@ export async function resolveFreshTitle(
       const seasons = anime ? anime.seasons : (tmdb.seasons ?? []);
       const selectedSeason =
         anime?.selectedSeason ?? seasons.find((entry) => entry.season > 0)?.season;
-      if (current)
-        tmdb.cast = withCharacterArtwork(
-          tmdb.cast ?? [],
-          current.cast.flatMap((member) =>
-            member.characterImageUrl
-              ? [
-                  {
-                    name: member.character,
-                    personName: member.name,
-                    imageUrl: member.characterImageUrl,
-                  },
-                ]
-              : [],
-          ),
-        );
+      const hasSavedArtwork = current?.cast.some((member) => member.characterImageUrl) === true;
+      if (!tmdb.genres?.length && !anime?.genres?.length && hasSavedArtwork)
+        tmdb.genres = current!.genres;
+      const animated = [...(tmdb.genres ?? []), ...(anime?.genres ?? [])].some((genre) =>
+        /^(animation|anime)$/i.test(genre),
+      );
+      const mergeArtwork =
+        animated || hasSavedArtwork ? withAllCharacterArtwork : withCharacterArtwork;
       // The series identity response already includes artwork. Only request it
       // separately when that response did not provide it (for example, movies).
       let characters = extrasResult.ok ? extrasResult.value.characters : undefined;
-      if (
-        characters === undefined &&
-        (tmdb.cast?.length ?? 0) > 0 &&
-        [...(tmdb.genres ?? []), ...(anime?.genres ?? [])].some((genre) =>
-          /^(animation|anime)$/i.test(genre),
-        )
-      ) {
+      if (characters === undefined && animated) {
         const artwork = yield* providerOutcome(
           attempt(
             () =>
@@ -186,7 +174,22 @@ export async function resolveFreshTitle(
         );
         if (artwork.ok) characters = artwork.value;
       }
-      if (characters?.length) tmdb.cast = withCharacterArtwork(tmdb.cast ?? [], characters);
+      // A nonempty fresh result replaces TVDB-only roles. Cached artwork is a
+      // fallback, so corrections to role names and actor attribution can take effect.
+      const artwork = characters?.length
+        ? characters
+        : (current?.cast ?? []).flatMap((member) =>
+            member.characterImageUrl
+              ? [
+                  {
+                    name: member.character,
+                    personName: member.name,
+                    imageUrl: member.characterImageUrl,
+                  },
+                ]
+              : [],
+          );
+      if (artwork.length) tmdb.cast = mergeArtwork(tmdb.cast ?? [], artwork);
       const refreshedAt = Date.now();
       const value = mergeTitle(
         args.tmdbId,

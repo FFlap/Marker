@@ -1,3 +1,4 @@
+import { useCrossSectionDrop } from '@/hooks/use-cross-section-drop';
 import { localDateKey } from '@/hooks/use-local-today';
 import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
@@ -16,6 +17,7 @@ import type { LibraryItem, Status } from '@/types';
 import { MOBILE_NAV_HEIGHT, TOOLBAR_HEIGHT } from '../screens/LibraryScreen.styles';
 
 export function useLibraryReordering(items: LibraryItem[], filtersActive: boolean) {
+  const insertion = useCrossSectionDrop();
   const runOperation = useOperation();
   const reorderItem = useMutation(api.library.ordering.reorderItem);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
@@ -23,8 +25,22 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const [optimisticOrders, setOptimisticOrders] = useState<Partial<Record<Status, string[]>>>({});
   const [pendingReorders, setPendingReorders] = useState<Partial<Record<Status, number>>>({});
   const [optimisticStatuses, setOptimisticStatuses] = useState<Record<string, Status>>({});
-  const [pendingWatchedMove, setPendingWatchedMove] = useState<LibraryItem>();
-  const [statusMovePending, setStatusMovePending] = useState(false);
+  type StatusMove =
+    | { state: 'idle' }
+    | { state: 'confirming'; item: LibraryItem }
+    | { state: 'saving'; item: LibraryItem; target: Status };
+  const [statusMove, setStatusMove] = useState<StatusMove>({ state: 'idle' });
+  const statusMoveRef = useRef<StatusMove>({ state: 'idle' });
+  const publishMove = (next: StatusMove) => {
+    statusMoveRef.current = next;
+    setStatusMove(next);
+  };
+  const pendingWatchedMove =
+    statusMove.state === 'confirming' ||
+    (statusMove.state === 'saving' && statusMove.target === 'watched')
+      ? statusMove.item
+      : undefined;
+  const statusMovePending = statusMove.state === 'saving';
   const [draggedItem, setDraggedItem] = useState<{
     item: LibraryItem;
     rank?: number;
@@ -39,7 +55,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     {},
   );
   const [rootHeight, setRootHeight] = useState(0);
-  const statusMovePendingRef = useRef(false);
   const rootRef = useRef<View>(null);
   const posterScrollRef = useAnimatedRef<ScrollView>();
   const nativeScrollOffset = useScrollOffset(posterScrollRef);
@@ -52,24 +67,36 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const draggedItemRef = useRef<typeof draggedItem>(undefined);
   const targetStatusRef = useRef<Status | undefined>(undefined);
 
+  const unacknowledgedStatuses = Object.entries(optimisticStatuses).filter(([id, status]) => {
+    const saved = items.find((item) => item._id === id);
+    return saved && saved.status !== status;
+  });
+  const awaitingStatusQuery = unacknowledgedStatuses.length > 0;
+  if (
+    !statusMovePending &&
+    unacknowledgedStatuses.length !== Object.keys(optimisticStatuses).length
+  )
+    setOptimisticStatuses(Object.fromEntries(unacknowledgedStatuses));
+
   // Wait for the latest save and its query render. A rapid reverse move can
   // match a stale query while an earlier save is still in flight.
   const acknowledgedOrders = useMemo(
     () =>
-      statusMovePending
+      statusMovePending || awaitingStatusQuery
         ? []
         : LIBRARY_STATUSES.map(([status]) => status).filter((status) => {
             const order = optimisticOrders[status];
-            if (!order || pendingReorders[status] !== undefined) return false;
+            if (!order) return false;
             const saved = items
               .filter((item) => item.status === status)
               .sort((a, b) => a.rank - b.rank);
             return isOrderAcknowledged(
               order,
               saved.map((item) => item._id),
+              pendingReorders[status],
             );
           }),
-    [items, optimisticOrders, pendingReorders, statusMovePending],
+    [awaitingStatusQuery, items, optimisticOrders, pendingReorders, statusMovePending],
   );
   if (acknowledgedOrders.length) {
     const next = { ...optimisticOrders };
@@ -85,7 +112,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   const orderedForStatus = (status: Status) => {
     const order = optimisticOrders[status];
     const orderIndex = new Map(order?.map((id, index) => [id, index]));
-    return items
+    const ordered = items
       .filter((item) => effectiveStatus(item) === status)
       .sort((left, right) => {
         if (!order) return left.rank - right.rank;
@@ -95,6 +122,11 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
         if (rightIndex === -1) return -1;
         return leftIndex - rightIndex;
       });
+    if (statusMove.state !== 'confirming') return ordered;
+    const preview = ordered.filter((item) => item._id !== statusMove.item._id);
+    if (status === 'watched')
+      preview.splice(insertion.pendingIndex.current ?? preview.length, 0, statusMove.item);
+    return preview;
   };
 
   const saveOrder = async (data: LibraryItem[], to: number) => {
@@ -145,22 +177,28 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     );
   };
 
-  const moveToStatus = async (item: LibraryItem, target: Status) => {
-    if (statusMovePendingRef.current || effectiveStatus(item) === target) return;
-    statusMovePendingRef.current = true;
+  const moveToStatus = async (item: LibraryItem, target: Status, targetIndex?: number) => {
+    if (statusMoveRef.current.state === 'saving' || effectiveStatus(item) === target) return;
+    publishMove({ state: 'saving', item, target });
     const source = effectiveStatus(item);
     const sourceItems = orderedForStatus(source).filter((entry) => entry._id !== item._id);
     const targetItems = orderedForStatus(target).filter((entry) => entry._id !== item._id);
-    setStatusMovePending(true);
+    const index = Math.min(targetIndex ?? targetItems.length, targetItems.length);
+    const nextTarget = [...targetItems];
+    nextTarget.splice(index, 0, item);
     setOptimisticStatuses((current) => ({ ...current, [item._id]: target }));
     setOptimisticOrders((current) => ({
       ...current,
       [source]: sourceItems.map((entry) => entry._id),
-      [target]: [...targetItems, item].map((entry) => entry._id),
+      [target]: nextTarget.map((entry) => entry._id),
     }));
     await runOperation.write(
       Effect.gen(function* () {
-        const placement = { itemId: item._id, beforeId: targetItems.at(-1)?._id };
+        const placement = {
+          itemId: item._id,
+          beforeId: targetItems[index - 1]?._id,
+          afterId: targetItems[index]?._id,
+        };
         if (target === 'watched')
           yield* saveLibrary(() =>
             moveItemToWatched({
@@ -177,8 +215,6 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
               ? 'Couldn’t mark every episode watched'
               : 'Couldn’t move this title',
           );
-        },
-        settled: () => {
           setOptimisticStatuses((current) => {
             const next = { ...current };
             delete next[item._id];
@@ -190,23 +226,26 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
             delete next[target];
             return next;
           });
-          statusMovePendingRef.current = false;
-          setStatusMovePending(false);
+        },
+        settled: () => {
+          publishMove({ state: 'idle' });
         },
       },
     );
   };
 
-  const requestStatusMove = (itemId: string, target: Status) => {
-    if (filtersActive || statusMovePendingRef.current) return;
+  const requestStatusMove = (itemId: string, target: Status, index?: number) => {
+    if (filtersActive || statusMoveRef.current.state === 'saving') return;
     const item = items.find((entry) => entry._id === itemId);
     if (!item || effectiveStatus(item) === target) return;
-    if (target === 'watched') setPendingWatchedMove(item);
-    else void moveToStatus(item, target);
+    if (target === 'watched') {
+      insertion.pendingIndex.current = index;
+      publishMove({ state: 'confirming', item });
+    } else void moveToStatus(item, target, index);
   };
 
   const updateDragTarget = useCallback(
-    (_sourceStatus: Status, contentY: number) => {
+    (sourceStatus: Status, contentY: number, x: number, y: number, offset: number) => {
       if (!draggedItemRef.current) return;
       let nearest: Status | undefined;
       let nearestDistance = Number.POSITIVE_INFINITY;
@@ -221,18 +260,30 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
           nearest = status;
         }
       }
-      if (nearest === targetStatusRef.current) return;
-      targetStatusRef.current = nearest;
-      setTargetStatus(nearest);
+      nearest = insertion.update(nearest, x, y, offset);
+      const sourceLayout = sectionLayouts[sourceStatus];
+      if (
+        nearest === sourceStatus &&
+        sourceLayout &&
+        (contentY < sourceLayout.top || contentY > sourceLayout.top + sourceLayout.height)
+      )
+        nearest = undefined;
+      if (nearest !== targetStatusRef.current) {
+        targetStatusRef.current = nearest;
+        setTargetStatus(nearest);
+      }
+      return nearest === sourceStatus;
     },
-    [sectionLayouts],
+    [sectionLayouts, insertion],
   );
 
   const finishDrag = (source: Status, data: LibraryItem[], from: number, to: number) => {
     const dragged = draggedItemRef.current;
     const target = targetStatusRef.current;
+    const index = insertion.indexRef.current;
     cancelDrag();
-    if (dragged && target && target !== source) requestStatusMove(dragged.item._id, target);
+    if (dragged && !target) return;
+    if (dragged && target && target !== source) requestStatusMove(dragged.item._id, target, index);
     else if (from !== to) void saveOrder(data, to);
   };
 
@@ -264,6 +315,7 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   };
 
   function cancelDrag() {
+    insertion.clear();
     setDraggedItem(undefined);
     setDragPreviewLayout(undefined);
     setTargetStatus(undefined);
@@ -291,11 +343,13 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     moveToStatus,
     requestStatusMove,
     confirmation: {
+      index: insertion.pendingIndex.current,
       item: pendingWatchedMove,
       pending: statusMovePending,
-      close: () => setPendingWatchedMove(undefined),
+      close: () => publishMove({ state: 'idle' }),
     },
     drag: {
+      insertion,
       autoScroll,
       begin: beginDrag,
       cancel: cancelDrag,

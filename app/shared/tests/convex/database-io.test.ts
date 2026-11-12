@@ -394,7 +394,6 @@ it('avoids item writes for unchanged metadata and no-op user edits', async () =>
       tmdbId: 1,
       mediaType: 'movie',
       title: 'Movie 1',
-      runtime: 90,
       episodeRunTime: [],
       genres: [],
       cast: [],

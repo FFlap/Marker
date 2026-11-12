@@ -1,6 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
-import { mapCharacterArtwork, withCharacterArtwork } from '../../convex/characterArtwork';
+import {
+  mapCharacterArtwork,
+  withAllCharacterArtwork,
+  withCharacterArtwork,
+} from '../../convex/characterArtwork';
 import { resolveFreshTitle } from '../../convex/resolvedMetadata/titleResolution';
 import { selectTitleMatch, verifiedTmdbRemoteMovie } from '../../convex/tvdbParsing';
 import type { ActionCtx } from '../../convex/_generated/server';
@@ -359,7 +363,7 @@ it('waits for movie artwork and passes the original title before publishing', as
   expect(runAction).toHaveBeenCalledTimes(2);
 });
 
-it('does not repeat a completed empty artwork lookup or look up artwork for an empty cast', async () => {
+it('does not repeat a completed empty artwork lookup', async () => {
   const runAction = vi
     .fn()
     .mockResolvedValueOnce({ title: 'Pokemon', genres: ['Animation'], cast })
@@ -373,13 +377,208 @@ it('does not repeat a completed empty artwork lookup or look up artwork for an e
   );
   expect(result.value.cast).toEqual(cast);
   expect(runAction).toHaveBeenCalledTimes(2);
-  runAction.mockReset().mockResolvedValueOnce({ title: 'Movie', genres: ['Animation'], cast: [] });
-  await resolveFreshTitle(
+  runAction
+    .mockReset()
+    .mockResolvedValueOnce({ title: 'Movie', genres: ['Animation'], cast: [] })
+    .mockResolvedValueOnce(characters);
+  const emptyCast = await resolveFreshTitle(
     { runAction } as unknown as ActionCtx,
     { mediaType: 'movie', tmdbId: 77 },
     null,
     null,
     false,
   );
-  expect(runAction).toHaveBeenCalledTimes(1);
+  expect(runAction).toHaveBeenCalledTimes(2);
+  expect(emptyCast.value.cast).toEqual([
+    { name: 'Ikue Otani', character: 'Pikachu', characterImageUrl: characters[0].imageUrl },
+  ]);
 });
+
+// Role and actor names from TVDB series 337936. URLs are fixture artwork.
+const takagiRoles = [
+  ['Nishikata', 'Yuki Kaji'],
+  ['Takagi', 'Rie Takahashi'],
+  ['Sanae Tsukimoto', 'Yui Ogura'],
+  ['Mano', 'Kotori Koiwai'],
+  ['Mina Hibino', 'Konomi Kohara'],
+  ['Yukari Amakawa', 'M・A・O'],
+  ['Takao', 'Nobuhiko Okamoto'],
+  ['Nakai', 'Yuma Uchida'],
+  ['Kimura', 'Fukushi Ochiai'],
+  ['Tanabe-sensei', 'Hinata Tadokoro'],
+  ['Houjou', 'Aoi Yuki'],
+  ['Hamaguchi', 'Koki Uchiyama'],
+].map(([name, personName], index) => ({
+  name,
+  personName,
+  imageUrl: `https://example.com/takagi-${index}.jpg`,
+}));
+
+it('publishes all illustrated Takagi-san roles despite missing or differently named TMDB roles', async () => {
+  const runAction = vi
+    .fn()
+    .mockResolvedValueOnce({
+      title: 'Teasing Master Takagi-san',
+      genres: ['Animation'],
+      cast: [
+        { name: 'Yuki Kaji', character: 'Nishikata (voice)' },
+        { name: 'Konomi Kohara', character: 'Mina (voice)' },
+      ],
+    })
+    .mockResolvedValueOnce({ anime: null, characters: takagiRoles });
+  const { value } = await resolveFreshTitle(
+    { runAction } as unknown as ActionCtx,
+    { mediaType: 'tv', tmdbId: 75865 },
+    null,
+    null,
+    false,
+  );
+  const illustrated = value.cast.filter((member) => member.characterImageUrl);
+  expect(illustrated).toHaveLength(12);
+  expect(new Set(illustrated.map((member) => member.characterImageUrl))).toEqual(
+    new Set(takagiRoles.map((role) => role.imageUrl)),
+  );
+  runAction
+    .mockReset()
+    .mockResolvedValueOnce({ title: 'Teasing Master Takagi-san', genres: ['Animation'], cast: [] })
+    .mockRejectedValue(new Error('TVDB unavailable'));
+  const refreshed = await resolveFreshTitle(
+    { runAction } as unknown as ActionCtx,
+    { mediaType: 'tv', tmdbId: 75865 },
+    { ...value, _id: 'fixture', _creationTime: 0 } as unknown as Parameters<
+      typeof resolveFreshTitle
+    >[2],
+    null,
+    false,
+  );
+  expect(refreshed.value.cast).toEqual(illustrated);
+});
+
+it('does not duplicate matched roles, aliases, or repeated TVDB artwork', () => {
+  const matched = withAllCharacterArtwork(cast, [
+    ...characters,
+    { ...characters[0], name: 'ピカチュウ / Pikachu' },
+    { ...characters[0], personName: 'Dub actor', imageUrl: 'https://example.com/alternate.jpg' },
+  ]);
+  expect(matched).toEqual(withCharacterArtwork(cast, characters));
+});
+
+it('keeps separate artwork for combined TMDB roles with different actors', () => {
+  const merged = withAllCharacterArtwork(
+    [{ name: 'Actor A', character: 'Role A / Role B' }],
+    [
+      { name: 'Role A', personName: 'Actor A', imageUrl: 'https://example.com/a.jpg' },
+      { name: 'Role B', personName: 'Actor B', imageUrl: 'https://example.com/b.jpg' },
+    ],
+  );
+  expect(merged.map((member) => member.characterImageUrl)).toEqual([
+    'https://example.com/a.jpg',
+    'https://example.com/b.jpg',
+  ]);
+});
+
+it.each(['Mina', 'Mina Hibino'])(
+  'replaces cached TVDB-only role %s and actor attribution on refresh',
+  async (oldRole) => {
+    const runAction = vi
+      .fn()
+      .mockResolvedValueOnce({ title: 'Takagi-san', genres: ['Animation'], cast: [] })
+      .mockResolvedValueOnce({
+        anime: null,
+        characters: [
+          { name: oldRole, personName: 'Old actor', imageUrl: 'https://example.com/old.jpg' },
+          {
+            name: 'Removed role',
+            personName: 'Removed actor',
+            imageUrl: 'https://example.com/removed.jpg',
+          },
+        ],
+      });
+    const args = { mediaType: 'tv' as const, tmdbId: 75865 };
+    const ctx = { runAction } as unknown as ActionCtx;
+    const initial = await resolveFreshTitle(ctx, args, null, null, false);
+    runAction
+      .mockReset()
+      .mockResolvedValueOnce({ title: 'Takagi-san', genres: ['Animation'], cast: [] })
+      .mockResolvedValueOnce({
+        anime: null,
+        characters: [
+          {
+            name: 'Mina Hibino',
+            personName: 'Konomi Kohara',
+            imageUrl: 'https://example.com/new.jpg',
+          },
+        ],
+      });
+    const refreshed = await resolveFreshTitle(
+      ctx,
+      args,
+      { ...initial.value, _id: 'fixture', _creationTime: 0 } as unknown as Parameters<
+        typeof resolveFreshTitle
+      >[2],
+      null,
+      false,
+    );
+    expect(refreshed.value.cast).toEqual([
+      {
+        name: 'Konomi Kohara',
+        character: 'Mina Hibino',
+        characterImageUrl: 'https://example.com/new.jpg',
+      },
+    ]);
+  },
+);
+
+it.each([{ cast: [] }, { cast: [{ name: 'Actor A', character: 'Role A' }] }])(
+  'retains distinct roles sharing an image with cast $cast',
+  ({ cast }) => {
+    const merged = withAllCharacterArtwork(cast, [
+      { name: 'Role A', personName: 'Actor A', imageUrl: 'https://example.com/shared.jpg' },
+      { name: 'Role B', personName: 'Actor B', imageUrl: 'https://example.com/shared.jpg' },
+    ]);
+    expect(merged.map((member) => member.character)).toEqual(['Role A', 'Role B']);
+  },
+);
+
+it('retains composite TVDB entries when only some roles are already illustrated', () => {
+  const merged = withAllCharacterArtwork(
+    [],
+    [
+      { name: 'Yui', imageUrl: 'https://example.com/yui.jpg' },
+      { name: 'Yui / Mio', imageUrl: 'https://example.com/group.jpg' },
+    ],
+  );
+  expect(merged.map((member) => member.character)).toEqual(['Yui', 'Yui / Mio']);
+});
+
+it.each(['empty', 'missing'] as const)(
+  'preserves illustrated roles when refreshed genres are %s and cast is empty',
+  async (genres) => {
+    const runAction = vi
+      .fn()
+      .mockResolvedValueOnce({ title: 'Pokemon', genres: ['Animation'], cast: [] })
+      .mockResolvedValueOnce(characters);
+    const ctx = { runAction } as unknown as ActionCtx;
+    const args = { mediaType: 'movie' as const, tmdbId: 77 };
+    const initial = await resolveFreshTitle(ctx, args, null, null, false);
+    runAction
+      .mockReset()
+      .mockResolvedValueOnce({
+        title: 'Pokemon',
+        ...(genres === 'empty' && { genres: [] }),
+        cast: [],
+      })
+      .mockRejectedValueOnce(new Error('TVDB unavailable'));
+    const refreshed = await resolveFreshTitle(
+      ctx,
+      args,
+      { ...initial.value, _id: 'fixture', _creationTime: 0 } as unknown as Parameters<
+        typeof resolveFreshTitle
+      >[2],
+      null,
+      false,
+    );
+    expect(refreshed.value.cast).toEqual(initial.value.cast);
+    expect(refreshed.value.genres).toEqual(['Animation']);
+  },
+);

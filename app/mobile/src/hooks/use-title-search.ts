@@ -7,7 +7,9 @@ import { api } from '@marker/shared/api';
 import { useToast } from '@/components/ui/Toast';
 import type { SearchResult } from '@/types';
 
-type SearchResponse = { query: string; results: SearchResult[]; failed?: boolean };
+type SearchResponse =
+  | { state: 'succeeded'; query: string; results: SearchResult[] }
+  | { state: 'failed'; query: string; results: SearchResult[] };
 const EMPTY_RESULTS: SearchResult[] = [];
 
 export function useTitleSearch(
@@ -22,14 +24,18 @@ export function useTitleSearch(
   const ready = normalizedQuery.length >= 2;
   const settled = normalizedQuery === debouncedQuery;
   const runSearch = useEffectEvent((searchQuery: string) => {
-    if (!enabled || searchQuery.length < 2 || (response?.query === searchQuery && !response.failed))
+    if (
+      !enabled ||
+      searchQuery.length < 2 ||
+      (response?.query === searchQuery && response.state === 'succeeded')
+    )
       return Effect.void;
     setResponse(undefined);
     return searchTitles(() => search({ query: searchQuery })).pipe(
       Effect.match({
-        onSuccess: (results) => setResponse({ query: searchQuery, results }),
+        onSuccess: (results) => setResponse({ state: 'succeeded', query: searchQuery, results }),
         onFailure: () => {
-          setResponse({ query: searchQuery, results: [], failed: true });
+          setResponse({ state: 'failed', query: searchQuery, results: [] });
           show('Search is unavailable right now');
         },
       }),
