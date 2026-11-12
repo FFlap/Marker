@@ -492,6 +492,8 @@ export const listEpisodeProgress = query({
         currentIdentityKey === undefined ||
         summary?.currentIdentityKey !== currentIdentityKey ||
         (!!item.seriesWatch && summary?.currentSeasonVersion !== active?.seasonVersion);
+      // Canonical season publication filters unreleased episodes before setting refreshedAt.
+      // A catalog published by the cutoff therefore contains only episodes covered by it.
       const declarationCoversAll =
         item.seriesWatch &&
         active &&

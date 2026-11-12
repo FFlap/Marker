@@ -60,3 +60,32 @@ it('rejects oversized and invalid season batches before making provider requests
   ).rejects.toThrow();
   expect(fetchMock).not.toHaveBeenCalled();
 });
+
+it('leaves oversized prefetch results uncached so the canonical resolver can fetch them', async () => {
+  const t = convexTest(schema, modules);
+  vi.stubEnv('TMDB_API_READ_ACCESS_TOKEN', 'test');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            'season/1': {
+              episodes: Array.from({ length: 2000 }, (_, i) => ({
+                id: i + 1,
+                season_number: 1,
+                episode_number: i + 1,
+                name: 'Episode ' + (i + 1),
+                overview: 'x'.repeat(400),
+                air_date: '2000-01-01',
+              })),
+            },
+          }),
+          { headers: { 'content-type': 'application/json' } },
+        ),
+    ),
+  );
+  await t.action(internal.tmdb.prefetchSeasonDetails, { tmdbId: 42, seasons: [1] });
+  expect(await t.query(internal.providerSnapshots.get, { key: 'tmdb:season:42:1' })).toBeNull();
+  expect(await t.run((ctx) => ctx.db.query('providerSnapshots').collect())).toEqual([]);
+});

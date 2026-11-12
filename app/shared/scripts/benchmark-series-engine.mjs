@@ -16,6 +16,9 @@ import { ConvexHttpClient } from 'convex/browser';
 const targetMilliseconds = Number(process.env.BENCH_TARGET_MS ?? 1000);
 if (!Number.isFinite(targetMilliseconds) || targetMilliseconds <= 0)
   throw new Error('BENCH_TARGET_MS must be positive');
+const rounds = Number(process.env.BENCH_ROUNDS ?? 3);
+if (!Number.isSafeInteger(rounds) || rounds <= 0)
+  throw new Error('BENCH_ROUNDS must be a positive integer');
 const source = process.cwd();
 const cli = resolve('node_modules/convex/bin/main.js');
 const providers = ['TMDB_API_READ_ACCESS_TOKEN', 'TVDB_API_KEY'].flatMap((name) => {
@@ -48,6 +51,9 @@ import { internalMutation, internalQuery } from './_generated/server';
 import schema from './schema';
 import type { TableNames } from './_generated/dataModel';
 import { v } from 'convex/values';
+import { seriesWatchIncludes } from './library/seriesWatchState';
+import { releasedEpisodes } from './episodeAvailability';
+import { readFreshCatalogSnapshot } from './tvdbCatalog';
 export const reset = internalMutation({
   args: { pinTmdb: v.boolean() }, handler: async (ctx, { pinTmdb }) => {
     for await (const job of ctx.db.system.query('_scheduled_functions')) {
@@ -68,7 +74,48 @@ export const inspect = internalQuery({
     const items = await ctx.db.query('items').collect();
     const summaries = await ctx.db.query('episodeSummaries').collect();
     const title = await ctx.db.query('resolvedTitles').first();
-    return { episodes: episodes.length, watched: episodes.filter(e => e.watched).length,
+    const item = items[0];
+    const watch = item?.seriesWatch;
+    const seasons = await ctx.db.query('resolvedSeasons').collect();
+    const chunks = await ctx.db.query('resolvedSeasonChunks').collect();
+    const key = (e: { season: number; episode: number; metadataProvider: string; seasonOrder?: string; providerEpisodeId?: number }) =>
+      [e.season, e.episode, e.metadataProvider, e.seasonOrder ?? '', e.providerEpisodeId ?? ''].join(':');
+    const expected = seasons.flatMap(season => chunks
+      .filter(chunk => chunk.tmdbId === season.tmdbId && chunk.season === season.season &&
+        chunk.orderEpoch === season.orderEpoch && chunk.seasonVersion === season.seasonVersion)
+      .flatMap(chunk => chunk.episodes)
+      .filter(episode => seriesWatchIncludes(watch, episode))
+      .map(episode => ({ ...episode, metadataProvider: season.metadataProvider,
+        seasonOrder: season.metadataProvider === 'tvdb' ? title?.seasonOrder : undefined })));
+    const providerCatalog = title?.metadataProvider === 'tvdb' && title.tvdbId && title.seasonOrder
+      ? await readFreshCatalogSnapshot(ctx, { id: title.tvdbId, order: title.seasonOrder })
+      : (await Promise.all((title?.seasons ?? []).map(async season => {
+          const snapshot = await ctx.db.query('providerSnapshots')
+            .withIndex('by_key', q => q.eq('key', 'tmdb:season:' + item?.tmdbId + ':' + season.season)).unique();
+          return snapshot?.entry.kind === 'episodes' ? snapshot.entry.value : [];
+        }))).flat();
+    const providerKeys = releasedEpisodes(providerCatalog ?? [], watch?.watchedAt ?? Date.now())
+      .filter(e => e.season >= 0)
+      .map(e => key({ ...e, metadataProvider: title?.metadataProvider ?? 'tmdb',
+        seasonOrder: title?.metadataProvider === 'tvdb' ? title.seasonOrder : undefined })).sort();
+    const expectedKeys = expected.map(key).sort();
+    const actualKeys = episodes.filter(e => e.watched).map(key).sort();
+    const catalogComplete = !!title && title.seasons.every(entry => {
+      const season = seasons.find(s => s.tmdbId === item?.tmdbId && s.season === entry.season);
+      return season?.chunksComplete && season.orderEpoch === title.orderEpoch &&
+        season.episodeCount === chunks.filter(c => c.tmdbId === season.tmdbId && c.season === season.season &&
+          c.orderEpoch === season.orderEpoch && c.seasonVersion === season.seasonVersion)
+          .reduce((n,c) => n+c.episodes.length, 0);
+    });
+    const summarySetComplete = seasons.every(season =>
+      (summaries.find(s => s.itemId === item?._id && s.season === season.season)?.watchedCount ?? 0) ===
+      expected.filter(e => e.season === season.season).length);
+    return { expectedEpisodes: expected.length,
+      episodeSetComplete: catalogComplete && expected.length > 0 &&
+        JSON.stringify(providerKeys) === JSON.stringify(expectedKeys) &&
+        JSON.stringify(expectedKeys) === JSON.stringify(actualKeys),
+      summarySetComplete,
+      episodes: episodes.length, watched: episodes.filter(e => e.watched).length,
       itemStatus: items[0]?.status, summaryWatched: summaries.reduce((n,s) => n+s.watchedCount, 0),
       provider: title?.metadataProvider, seasonCount: title?.seasons.length, declarationSaved: !!items[0]?.seriesWatch, hydration: items[0]?.seriesWatch?.hydration };
   },
@@ -169,7 +216,7 @@ try {
   });
   client.setDebug(false);
   const results = [];
-  for (let round = 0; round < Number(process.env.BENCH_ROUNDS ?? 3); round += 1) {
+  for (let round = 0; round < rounds; round += 1) {
     await client.mutation('seriesSpeedBenchmark:reset', {
       pinTmdb: process.env.BENCH_PIN_TMDB === '1',
     });
@@ -205,7 +252,9 @@ try {
     const hydratedMilliseconds = Number((performance.now() - start).toFixed(2));
     const saved = await client.query('seriesSpeedBenchmark:inspect', {});
     if (
-      saved.episodes < 1000 ||
+      !saved.episodeSetComplete ||
+      !saved.summarySetComplete ||
+      saved.episodes !== saved.expectedEpisodes ||
       saved.watched !== saved.episodes ||
       saved.summaryWatched !== saved.episodes ||
       saved.itemStatus !== 'watched'

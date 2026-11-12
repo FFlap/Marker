@@ -108,7 +108,7 @@ async function setup() {
 }
 
 it('publishes complete canonical seasons, filters future episodes and retains TVDB identity', async () => {
-  const { t, userId, itemId } = await setup();
+  const { t, userId, user, itemId } = await setup();
   expect(
     await t.mutation((ctx) => publishWatchMetadataFromSnapshots(ctx, { userId, itemId })),
   ).toBe(true);
@@ -139,6 +139,11 @@ it('publishes complete canonical seasons, filters future episodes and retains TV
   ).toEqual([
     [1, true],
     [1, true],
+  ]);
+  await user.action(api.library.seasonWatched.moveItemToWatched, { itemId });
+  expect(await user.query(api.library.episodes.listEpisodeProgress, { itemId })).toMatchObject([
+    { season: 1, currentWatchedCount: 1, currentTotal: 1, identityStale: false },
+    { season: 2, currentWatchedCount: 1, currentTotal: 1, identityStale: false },
   ]);
 });
 

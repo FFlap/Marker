@@ -12,7 +12,12 @@ import {
   providerObject,
   providerRecords,
 } from './providerHttp';
-import { isTruncatedSnapshot, putNonFatal, SNAPSHOT_TTL_MS } from './providerSnapshots';
+import {
+  isTruncatedSnapshot,
+  putNonFatal,
+  SNAPSHOT_TTL_MS,
+  MAX_SNAPSHOT_BYTES,
+} from './providerSnapshots';
 import { boundedEpisode, MAX_SEASON_EPISODES } from './seasonStorage';
 import { validateInteger, validateTmdbId } from './providerValidation';
 import {
@@ -339,6 +344,9 @@ export const prefetchSeasonDetails = internalAction({
       const episodes = await runProviderEffect(
         parseProvider(() => mapSeasonDetails(value).map(boundedEpisode)),
       );
+      // Prefetch is optional: an oversized result must not poison the fallback cache.
+      if (new TextEncoder().encode(JSON.stringify(episodes)).byteLength > MAX_SNAPSHOT_BYTES)
+        continue;
       await putNonFatal(ctx, {
         key: `tmdb:season:${tmdbId}:${season}`,
         value: episodes,

@@ -4,7 +4,7 @@ import { internal } from './_generated/api';
 import { providerSnapshotEntryValidator, catalogManifestValidator } from './providerValidators';
 
 export const SNAPSHOT_TTL_MS = 15 * 60 * 1000;
-const MAX_SNAPSHOT_BYTES = 700 * 1024;
+export const MAX_SNAPSHOT_BYTES = 700 * 1024;
 
 type TruncatedSnapshot = {
   __truncatedProviderSnapshot: true;
