@@ -19,7 +19,10 @@ import { SecondaryHeader } from '@/components/BackButton';
 import { SeasonPicker } from '@/components/SeasonPicker';
 import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
 import { SectionHeader } from '@/features/title/components/SectionHeader';
-import { EntryActionBar } from '@/features/title/components/EntryActionBar';
+import {
+  EntryActionBar,
+  useEntryActionBarLayout,
+} from '@/features/title/components/EntryActionBar';
 import { SeasonHeaderRow } from '@/features/title/components/SeasonProgress';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { EpisodeSkeletonRows } from '@/components/EpisodeSkeletonRows';
@@ -143,6 +146,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     episodes.length < seasonRow.totalCount;
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
   const [expanded, setExpanded] = useState<string>();
+  const entryBar = useEntryActionBarLayout();
 
   const suggestions =
     useQuery(
@@ -343,7 +347,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
         maxToRenderPerBatch={SEASON_EPISODE_RENDER_BATCH}
-        contentContainerStyle={s.content}
+        contentContainerStyle={[s.content, { paddingBottom: entryBar.contentPaddingBottom }]}
         refreshControl={
           <RefreshControl
             refreshing={metadataRefresh.refreshing}
@@ -477,6 +481,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
 
       <EntryActionBar
         label="Add Entry"
+        onLayout={entryBar.onLayout}
         disabled={existing === undefined || loading || !meta.title.trim()}
         onPress={() => setEntryOpen(true)}
       />
