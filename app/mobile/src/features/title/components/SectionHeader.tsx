@@ -11,7 +11,6 @@ type InlineActionProps = {
   onPress: () => void;
   disabled?: boolean;
   accessibilityLabel?: string;
-  size?: 'body' | 'heading';
 };
 
 export function InlineAction({
@@ -20,9 +19,7 @@ export function InlineAction({
   onPress,
   disabled = false,
   accessibilityLabel,
-  size = 'body',
 }: InlineActionProps) {
-  const heading = size === 'heading';
   return (
     <NativePressable
       accessibilityRole="button"
@@ -34,19 +31,18 @@ export function InlineAction({
       style={[styles.action, disabled && styles.disabled]}
       pressedStyle={styles.pressed}
     >
-      <Icon size={heading ? 14 : 13} color={colors.text} strokeWidth={2} />
-      <Text style={[styles.actionText, heading && styles.actionTextHeading]}>{label}</Text>
+      <Icon size={13} color={colors.text} strokeWidth={2} />
+      <Text style={styles.actionText}>{label}</Text>
     </NativePressable>
   );
 }
 
-export function SectionHeader({ title, action }: { title: string; action?: InlineActionProps }) {
+export function SectionHeader({ title }: { title: string }) {
   return (
     <View style={styles.header}>
       <Text accessibilityRole="header" style={styles.title}>
         {title}
       </Text>
-      {action ? <InlineAction size="heading" {...action} /> : null}
     </View>
   );
 }
@@ -68,9 +64,8 @@ const styles = createAppStyles(
     title: { color: colors.text, fontSize: 13, fontWeight: '600' },
     action: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     actionText: { color: colors.text, fontSize: 12, fontWeight: '600' },
-    actionTextHeading: { fontSize: 13, fontWeight: '500' },
     disabled: { opacity: 0.4 },
     pressed: { opacity: 0.6 },
   },
-  ['title', 'actionText', 'actionTextHeading'] as const,
+  ['title', 'actionText'] as const,
 );

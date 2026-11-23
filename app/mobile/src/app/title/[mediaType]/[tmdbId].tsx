@@ -13,13 +13,16 @@ import { FlatList, Linking, Pressable, RefreshControl, Text, View } from 'react-
 import { Image } from 'expo-image';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import Plus from 'lucide-react-native/icons/plus';
 import { api } from '@marker/shared/api';
 import { LibraryEntryDrawer, type LibraryEntryDraft } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SeasonPicker } from '@/components/SeasonPicker';
 import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
-import { InlineAction, SectionHeader } from '@/features/title/components/SectionHeader';
+import { SectionHeader } from '@/features/title/components/SectionHeader';
+import {
+  EntryActionBar,
+  useEntryActionBarLayout,
+} from '@/features/title/components/EntryActionBar';
 import { SeasonHeaderRow } from '@/features/title/components/SeasonProgress';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { EpisodeSkeletonRows } from '@/components/EpisodeSkeletonRows';
@@ -143,6 +146,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     episodes.length < seasonRow.totalCount;
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
   const [expanded, setExpanded] = useState<string>();
+  const entryBar = useEntryActionBarLayout();
 
   const suggestions =
     useQuery(
@@ -221,6 +225,24 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
 
   const renderEpisode = ({ item: episode }: { item: Episode }) => {
     const episodeKey = `${episode.season}:${episode.episode}`;
+    const hasDetails = !!episode.overview || !!episode.airDate;
+    const isExpanded = hasDetails && expanded === episodeKey;
+    const summary = (
+      <>
+        <View style={s.epHeader}>
+          <Text style={s.epNo}>EP {episode.episode.toString().padStart(2, '0')}</Text>
+          {!!episode.runtime && <Text style={s.epTime}>{episode.runtime} min</Text>}
+        </View>
+        <Text numberOfLines={2} style={s.epName}>
+          {episode.name}
+        </Text>
+        {!!episode.overview && !isExpanded && (
+          <Text numberOfLines={2} style={s.epOverview}>
+            {episode.overview}
+          </Text>
+        )}
+      </>
+    );
     return (
       <View style={s.episode}>
         <View style={s.epRow}>
@@ -243,44 +265,24 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               </View>
             )}
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`View episode ${episode.episode}`}
-            accessibilityState={{ expanded: expanded === episodeKey }}
-            style={s.epExpand}
-            onPress={() => setExpanded(expanded === episodeKey ? undefined : episodeKey)}
-          >
-            <View style={s.epHeader}>
-              <Text style={s.epNo}>EP {episode.episode.toString().padStart(2, '0')}</Text>
-              {!!episode.runtime && <Text style={s.epTime}>{episode.runtime} min</Text>}
-            </View>
-            <Text numberOfLines={2} style={s.epName}>
-              {episode.name}
-            </Text>
-            {!!episode.overview && expanded !== episodeKey && (
-              <Text numberOfLines={2} style={s.epOverview}>
-                {episode.overview}
-              </Text>
-            )}
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Add title to track episode ${episode.episode}`}
-            onPress={() => setEntryOpen(true)}
-            hitSlop={8}
-            style={s.check}
-          >
-            <Text style={{ color: colors.muted }}>+</Text>
-          </Pressable>
+          {hasDetails ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`View episode ${episode.episode}`}
+              accessibilityState={{ expanded: isExpanded }}
+              style={s.epExpand}
+              onPress={() => setExpanded(isExpanded ? undefined : episodeKey)}
+            >
+              {summary}
+            </Pressable>
+          ) : (
+            <View style={s.epExpand}>{summary}</View>
+          )}
         </View>
-        {expanded === episodeKey && (
+        {isExpanded && (
           <View style={s.epDetails}>
             {!!episode.overview && <Text style={s.epFullOverview}>{episode.overview}</Text>}
             {!!episode.airDate && <Text style={s.episodeDate}>Aired {episode.airDate}</Text>}
-            <Text style={s.episodeHint}>
-              Add this title to rate, tag, or mark individual episodes watched.
-            </Text>
-            <Button title="Add Entry" variant="outline" onPress={() => setEntryOpen(true)} />
           </View>
         )}
       </View>
@@ -345,7 +347,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
         maxToRenderPerBatch={SEASON_EPISODE_RENDER_BATCH}
-        contentContainerStyle={s.content}
+        contentContainerStyle={[s.content, { paddingBottom: entryBar.contentPaddingBottom }]}
         refreshControl={
           <RefreshControl
             refreshing={metadataRefresh.refreshing}
@@ -398,17 +400,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               <Text style={s.metadataLoadingText}>couldn’t update — pull to retry</Text>
             )}
 
-            <SectionHeader
-              title="Your Entry"
-              action={{
-                label: 'Add Entry',
-                icon: Plus,
-                disabled: existing === undefined || loading || !meta.title.trim(),
-                onPress: () => setEntryOpen(true),
-              }}
-            />
-            <Text style={s.noEntry}>This title isn’t in your library yet.</Text>
-
             <CastSection
               members={visibleCast}
               loading={
@@ -437,13 +428,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                             options={availableSeasons}
                             onOpenChange={setSeasonMenuOpen}
                             onChange={setSeason}
-                          />
-                        }
-                        action={
-                          <InlineAction
-                            label="Add to track"
-                            icon={Plus}
-                            onPress={() => setEntryOpen(true)}
                           />
                         }
                       />
@@ -493,6 +477,13 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
             )}
           </>
         }
+      />
+
+      <EntryActionBar
+        label="Add Entry"
+        onLayout={entryBar.onLayout}
+        disabled={existing === undefined || loading || !meta.title.trim()}
+        onPress={() => setEntryOpen(true)}
       />
 
       <LibraryEntryDrawer

@@ -7,7 +7,7 @@ import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 import { InlineAction } from './SectionHeader';
 
-export function SeasonHeaderRow({ picker, action }: { picker: ReactNode; action: ReactNode }) {
+export function SeasonHeaderRow({ picker, action }: { picker: ReactNode; action?: ReactNode }) {
   return (
     <View style={styles.headerRow}>
       <View style={styles.picker}>{picker}</View>

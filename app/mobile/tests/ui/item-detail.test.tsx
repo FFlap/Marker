@@ -259,7 +259,7 @@ describe('item detail metadata subscriptions', () => {
   it('cancels removal without changing the entry', async () => {
     const user = userEvent.setup();
     const view = await renderScreen();
-    await user.press(view.getByRole('button', { name: 'Edit entry' }));
+    await user.press(view.getByRole('button', { name: 'Update Entry' }));
     await user.press(view.getByRole('button', { name: 'Remove from library' }));
     expect(view.getByText('Remove title?')).toBeTruthy();
     expect(mockRemoveItem).not.toHaveBeenCalled();
@@ -281,7 +281,7 @@ describe('item detail metadata subscriptions', () => {
     );
     const user = userEvent.setup();
     const view = await renderScreen();
-    await user.press(view.getByRole('button', { name: 'Edit entry' }));
+    await user.press(view.getByRole('button', { name: 'Update Entry' }));
     await user.press(view.getByRole('button', { name: 'Remove from library' }));
     await user.press(view.getByRole('button', { name: 'Remove' }));
     await waitFor(() =>
@@ -340,7 +340,7 @@ describe('item detail metadata subscriptions', () => {
   it('uses the server-side whole-show action when the entry status becomes Watched', async () => {
     const view = await renderScreen();
     const user = userEvent.setup();
-    await user.press(view.getByText('Edit'));
+    await user.press(view.getByText('Update Entry'));
     expect(view.queryByLabelText('Increase times watched')).toBeNull();
     const watchedLabels = view.getAllByText('Watched', { exact: true });
     expect(watchedLabels.length).toBeGreaterThan(1);
@@ -364,7 +364,7 @@ describe('item detail metadata subscriptions', () => {
     expect(mockUpdateItem).toHaveBeenCalledWith(
       expect.objectContaining({ itemId: 'item', timesWatched: 2 }),
     );
-    await user.press(view.getByText('Edit'));
+    await user.press(view.getByText('Update Entry'));
     expect(view.queryByLabelText('Increase times watched')).toBeNull();
     await user.press(view.getByRole('button', { name: 'Dismiss drawer' }));
     expect(mockUpdateItem).toHaveBeenCalledTimes(1);
