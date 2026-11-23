@@ -48,7 +48,6 @@ describe('TMDB mapper contracts', () => {
         posterPath: '/poster.jpg',
         overview: 'After the Snap',
         releaseDate: '2019-04-24',
-        voteAverage: 8.3,
       },
     ]);
   });

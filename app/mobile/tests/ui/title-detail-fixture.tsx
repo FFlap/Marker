@@ -162,7 +162,6 @@ beforeEach(() => {
       firstAirDate: '2024-04-01',
       overview: 'Canonical overview that must not replace the preview.',
       runtime: 24,
-      voteAverage: 8.7,
       genres: ['Animation'],
       cast: [
         {

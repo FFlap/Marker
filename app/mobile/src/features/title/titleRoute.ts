@@ -23,7 +23,6 @@ const decodePreview = Schema.decodeUnknownOption(
       ),
       overview: Schema.optional(Schema.String),
       releaseDate: Schema.optional(Schema.String),
-      voteAverage: Schema.optional(Schema.Finite),
     }),
   ),
 );
@@ -57,6 +56,5 @@ export function parseTitlePreview(value?: string): SearchResult | undefined {
     posterPath: preview.posterPath,
     overview: preview.overview,
     releaseDate: preview.releaseDate,
-    voteAverage: preview.voteAverage,
   };
 }

@@ -86,7 +86,6 @@ export function mapSearchResponse(payload: unknown) {
           posterPath: string(r.poster_path),
           overview: string(r.overview),
           releaseDate: string(r.release_date) ?? string(r.first_air_date),
-          voteAverage: number(r.vote_average),
         },
       ];
     });

@@ -21,8 +21,6 @@ describe('title route input', () => {
 
   it.each([
     { originalTitle: { text: 'Title' } },
-    { voteAverage: '8.5' },
-    { voteAverage: { value: 8.5 } },
     { posterPath: '/folder/../poster.jpg' },
     { posterPath: '/../poster.jpg' },
     { posterPath: '/folder/..' },
@@ -49,11 +47,12 @@ describe('title route input', () => {
       posterPath: '/folder/poster..jpg',
       overview: 'Overview',
       releaseDate: '2026-01-01',
-      voteAverage: 8.5,
     };
-    expect(parseTitlePreview(JSON.stringify({ ...preview, untrusted: { nested: true } }))).toEqual(
-      preview,
-    );
+    expect(
+      parseTitlePreview(
+        JSON.stringify({ ...preview, voteAverage: 8.5, untrusted: { nested: true } }),
+      ),
+    ).toEqual(preview);
   });
 
   it.each([undefined, '', ' ', 'null', '{}', '[]', '{invalid'])(
