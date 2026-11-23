@@ -19,7 +19,7 @@ import { SecondaryHeader } from '@/components/BackButton';
 import { SeasonPicker } from '@/components/SeasonPicker';
 import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
 import { SectionHeader } from '@/features/title/components/SectionHeader';
-import { EntryActionBar, useEntryActionBarSpace } from '@/features/title/components/EntryActionBar';
+import { EntryActionBar } from '@/features/title/components/EntryActionBar';
 import { SeasonHeaderRow } from '@/features/title/components/SeasonProgress';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { EpisodeSkeletonRows } from '@/components/EpisodeSkeletonRows';
@@ -143,7 +143,6 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     episodes.length < seasonRow.totalCount;
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
   const [expanded, setExpanded] = useState<string>();
-  const entryActionBarSpace = useEntryActionBarSpace();
 
   const suggestions =
     useQuery(
@@ -222,6 +221,24 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
 
   const renderEpisode = ({ item: episode }: { item: Episode }) => {
     const episodeKey = `${episode.season}:${episode.episode}`;
+    const hasDetails = !!episode.overview || !!episode.airDate;
+    const isExpanded = hasDetails && expanded === episodeKey;
+    const summary = (
+      <>
+        <View style={s.epHeader}>
+          <Text style={s.epNo}>EP {episode.episode.toString().padStart(2, '0')}</Text>
+          {!!episode.runtime && <Text style={s.epTime}>{episode.runtime} min</Text>}
+        </View>
+        <Text numberOfLines={2} style={s.epName}>
+          {episode.name}
+        </Text>
+        {!!episode.overview && !isExpanded && (
+          <Text numberOfLines={2} style={s.epOverview}>
+            {episode.overview}
+          </Text>
+        )}
+      </>
+    );
     return (
       <View style={s.episode}>
         <View style={s.epRow}>
@@ -244,28 +261,21 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               </View>
             )}
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`View episode ${episode.episode}`}
-            accessibilityState={{ expanded: expanded === episodeKey }}
-            style={s.epExpand}
-            onPress={() => setExpanded(expanded === episodeKey ? undefined : episodeKey)}
-          >
-            <View style={s.epHeader}>
-              <Text style={s.epNo}>EP {episode.episode.toString().padStart(2, '0')}</Text>
-              {!!episode.runtime && <Text style={s.epTime}>{episode.runtime} min</Text>}
-            </View>
-            <Text numberOfLines={2} style={s.epName}>
-              {episode.name}
-            </Text>
-            {!!episode.overview && expanded !== episodeKey && (
-              <Text numberOfLines={2} style={s.epOverview}>
-                {episode.overview}
-              </Text>
-            )}
-          </Pressable>
+          {hasDetails ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`View episode ${episode.episode}`}
+              accessibilityState={{ expanded: isExpanded }}
+              style={s.epExpand}
+              onPress={() => setExpanded(isExpanded ? undefined : episodeKey)}
+            >
+              {summary}
+            </Pressable>
+          ) : (
+            <View style={s.epExpand}>{summary}</View>
+          )}
         </View>
-        {expanded === episodeKey && (!!episode.overview || !!episode.airDate) && (
+        {isExpanded && (
           <View style={s.epDetails}>
             {!!episode.overview && <Text style={s.epFullOverview}>{episode.overview}</Text>}
             {!!episode.airDate && <Text style={s.episodeDate}>Aired {episode.airDate}</Text>}
@@ -333,7 +343,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
         maxToRenderPerBatch={SEASON_EPISODE_RENDER_BATCH}
-        contentContainerStyle={[s.content, { paddingBottom: entryActionBarSpace }]}
+        contentContainerStyle={s.content}
         refreshControl={
           <RefreshControl
             refreshing={metadataRefresh.refreshing}

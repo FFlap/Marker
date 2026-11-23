@@ -4,21 +4,7 @@ import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 
-const PILL_HEIGHT = 54;
-const GAP_ABOVE_PILL = 24;
-const MIN_BOTTOM_GAP = 12;
-
-function bottomGap(safeAreaBottom: number) {
-  return Math.max(safeAreaBottom, MIN_BOTTOM_GAP) + 4;
-}
-
-/** Bottom content padding that keeps the last row scrollable above the pill. */
-export function useEntryActionBarSpace() {
-  const { bottom } = useSafeAreaInsets();
-  return PILL_HEIGHT + GAP_ABOVE_PILL + bottomGap(bottom);
-}
-
-/** Sticky full-width pill for adding or updating a library entry. */
+/** Full-width pill pinned below a screen's scrolling content for adding or updating an entry. */
 export function EntryActionBar({
   label,
   onPress,
@@ -30,7 +16,7 @@ export function EntryActionBar({
 }) {
   const { bottom } = useSafeAreaInsets();
   return (
-    <View pointerEvents="box-none" style={[s.bar, { paddingBottom: bottomGap(bottom) }]}>
+    <View style={[s.bar, { paddingBottom: Math.max(bottom, 12) + 4 }]}>
       <NativePressable
         testID="entry-action-bar"
         accessibilityRole="button"
@@ -49,32 +35,21 @@ export function EntryActionBar({
 
 const s = createAppStyles(
   {
-    bar: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 20,
-      alignItems: 'center',
-      paddingHorizontal: 20,
-    },
+    bar: { alignItems: 'center', paddingHorizontal: 20, paddingTop: 10 },
     pill: {
       width: '100%',
       maxWidth: 720,
-      height: PILL_HEIGHT,
-      borderRadius: PILL_HEIGHT / 2,
+      minHeight: 54,
+      paddingVertical: 14,
+      paddingHorizontal: 24,
+      borderRadius: 27,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: colors.accent,
-      shadowColor: '#000',
-      shadowOpacity: 0.45,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 10,
     },
     disabled: { opacity: 0.5 },
     pressed: { opacity: 0.85, transform: [{ scale: 0.985 }] },
-    label: { color: colors.bg, fontSize: 16, fontWeight: '700', letterSpacing: 0.1 },
+    label: { color: colors.bg, fontSize: 16, fontWeight: '700', textAlign: 'center' },
   },
   ['label'] as const,
 );

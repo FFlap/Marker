@@ -28,7 +28,7 @@ import { SeasonPicker } from '@/components/SeasonPicker';
 import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
 import { SeasonProgress } from '@/features/title/components/SeasonProgress';
 import { SectionHeader } from '@/features/title/components/SectionHeader';
-import { EntryActionBar, useEntryActionBarSpace } from '@/features/title/components/EntryActionBar';
+import { EntryActionBar } from '@/features/title/components/EntryActionBar';
 import { useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
 import { localDateKey } from '@/hooks/use-local-today';
@@ -87,7 +87,6 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [expanded, setExpanded] = useState<string>();
   const [editingEpisode, setEditingEpisode] = useState<string>();
   const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
-  const entryActionBarSpace = useEntryActionBarSpace();
   const [pendingEpisodes, setPendingEpisodes] = usePendingTasks();
   const { pending: removePending, setPending: setRemovePending } = useTaskState();
   const [removeError, setRemoveError] = useState<string>();
@@ -361,7 +360,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
         maxToRenderPerBatch={SEASON_EPISODE_RENDER_BATCH}
-        contentContainerStyle={[s.content, { paddingBottom: entryActionBarSpace }]}
+        contentContainerStyle={s.content}
         refreshControl={
           <RefreshControl
             refreshing={metadataRefresh.refreshing}

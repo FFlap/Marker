@@ -36,7 +36,15 @@ describe('Explore title metadata subscriptions', () => {
     expect(view.queryByLabelText('Add title to track episode 1')).toBeNull();
 
     await act(async () => fireEvent.press(view.getByLabelText('View episode 1')));
+    expect(view.getByText('Frieren sets out.')).toBeTruthy();
     expect(view.getAllByRole('button', { name: 'Add Entry' })).toHaveLength(1);
+  });
+
+  it('shows episodes without an overview or air date as plain rows', async () => {
+    mockState.mockSeasonView[1].season.episodes = [{ season: 1, episode: 1, name: 'The Journey' }];
+    const view = await screen();
+    expect(view.getByText('The Journey')).toBeTruthy();
+    expect(view.queryByLabelText('View episode 1')).toBeNull();
   });
 
   it('shows a preview while the cold query is pending and yields to canonical metadata', async () => {
