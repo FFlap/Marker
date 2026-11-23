@@ -12,7 +12,6 @@ import { useMemo, useRef, useState } from 'react';
 import { FlatList, Linking, Pressable, RefreshControl, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
-import Pencil from 'lucide-react-native/icons/pencil';
 import { api } from '@marker/shared/api';
 import type { Id } from '@marker/shared/dataModel';
 import { Button, EmptyState } from '@/components/ui/primitives';
@@ -29,6 +28,7 @@ import { SeasonPicker } from '@/components/SeasonPicker';
 import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
 import { SeasonProgress } from '@/features/title/components/SeasonProgress';
 import { SectionHeader } from '@/features/title/components/SectionHeader';
+import { EntryActionBar, useEntryActionBarSpace } from '@/features/title/components/EntryActionBar';
 import { useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
 import { localDateKey } from '@/hooks/use-local-today';
@@ -87,6 +87,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [expanded, setExpanded] = useState<string>();
   const [editingEpisode, setEditingEpisode] = useState<string>();
   const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
+  const entryActionBarSpace = useEntryActionBarSpace();
   const [pendingEpisodes, setPendingEpisodes] = usePendingTasks();
   const { pending: removePending, setPending: setRemovePending } = useTaskState();
   const [removeError, setRemoveError] = useState<string>();
@@ -360,7 +361,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
         maxToRenderPerBatch={SEASON_EPISODE_RENDER_BATCH}
-        contentContainerStyle={s.content}
+        contentContainerStyle={[s.content, { paddingBottom: entryActionBarSpace }]}
         refreshControl={
           <RefreshControl
             refreshing={metadataRefresh.refreshing}
@@ -398,19 +399,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
             {titleUpdateFailed && title && (
               <Text style={s.metadataHint}>couldn’t update — pull to retry</Text>
             )}
-            <SectionHeader
-              title="Your Entry"
-              action={
-                draft
-                  ? {
-                      label: 'Edit',
-                      accessibilityLabel: 'Edit entry',
-                      icon: Pencil,
-                      onPress: () => setEntryOpen(true),
-                    }
-                  : undefined
-              }
-            />
+            <SectionHeader title="Your Entry" />
             {draft && (
               <View style={s.entry}>
                 <View style={s.entrySummary}>
@@ -564,6 +553,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
           </>
         }
       />
+      <EntryActionBar label="Update Entry" onPress={() => setEntryOpen(true)} />
     </ScreenView>
   );
 }

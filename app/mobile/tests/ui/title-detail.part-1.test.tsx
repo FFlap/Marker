@@ -27,6 +27,18 @@ describe('Explore title metadata subscriptions', () => {
     expect(mockAddItem).not.toHaveBeenCalled();
   });
 
+  it('offers a single sticky Add Entry action without inline add controls', async () => {
+    const view = await screen();
+    expect(view.getByTestId('entry-action-bar')).toBeTruthy();
+    expect(view.getAllByRole('button', { name: 'Add Entry' })).toHaveLength(1);
+    expect(view.queryByText('Your Entry')).toBeNull();
+    expect(view.queryByText('Add to track')).toBeNull();
+    expect(view.queryByLabelText('Add title to track episode 1')).toBeNull();
+
+    await act(async () => fireEvent.press(view.getByLabelText('View episode 1')));
+    expect(view.getAllByRole('button', { name: 'Add Entry' })).toHaveLength(1);
+  });
+
   it('shows a preview while the cold query is pending and yields to canonical metadata', async () => {
     jest.useFakeTimers();
     try {

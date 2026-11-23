@@ -48,7 +48,6 @@ export const titleDetailScreenStyles = createAppStyles(
     statPlaceholder: { width: 96, height: 48, borderRadius: 10 },
     episodesPlaceholder: { width: '100%', height: 92, borderRadius: 14 },
     episodePlaceholders: { gap: 14 },
-    noEntry: { color: colors.muted, fontSize: 13 },
     metadataLoadingText: { color: colors.muted, fontSize: 12 },
     titleSkeleton: {
       position: 'relative',
@@ -113,15 +112,6 @@ export const titleDetailScreenStyles = createAppStyles(
     epName: { color: colors.text, fontSize: 14, fontWeight: '600', lineHeight: 18 },
     epOverview: { color: colors.muted, fontSize: 11, lineHeight: 15, marginTop: 4 },
     epTime: { color: colors.muted, fontSize: 9 },
-    check: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
     epDetails: {
       backgroundColor: colors.surface,
       padding: 16,
@@ -131,7 +121,6 @@ export const titleDetailScreenStyles = createAppStyles(
     },
     epFullOverview: { color: colors.text, fontSize: 13, lineHeight: 20 },
     episodeDate: { color: colors.text, fontSize: 12, fontWeight: '600' },
-    episodeHint: { color: colors.muted, fontSize: 11, lineHeight: 16 },
     seasonAction: { paddingBottom: 8 },
     tvdbAttribution: {
       color: colors.muted,
@@ -145,7 +134,6 @@ export const titleDetailScreenStyles = createAppStyles(
     'title',
     'meta',
     'overview',
-    'noEntry',
     'metadataLoadingText',
     'errorText',
     'episodeImageNumber',
@@ -155,7 +143,6 @@ export const titleDetailScreenStyles = createAppStyles(
     'epTime',
     'epFullOverview',
     'episodeDate',
-    'episodeHint',
     'tvdbAttribution',
   ] as const,
 );
