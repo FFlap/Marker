@@ -323,7 +323,6 @@ function MediaResult({
         <Text style={s.resultMeta}>
           {result.releaseDate?.slice(0, 4) || '—'} ·{' '}
           {result.mediaType === 'movie' ? 'Movie' : 'TV Show'}
-          {result.voteAverage ? ` · ${result.voteAverage.toFixed(1)}` : ''}
         </Text>
       </View>
       <View style={s.addIcon}>

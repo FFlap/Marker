@@ -38,7 +38,6 @@ function MediaRow({ item, itemId }: { item: SearchResult; itemId?: string }) {
         <span className="mt-1 block text-xs text-muted-foreground">
           {item.releaseDate?.slice(0, 4) || "—"} ·{" "}
           {item.mediaType === "movie" ? "Movie" : "TV Show"}
-          {item.voteAverage ? ` · ${item.voteAverage.toFixed(1)}` : ""}
         </span>
       </span>
       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground text-background">

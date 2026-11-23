@@ -18,7 +18,6 @@ export const providerSearchResultsValidator = v.array(
     posterPath: v.optional(v.string()),
     overview: v.optional(v.string()),
     releaseDate: v.optional(v.string()),
-    voteAverage: v.optional(v.number()),
   }),
 );
 export const providerMovieValidator = v.object({
