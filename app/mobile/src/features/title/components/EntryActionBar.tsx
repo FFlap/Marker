@@ -1,24 +1,20 @@
 import { useState } from 'react';
 import { Text, View, type LayoutChangeEvent } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 
 const PILL_MIN_HEIGHT = 54;
 const GAP_ABOVE_PILL = 24;
-
-function bottomGap(safeAreaBottom: number) {
-  return Math.max(safeAreaBottom, 12) + 4;
-}
+// The root SafeAreaView already reserves the bottom inset.
+const GAP_BELOW_PILL = 12;
 
 /**
  * Tracks the floating pill's rendered height so scrolling content can end above it,
  * including when larger system font sizes make the pill taller.
  */
 export function useEntryActionBarLayout() {
-  const { bottom } = useSafeAreaInsets();
-  const [barHeight, setBarHeight] = useState(PILL_MIN_HEIGHT + bottomGap(bottom));
+  const [barHeight, setBarHeight] = useState(PILL_MIN_HEIGHT + GAP_BELOW_PILL);
   return {
     contentPaddingBottom: barHeight + GAP_ABOVE_PILL,
     onLayout: (event: LayoutChangeEvent) => setBarHeight(event.nativeEvent.layout.height),
@@ -37,13 +33,8 @@ export function EntryActionBar({
   onLayout: (event: LayoutChangeEvent) => void;
   disabled?: boolean;
 }) {
-  const { bottom } = useSafeAreaInsets();
   return (
-    <View
-      pointerEvents="box-none"
-      onLayout={onLayout}
-      style={[s.bar, { paddingBottom: bottomGap(bottom) }]}
-    >
+    <View pointerEvents="box-none" onLayout={onLayout} style={s.bar}>
       <NativePressable
         testID="entry-action-bar"
         accessibilityRole="button"
@@ -70,6 +61,7 @@ const s = createAppStyles(
       zIndex: 20,
       alignItems: 'center',
       paddingHorizontal: 20,
+      paddingBottom: GAP_BELOW_PILL,
     },
     pill: {
       width: '100%',
