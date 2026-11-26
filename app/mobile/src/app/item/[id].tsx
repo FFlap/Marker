@@ -36,7 +36,11 @@ import {
 import { useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
 import { localDateKey, useLocalToday } from '@/hooks/use-local-today';
-import { SEASON_EPISODE_RENDER_BATCH, useSeasonView } from '@/hooks/use-season-view';
+import {
+  SEASON_EPISODE_RENDER_BATCH,
+  SEASON_PAGE_SIZE,
+  useSeasonView,
+} from '@/hooks/use-season-view';
 import { libraryItemScreenStyles as s } from '@/features/title/screens/LibraryItemScreen.styles';
 import { isAlsoWatching, LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import { EpisodeCard } from '@/features/title/components/EpisodeCard';
@@ -85,10 +89,31 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const seasonView = useSeasonView(
     item?.mediaType === 'tv' ? { tmdbId: item.tmdbId, season } : undefined,
   );
-  const savedEpisodes = useQuery(
+  const savedPageCount = Math.max(1, seasonView.pageCount);
+  const savedQuery = useQuery(
     episodeApi.listEpisodes,
-    item ? { itemId, season, pageCount: Math.max(1, seasonView.pageCount) } : 'skip',
+    item ? { itemId, season, pageCount: savedPageCount } : 'skip',
   );
+  // While a longer season loads its next page, keep the episodes already known (and how many
+  // pages they cover), so loaded rows don't flash to unwatched while the query catches up.
+  const savedScope = `${itemId}:${season}`;
+  const [keptSaved, setKeptSaved] = useState<{
+    scope: string;
+    pages: number;
+    episodes: NonNullable<typeof savedQuery>;
+  }>();
+  if (
+    savedQuery !== undefined &&
+    (keptSaved?.episodes !== savedQuery ||
+      keptSaved.scope !== savedScope ||
+      keptSaved.pages !== savedPageCount)
+  )
+    setKeptSaved({ scope: savedScope, pages: savedPageCount, episodes: savedQuery });
+  const kept = keptSaved?.scope === savedScope ? keptSaved : undefined;
+  const savedEpisodes = savedQuery ?? kept?.episodes;
+  // Rows past the pages the saved state covers wait for it before they can be edited.
+  const savedThrough =
+    (savedQuery !== undefined ? savedPageCount : (kept?.pages ?? 0)) * SEASON_PAGE_SIZE;
   const episodeProgress = useQuery(episodeApi.listEpisodeProgress, item ? { itemId } : 'skip');
   const [editingEpisode, setEditingEpisode] = useState<string>();
   const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
@@ -411,7 +436,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       },
     );
   };
-  const renderEpisode = ({ item: episode }: { item: Episode }) => {
+  const renderEpisode = ({ item: episode, index }: { item: Episode; index: number }) => {
     const episodeKey = `${episode.season}:${episode.episode}`;
     const saved = savedByEpisode.get(episodeKey);
     const pendingDraft = episodeDrafts[episodeKey];
@@ -430,7 +455,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         editing={editingEpisode === episodeKey}
         pending={pendingEpisodes.has(episodeKey)}
         // Editing waits for the saved episode, so its tags and count start from what is saved.
-        editable={savedEpisodes !== undefined}
+        editable={savedEpisodes !== undefined && index < savedThrough}
         onEditingChange={(editing) => setEditingEpisode(editing ? episodeKey : undefined)}
         onPatch={(field, value) => patchEpisode(episode.season, episode.episode, field, value)}
         onToggle={() => void toggle(episode)}

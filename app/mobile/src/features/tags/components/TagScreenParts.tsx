@@ -116,9 +116,5 @@ export function TagRow({
 }
 
 export function TagSkeleton(props: ComponentProps<typeof LibraryPageSkeleton>) {
-  return (
-    <View accessibilityLabel="Loading tag">
-      <LibraryPageSkeleton {...props} />
-    </View>
-  );
+  return <LibraryPageSkeleton accessibilityLabel="Loading tag" {...props} />;
 }

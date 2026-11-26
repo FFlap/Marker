@@ -108,38 +108,50 @@ export function LibraryPageSkeleton({
   columns = DEFAULT_DISPLAY_PREFERENCES.gridColumns,
   listColumns = DEFAULT_DISPLAY_PREFERENCES.listColumns,
   textSize = DEFAULT_DISPLAY_PREFERENCES.listTextSize,
+  total,
+  accessibilityLabel = 'Loading library',
 }: {
   list?: boolean;
   columns?: number;
   listColumns?: number;
   textSize?: ListTextSize;
+  /** How many titles are coming, when known, so the placeholders don't outnumber them. */
+  total?: number;
+  accessibilityLabel?: string;
 }) {
   const { width } = useWindowDimensions();
   const contentWidth = Math.min(width, 880) - 40;
+  // Sections fill in order until the known total runs out (the first always shows).
+  const defaults = list ? [5, 3, 3] : [columns * 2, columns, columns];
+  let remaining = total ?? Infinity;
+  const counts = defaults
+    .map((count) => {
+      const shown = Math.max(0, Math.min(count, remaining));
+      remaining -= shown;
+      return shown;
+    })
+    .filter((count, index) => index === 0 || count > 0)
+    .map((count) => Math.max(1, count));
   return (
     <SkeletonShimmerGroup>
       <View
         testID="library-loading"
         accessibilityRole="progressbar"
-        accessibilityLabel="Loading library"
+        accessibilityLabel={accessibilityLabel}
         style={styles.library}
       >
-        {[0, 1, 2].map((section) => (
+        {counts.map((count, section) => (
           <View key={section} style={styles.librarySection}>
             <SectionHeadingBlock width={[92, 104, 96][section]} />
             {list ? (
               <ListRows
-                count={section === 0 ? 5 : 3}
+                count={count}
                 textSize={textSize}
                 columns={listColumns}
                 ranked={section === 0}
               />
             ) : (
-              <PosterCards
-                count={section === 0 ? columns * 2 : columns}
-                columns={columns}
-                width={contentWidth}
-              />
+              <PosterCards count={count} columns={columns} width={contentWidth} />
             )}
           </View>
         ))}

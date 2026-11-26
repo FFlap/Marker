@@ -61,13 +61,16 @@ const seasonTwo = {
 };
 
 let mockSettings: { airingInWatching: boolean } | undefined;
+let mockSavedLoading = false;
 let mockSeasonUpcoming: { upcoming: number; watchedUpcoming: number } | null | undefined;
 const mockUseQuery = jest.fn((ref: string, args?: any) => {
   if (queryShouldThrow) throw new Error('query failed');
   if (ref === 'getItemView') return itemView;
   if (ref === 'getTitleRequestState') return itemView?.requestState?.title;
   if (ref === 'getSeasonRequestState') return mockSeasonView?.[args?.season]?.requestState;
-  if (ref === 'listEpisodes') return savedEpisodes;
+  // A longer page count loads like a new query: nothing until its result arrives.
+  if (ref === 'listEpisodes')
+    return mockSavedLoading && args?.pageCount > 1 ? undefined : savedEpisodes;
   if (ref === 'listEpisodeProgress')
     return (
       episodeProgressOverride ??
@@ -249,6 +252,7 @@ describe('item detail metadata subscriptions', () => {
     mockUseQuery.mockClear();
     mockSettings = undefined;
     mockSeasonUpcoming = { upcoming: 0, watchedUpcoming: 0 };
+    mockSavedLoading = false;
     mockTouchItemView.mockClear();
     mockTouchTitle.mockClear();
     mockUpdateItem.mockClear();
@@ -998,6 +1002,34 @@ describe('item detail metadata subscriptions', () => {
       false,
     );
     expect(view.getByLabelText('Current rating').props.accessibilityValue.text).toBe('Not rated');
+  });
+
+  it('keeps loaded episodes ticked while the next page of saved state loads', async () => {
+    mockSeasonView[1] = {
+      ...mockSeasonView[1],
+      season: {
+        ...mockSeasonView[1].season,
+        episodes: Array.from({ length: 121 }, (_, index) => ({
+          season: 1,
+          episode: index + 1,
+          name: `Episode ${index + 1}`,
+        })),
+      },
+    };
+    savedEpisodes = [{ season: 1, episode: 1, watched: true, tags: [] }];
+    mockSavedLoading = true;
+    const view = await renderScreen();
+    const user = userEvent.setup();
+    await user.press(view.getByText('Load more episodes'));
+    await act(async () =>
+      view.rerender(
+        <ToastProvider>
+          <ItemDetail />
+        </ToastProvider>,
+      ),
+    );
+    const first = view.getByRole('checkbox', { name: 'Mark episode 1 unwatched' });
+    expect(first.props.accessibilityState).toMatchObject({ checked: true, disabled: false });
   });
 
   it('renders the first season page and loads more episodes', async () => {

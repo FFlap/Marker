@@ -200,8 +200,9 @@ export default function CalendarScreen() {
             })}
           </View>
         </GestureDetector>
-        <View style={s.status}>
-          {!loading && (error || partialFailure) && (
+        {/* Only when something failed, so the month grid otherwise fills the screen. */}
+        {!loading && (error || partialFailure) && (
+          <View style={s.status}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Retry loading releases"
@@ -213,8 +214,8 @@ export default function CalendarScreen() {
                 to retry.
               </Text>
             </Pressable>
-          )}
-        </View>
+          </View>
+        )}
       </View>
     </ScreenView>
   );

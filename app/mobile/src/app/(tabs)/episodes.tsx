@@ -364,7 +364,7 @@ function Episodes() {
                                 </Text>
                                 <Text style={s.showTitle}>
                                   {' · '}
-                                  {/* Emphasised like the episode number on title pages. */}
+                                  {/* Quiet, like the episode code on title pages: the names lead. */}
                                   <Text style={s.episodeNumber}>
                                     {`S${episode.season} E${episode.episode}`}
                                   </Text>

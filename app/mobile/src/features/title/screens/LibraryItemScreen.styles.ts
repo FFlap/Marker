@@ -88,11 +88,12 @@ export const libraryItemScreenStyles = createAppStyles(
     checkOn: { backgroundColor: colors.text, borderColor: colors.text },
     checkLoading: { opacity: 0.35 },
 
+    // One rule for episode codes: where a name leads the row, the code is quiet (muted, 600).
     epNo: {
-      color: colors.secondary,
+      color: colors.muted,
       fontVariant: ['tabular-nums'],
       fontSize: 11,
-      fontWeight: '700',
+      fontWeight: '600',
     },
     epName: { color: colors.text, fontSize: 15, fontWeight: '600', lineHeight: 19 },
     epOverview: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 4 },

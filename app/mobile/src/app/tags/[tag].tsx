@@ -482,6 +482,12 @@ export default function TagDetailScreen() {
       >
         {library === undefined || (tagKey && ranks === undefined) ? (
           <TagSkeleton
+            // Once the library is in, the tag's title count is known even if ranks aren't.
+            total={
+              library?.filter((item) =>
+                item.tags.some((entry) => entry.trim().toLocaleLowerCase() === tagKey),
+              ).length
+            }
             list={view === 'list'}
             columns={gridColumns}
             listColumns={listColumns}
