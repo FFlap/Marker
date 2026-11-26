@@ -517,6 +517,10 @@ it("leaves an episode dated after the viewer's local day unwatched, even if UTC 
     itemId,
     activityDate: '2026-11-06',
   });
+  // Before hydration, progress already counts the one covered episode (not zero).
+  expect(await user.query(api.library.episodes.listEpisodeProgress, { itemId })).toMatchObject([
+    { season: 1, currentWatchedCount: 1, currentTotal: 2, identityStale: false },
+  ]);
   const marker = (await t.run((ctx) => ctx.db.get(itemId)))!.seriesWatch!;
   await t.action(internal.library.seasonWatched.hydrateSeriesWatch, {
     userId,
@@ -530,5 +534,8 @@ it("leaves an episode dated after the viewer's local day unwatched, even if UTC 
   expect(episodes.map((episode) => [episode.episode, episode.watched])).toEqual([
     [1, true],
     [2, false],
+  ]);
+  expect(await user.query(api.library.episodes.listEpisodeProgress, { itemId })).toMatchObject([
+    { season: 1, currentWatchedCount: 1, currentTotal: 2 },
   ]);
 });

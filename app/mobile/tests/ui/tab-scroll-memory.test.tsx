@@ -22,7 +22,6 @@ async function setup() {
     { initialProps: { tab: 'a' } },
   );
   await act(() => {
-    hook.result.current.onViewportLayout(laidOut(0, 800));
     hook.result.current.onContentLayout(laidOut(200));
   });
   return { ...hook, scrollTo };
@@ -80,6 +79,23 @@ it('keeps a restore that has not landed when the tab is swiped away again', asyn
   // The content only allows 600 so far, and the person swipes back to b.
   await act(() => {
     result.current.onScroll(scrolled(600));
+    result.current.onSwipeStart();
+  });
+  await rerender({ tab: 'b' });
+  scrollTo.mockClear();
+  await rerender({ tab: 'a' });
+  expect(scrollTo).toHaveBeenLastCalledWith({ y: 1500, animated: false });
+});
+
+it('keeps the target when a swipe starts after the content grew but before the scroll lands', async () => {
+  const { result, rerender, scrollTo } = await setup();
+  await act(() => result.current.onScroll(scrolled(1500)));
+  await rerender({ tab: 'b' });
+  await act(() => result.current.onScroll(scrolled(200)));
+  await rerender({ tab: 'a' });
+  // Tall enough now; the scroll to 1500 is issued but hasn't been reported yet.
+  await act(() => {
+    result.current.onContentSizeChange(400, 3000);
     result.current.onSwipeStart();
   });
   await rerender({ tab: 'b' });

@@ -89,8 +89,9 @@ export const eligible = query({
     // Canonical lookups are bounded, so likely members by their stored type go first (a shelf
     // can't be crowded out by another shelf's titles), then the rest in case the stored type is
     // out of date; canonical metadata then confirms the shelf, and the list goes back to A–Z.
+    // "Animation" alone is western animation too, so only the anime flag or genre counts.
     const storedAnime = (item: Doc<'items'>) =>
-      !!item.isAnime || !!item.genres?.some((genre) => /anim/i.test(genre));
+      !!item.isAnime || !!item.genres?.some((genre) => genre.toLocaleLowerCase() === 'anime');
     const likely = (item: Doc<'items'>) =>
       !section || (section === 'anime' ? storedAnime(item) : !storedAnime(item));
     const candidates = [...available.filter(likely), ...available.filter((item) => !likely(item))]

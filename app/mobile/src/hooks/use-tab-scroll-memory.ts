@@ -57,17 +57,13 @@ export function useTabScrollMemory<
     scrollRef.current?.scrollTo({ y: target, animated: false });
   }, [tab, topInset]);
 
-  const viewport = useRef(0);
   /** Put on the scroll view: retries a restore that the content was too short for. */
-  const onContentSizeChange = useCallback((_width: number, height: number) => {
+  const onContentSizeChange = useCallback(() => {
     const target = pending.current;
     if (target === undefined) return;
+    // Still pending until onScroll reports the offset (or the person drags), so a swipe that
+    // starts before then keeps the target rather than the old offset.
     scrollRef.current?.scrollTo({ y: target, animated: false });
-    if (height - viewport.current >= target) pending.current = undefined;
-  }, []);
-  /** Put on the scroll view, to know how much of the content it shows. */
-  const onViewportLayout = useCallback((event: LayoutChangeEvent) => {
-    viewport.current = event.nativeEvent.layout.height;
   }, []);
 
   const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -103,7 +99,6 @@ export function useTabScrollMemory<
     onSwipeStart,
     onContentLayout,
     onContentSizeChange,
-    onViewportLayout,
     forget,
   };
 }

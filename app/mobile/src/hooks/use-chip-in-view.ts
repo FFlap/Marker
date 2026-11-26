@@ -34,6 +34,8 @@ export function useChipInView<T extends string>(selected: T) {
     ref: stripRef,
     onLayout: (event: LayoutChangeEvent) => {
       viewport.current = event.nativeEvent.layout.width;
+      // A narrower strip (or one laid out after its chips) can leave the selection outside.
+      reveal(selected, false);
     },
     onScroll: (event: { nativeEvent: { contentOffset: { x: number } } }) => {
       offset.current = event.nativeEvent.contentOffset.x;

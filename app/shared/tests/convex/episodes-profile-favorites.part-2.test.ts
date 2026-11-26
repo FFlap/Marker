@@ -510,4 +510,47 @@ describe('episode hub and profile favorites', () => {
       await asUser.query(api.profileFavorites.eligible, { section: 'tv', search: 'drama' }),
     ).toEqual([expect.objectContaining({ title: 'Zulu Drama' })]);
   });
+  it('finds an anime behind a page of western animation', async () => {
+    const { t, userId, asUser } = await setup();
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      for (let index = 0; index < 251; index += 1) {
+        const title = `Alpha cartoon ${String(index).padStart(3, '0')}`;
+        await ctx.db.insert('items', {
+          userId,
+          tmdbId: 50_000 + index,
+          mediaType: 'tv',
+          title,
+          normalizedTitle: title.toLocaleLowerCase(),
+          isAnime: false,
+          genres: ['Animation'],
+          status: 'watched',
+          timesWatched: 1,
+          tags: [],
+          rank: index,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await ctx.db.insert('items', {
+        userId,
+        tmdbId: 51_000,
+        mediaType: 'tv',
+        title: 'Zulu Anime',
+        normalizedTitle: 'zulu anime',
+        isAnime: true,
+        genres: ['Animation'],
+        status: 'watched',
+        timesWatched: 1,
+        tags: [],
+        rank: 300,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    expect(await asUser.query(api.profileFavorites.eligible, { section: 'anime' })).toEqual([
+      expect.objectContaining({ title: 'Zulu Anime' }),
+    ]);
+  });
 });

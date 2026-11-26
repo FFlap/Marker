@@ -1,4 +1,4 @@
-import { mutation, query, type MutationCtx } from '../_generated/server';
+import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { v } from 'convex/values';
 import { EPISODES_PER_CHUNK, MAX_SEASON_EPISODES } from '../seasonStorage';
@@ -20,6 +20,7 @@ import {
   currentSeriesOverride,
   effectiveEpisodeWatched,
   releasedByDeclaration,
+  seriesWatchIncludes,
 } from './seriesWatchState';
 import { recordWatchActivity, resolveActivityDate } from '../watchActivity';
 import {
@@ -558,55 +559,88 @@ export const listEpisodeProgress = query({
           ]),
         ].sort((a, b) => a - b)
       : summaries.map((summary) => summary.season);
-    return coordinates.map((seasonNumber) => {
-      const summary = summaryBySeason.get(seasonNumber);
-      const resolved = seasonByNumber.get(seasonNumber);
-      const active =
-        resolved &&
-        mapping !== null &&
-        resolved.orderEpoch === mapping.orderEpoch &&
-        resolved.chunkCount !== undefined &&
-        resolved.seasonVersion !== undefined &&
-        resolved.chunksComplete === true
-          ? resolved
+    return Promise.all(
+      coordinates.map(async (seasonNumber) => {
+        const summary = summaryBySeason.get(seasonNumber);
+        const resolved = seasonByNumber.get(seasonNumber);
+        const active =
+          resolved &&
+          mapping !== null &&
+          resolved.orderEpoch === mapping.orderEpoch &&
+          resolved.chunkCount !== undefined &&
+          resolved.seasonVersion !== undefined &&
+          resolved.chunksComplete === true
+            ? resolved
+            : undefined;
+        const currentIdentityKey = active
+          ? seasonSummaryIdentityKey(active, mapping?.seasonOrder)
           : undefined;
-      const currentIdentityKey = active
-        ? seasonSummaryIdentityKey(active, mapping?.seasonOrder)
-        : undefined;
-      const identityStale =
-        currentIdentityKey === undefined ||
-        summary?.currentIdentityKey !== currentIdentityKey ||
-        (!!item.seriesWatch && summary?.currentSeasonVersion !== active?.seasonVersion);
-      // Canonical season publication filters episodes unreleased by that UTC day before setting
-      // refreshedAt, and the declaration covers episodes out by the viewer's local day, so a
-      // catalog published no later than that day contains only episodes covered by it.
-      const declarationCoversAll =
-        item.seriesWatch &&
-        active &&
-        new Date(active.refreshedAt).toISOString().slice(0, 10) <= item.seriesWatch.activityDate;
-      const currentGeneration = summary?.seriesWatchGeneration === item.seriesWatch?.generation;
-      const canInfer = declarationCoversAll && (!currentGeneration || !identityStale);
-      const inferredCount = Math.max(
-        0,
-        (active?.episodeCount ?? 0) -
-          (currentGeneration ? (summary?.seriesUnwatchedCount ?? 0) : 0),
-      );
-      return {
-        season: seasonNumber,
-        watchedCount: summary?.watchedCount ?? 0,
-        total: summary?.total ?? 0,
-        currentWatchedCount: canInfer
-          ? inferredCount
-          : identityStale
-            ? 0
-            : (summary?.currentWatchedCount ?? 0),
-        currentTotal: canInfer
-          ? (active?.episodeCount ?? 0)
-          : identityStale
-            ? 0
-            : (summary?.currentTotal ?? 0),
-        identityStale: canInfer ? false : identityStale,
-      };
-    });
+        const identityStale =
+          currentIdentityKey === undefined ||
+          summary?.currentIdentityKey !== currentIdentityKey ||
+          (!!item.seriesWatch && summary?.currentSeasonVersion !== active?.seasonVersion);
+        // Canonical season publication filters episodes unreleased by that UTC day before setting
+        // refreshedAt, and the declaration covers episodes out by the viewer's local day, so a
+        // catalog published no later than that day contains only episodes covered by it.
+        const declarationCoversAll =
+          item.seriesWatch &&
+          active &&
+          new Date(active.refreshedAt).toISOString().slice(0, 10) <= item.seriesWatch.activityDate;
+        const currentGeneration = summary?.seriesWatchGeneration === item.seriesWatch?.generation;
+        // A catalog refreshed after the viewer's day (an evening west of UTC) can list an episode
+        // the declaration doesn't cover. Before hydration writes the counts, infer them from the
+        // episodes it does cover, so the season reads as caught up rather than unwatched.
+        const uncovered =
+          item.seriesWatch && active && !declarationCoversAll && !currentGeneration
+            ? await uncoveredBySeriesWatch(ctx, item.seriesWatch, active)
+            : undefined;
+        const canInfer =
+          (declarationCoversAll && (!currentGeneration || !identityStale)) ||
+          uncovered !== undefined;
+        const inferredCount = Math.max(
+          0,
+          (active?.episodeCount ?? 0) -
+            (uncovered ?? 0) -
+            (currentGeneration ? (summary?.seriesUnwatchedCount ?? 0) : 0),
+        );
+        return {
+          season: seasonNumber,
+          watchedCount: summary?.watchedCount ?? 0,
+          total: summary?.total ?? 0,
+          currentWatchedCount: canInfer
+            ? inferredCount
+            : identityStale
+              ? 0
+              : (summary?.currentWatchedCount ?? 0),
+          currentTotal: canInfer
+            ? (active?.episodeCount ?? 0)
+            : identityStale
+              ? 0
+              : (summary?.currentTotal ?? 0),
+          identityStale: canInfer ? false : identityStale,
+        };
+      }),
+    );
   },
 });
+
+/** Episodes of a published season that a whole-show declaration leaves unwatched. */
+async function uncoveredBySeriesWatch(
+  ctx: QueryCtx,
+  watch: NonNullable<Doc<'items'>['seriesWatch']>,
+  season: Doc<'resolvedSeasons'>,
+) {
+  const seasonVersion = season.seasonVersion;
+  if (seasonVersion === undefined) return undefined;
+  const chunks = await ctx.db
+    .query('resolvedSeasonChunks')
+    .withIndex('by_tmdb_season_version_chunk', (q) =>
+      q.eq('tmdbId', season.tmdbId).eq('season', season.season).eq('seasonVersion', seasonVersion),
+    )
+    .take(MAX_SEASON_EPISODES / EPISODES_PER_CHUNK);
+  return chunks.reduce(
+    (count, chunk) =>
+      count + chunk.episodes.filter((episode) => !seriesWatchIncludes(watch, episode)).length,
+    0,
+  );
+}

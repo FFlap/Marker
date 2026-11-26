@@ -218,7 +218,6 @@ export default function Explore() {
         onScroll={tabScroll.onScroll}
         onScrollBeginDrag={tabScroll.onScrollBeginDrag}
         onContentSizeChange={tabScroll.onContentSizeChange}
-        onLayout={tabScroll.onViewportLayout}
         scrollEventThrottle={32}
         contentContainerStyle={s.content}
       >
