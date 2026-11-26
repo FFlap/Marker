@@ -428,8 +428,7 @@ const s = createAppStyles(
     form: { gap: 24, paddingTop: 22 },
     watchedGroup: {
       marginTop: -8,
-      paddingLeft: 16,
-      paddingRight: 10,
+      paddingHorizontal: 16,
       paddingVertical: 6,
       borderRadius: radius.lg,
       backgroundColor: colors.surface,

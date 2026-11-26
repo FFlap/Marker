@@ -563,9 +563,9 @@ export default function SignIn() {
                       ref={fieldRefs.identifier}
                       accessibilityLabel={identifierLabel}
                       autoCapitalize="none"
-                      keyboardType={flow === 'signUp' || !!recovery ? 'email-address' : 'default'}
-                      // Sign-up and recovery ask for an email; log in takes a username too.
-                      autoComplete={flow === 'signUp' || !!recovery ? 'email' : 'username'}
+                      keyboardType={flow === 'signUp' ? 'email-address' : 'default'}
+                      // Sign-up asks for an email; log in and recovery take a username too.
+                      autoComplete={flow === 'signUp' ? 'email' : 'username'}
                       value={identifier}
                       onChangeText={(value) => {
                         setIdentifier(value);

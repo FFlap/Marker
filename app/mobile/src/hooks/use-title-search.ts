@@ -40,7 +40,9 @@ export function useTitleSearch(
     type
       ? searchCategory({ query: searchQuery, type, page })
       : searchAll({ query: searchQuery }).then((results) => ({ results, hasMore: false }));
-  const [loadingMore, setLoadingMore] = useState(false);
+  // The list whose next page is loading, so switching category or query never shows another
+  // list's request as in flight.
+  const [loadingMoreKey, setLoadingMoreKey] = useState<string>();
   // The list whose last "Load more" failed (so a new query or category starts clean).
   const [failedMoreKey, setFailedMoreKey] = useState<string>();
   const normalizedQuery = query.trim();
@@ -93,11 +95,12 @@ export function useTitleSearch(
 
   const response = enabled && ready ? responses[keyOf(normalizedQuery)] : undefined;
   /** The next page of a category list, added below what is shown. */
+  const loadingMore = !!response && loadingMoreKey === keyOf(response.query);
   const loadMore = () => {
     if (!response || response.state !== 'succeeded' || !response.hasMore || loadingMore) return;
     const key = keyOf(response.query);
     const next = response.page + 1;
-    setLoadingMore(true);
+    setLoadingMoreKey(key);
     setFailedMoreKey(undefined);
     void runClientEffect(
       searchTitles(() => request(response.query, next)).pipe(
@@ -105,7 +108,8 @@ export function useTitleSearch(
           onSuccess: ({ results, hasMore }) =>
             setResponses((current) => {
               const shown = current[key];
-              if (!shown) return current;
+              // Gone (a newer query) or already past this page: nothing to add.
+              if (!shown || shown.page !== next - 1) return current;
               const seen = new Set(shown.results.map(resultKey));
               return {
                 ...current,
@@ -120,7 +124,11 @@ export function useTitleSearch(
           // The list stays as it was, and the button offers to try again.
           onFailure: () => setFailedMoreKey(key),
         }),
-        Effect.ensuring(Effect.sync(() => setLoadingMore(false))),
+        Effect.ensuring(
+          Effect.sync(() =>
+            setLoadingMoreKey((current) => (current === key ? undefined : current)),
+          ),
+        ),
       ),
     );
   };
