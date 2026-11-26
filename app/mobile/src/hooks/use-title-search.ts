@@ -64,6 +64,8 @@ export function useTitleSearch(
     if (!enabled || searchQuery.length < 2 || responses[key]?.state === 'succeeded')
       return Effect.void;
     setResponses(({ [key]: _stale, ...rest }) => rest);
+    // A fresh first page starts without an old "Load more" failure.
+    setFailedMoreKeys((current) => without(current, key));
     return searchTitles(() => request(searchQuery, 1)).pipe(
       Effect.match({
         onSuccess: ({ results, hasMore }) =>

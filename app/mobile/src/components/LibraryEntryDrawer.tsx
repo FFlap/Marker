@@ -136,8 +136,10 @@ function LibraryEntryDrawerSession({
         if (nextOpen) return;
         onOpenChange(false);
         const submitted = withTyped(draft);
-        // The field empties when the sheet closes, so the typed text goes with it.
+        // The field empties when the sheet closes, so the typed text (and the suggestions it
+        // narrowed) go with it.
         pendingTag.current = '';
+        onTagPrefixChange?.('');
         if (
           mode === 'update' &&
           (editor.state === 'dirty' || submitted !== draft) &&
@@ -235,6 +237,7 @@ function LibraryEntryDrawerSession({
                   setEditor((current) => transitionDraft(current, { type: 'submit' }));
                   const submitted = withTyped(draft);
                   pendingTag.current = '';
+                  onTagPrefixChange?.('');
                   onOpenChange(false);
                   void onSubmit(submitted);
                 }}
