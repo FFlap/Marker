@@ -138,12 +138,14 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
   );
   const tags = tagQuery ?? [];
-  // Tags already used on this show's episodes, suggested in the episode sheet.
+  // Tags already used on this show's episodes, suggested in the episode sheet (undefined
+  // until the saved episodes load).
   const episodeTagSuggestions = useMemo(
     () =>
+      savedEpisodes &&
       [
         ...new Map(
-          (savedEpisodes ?? [])
+          savedEpisodes
             .flatMap((episode) => episode.tags)
             .map((tag) => [tag.toLocaleLowerCase(), tag] as const),
         ).values(),
@@ -426,6 +428,8 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         draft={episodeDraft}
         editing={editingEpisode === episodeKey}
         pending={pendingEpisodes.has(episodeKey)}
+        // Editing waits for the saved episode, so its tags and count start from what is saved.
+        editable={savedEpisodes !== undefined}
         onEditingChange={(editing) => setEditingEpisode(editing ? episodeKey : undefined)}
         onPatch={(field, value) => patchEpisode(episode.season, episode.episode, field, value)}
         onToggle={() => void toggle(episode)}

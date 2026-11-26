@@ -101,7 +101,17 @@ export default function CalendarScreen() {
             <Text accessibilityLiveRegion="polite" style={s.month}>
               {visibleMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
             </Text>
-            {quietMonth && <Text style={s.monthNote}>No releases from your library</Text>}
+            {/* Under the month, where the settled "no releases" note goes, so a month still
+                loading never reads as an empty one. */}
+            {loading ? (
+              <Text accessibilityLiveRegion="polite" style={s.monthNote}>
+                {result?.needsRefresh && result.events.length > 0
+                  ? 'Updating release dates…'
+                  : 'Loading releases…'}
+              </Text>
+            ) : (
+              quietMonth && <Text style={s.monthNote}>No releases from your library</Text>
+            )}
           </View>
           <IconButton
             icon={ChevronRight}
@@ -135,7 +145,12 @@ export default function CalendarScreen() {
                 <Pressable
                   key={date}
                   accessibilityRole="button"
-                  accessibilityLabel={`${day.toLocaleDateString()}, ${dayEvents.length} release${dayEvents.length === 1 ? '' : 's'}`}
+                  // A count only once releases are known, not "0 releases" while loading.
+                  accessibilityLabel={
+                    events === undefined
+                      ? day.toLocaleDateString()
+                      : `${day.toLocaleDateString()}, ${dayEvents.length} release${dayEvents.length === 1 ? '' : 's'}`
+                  }
                   accessibilityState={{ selected: active, disabled: past }}
                   disabled={past}
                   onPress={() => router.push({ pathname: '/calendar/[date]', params: { date } })}
@@ -181,13 +196,6 @@ export default function CalendarScreen() {
           </View>
         </GestureDetector>
         <View style={s.status}>
-          {loading && (
-            <Text accessibilityLiveRegion="polite" style={s.notice}>
-              {result?.needsRefresh && result.events.length > 0
-                ? 'Updating release dates…'
-                : 'Loading releases for your library…'}
-            </Text>
-          )}
           {!loading && (error || partialFailure) && (
             <Pressable
               accessibilityRole="button"

@@ -74,7 +74,6 @@ export function Stepper({
           accessibilityState={{ disabled: value <= min }}
           disabled={value <= min}
           onPress={() => changeBy(-step)}
-          hitSlop={4}
           style={[styles.stepButton, value <= min && styles.disabled]}
           pressedStyle={styles.stepButtonPressed}
         >
@@ -87,7 +86,6 @@ export function Stepper({
           accessibilityState={{ disabled: value >= max }}
           disabled={value >= max}
           onPress={() => changeBy(step)}
-          hitSlop={4}
           style={[styles.stepButton, value >= max && styles.disabled]}
           pressedStyle={styles.stepButtonPressed}
         >
@@ -469,17 +467,16 @@ const styles = createAppStyles(
       justifyContent: 'space-between',
       gap: 16,
     },
+    // The buttons fill the pill: each is a full 44dp target (a parent clips hit slop).
     stepper: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
       borderRadius: radius.pill,
       backgroundColor: colors.elevated,
-      padding: 3,
     },
     stepButton: {
-      width: 36,
-      height: 36,
+      width: 44,
+      height: 44,
       borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',

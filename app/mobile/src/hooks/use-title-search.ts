@@ -19,6 +19,12 @@ const EMPTY_RESULTS: SearchResult[] = [];
 const ofQuery = (responses: Record<string, SearchResponse>, query: string) =>
   Object.fromEntries(Object.entries(responses).filter(([, entry]) => entry.query === query));
 const resultKey = (result: SearchResult) => `${result.mediaType}:${result.id}`;
+const without = (keys: ReadonlySet<string>, key: string) => {
+  if (!keys.has(key)) return keys;
+  const next = new Set(keys);
+  next.delete(key);
+  return next;
+};
 
 export function useTitleSearch(
   query: string,
@@ -40,11 +46,10 @@ export function useTitleSearch(
     type
       ? searchCategory({ query: searchQuery, type, page })
       : searchAll({ query: searchQuery }).then((results) => ({ results, hasMore: false }));
-  // The list whose next page is loading, so switching category or query never shows another
-  // list's request as in flight.
-  const [loadingMoreKey, setLoadingMoreKey] = useState<string>();
-  // The list whose last "Load more" failed (so a new query or category starts clean).
-  const [failedMoreKey, setFailedMoreKey] = useState<string>();
+  // Lists (by category and query) whose next page is loading, or whose last one failed, so
+  // each list keeps its own state however the person switches between them.
+  const [loadingMoreKeys, setLoadingMoreKeys] = useState<ReadonlySet<string>>(new Set());
+  const [failedMoreKeys, setFailedMoreKeys] = useState<ReadonlySet<string>>(new Set());
   const normalizedQuery = query.trim();
   const [debouncedQuery, setDebouncedQuery] = useState('');
   // Finished searches by kind and query, so switching categories back doesn't search again.
@@ -95,13 +100,13 @@ export function useTitleSearch(
 
   const response = enabled && ready ? responses[keyOf(normalizedQuery)] : undefined;
   /** The next page of a category list, added below what is shown. */
-  const loadingMore = !!response && loadingMoreKey === keyOf(response.query);
+  const loadingMore = !!response && loadingMoreKeys.has(keyOf(response.query));
   const loadMore = () => {
     if (!response || response.state !== 'succeeded' || !response.hasMore || loadingMore) return;
     const key = keyOf(response.query);
     const next = response.page + 1;
-    setLoadingMoreKey(key);
-    setFailedMoreKey(undefined);
+    setLoadingMoreKeys((current) => new Set(current).add(key));
+    setFailedMoreKeys((current) => without(current, key));
     void runClientEffect(
       searchTitles(() => request(response.query, next)).pipe(
         Effect.match({
@@ -122,13 +127,9 @@ export function useTitleSearch(
               };
             }),
           // The list stays as it was, and the button offers to try again.
-          onFailure: () => setFailedMoreKey(key),
+          onFailure: () => setFailedMoreKeys((current) => new Set(current).add(key)),
         }),
-        Effect.ensuring(
-          Effect.sync(() =>
-            setLoadingMoreKey((current) => (current === key ? undefined : current)),
-          ),
-        ),
+        Effect.ensuring(Effect.sync(() => setLoadingMoreKeys((current) => without(current, key)))),
       ),
     );
   };
@@ -142,7 +143,7 @@ export function useTitleSearch(
     failed: response?.state === 'failed',
     hasMore: response?.state === 'succeeded' && response.hasMore,
     loadingMore,
-    loadMoreFailed: !!response && failedMoreKey === keyOf(response.query),
+    loadMoreFailed: !!response && failedMoreKeys.has(keyOf(response.query)),
     loadMore,
     retry: () => {
       setResponses(({ [keyOf(normalizedQuery)]: _failed, ...rest }) => rest);

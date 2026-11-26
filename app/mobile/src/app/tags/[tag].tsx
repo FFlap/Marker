@@ -45,6 +45,7 @@ import {
   TagPoster,
   TagSkeleton,
 } from '@/features/tags/components/TagScreenParts';
+import { useStartupQuery } from '@/hooks/useStartupQuery';
 
 export default function TagDetailScreen() {
   const insertion = useCrossSectionDrop();
@@ -54,7 +55,8 @@ export default function TagDetailScreen() {
   const tagKey = tag.trim().toLocaleLowerCase();
   const library = useQuery(api.library.items.listItems);
   const ranks = useQuery(api.library.items.listTagRanks, tag ? { tag } : 'skip');
-  const settings = useQuery(api.settings.getSettings);
+  // Through the startup data, like the library, so the skeleton already has the saved layout.
+  const settings = useStartupQuery(api.settings.getSettings);
   const today = useLocalToday();
   const automaticAiring = settings?.airingInWatching !== false;
   const titleLines = useTitleLines();

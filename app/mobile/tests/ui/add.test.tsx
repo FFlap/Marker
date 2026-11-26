@@ -168,6 +168,47 @@ describe('add flow', () => {
     expect(view.getByText('Rambo III')).toBeTruthy();
   });
 
+  it('keeps each category’s next page loading on its own while switching', async () => {
+    let finishMovies!: (value: unknown) => void;
+    mockSearch.mockResolvedValue([]);
+    mockSearchCategory.mockImplementation(({ type, page }) => {
+      if (page === 1)
+        return Promise.resolve({
+          results: [{ id: type === 'movie' ? 1 : 2, mediaType: type, title: `${type} one` }],
+          hasMore: true,
+        });
+      if (type === 'movie')
+        return new Promise((resolve) => {
+          finishMovies = resolve;
+        });
+      return new Promise(() => undefined);
+    });
+    const view = await render(
+      <ToastProvider>
+        <Add />
+      </ToastProvider>,
+    );
+    await fireEvent.changeText(view.getByTestId('tmdb-search'), 'One');
+    await act(async () => jest.advanceTimersByTimeAsync(350));
+    await fireEvent.press(view.getByText('Movies'));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    await fireEvent.press(view.getByText('Load more'));
+    await fireEvent.press(view.getByText('TV shows'));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    // TV shows has its own page to load, untouched by the movies request.
+    await fireEvent.press(view.getByText('Load more'));
+    await fireEvent.press(view.getByText('Movies'));
+    expect(view.getByText('Loading…')).toBeTruthy();
+    await act(async () =>
+      finishMovies({
+        results: [{ id: 3, mediaType: 'movie', title: 'movie two' }],
+        hasMore: false,
+      }),
+    );
+    expect(view.getByText('movie two')).toBeTruthy();
+    expect(mockSearchCategory).toHaveBeenCalledTimes(4);
+  });
+
   it('starts each picked title from a fresh entry', async () => {
     mockSearch.mockResolvedValue([
       { id: 1, mediaType: 'movie', title: 'First' },

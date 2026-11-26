@@ -400,7 +400,14 @@ function DrawerOverlay({
         style={styles.overlay}
       >
         <DrawerBackdropTint />
-        <Pressable onPress={() => undefined} style={styles.sheetPressGuard}>
+        {/* Only keeps taps on the sheet from reaching the backdrop; screen readers go straight
+            to the controls inside. */}
+        <Pressable
+          accessible={false}
+          importantForAccessibility="no"
+          onPress={() => undefined}
+          style={styles.sheetPressGuard}
+        >
           {children}
         </Pressable>
       </DialogPrimitive.Overlay>

@@ -12,7 +12,7 @@ const mockMoveItemToWatched = jest.fn().mockResolvedValue(undefined);
 const mockLoadMore = jest.fn();
 let itemView: any;
 let mockSeasonView: any;
-let savedEpisodes: any[] = [];
+let savedEpisodes: any[] | undefined = [];
 let episodeProgressOverride: any[] | undefined;
 let queryShouldThrow = false;
 let mockLoadedSeasonPages: Record<number, number> = {};
@@ -72,7 +72,7 @@ const mockUseQuery = jest.fn((ref: string, args?: any) => {
     return (
       episodeProgressOverride ??
       Object.values(
-        savedEpisodes.reduce<
+        (savedEpisodes ?? []).reduce<
           Record<number, { season: number; watchedCount: number; total: number }>
         >((summaries, episode) => {
           const summary = summaries[episode.season] ?? {
@@ -580,6 +580,12 @@ describe('item detail metadata subscriptions', () => {
     expect(
       view.getByText('The watched episode in Season 1 will be marked unwatched.'),
     ).toBeTruthy();
+  });
+
+  it('opens an episode for editing only once its saved state has loaded', async () => {
+    savedEpisodes = undefined;
+    const view = await renderScreen();
+    expect(view.getByLabelText(/^Episode 1, .+, options$/)).toBeDisabled();
   });
 
   it('holds back the season action until its counts arrive', async () => {

@@ -25,6 +25,7 @@ export function EpisodeCard({
   onPatch,
   onToggle,
   tagSuggestions,
+  editable = true,
 }: {
   draft: EpisodeDraft;
   editing: boolean;
@@ -35,6 +36,8 @@ export function EpisodeCard({
   onPatch: (field: keyof EpisodeDraft, value: number | undefined | string[]) => void;
   onToggle: () => void;
   tagSuggestions?: string[];
+  /** The saved episode has loaded, so its sheet can edit it. */
+  editable?: boolean;
 }) {
   const episodeNumber = episode.episode.toString().padStart(2, '0');
   const watched = !!saved?.watched;
@@ -45,6 +48,8 @@ export function EpisodeCard({
           accessibilityRole="button"
           accessibilityLabel={`Episode ${episode.episode}, ${displayEpisodeName(episode.name)}, options`}
           accessibilityHint="Shows the synopsis, rating, tags and watch count"
+          accessibilityState={{ disabled: !editable }}
+          disabled={!editable}
           style={s.epOpen}
           pressedStyle={s.epOpenPressed}
           onPress={() => onEditingChange(true)}
