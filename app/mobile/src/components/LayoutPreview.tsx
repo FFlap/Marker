@@ -70,6 +70,10 @@ export function LayoutPreview({
   // height, so the controls below stay put while a slider is dragged.
   const shown = source.slice(0, view === 'posters' ? gridColumns * 2 : listColumns === 2 ? 8 : 6);
   const typography = listTypography(textSize);
+  // Fixed for the screen width (never for the setting), and tall enough that the first row
+  // of the biggest posters (three per row) shows with its captions above the fade.
+  const largestRow = width > 0 ? gridMetrics(width, 3, PixelRatio.get()).itemWidth * 1.5 + 38 : 0;
+  const windowHeight = Math.max(WINDOW_HEIGHT, Math.ceil(largestRow + FADE));
   return (
     <View
       accessibilityElementsHidden
@@ -83,7 +87,7 @@ export function LayoutPreview({
         style={s.heading}
         large={view === 'list' && textSize === 'large'}
       />
-      <View style={s.window}>
+      <View style={[s.window, { height: windowHeight }]}>
         <View
           onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
           style={[s.grid, { columnGap: gap, rowGap: view === 'posters' ? 12 : 0 }]}
@@ -144,8 +148,10 @@ export function LayoutPreview({
   );
 }
 
+/** The least the window shows, before the screen width is known. */
 const WINDOW_HEIGHT = 200;
-const FADE = 72;
+/** The fade starts below the first row, over the top of the next one. */
+const FADE = 56;
 
 const s = createAppStyles(
   {
@@ -158,7 +164,7 @@ const s = createAppStyles(
     },
 
     heading: { marginBottom: 12 },
-    window: { height: WINDOW_HEIGHT, overflow: 'hidden' },
+    window: { overflow: 'hidden' },
     // Laid out at its natural height and clipped by the window, never squeezed into it.
     grid: {
       position: 'absolute',

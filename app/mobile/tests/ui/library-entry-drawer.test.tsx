@@ -43,7 +43,12 @@ it('preserves edits through refreshes and exit animation, then resets on reopeni
   expect(onSubmit).not.toHaveBeenCalled();
   await act(() => jest.advanceTimersByTime(200));
   expect(onSubmit).toHaveBeenCalledTimes(1);
-  expect(onSubmit).toHaveBeenLastCalledWith({ status: 'watched', timesWatched: 1, tags: [] });
+  // A tag still typed in the field is saved rather than dropped on Done.
+  expect(onSubmit).toHaveBeenLastCalledWith({
+    status: 'watched',
+    timesWatched: 1,
+    tags: ['unsaved search'],
+  });
   expect(onOpenChange).toHaveBeenCalledWith(false);
 
   await view.rerender(drawer(false));

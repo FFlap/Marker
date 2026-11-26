@@ -17,7 +17,8 @@
     "./clientOperations": "./lib/clientOperations.ts",
     "./clientEffects": "./lib/clientEffects.ts",
     "./castPresentation": "./lib/castPresentation.ts",
-    "./lifecycle": "./lib/lifecycle.ts"
+    "./lifecycle": "./lib/lifecycle.ts",
+    "./titles": "./lib/titles.ts"
   },
   "scripts": {
     "dev": "convex dev",

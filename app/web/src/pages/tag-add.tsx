@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import type { WebLibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
+import { compareTitles } from "@marker/shared/titles";
 
 export function TagAddPage() {
   const runOperation = useOperation();
@@ -35,7 +36,7 @@ export function TagAddPage() {
       .filter(
         (item) => !query || item.title.toLocaleLowerCase().includes(query),
       )
-      .toSorted((left, right) => left.title.localeCompare(right.title));
+      .toSorted((left, right) => compareTitles(left.title, right.title));
   }, [items, search]);
   const isMember = (item: WebLibraryItem) =>
     item.tags.some((entry) => entry.trim().toLocaleLowerCase() === tagKey);

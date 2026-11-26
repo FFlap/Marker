@@ -6,6 +6,7 @@ import type { SeasonPage } from "@/lib/catalog";
 const mocks = vi.hoisted(() => ({
   itemId: "owned-item",
   itemRemoved: false,
+  itemStatus: "watching" as "watching" | "watched",
   navigate: vi.fn<(args: { to: string }) => Promise<void>>(),
   tmdbId: 1,
   touch: vi.fn<(args: Record<string, unknown>) => Promise<void>>(),
@@ -45,7 +46,7 @@ vi.mock("convex/react", async () => {
         genres: mocks.genres, cast: mocks.cast, episodeRunTime: [],
       };
       if (name === "resolvedMetadata/reads:getItemView") return mocks.itemRemoved ? null : {
-        item: { _id: mocks.itemId, title: "Example", tmdbId: mocks.tmdbId, mediaType: "tv", status: "watching", tags: [], timesWatched: 0 },
+        item: { _id: mocks.itemId, title: "Example", tmdbId: mocks.tmdbId, mediaType: "tv", status: mocks.itemStatus, tags: [], timesWatched: 0 },
         title,
       };
       if (name === "resolvedMetadata/reads:getTitleView") return { title };
@@ -67,6 +68,7 @@ afterEach(cleanup);
 beforeEach(() => {
   mocks.itemId = "owned-item";
   mocks.itemRemoved = false;
+  mocks.itemStatus = "watching";
   mocks.navigate.mockReset().mockResolvedValue(undefined);
   mocks.tmdbId = 1;
   mocks.touch.mockReset().mockResolvedValue(undefined);
@@ -243,7 +245,8 @@ it("has nothing to mark before an airing season's first episode", () => {
   ] }];
   mocks.upcoming = { upcoming: 1, watchedUpcoming: 0 };
   render(<ItemDetailPage />);
-  expect(screen.getByRole("button", { name: "No episodes aired yet" })).toBeDisabled();
+  expect(screen.getByText("No episodes aired yet")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Mark watched" })).not.toBeInTheDocument();
 });
 
 it("keeps the season button disabled until its counts arrive", () => {
@@ -253,4 +256,13 @@ it("keeps the season button disabled until its counts arrive", () => {
   mocks.upcoming = undefined;
   render(<ItemDetailPage />);
   expect(screen.getByRole("button", { name: "Mark watched" })).toBeDisabled();
+});
+
+it("doesn't mark newly aired episodes when an already watched show's entry is edited", async () => {
+  mocks.itemStatus = "watched";
+  render(<ItemDetailPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit library entry" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(mocks.mutation).toHaveBeenCalledWith(expect.objectContaining({ status: "watched", tags: [] })));
+  expect(mocks.mutation).not.toHaveBeenCalledWith(expect.objectContaining({ activityDate: expect.any(String) }));
 });

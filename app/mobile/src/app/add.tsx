@@ -18,6 +18,7 @@ import {
   RatingControl,
   Stepper,
   TagEditor,
+  withPendingTag,
 } from '@/components/ui/library-controls';
 import { ENTRY_STATUS_OPTIONS } from '@/components/ui/entryStatusOptions';
 import { useToast } from '@/components/ui/Toast';
@@ -145,7 +146,8 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
           status,
           rating,
           timesWatched: times,
-          tags,
+          // A tag still typed in the field counts too.
+          tags: withPendingTag(tags, tagPrefix),
         };
         if (picked.mediaType === 'tv' && status === 'watched') {
           yield* saveLibrary(() =>

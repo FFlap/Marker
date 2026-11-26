@@ -114,7 +114,12 @@ export default function Explore() {
     loading: mediaLoading,
     failed: mediaFailed,
     retry: retryMedia,
-  } = useTitleSearch(query, { enabled: filter !== 'people' && filter !== 'tags' });
+  } = useTitleSearch(query, {
+    enabled: filter !== 'people' && filter !== 'tags',
+    // Movies and TV shows search their own category, so "See all" isn't limited to the
+    // titles that made the mixed first page.
+    type: filter === 'movie' || filter === 'tv' ? filter : undefined,
+  });
   const [pendingPeople, setPendingPeople] = usePendingTasks();
   const library = useQuery(api.library.items.listItems);
   const people = useQuery(
@@ -308,7 +313,7 @@ export default function Explore() {
                 ))}
               </View>
             ) : (
-              <Text style={s.idleHint}>Your recent searches will show up here.</Text>
+              <Text style={s.idleHint}>Search movies, TV shows, people and public tags.</Text>
             )
           ) : loading ? (
             <SearchResultsSkeleton />

@@ -582,16 +582,17 @@ describe('item detail metadata subscriptions', () => {
     ).toBeTruthy();
   });
 
-  it('keeps the season action disabled until its counts arrive', async () => {
+  it('holds back the season action until its counts arrive', async () => {
     mockSeasonUpcoming = undefined;
     const view = await renderScreen();
-    expect(view.getByRole('button', { name: 'Mark season watched' })).toBeDisabled();
+    expect(view.queryByRole('button', { name: 'Mark season watched' })).toBeNull();
   });
 
   it('has nothing to mark while none of an airing season has aired', async () => {
     mockSeasonUpcoming = { upcoming: 1, watchedUpcoming: 0 };
     const view = await renderScreen();
     expect(view.getByText('No episodes aired yet')).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'No episodes aired yet' })).toBeNull();
   });
 
   it('derives season progress and mark-watched state from current identity counts', async () => {

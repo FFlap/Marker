@@ -65,7 +65,7 @@ describe('Explore', () => {
       </ToastProvider>,
     );
 
-  it('reuses one media search across local filters and returning from people', async () => {
+  it('searches each title category once and reuses the results when returning', async () => {
     mockSearchMedia.mockResolvedValue([
       { id: 1, mediaType: 'movie', title: 'Shared movie' },
       { id: 2, mediaType: 'tv', title: 'Shared show' },
@@ -76,16 +76,25 @@ describe('Explore', () => {
       'Shared',
     );
     await act(async () => jest.advanceTimersByTimeAsync(350));
+    // A category searches its own kind (not just the mixed page), without the debounce.
     await fireEvent.press(q.getByRole('tab', { name: 'Movies' }));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
     expect(q.getByText('Shared movie')).toBeTruthy();
     expect(q.queryByText('Shared show')).toBeNull();
     await fireEvent.press(q.getByRole('tab', { name: 'TV shows' }));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
     expect(q.getByText('Shared show')).toBeTruthy();
     expect(q.queryByText('Shared movie')).toBeNull();
     await fireEvent.press(q.getByRole('tab', { name: 'People' }));
+    await fireEvent.press(q.getByRole('tab', { name: 'Movies' }));
     await fireEvent.press(q.getByRole('tab', { name: 'All' }));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
     expect(q.getByText('Shared movie')).toBeTruthy();
-    expect(mockSearchMedia).toHaveBeenCalledTimes(1);
+    expect(mockSearchMedia.mock.calls).toEqual([
+      [{ query: 'Shared' }],
+      [{ query: 'Shared', type: 'movie' }],
+      [{ query: 'Shared', type: 'tv' }],
+    ]);
   });
 
   it('hides old results immediately and ignores their late failures during the next debounce', async () => {

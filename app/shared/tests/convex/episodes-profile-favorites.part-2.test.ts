@@ -505,5 +505,9 @@ describe('episode hub and profile favorites', () => {
     expect(await asUser.query(api.profileFavorites.eligible, { section: 'tv' })).toEqual([
       expect.objectContaining({ title: 'Zulu Drama' }),
     ]);
+    // Search matches anywhere in the title, not only its start.
+    expect(
+      await asUser.query(api.profileFavorites.eligible, { section: 'tv', search: 'drama' }),
+    ).toEqual([expect.objectContaining({ title: 'Zulu Drama' })]);
   });
 });

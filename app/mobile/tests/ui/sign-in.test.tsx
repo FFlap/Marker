@@ -181,6 +181,19 @@ describe('sign-in screen', () => {
     expect(view.getByText('Create account')).toBeEnabled();
   });
 
+  it('points at an invalid username under its field during sign-up', async () => {
+    const user = userEvent.setup();
+    const view = await render(<SignIn />);
+    await user.press(view.getByText('Sign up'));
+    await fireEvent.changeText(view.getByLabelText('Username'), 'ab');
+    await fireEvent.changeText(view.getByLabelText('Email'), '   ');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
+    await user.press(view.getByText('Create account'));
+    expect(view.getByText('Use at least 3 characters.')).toBeTruthy();
+    expect(view.getByText('Enter your email.')).toBeTruthy();
+    expect(mockSignUpPassword).not.toHaveBeenCalled();
+  });
+
   it('starts Clerk email verification during sign-up', async () => {
     const user = userEvent.setup();
     const view = await render(<SignIn />);

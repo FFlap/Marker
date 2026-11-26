@@ -9,6 +9,7 @@ import {
   RatingControl,
   Stepper,
   TagEditor,
+  withPendingTag,
 } from '@/components/ui/library-controls';
 import { Button, Segmented, SwitchRow } from '@/components/ui/primitives';
 import {
@@ -88,7 +89,13 @@ function LibraryEntryDrawerSession({
     return { state: unsaved ? 'dirty' : 'clean', draft: { ...start, tags: [...start.tags] } };
   });
   const submission = useRef<'ready' | 'submitted'>('ready');
+  // Text still typed in the tag field, saved as a tag when the sheet closes.
+  const pendingTag = useRef('');
   const { draft } = editor;
+  const withTyped = (entry: LibraryEntryDraft) => {
+    const tags = withPendingTag(entry.tags, pendingTag.current);
+    return tags === entry.tags ? entry : { ...entry, tags };
+  };
 
   const title = mode === 'add' ? 'Add to library' : 'Edit entry';
   const updateDraft = (update: (current: LibraryEntryDraft) => LibraryEntryDraft) => {
@@ -121,10 +128,17 @@ function LibraryEntryDrawerSession({
       onOpenChange={(nextOpen) => {
         if (nextOpen) return;
         onOpenChange(false);
-        if (mode === 'update' && editor.state === 'dirty' && submission.current === 'ready') {
+        const submitted = withTyped(draft);
+        // The field empties when the sheet closes, so the typed text goes with it.
+        pendingTag.current = '';
+        if (
+          mode === 'update' &&
+          (editor.state === 'dirty' || submitted !== draft) &&
+          submission.current === 'ready'
+        ) {
           submission.current = 'submitted';
           setEditor((current) => transitionDraft(current, { type: 'submit' }));
-          void onSubmit(draft);
+          void onSubmit(submitted);
         }
       }}
     >
@@ -199,7 +213,10 @@ function LibraryEntryDrawerSession({
           <TagEditor
             tags={draft.tags}
             suggestions={suggestions}
-            onInputChange={onTagPrefixChange}
+            onInputChange={(value) => {
+              pendingTag.current = value;
+              onTagPrefixChange?.(value);
+            }}
             onChange={(tags) => updateDraft((current) => ({ ...current, tags }))}
           />
           <View style={s.footer}>
@@ -212,8 +229,10 @@ function LibraryEntryDrawerSession({
                   if (submission.current === 'submitted') return;
                   submission.current = 'submitted';
                   setEditor((current) => transitionDraft(current, { type: 'submit' }));
+                  const submitted = withTyped(draft);
+                  pendingTag.current = '';
                   onOpenChange(false);
-                  void onSubmit(draft);
+                  void onSubmit(submitted);
                 }}
               />
             ) : (

@@ -277,6 +277,22 @@ function MatchedTagLabel({ tag, query }: { tag: string; query: string }) {
 const MAX_TAGS = 20;
 const MAX_TAG_LENGTH = 40;
 
+/**
+ * Tags plus any text still typed in the tag field, so closing a sheet or saving doesn't drop
+ * a tag the person typed but didn't confirm.
+ */
+export function withPendingTag(tags: string[], pending: string) {
+  const tag = pending.trim().slice(0, MAX_TAG_LENGTH);
+  const key = tag.toLocaleLowerCase();
+  if (
+    !tag ||
+    tags.length >= MAX_TAGS ||
+    tags.some((entry) => entry.trim().toLocaleLowerCase() === key)
+  )
+    return tags;
+  return [...tags, tag];
+}
+
 export function TagEditor({
   tags,
   onChange,

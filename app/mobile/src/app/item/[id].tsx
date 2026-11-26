@@ -612,11 +612,10 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                         seasonError ||
                         !seasonRow ||
                         episodes.length === 0 ||
-                        seasonNothingAired ||
-                        // Until the counts arrive the action could offer the wrong direction.
-                        episodeProgress === undefined ||
-                        seasonUpcoming === undefined
+                        seasonNothingAired
                       }
+                      // Until the counts arrive the action could offer the wrong direction.
+                      ready={episodeProgress !== undefined && seasonUpcoming !== undefined}
                       onToggle={() => {
                         // Unwatching a whole season asks first; marking it watched doesn't.
                         if (seasonDone) setSeasonUnwatchOpen(true);

@@ -450,26 +450,28 @@ function MountedDrawerContent({
             <DrawerSheet
               accessibilityViewIsModal
               className={cn(
-                'bg-background border-border z-50 flex w-full overflow-hidden rounded-t-[28px] rounded-b-none border-t p-0 shadow-lg shadow-black/10',
+                // The top corners come from styles.sheet (radius.sheet).
+                'bg-background border-border z-50 flex w-full overflow-hidden rounded-b-none border-t p-0 shadow-lg shadow-black/10',
                 className,
-                'mx-0 max-w-none gap-0 rounded-t-[28px] rounded-b-none border-x-0 border-b-0 p-0',
+                'mx-0 max-w-none gap-0 rounded-b-none border-x-0 border-b-0 p-0',
               )}
               style={[{ maxHeight: windowHeight * 0.92 }, style]}
               grabber={
                 <>
-                  <View
-                    pointerEvents="none"
-                    style={styles.handleArea}
-                    // Screen readers can't drag, so the grabber doubles as a labelled close.
-                    accessible={motion.dismissible}
-                    accessibilityRole="button"
-                    accessibilityLabel="Close"
-                    accessibilityActions={[{ name: 'activate' }]}
-                    onAccessibilityAction={() => {
-                      if (motion.dismissible) onOpenChange(false);
-                    }}
-                  >
-                    <View style={styles.handle} />
+                  {/* Tapping the grabber closes the sheet too, and screen readers reach it as
+                      a labelled button (they can't drag). A drag still belongs to the sheet. */}
+                  <View style={styles.handleArea}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Close"
+                      accessible={motion.dismissible}
+                      disabled={!motion.dismissible}
+                      hitSlop={{ top: 12, bottom: 12 }}
+                      onPress={() => onOpenChange(false)}
+                      style={styles.handleTarget}
+                    >
+                      <View style={styles.handle} />
+                    </Pressable>
                   </View>
                   {header}
                 </>
@@ -552,11 +554,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  handleTarget: {
+    width: 96,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.borderStrong,
+    backgroundColor: colors.control,
   },
   headerTitle: {
     alignItems: 'center',

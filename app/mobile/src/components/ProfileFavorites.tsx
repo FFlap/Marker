@@ -168,12 +168,33 @@ export function ProfileFavorites({
     );
   };
 
-  const card = (favorite: ProfileFavorite, drag?: () => void, active = false) => (
+  const card = (
+    favorite: ProfileFavorite,
+    drag?: () => void,
+    active = false,
+    // Where it sits on its shelf, for the screen-reader "Move earlier / later" actions.
+    place?: { section: FavoriteSection; index: number; count: number },
+  ) => (
     <View style={[s.card, active && s.cardActive]}>
       <NativePressable
         accessibilityRole="button"
         accessibilityLabel={favorite.title}
         accessibilityHint={interactive ? 'Long press and drag to reorder this favorite' : undefined}
+        accessibilityActions={
+          interactive && place
+            ? [
+                ...(place.index > 0 ? [{ name: 'moveEarlier', label: 'Move earlier' }] : []),
+                ...(place.index < place.count - 1
+                  ? [{ name: 'moveLater', label: 'Move later' }]
+                  : []),
+              ]
+            : undefined
+        }
+        onAccessibilityAction={(event) => {
+          if (!place) return;
+          const step = event.nativeEvent.actionName === 'moveEarlier' ? -1 : 1;
+          void move(place.section, place.index, place.index + step);
+        }}
         onPress={() => router.push(`/item/${favorite._id}`)}
         onLongPress={!interactive ? undefined : drag}
         delayLongPress={220}
@@ -201,7 +222,6 @@ export function ProfileFavorites({
   // Searching found nothing new to add (either group may still have matches).
   const noWatchedMatches =
     !!favoriteSearch.trim() && eligible !== undefined && !pickerItems?.length;
-  // Current favorites always stay listed; the search only finds titles to add.
   // The search narrows both groups, so a favorite to remove is as easy to find as one to add.
   const favoriteQuery = favoriteSearch.trim().toLocaleLowerCase();
   const currentFavorites = (pickerType ? displayedFor(pickerType) : []).filter(
@@ -245,8 +265,17 @@ export function ProfileFavorites({
                   data={displayed}
                   keyExtractor={(favorite) => favorite._id}
                   onDragEnd={({ from, to }) => void move(section, from, to)}
-                  renderItem={({ item, drag, isActive }: RenderItemParams<ProfileFavorite>) =>
-                    card(item, drag, isActive)
+                  renderItem={({
+                    item,
+                    drag,
+                    isActive,
+                    getIndex,
+                  }: RenderItemParams<ProfileFavorite>) =>
+                    card(item, drag, isActive, {
+                      section,
+                      index: getIndex() ?? displayed.indexOf(item),
+                      count: displayed.length,
+                    })
                   }
                   contentContainerStyle={s.rail}
                   showsHorizontalScrollIndicator={false}

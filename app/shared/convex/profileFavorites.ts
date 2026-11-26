@@ -50,14 +50,9 @@ export const eligible = query({
     const watchedOfType = (mediaType: 'tv' | 'movie', limit: number) =>
       ctx.db
         .query('items')
-        .withIndex('by_user_status_media_title', (q) => {
-          const watched = q.eq('userId', userId).eq('status', 'watched').eq('mediaType', mediaType);
-          return normalizedSearch
-            ? watched
-                .gte('normalizedTitle', normalizedSearch)
-                .lt('normalizedTitle', `${normalizedSearch}\uffff`)
-            : watched;
-        })
+        .withIndex('by_user_status_media_title', (q) =>
+          q.eq('userId', userId).eq('status', 'watched').eq('mediaType', mediaType),
+        )
         .take(limit);
     const watchedItems = async () => {
       if (section === 'tv' || section === 'movie') return watchedOfType(section, 1000);
@@ -73,15 +68,8 @@ export const eligible = query({
       }
       return ctx.db
         .query('items')
-        .withIndex('by_user_status_title', (q) => {
-          const watched = q.eq('userId', userId).eq('status', 'watched');
-          return normalizedSearch
-            ? watched
-                .gte('normalizedTitle', normalizedSearch)
-                .lt('normalizedTitle', `${normalizedSearch}\uffff`)
-            : watched;
-        })
-        .take(250);
+        .withIndex('by_user_status_title', (q) => q.eq('userId', userId).eq('status', 'watched'))
+        .take(1000);
     };
     const [items, favorites] = await Promise.all([
       watchedItems(),
@@ -91,8 +79,12 @@ export const eligible = query({
         .take(50),
     ]);
     const selected = new Set(favorites.map((favorite) => favorite.itemId));
+    // Anywhere in the title, like the "Your favorites" group ("oshi" finds 【OSHI NO KO】).
     const available = items.filter(
-      (item) => item.deletingAt === undefined && !selected.has(item._id),
+      (item) =>
+        item.deletingAt === undefined &&
+        !selected.has(item._id) &&
+        (!normalizedSearch || item.normalizedTitle.includes(normalizedSearch)),
     );
     // Canonical lookups are bounded, so likely members by their stored type go first (a shelf
     // can't be crowded out by another shelf's titles), then the rest in case the stored type is

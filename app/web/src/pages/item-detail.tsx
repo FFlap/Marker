@@ -68,14 +68,18 @@ function EntryDialog({
   const save = async () => {
     setBusy("save");
     setError("");
+    // Only a show newly moved to Watched marks its released episodes; editing an already
+    // watched (possibly airing) show must not tick a newly aired episode.
+    const becomingWatched =
+      item.mediaType === "tv" &&
+      draft.status === "watched" &&
+      item.status !== "watched";
     await runOperation.write(
       Effect.gen(function* () {
         yield* saveLibrary(() =>
           updateItem({
             itemId: item._id,
-            ...(item.mediaType !== "tv" || draft.status !== "watched"
-              ? { status: draft.status }
-              : {}),
+            ...(!becomingWatched ? { status: draft.status } : {}),
             timesWatched: draft.timesWatched,
             ...(draft.rating === undefined
               ? { clearRating: true }
@@ -83,7 +87,7 @@ function EntryDialog({
             tags: draft.tags,
           }),
         );
-        if (item.mediaType === "tv" && draft.status === "watched")
+        if (becomingWatched)
           yield* saveLibrary(() =>
             moveItemToWatched({
               itemId: item._id,
@@ -514,48 +518,52 @@ export function ItemDetailPage() {
                   ? `${watchedSeasonCount} of ${seasonRow.totalCount} watched`
                   : "No episodes"}
               </span>
-              <Button
-                variant="outline"
-                className="h-11 px-5"
-                disabled={
-                  seasonPending ||
-                  !episodes.length ||
-                  seasonNothingAired ||
-                  // Until the counts arrive the button could offer the wrong direction.
-                  episodeProgress === undefined ||
-                  seasonUpcoming === undefined
-                }
-                onClick={() => {
-                  const watched = !seasonDone;
-                  setSeasonPending(true);
-                  setSeasonActionError("");
-                  void runOperation.write(
-                    saveLibrary(() =>
-                      setSeasonWatched({
-                        activityDate: localDateKey(),
-                        itemId: item._id,
-                        season,
-                        watched,
-                        orderEpoch: seasonRow.orderEpoch,
-                        metadataProvider: seasonRow.metadataProvider,
-                      }),
-                    ),
-                    {
-                      settled: () => setSeasonPending(false),
-                      failure: () =>
-                        setSeasonActionError("Couldn’t update this season."),
-                    },
-                  );
-                }}
-              >
-                {seasonPending
-                  ? "Saving…"
-                  : seasonNothingAired
-                    ? "No episodes aired yet"
+              {seasonNothingAired ? (
+                // A status, not a button: there is nothing to mark until an episode airs.
+                <span className="text-sm text-muted-foreground">
+                  No episodes aired yet
+                </span>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="h-11 px-5"
+                  disabled={
+                    seasonPending ||
+                    !episodes.length ||
+                    // Until the counts arrive the button could offer the wrong direction.
+                    episodeProgress === undefined ||
+                    seasonUpcoming === undefined
+                  }
+                  onClick={() => {
+                    const watched = !seasonDone;
+                    setSeasonPending(true);
+                    setSeasonActionError("");
+                    void runOperation.write(
+                      saveLibrary(() =>
+                        setSeasonWatched({
+                          activityDate: localDateKey(),
+                          itemId: item._id,
+                          season,
+                          watched,
+                          orderEpoch: seasonRow.orderEpoch,
+                          metadataProvider: seasonRow.metadataProvider,
+                        }),
+                      ),
+                      {
+                        settled: () => setSeasonPending(false),
+                        failure: () =>
+                          setSeasonActionError("Couldn’t update this season."),
+                      },
+                    );
+                  }}
+                >
+                  {seasonPending
+                    ? "Saving…"
                     : seasonDone
                       ? "Mark unwatched"
                       : "Mark watched"}
-              </Button>
+                </Button>
+              )}
             </div>
           )}
           {seasonActionError && (

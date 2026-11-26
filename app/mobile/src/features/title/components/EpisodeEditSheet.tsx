@@ -2,7 +2,13 @@ import Eye from 'lucide-react-native/icons/eye';
 import Hash from 'lucide-react-native/icons/hash';
 import { Image } from 'expo-image';
 import { Text, View } from 'react-native';
-import { RatingControl, Stepper, TagEditor } from '@/components/ui/library-controls';
+import { useRef } from 'react';
+import {
+  RatingControl,
+  Stepper,
+  TagEditor,
+  withPendingTag,
+} from '@/components/ui/library-controls';
 import { Drawer, DrawerClose, DrawerContent } from '@/components/ui/drawer';
 import { Button, SwitchRow } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
@@ -54,10 +60,23 @@ export function EpisodeEditSheet({
   onTagsChange: (tags: string[]) => void;
   onTimesWatchedChange: (times: number) => void;
 }) {
+  // Text still typed in the tag field, kept as a tag when the sheet closes.
+  const pendingTag = useRef('');
   const today = useLocalToday();
   const number = episode.episode.toString().padStart(2, '0');
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer
+      open={open}
+      onOpenChange={(next) => {
+        // A tag still typed in the field is kept when the sheet closes.
+        if (!next) {
+          const tags = withPendingTag(draft.tags, pendingTag.current);
+          if (tags !== draft.tags) onTagsChange(tags);
+          pendingTag.current = '';
+        }
+        onOpenChange(next);
+      }}
+    >
       {
         <DrawerContent className="max-w-lg">
           <View style={s.hero}>
@@ -142,7 +161,14 @@ export function EpisodeEditSheet({
               )}
             </View>
             <RatingControl value={draft.rating} onChange={onRatingChange} />
-            <TagEditor tags={draft.tags} suggestions={tagSuggestions} onChange={onTagsChange} />
+            <TagEditor
+              tags={draft.tags}
+              suggestions={tagSuggestions}
+              onChange={onTagsChange}
+              onInputChange={(value) => {
+                pendingTag.current = value;
+              }}
+            />
             <DrawerClose asChild>
               <Button size="lg" title="Done" onPress={() => undefined} />
             </DrawerClose>

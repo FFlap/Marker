@@ -275,14 +275,18 @@ async function authorizeAction(ctx: Parameters<typeof requireUser>[0] & { runMut
   if (!allowed) throw new Error('Too many requests — try again shortly');
 }
 export const searchMulti = action({
-  args: { query: v.string() },
+  args: {
+    query: v.string(),
+    /** Only movies or only TV shows, for a category's full list rather than the mixed page. */
+    type: v.optional(v.union(v.literal('movie'), v.literal('tv'))),
+  },
   returns: providerSearchResultsValidator,
-  handler: async (ctx, { query }) => {
+  handler: async (ctx, { query, type }) => {
     await authorizeAction(ctx);
     const normalized = query.trim();
     if (normalized.length < 1 || normalized.length > 100)
       throw new Error('Search query must be between 1 and 100 characters');
-    return search(ctx, normalized);
+    return search(ctx, normalized, type);
   },
 });
 export const internalSearchTv = internalAction({

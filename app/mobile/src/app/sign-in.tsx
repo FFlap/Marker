@@ -202,14 +202,6 @@ export default function SignIn() {
   const submit = async () => {
     setBusy(true);
     setError('');
-    if (!verification && !recovery && flow === 'signUp') {
-      const validation = usernameError(username);
-      if (validation) {
-        setError(validation);
-        setBusy(false);
-        return;
-      }
-    }
     await runOperation(
       Effect.gen(function* () {
         if (recovery === 'identifier') {
@@ -688,13 +680,16 @@ export default function SignIn() {
                         }
                       : flow === 'signUp'
                         ? {
-                            username: !username ? 'Choose a username.' : undefined,
-                            identifier: !identifier ? 'Enter your email.' : undefined,
+                            // The full username rule, shown under the field like the others.
+                            username: usernameError(username) || undefined,
+                            identifier: !identifier.trim() ? 'Enter your email.' : undefined,
                             password:
                               password.length < 8 ? 'Use at least 8 characters.' : undefined,
                           }
                         : {
-                            identifier: !identifier ? 'Enter your username or email.' : undefined,
+                            identifier: !identifier.trim()
+                              ? 'Enter your username or email.'
+                              : undefined,
                             password: !password ? 'Enter your password.' : undefined,
                           };
                 const first = (Object.keys(next) as MissingField[]).find((field) => next[field]);

@@ -137,6 +137,19 @@ it('keeps an optimistic favorite order while a save is pending', async () => {
   await act(async () => finishSave());
 });
 
+it('lets screen readers move a favorite without dragging', async () => {
+  const view = await render(<Profile />);
+  const spirited = view.getByLabelText('Spirited Away');
+  expect(spirited.props.accessibilityActions).toEqual([{ name: 'moveLater', label: 'Move later' }]);
+  await act(async () => {
+    fireEvent(spirited, 'accessibilityAction', { nativeEvent: { actionName: 'moveLater' } });
+    await Promise.resolve();
+  });
+  expect(mockRespond).toHaveBeenCalledWith(
+    expect.objectContaining({ itemId: 'favorite-1', beforeId: 'favorite-2' }),
+  );
+});
+
 it('shows period activity, streaks, the heatmap and library breakdowns on the stats tab', async () => {
   const view = await render(<Profile />);
   await act(async () => fireEvent.press(view.getByText('Stats')));

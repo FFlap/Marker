@@ -5,6 +5,7 @@ import Clock3 from 'lucide-react-native/icons/clock-3';
 import EyeOff from 'lucide-react-native/icons/eye-off';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { colors } from '@/constants/colors';
+import { typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { InlineAction } from './SectionHeader';
 
@@ -25,6 +26,7 @@ export function SeasonProgress({
   complete,
   ongoing = false,
   nothingAired = false,
+  ready = true,
   disabled,
   onToggle,
 }: {
@@ -37,6 +39,8 @@ export function SeasonProgress({
   ongoing?: boolean;
   /** Every listed episode is still to air. */
   nothingAired?: boolean;
+  /** The counts that decide the action have loaded. */
+  ready?: boolean;
   disabled: boolean;
   onToggle: () => void;
 }) {
@@ -77,20 +81,33 @@ export function SeasonProgress({
         </View>
       )}
       <View style={styles.toggleRow}>
-        <InlineAction
-          label={
-            complete
-              ? 'Mark season unwatched'
-              : nothingAired
-                ? 'No episodes aired yet'
-                : ongoing
-                  ? 'Mark aired episodes watched'
-                  : 'Mark season watched'
-          }
-          icon={complete ? EyeOff : nothingAired ? Clock3 : Check}
-          disabled={disabled}
-          onPress={onToggle}
-        />
+        {nothingAired ? (
+          // A status, not a button: there is nothing to mark until an episode airs.
+          <View accessible style={styles.status}>
+            <Clock3 size={14} color={colors.muted} strokeWidth={2} />
+            <Text style={styles.statusText}>No episodes aired yet</Text>
+          </View>
+        ) : (
+          // Held in place (invisible) until the counts arrive, so its label never flips.
+          <View
+            style={!ready && styles.waiting}
+            accessibilityElementsHidden={!ready}
+            importantForAccessibility={ready ? 'auto' : 'no-hide-descendants'}
+          >
+            <InlineAction
+              label={
+                complete
+                  ? 'Mark season unwatched'
+                  : ongoing
+                    ? 'Mark aired episodes watched'
+                    : 'Mark season watched'
+              }
+              icon={complete ? EyeOff : Check}
+              disabled={disabled || !ready}
+              onPress={onToggle}
+            />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -117,6 +134,10 @@ const styles = createAppStyles(
     },
     fill: { height: '100%', borderRadius: 3, backgroundColor: colors.text },
     toggleRow: { flexDirection: 'row', marginTop: 14 },
+    // The same height as the action it stands in for.
+    status: { height: 34, flexDirection: 'row', alignItems: 'center', gap: 6 },
+    statusText: { ...typeRamp.meta },
+    waiting: { opacity: 0 },
     count: { color: colors.muted, fontSize: 13, fontVariant: ['tabular-nums'] },
     countStrong: { color: colors.text, fontWeight: '600' },
     countSkeleton: {
@@ -128,5 +149,5 @@ const styles = createAppStyles(
       backgroundColor: colors.surface,
     },
   },
-  ['count', 'countStrong'] as const,
+  ['count', 'countStrong', 'statusText'] as const,
 );
