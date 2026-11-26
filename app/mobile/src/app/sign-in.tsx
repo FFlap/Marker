@@ -536,6 +536,7 @@ export default function SignIn() {
                     <Text style={s.at}>@</Text>
                     <Input
                       ref={fieldRefs.username}
+                      autoComplete="username-new"
                       accessibilityLabel="Username"
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -563,7 +564,8 @@ export default function SignIn() {
                       accessibilityLabel={identifierLabel}
                       autoCapitalize="none"
                       keyboardType={flow === 'signUp' || !!recovery ? 'email-address' : 'default'}
-                      autoComplete="username"
+                      // Sign-up and recovery ask for an email; log in takes a username too.
+                      autoComplete={flow === 'signUp' || !!recovery ? 'email' : 'username'}
                       value={identifier}
                       onChangeText={(value) => {
                         setIdentifier(value);
