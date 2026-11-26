@@ -140,6 +140,60 @@ describe('add flow', () => {
     expect(view.getByText('Rambo: The Series')).toBeTruthy();
   });
 
+  it('offers to try a failed next page again', async () => {
+    mockSearch.mockResolvedValue([{ id: 1, mediaType: 'movie', title: 'Rambo' }]);
+    mockSearchCategory
+      .mockResolvedValueOnce({
+        results: [{ id: 1, mediaType: 'movie', title: 'Rambo' }],
+        hasMore: true,
+      })
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({
+        results: [{ id: 3, mediaType: 'movie', title: 'Rambo III' }],
+        hasMore: false,
+      });
+    const view = await render(
+      <ToastProvider>
+        <Add />
+      </ToastProvider>,
+    );
+    await fireEvent.changeText(view.getByTestId('tmdb-search'), 'Rambo');
+    await act(async () => jest.advanceTimersByTimeAsync(350));
+    await fireEvent.press(view.getByText('Movies'));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    await fireEvent.press(view.getByText('Load more'));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    await fireEvent.press(view.getByText('Couldn’t load more · Try again'));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    expect(view.getByText('Rambo III')).toBeTruthy();
+  });
+
+  it('starts each picked title from a fresh entry', async () => {
+    mockSearch.mockResolvedValue([
+      { id: 1, mediaType: 'movie', title: 'First' },
+      { id: 2, mediaType: 'movie', title: 'Second' },
+    ]);
+    mockResolvedTitle = { runtime: 100, genres: [] };
+    mockAddItem.mockResolvedValue('new-item');
+    const view = await render(
+      <ToastProvider>
+        <Add />
+      </ToastProvider>,
+    );
+    await fireEvent.changeText(view.getByTestId('tmdb-search'), 'Fi');
+    await act(async () => jest.advanceTimersByTimeAsync(350));
+    await fireEvent.press(view.getByLabelText('Select First'));
+    await fireEvent.press(view.getByText('Dropped'));
+    // A different search and title: the dropped status doesn't come along.
+    await fireEvent.changeText(view.getByTestId('tmdb-search'), 'Se');
+    await act(async () => jest.advanceTimersByTimeAsync(350));
+    await fireEvent.press(view.getByLabelText('Select Second'));
+    await fireEvent.press(view.getByTestId('add-submit'));
+    expect(mockAddItem).toHaveBeenCalledWith(
+      expect.objectContaining({ tmdbId: 2, status: 'watchlist' }),
+    );
+  });
+
   it('prewarms on selection and uses canonical metadata when it is available', async () => {
     mockSearch.mockResolvedValue([
       { id: 299534, mediaType: 'movie', title: 'Avengers: Endgame', posterPath: '/poster.jpg' },

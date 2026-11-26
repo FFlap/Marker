@@ -90,10 +90,16 @@ export function mapSearchResponse(payload: unknown) {
       ];
     });
 }
-/** One page of a single-category search, and whether the provider has a later page. */
+/** The last page a category search reads (the provider's lists go on, but not usefully). */
+export const MAX_SEARCH_PAGE = 20;
+
+/** One page of a single-category search, and whether there is a later page to ask for. */
 export function mapCategoryPage(payload: unknown, type: 'movie' | 'tv', page: number) {
   const root = record(payload) ?? malformed();
-  const totalPages = typeof root.total_pages === 'number' ? root.total_pages : page;
+  const totalPages = Math.min(
+    MAX_SEARCH_PAGE,
+    typeof root.total_pages === 'number' ? root.total_pages : page,
+  );
   return {
     results: mapSearchResponse({
       ...root,
@@ -324,8 +330,8 @@ export const searchCategory = action({
     const normalized = query.trim();
     if (normalized.length < 1 || normalized.length > 100)
       throw new Error('Search query must be between 1 and 100 characters');
-    if (!Number.isInteger(page) || page < 1 || page > 20)
-      throw new Error('Search page must be between 1 and 20');
+    if (!Number.isInteger(page) || page < 1 || page > MAX_SEARCH_PAGE)
+      throw new Error(`Search page must be between 1 and ${MAX_SEARCH_PAGE}`);
     return runProviderEffect(searchCategoryEffect(ctx, normalized, type, page));
   },
 });

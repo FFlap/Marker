@@ -336,12 +336,13 @@ export function FilterSheet({
 const s = createAppStyles(
   {
     header: {
-      // Grows when the title wraps at large system text.
-      minHeight: 48,
+      // The height of its 40dp back button (grows when the title wraps at large text), set
+      // so the title lines up with other sheet titles under the grabber.
+      minHeight: 40,
       flexDirection: 'row',
       alignItems: 'center',
       marginHorizontal: -12,
-      marginTop: -8,
+      marginTop: -10,
       marginBottom: -8,
     },
     headerSide: { width: 96, flexDirection: 'row', alignItems: 'center' },

@@ -41,6 +41,8 @@ export function useTitleSearch(
       ? searchCategory({ query: searchQuery, type, page })
       : searchAll({ query: searchQuery }).then((results) => ({ results, hasMore: false }));
   const [loadingMore, setLoadingMore] = useState(false);
+  // The list whose last "Load more" failed (so a new query or category starts clean).
+  const [failedMoreKey, setFailedMoreKey] = useState<string>();
   const normalizedQuery = query.trim();
   const [debouncedQuery, setDebouncedQuery] = useState('');
   // Finished searches by kind and query, so switching categories back doesn't search again.
@@ -96,6 +98,7 @@ export function useTitleSearch(
     const key = keyOf(response.query);
     const next = response.page + 1;
     setLoadingMore(true);
+    setFailedMoreKey(undefined);
     void runClientEffect(
       searchTitles(() => request(response.query, next)).pipe(
         Effect.match({
@@ -114,8 +117,8 @@ export function useTitleSearch(
                 },
               };
             }),
-          // The list stays as it was; "Load more" can be tried again.
-          onFailure: () => undefined,
+          // The list stays as it was, and the button offers to try again.
+          onFailure: () => setFailedMoreKey(key),
         }),
         Effect.ensuring(Effect.sync(() => setLoadingMore(false))),
       ),
@@ -131,6 +134,7 @@ export function useTitleSearch(
     failed: response?.state === 'failed',
     hasMore: response?.state === 'succeeded' && response.hasMore,
     loadingMore,
+    loadMoreFailed: !!response && failedMoreKey === keyOf(response.query),
     loadMore,
     retry: () => {
       setResponses(({ [keyOf(normalizedQuery)]: _failed, ...rest }) => rest);

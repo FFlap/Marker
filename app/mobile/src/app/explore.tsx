@@ -117,6 +117,7 @@ export default function Explore() {
     retry: retryMedia,
     hasMore: mediaHasMore,
     loadingMore: mediaLoadingMore,
+    loadMoreFailed: mediaLoadMoreFailed,
     loadMore: loadMoreMedia,
   } = useTitleSearch(query, {
     enabled: filter !== 'people' && filter !== 'tags',
@@ -339,7 +340,8 @@ export default function Explore() {
               <ResultSection
                 title="Movies"
                 visible={allMovies.length > 0}
-                more={movies.length > allMovies.length ? () => seeAll('movie') : undefined}
+                // Its own search can find more than the mixed page shows, so always offered.
+                more={() => seeAll('movie')}
               >
                 {allMovies.map((result) => (
                   <MediaResult
@@ -353,7 +355,7 @@ export default function Explore() {
               <ResultSection
                 title="TV shows"
                 visible={allShows.length > 0}
-                more={shows.length > allShows.length ? () => seeAll('tv') : undefined}
+                more={() => seeAll('tv')}
               >
                 {allShows.map((result) => (
                   <MediaResult
@@ -424,7 +426,13 @@ export default function Explore() {
               {/* A category lists every page of its own search, one page at a time. */}
               {mediaHasMore && (
                 <Button
-                  title={mediaLoadingMore ? 'Loading…' : 'Load more'}
+                  title={
+                    mediaLoadingMore
+                      ? 'Loading…'
+                      : mediaLoadMoreFailed
+                        ? 'Couldn’t load more · Try again'
+                        : 'Load more'
+                  }
                   variant="secondary"
                   disabled={mediaLoadingMore}
                   onPress={loadMoreMedia}

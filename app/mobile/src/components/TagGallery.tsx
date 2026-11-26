@@ -130,7 +130,8 @@ const s = createAppStyles(
     front: { zIndex: 3 },
     right: { right: '6%', bottom: 10 },
     left: { left: '6%', bottom: 10 },
-    posterImage: { width: '100%', height: '100%' },
+    // A cover still loading reads as a poster-shaped tile, not as part of the card.
+    posterImage: { width: '100%', height: '100%', backgroundColor: colors.elevated },
     dim: { position: 'absolute', inset: 0, backgroundColor: 'rgba(10,10,11,0.35)' },
     fallback: {
       width: 64,

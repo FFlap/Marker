@@ -159,11 +159,11 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const [expanded, setExpanded] = useState<string>();
   const entryBar = useEntryActionBarLayout();
 
-  const suggestions =
-    useQuery(
-      api.library.items.listTagSuggestions,
-      entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
-    ) ?? [];
+  const suggestionQuery = useQuery(
+    api.library.items.listTagSuggestions,
+    entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
+  );
+  const suggestions = suggestionQuery ?? [];
   const meta = {
     title: hero?.title ?? '',
     posterPath: hero?.posterPath,
@@ -513,6 +513,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         mode="add"
         initial={initialEntry}
         suggestions={suggestions}
+        suggestionsReady={suggestionQuery !== undefined}
         onTagPrefixChange={setTagPrefix}
         saving={entrySaving}
         onSubmit={saveEntry}

@@ -176,7 +176,7 @@ export function RatingControl({
         })}
       </View>
       {/* Always shown: half stars stay discoverable after the first rating. */}
-      <Text style={styles.ratingHint}>Tap the selected star again for a half star.</Text>
+      <Text style={styles.ratingHint}>Tap a star twice for a half star.</Text>
     </ControlSection>
   );
 }
@@ -273,12 +273,18 @@ const MAX_TAG_LENGTH = 40;
 /**
  * Tags plus a tag still typed in the field, so closing a sheet or saving doesn't drop it. Only
  * a whole tag counts: an existing tag typed in full, or new text that matches no existing tag.
- * Text that only partly matches an existing tag was a search, and is left out.
+ * Text that only partly matches an existing tag was a search, and is left out — as is any text
+ * while the existing tags for it are still loading (`suggestions` undefined), since it can't be
+ * told apart yet.
  */
-export function withPendingTag(tags: string[], pending: string, suggestions: string[] = []) {
+export function withPendingTag(
+  tags: string[],
+  pending: string,
+  suggestions: readonly string[] | undefined,
+) {
   const typed = pending.trim().slice(0, MAX_TAG_LENGTH);
   const key = typed.toLocaleLowerCase();
-  if (!typed || tags.length >= MAX_TAGS) return tags;
+  if (!typed || tags.length >= MAX_TAGS || !suggestions) return tags;
   const existing = suggestions.find((tag) => tag.trim().toLocaleLowerCase() === key);
   if (!existing && suggestions.some((tag) => tag.toLocaleLowerCase().includes(key))) return tags;
   const tag = existing?.trim() ?? typed;

@@ -94,6 +94,29 @@ it('drops a partly typed search for an existing tag but keeps a typed existing t
   expect(onSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ tags: ['Cozy'] }));
 });
 
+it('drops typed text while the tags matching it are still loading', async () => {
+  const onSubmit = jest.fn();
+  const view = await render(
+    <>
+      <LibraryEntryDrawer
+        open
+        mode="update"
+        initial={initial}
+        suggestions={[]}
+        suggestionsReady={false}
+        saving={false}
+        onSubmit={onSubmit}
+        onOpenChange={jest.fn()}
+      />
+      <PortalHost />
+    </>,
+  );
+  await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'fa');
+  await fireEvent.press(view.getByText('Done'));
+  await act(() => jest.advanceTimersByTime(200));
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
 it('cancels a pending close when its editing session is replaced', async () => {
   const onSubmit = jest.fn();
   const onOpenChange = jest.fn();

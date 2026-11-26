@@ -39,6 +39,8 @@ type EntryContentProps = {
   mode: 'add' | 'update';
   initial: LibraryEntryDraft;
   suggestions: string[];
+  /** The suggestions for the typed text have loaded (a typed tag is only kept once they have). */
+  suggestionsReady?: boolean;
   saving: boolean;
   onSubmit: (draft: LibraryEntryDraft) => void | Promise<void>;
   watchedHint?: string;
@@ -73,6 +75,7 @@ function LibraryEntryDrawerSession({
   mode,
   initial,
   suggestions,
+  suggestionsReady = true,
   saving,
   onSubmit,
   watchedHint,
@@ -93,7 +96,11 @@ function LibraryEntryDrawerSession({
   const pendingTag = useRef('');
   const { draft } = editor;
   const withTyped = (entry: LibraryEntryDraft) => {
-    const tags = withPendingTag(entry.tags, pendingTag.current, suggestions);
+    const tags = withPendingTag(
+      entry.tags,
+      pendingTag.current,
+      suggestionsReady ? suggestions : undefined,
+    );
     return tags === entry.tags ? entry : { ...entry, tags };
   };
 

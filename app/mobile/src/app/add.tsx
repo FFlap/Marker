@@ -64,15 +64,13 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   const [filter, setFilter] = useState<MediaFilter>('all');
   const chipStrip = useChipInView(filter);
   const [picked, setPicked] = useState<SearchResult | undefined>(initialResult);
-  const { results, loading, ready, failed, retry, hasMore, loadingMore, loadMore } = useTitleSearch(
-    query,
-    {
+  const { results, loading, ready, failed, retry, hasMore, loadingMore, loadMoreFailed, loadMore } =
+    useTitleSearch(query, {
       enabled: !picked,
       delayMs: 350,
       // Movies and TV shows search their own category, like Explore.
       type: filter === 'all' ? undefined : filter,
-    },
-  );
+    });
   const library = useQuery(api.library.items.listItems);
   const libraryEntry = (result: SearchResult) =>
     library?.find((item) => item.tmdbId === result.id && item.mediaType === result.mediaType);
@@ -84,6 +82,7 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   const [rating, setRating] = useState<number>();
   const [times, setTimes] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
+  const [tagPrefix, setTagPrefix] = useState('');
   const { pending: submitting, setPending: setSubmitting } = useTaskState();
   const changeStatus = (nextStatus: Status) => {
     setStatus(nextStatus);
@@ -97,6 +96,12 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   };
   const selectResult = useCallback(
     (result: SearchResult) => {
+      // Each title starts from a fresh entry, so nothing chosen for another one carries over.
+      setStatus('watchlist');
+      setRating(undefined);
+      setTimes(0);
+      setTags([]);
+      setTagPrefix('');
       setPicked(result);
       void runOperation(
         touchMetadata(() =>
@@ -124,12 +129,11 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
       { failure: () => undefined },
     );
   }, [initialResult, touchTitle, runOperation]);
-  const [tagPrefix, setTagPrefix] = useState('');
-  const suggestions =
-    useQuery(
-      api.library.items.listTagSuggestions,
-      picked ? { prefix: tagPrefix.trim() || undefined } : 'skip',
-    ) ?? [];
+  const suggestionQuery = useQuery(
+    api.library.items.listTagSuggestions,
+    picked ? { prefix: tagPrefix.trim() || undefined } : 'skip',
+  );
+  const suggestions = suggestionQuery ?? [];
   const visibleResults =
     filter === 'all' ? results : results.filter((result) => result.mediaType === filter);
   const resolvedRuntime = resolvedTitle?.episodeRunTime?.length
@@ -154,7 +158,7 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
           rating,
           timesWatched: times,
           // A tag still typed in the field counts too.
-          tags: withPendingTag(tags, tagPrefix, suggestions),
+          tags: withPendingTag(tags, tagPrefix, suggestionQuery),
         };
         if (picked.mediaType === 'tv' && status === 'watched') {
           yield* saveLibrary(() =>
@@ -297,7 +301,13 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
             )}
             {!loading && hasMore && (
               <Button
-                title={loadingMore ? 'Loading…' : 'Load more'}
+                title={
+                  loadingMore
+                    ? 'Loading…'
+                    : loadMoreFailed
+                      ? 'Couldn’t load more · Try again'
+                      : 'Load more'
+                }
                 variant="secondary"
                 disabled={loadingMore}
                 onPress={loadMore}

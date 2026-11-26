@@ -133,11 +133,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     seasonView.status === 'CanLoadMore' &&
     seasonRow !== undefined &&
     episodes.length < seasonRow.totalCount;
-  const tags =
-    useQuery(
-      api.library.items.listTagSuggestions,
-      entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
-    ) ?? [];
+  const tagQuery = useQuery(
+    api.library.items.listTagSuggestions,
+    entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
+  );
+  const tags = tagQuery ?? [];
   // Tags already used on this show's episodes, suggested in the episode sheet.
   const episodeTagSuggestions = useMemo(
     () =>
@@ -557,6 +557,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 unsaved={unsavedEntry}
                 offerAlsoWatching={item.mediaType === 'tv' && settings?.airingInWatching === false}
                 suggestions={tags}
+                suggestionsReady={tagQuery !== undefined}
                 onTagPrefixChange={setTagPrefix}
                 saving={entrySaving}
                 onSubmit={saveEntry}

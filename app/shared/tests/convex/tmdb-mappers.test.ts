@@ -111,5 +111,7 @@ describe('mapCategoryPage', () => {
       hasMore: true,
     });
     expect(mapCategoryPage({ ...payload, page: 3 }, 'tv', 3).hasMore).toBe(false);
+    // Never past the last page the action accepts.
+    expect(mapCategoryPage({ ...payload, total_pages: 500 }, 'tv', 20).hasMore).toBe(false);
   });
 });
