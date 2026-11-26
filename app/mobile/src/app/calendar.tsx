@@ -150,8 +150,9 @@ export default function CalendarScreen() {
                   key={date}
                   accessibilityRole="button"
                   // A count only once releases are known, not "0 releases" while loading.
+                  // Neighbouring months' days aren't covered by this month's releases.
                   accessibilityLabel={
-                    events === undefined
+                    events === undefined || !inMonth
                       ? day.toLocaleDateString()
                       : `${day.toLocaleDateString()}, ${dayEvents.length} release${dayEvents.length === 1 ? '' : 's'}`
                   }

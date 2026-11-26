@@ -95,13 +95,14 @@ export function EpisodeCard({
               ? `Mark episode ${episode.episode} unwatched`
               : `Mark episode ${episode.episode} watched`
           }
-          accessibilityState={{ checked: watched, disabled: pending }}
-          disabled={pending}
+          // Until the saved state loads the circle can't say watched or not, so it waits.
+          accessibilityState={{ checked: editable && watched, disabled: pending || !editable }}
+          disabled={pending || !editable}
           hitSlop={10}
           onPress={onToggle}
-          style={[s.check, watched && s.checkOn]}
+          style={[s.check, editable ? watched && s.checkOn : s.checkLoading]}
         >
-          {watched && <Check size={16} color={colors.bg} strokeWidth={2.6} />}
+          {editable && watched && <Check size={16} color={colors.bg} strokeWidth={2.6} />}
         </Pressable>
       </View>
       <EpisodeEditSheet

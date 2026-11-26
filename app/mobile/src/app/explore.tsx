@@ -255,6 +255,7 @@ export default function Explore() {
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
                 onPress={() => setFilter(entry.value)}
+                hitSlop={{ top: 4, bottom: 4 }}
                 onLayout={chipStrip.onChipLayout(entry.value)}
                 style={[s.filter, selected && s.filterSelected]}
               >
@@ -679,8 +680,9 @@ const s = createAppStyles(
       alignItems: 'center',
       justifyContent: 'center',
     },
-    filtersShell: { marginTop: 14, marginHorizontal: -20 },
-    filters: { flexDirection: 'row', gap: 8, paddingHorizontal: 20 },
+    // 4dp above and below the 36dp chips gives each a 44dp touch area inside the strip.
+    filtersShell: { marginTop: 10, marginBottom: -4, marginHorizontal: -20 },
+    filters: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingVertical: 4 },
     filter: {
       height: 36,
       paddingHorizontal: 13,

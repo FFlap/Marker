@@ -12,7 +12,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { createAppStyles } from '@/lib/typography';
 
 export default function NotificationSettings() {
-  const { current, pending, update } = useSettings();
+  const { current, loaded, pending, update } = useSettings();
   return (
     <ScreenView style={s.root}>
       <SecondaryHeader
@@ -28,6 +28,7 @@ export default function NotificationSettings() {
           <SwitchRow
             label="Ratings"
             value={current.activityRatings}
+            loading={!loaded}
             disabled={pending.has('activityRatings')}
             onChange={(value) => void update('activityRatings', value)}
             icon={
@@ -39,6 +40,7 @@ export default function NotificationSettings() {
           <SwitchRow
             label="Started watching"
             value={current.activityWatching}
+            loading={!loaded}
             disabled={pending.has('activityWatching')}
             onChange={(value) => void update('activityWatching', value)}
             icon={
@@ -50,6 +52,7 @@ export default function NotificationSettings() {
           <SwitchRow
             label="Finished titles and episodes"
             value={current.activityWatched}
+            loading={!loaded}
             disabled={pending.has('activityWatched')}
             onChange={(value) => void update('activityWatched', value)}
             icon={

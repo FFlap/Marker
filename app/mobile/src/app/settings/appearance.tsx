@@ -52,7 +52,7 @@ const listColumns = [
 ] as const;
 
 export default function AppearanceSettings() {
-  const { current, pending, update } = useSettings();
+  const { current, loaded, pending, update } = useSettings();
   const items = useQuery(api.library.items.listItems);
   const watched = items
     ?.filter((item) => item.status === 'watched')
@@ -73,7 +73,13 @@ export default function AppearanceSettings() {
         fallback="/(tabs)/settings"
         maxWidth={680}
       />
-      <ScrollView contentContainerStyle={s.content}>
+      {/* Held back (space kept) until the saved layout is known, so the preview and controls
+          never show a default that isn't yours. */}
+      <ScrollView
+        contentContainerStyle={s.content}
+        style={!loaded && s.waiting}
+        pointerEvents={loaded ? 'auto' : 'none'}
+      >
         <LayoutPreview
           view={current.defaultView}
           textSize={textSize}
@@ -156,6 +162,7 @@ export default function AppearanceSettings() {
 
 const s = createAppStyles(
   {
+    waiting: { opacity: 0 },
     root: { flex: 1, backgroundColor: colors.bg },
     content: {
       width: '100%',

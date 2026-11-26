@@ -361,6 +361,7 @@ export function SwitchRow({
   detail,
   value,
   disabled = false,
+  loading = false,
   onChange,
   icon,
 }: {
@@ -368,6 +369,8 @@ export function SwitchRow({
   detail?: string;
   value: boolean;
   disabled?: boolean;
+  /** The saved value hasn't loaded: the switch holds its place but shows no state. */
+  loading?: boolean;
   onChange: (value: boolean) => void;
   icon?: ReactNode;
 }) {
@@ -376,8 +379,8 @@ export function SwitchRow({
       accessibilityRole="switch"
       accessibilityLabel={label}
       accessibilityHint={detail}
-      accessibilityState={{ checked: value, disabled }}
-      disabled={disabled}
+      accessibilityState={{ checked: loading ? undefined : value, disabled: disabled || loading }}
+      disabled={disabled || loading}
       onPress={() => onChange(!value)}
       style={styles.listRow}
       pressedStyle={styles.listRowPressed}
@@ -387,7 +390,9 @@ export function SwitchRow({
         <Text style={styles.listRowTitle}>{label}</Text>
         {detail ? <Text style={styles.listRowDetail}>{detail}</Text> : null}
       </View>
-      <SwitchIndicator value={value} />
+      <View style={loading && styles.switchLoading}>
+        <SwitchIndicator value={value} />
+      </View>
     </NativePressable>
   );
 }
@@ -415,7 +420,8 @@ export function ListRow({
   return (
     <NativePressable
       accessibilityRole={onPress ? 'button' : undefined}
-      accessibilityLabel={accessibilityLabel ?? (value ? `${label}, ${value}` : label)}
+      // The visible summary is read too ("Appearance, Posters · 5 per row").
+      accessibilityLabel={accessibilityLabel ?? [label, value, detail].filter(Boolean).join(', ')}
       disabled={!onPress}
       testID={testID}
       onPress={onPress}
@@ -567,6 +573,7 @@ export function StatTile({
 
 const styles = createAppStyles(
   {
+    switchLoading: { opacity: 0 },
     button: {
       borderRadius: radius.pill,
       alignItems: 'center',

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import * as Effect from 'effect/Effect';
-import { useMutation, useQuery } from 'convex/react';
+import { useMutation } from 'convex/react';
+import { useStartupQuery } from '@/hooks/useStartupQuery';
 import { api } from '@marker/shared/api';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
@@ -14,7 +15,8 @@ type SettingKey = Exclude<keyof NonNullable<SettingsPatch>, 'today'>;
 /** Settings with optimistic edits layered over the saved values. */
 export function useSettings() {
   const runOperation = useOperation();
-  const settings = useQuery(api.settings.getSettings);
+  // Through the startup data where there is some, so saved values show on a cold start.
+  const settings = useStartupQuery(api.settings.getSettings);
   const setSettings = useMutation(api.settings.setSettings);
   const toast = useToast();
   const [pending, setPending] = usePendingTasks();

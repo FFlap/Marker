@@ -338,7 +338,8 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     (seasonRow?.totalCount ?? 0) > 0 && watchedSeasonCount >= (seasonRow?.totalCount ?? 0);
   const toggle = (ep: Episode) => {
     const episodeKey = `${ep.season}:${ep.episode}`;
-    if (pendingEpisodes.has(episodeKey)) return;
+    // Without the saved state a tap could set the opposite of what was meant.
+    if (savedEpisodes === undefined || pendingEpisodes.has(episodeKey)) return;
     const old = savedByEpisode.get(episodeKey);
     setPendingEpisodes((current) => new Set(current).add(episodeKey));
     return runOperation.write(

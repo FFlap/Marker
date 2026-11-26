@@ -586,6 +586,8 @@ describe('item detail metadata subscriptions', () => {
     savedEpisodes = undefined;
     const view = await renderScreen();
     expect(view.getByLabelText(/^Episode 1, .+, options$/)).toBeDisabled();
+    // Its circle can't tell watched from unwatched yet, so it waits too.
+    expect(view.getByRole('checkbox', { name: /^Mark episode 1 / })).toBeDisabled();
   });
 
   it('holds back the season action until its counts arrive', async () => {

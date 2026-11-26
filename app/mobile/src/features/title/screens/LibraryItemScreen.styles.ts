@@ -86,6 +86,7 @@ export const libraryItemScreenStyles = createAppStyles(
     },
     // The same selected mark as other checkboxes: a white disc with a dark check.
     checkOn: { backgroundColor: colors.text, borderColor: colors.text },
+    checkLoading: { opacity: 0.35 },
 
     epNo: {
       color: colors.secondary,

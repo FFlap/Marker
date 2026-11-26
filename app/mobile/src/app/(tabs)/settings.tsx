@@ -33,7 +33,7 @@ const textSizeLabel = { small: 'Small text', medium: 'Standard text', large: 'La
 
 export default function Settings() {
   const runOperation = useOperation();
-  const { current, pending, update } = useSettings();
+  const { current, loaded, pending, update } = useSettings();
   const today = useLocalToday();
   const { profileReady } = useAccountLoading();
   const profile = useQuery(api.profiles.me, profileReady ? {} : 'skip');
@@ -100,7 +100,7 @@ export default function Settings() {
         <ListGroup inset={64}>
           <ListRow
             label="Appearance"
-            detail={appearance}
+            detail={loaded ? appearance : undefined}
             icon={
               <SettingIcon>
                 <LayoutGrid size={18} color={colors.text} strokeWidth={1.8} />
@@ -111,12 +111,14 @@ export default function Settings() {
           <ListRow
             label="Notifications"
             detail={
-              // Says what is on: activity from people you follow.
-              notificationsOn === 3
-                ? 'Following activity · All on'
-                : notificationsOn
-                  ? `Following activity · ${notificationsOn} of 3 on`
-                  : 'Following activity · Off'
+              // Says what is on: activity from people you follow (once the settings load).
+              !loaded
+                ? undefined
+                : notificationsOn === 3
+                  ? 'Following activity · All on'
+                  : notificationsOn
+                    ? `Following activity · ${notificationsOn} of 3 on`
+                    : 'Following activity · Off'
             }
             icon={
               <SettingIcon>
@@ -133,6 +135,7 @@ export default function Settings() {
             label="Ask before marking watched"
             detail="When you drag a title to Watched"
             value={current.confirmWatchedMove}
+            loading={!loaded}
             disabled={pending.has('confirmWatchedMove')}
             onChange={(value) => void update('confirmWatchedMove', value)}
             icon={
@@ -144,11 +147,14 @@ export default function Settings() {
           <SwitchRow
             label="Automatically add to Watching"
             detail={
-              current.airingInWatching
-                ? 'Watched shows with new episodes'
-                : 'Use “Also in Watching” in Edit entry'
+              !loaded
+                ? undefined
+                : current.airingInWatching
+                  ? 'Watched shows with new episodes'
+                  : 'Use “Also in Watching” in Edit entry'
             }
             value={current.airingInWatching}
+            loading={!loaded}
             disabled={pending.has('airingInWatching')}
             onChange={(value) => void update('airingInWatching', value, { today })}
             icon={
