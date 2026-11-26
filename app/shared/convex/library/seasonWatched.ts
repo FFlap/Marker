@@ -19,6 +19,7 @@ import {
 } from '../episodeSummaries';
 import { writeActivityEvents, type ActivityEventWrite } from '../activityEvents';
 import { refreshNextEpisode } from '../nextEpisode';
+import { airsAfter } from '../episodeAvailability';
 import { updateProfileStatsForItem } from '../profileStatsRefresh';
 import { bumpCalendarRevision } from '../calendarLibrary';
 import { addItemFields, episodeMatchesStamp, ownedItem, requireUser } from './shared';
@@ -248,6 +249,10 @@ async function applySeasonWatchedBatch(
   await Promise.all(
     batch.map(async (episode, index) => {
       const saved = existing[index];
+      // "Mark season watched" covers what has aired; a listed future episode stays unwatched
+      // so Up next still offers it when it airs.
+      if (args.watched && args.generation === undefined && airsAfter(episode.airDate, activityDate))
+        return;
       if (
         args.generation &&
         saved?.seriesWatchOverride === args.generation &&

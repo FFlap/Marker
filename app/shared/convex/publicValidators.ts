@@ -80,6 +80,11 @@ export const itemValidator = v.object({
   genres: v.optional(v.array(v.string())),
   isAnime: v.boolean(),
   status: statusValidator,
+  /**
+   * A watched show also listed under Watching, set by hand when the "add airing shows to
+   * Watching" setting is off. Only meaningful while watched.
+   */
+  alsoWatching: v.optional(v.boolean()),
   rating: v.optional(v.number()),
   timesWatched: v.number(),
   tags: v.array(v.string()),
@@ -117,6 +122,8 @@ export const episodeValidator = v.object({
   airDate: v.optional(v.string()),
   unverified: v.optional(v.boolean()),
   watched: v.boolean(),
+  /** How many times a watched episode was seen. Missing means once. */
+  timesWatched: v.optional(v.number()),
   rating: v.optional(v.number()),
   tags: v.array(v.string()),
   watchedAt: v.optional(v.number()),

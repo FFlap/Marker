@@ -1,148 +1,117 @@
 import { Image } from 'expo-image';
 import Check from 'lucide-react-native/icons/check';
-import EllipsisVertical from 'lucide-react-native/icons/ellipsis-vertical';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { Pressable, Text, View } from 'react-native';
-import { RatingControl, TagEditor } from '@/components/ui/library-controls';
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
-import { Button } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
+import { NativePressable } from '@/components/ui/NativePressable';
 import type { Episode, EpisodeDraft } from '../libraryItemTypes';
 import { libraryItemScreenStyles as s } from '../screens/LibraryItemScreen.styles';
+import { EpisodeEditSheet } from './EpisodeEditSheet';
+import { displayEpisodeName } from '@/lib/text';
 
 type SavedEpisode = { watched: boolean; rating?: number; tags: string[] } | undefined;
 
+/**
+ * The check toggles watched; the rest of the row opens the episode editor, which also
+ * holds the full synopsis.
+ */
 export function EpisodeCard({
   draft,
   editing,
   episode,
-  expanded,
   pending,
   saved,
   onEditingChange,
-  onExpand,
   onPatch,
   onToggle,
+  tagSuggestions,
 }: {
   draft: EpisodeDraft;
   editing: boolean;
   episode: Episode;
-  expanded: boolean;
   pending: boolean;
   saved: SavedEpisode;
   onEditingChange: (editing: boolean) => void;
-  onExpand: () => void;
   onPatch: (field: keyof EpisodeDraft, value: number | undefined | string[]) => void;
   onToggle: () => void;
+  tagSuggestions?: string[];
 }) {
   const episodeNumber = episode.episode.toString().padStart(2, '0');
+  const watched = !!saved?.watched;
   return (
     <View style={s.episode}>
       <View style={s.epRow}>
-        <View style={s.episodeArtwork}>
-          {episode.imageUrl ? (
-            <Image
-              source={episode.imageUrl}
-              accessibilityLabel={`Episode ${episode.episode} artwork`}
-              contentFit="cover"
-              transition={150}
-              recyclingKey={`${episode.season}:${episode.episode}`}
-              style={s.episodeImage}
-            />
-          ) : (
-            <View style={s.episodeImageFallback}>
-              <Text style={s.episodeImageNumber}>{episodeNumber}</Text>
-            </View>
-          )}
-        </View>
-        <Pressable
+        <NativePressable
           accessibilityRole="button"
-          accessibilityLabel={`View episode ${episode.episode}`}
-          style={s.epExpand}
-          onPress={onExpand}
+          accessibilityLabel={`Episode ${episode.episode}, ${displayEpisodeName(episode.name)}, options`}
+          accessibilityHint="Shows the synopsis, rating, tags and watch count"
+          style={s.epOpen}
+          pressedStyle={s.epOpenPressed}
+          onPress={() => onEditingChange(true)}
         >
-          <View style={s.epHeader}>
-            <Text style={s.epNo}>EP {episodeNumber}</Text>
-            {!!episode.runtime && <Text style={s.epTime}>{episode.runtime} min</Text>}
-          </View>
-          <Text numberOfLines={2} style={s.epName}>
-            {episode.name}
-          </Text>
-          {!!episode.overview && !expanded && (
-            <Text numberOfLines={2} style={s.epOverview}>
-              {episode.overview}
-            </Text>
-          )}
-        </Pressable>
-        <View style={s.epActions}>
-          <Pressable
-            accessibilityRole={saved?.watched ? 'button' : 'checkbox'}
-            accessibilityLabel={
-              saved?.watched
-                ? `Episode ${episode.episode} options`
-                : `Mark episode ${episode.episode} watched`
-            }
-            accessibilityHint={
-              saved?.watched ? undefined : 'Opens episode options after marking it watched'
-            }
-            accessibilityState={
-              saved?.watched ? { disabled: pending } : { checked: false, disabled: pending }
-            }
-            disabled={pending}
-            hitSlop={8}
-            onPress={() => {
-              onEditingChange(true);
-              if (!saved?.watched) onToggle();
-            }}
-            style={saved?.watched ? s.episodeOptionsButton : s.check}
-          >
-            {saved?.watched ? (
-              <EllipsisVertical size={14} color={colors.muted} strokeWidth={1.8} />
+          <View style={s.episodeArtwork}>
+            {episode.imageUrl ? (
+              <Image
+                source={episode.imageUrl}
+                accessibilityLabel={`Episode ${episode.episode} artwork`}
+                contentFit="cover"
+                transition={150}
+                recyclingKey={`${episode.season}:${episode.episode}`}
+                style={s.episodeImage}
+              />
             ) : (
-              <Check size={17} color={colors.text} strokeWidth={2} />
-            )}
-          </Pressable>
-        </View>
-      </View>
-      {expanded && (
-        <View style={s.epDetails}>
-          {!!episode.overview && <Text style={s.epFullOverview}>{episode.overview}</Text>}
-          {!!episode.airDate && <Text style={s.epFact}>Aired {episode.airDate}</Text>}
-        </View>
-      )}
-      <Drawer open={editing} onOpenChange={onEditingChange}>
-        {editing && (
-          <DrawerContent className="max-w-lg">
-            <DrawerHeader>
-              <DrawerTitle>Edit episode {episode.episode}</DrawerTitle>
-            </DrawerHeader>
-            <View style={s.episodeEditorContent}>
-              <RatingControl value={draft.rating} onChange={(value) => onPatch('rating', value)} />
-              <TagEditor tags={draft.tags} onChange={(value) => onPatch('tags', value)} />
-              <View style={s.episodeEditorFooter}>
-                <DrawerClose asChild>
-                  <Button title="Done" onPress={() => undefined} />
-                </DrawerClose>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={pending}
-                  onPress={onToggle}
-                  style={s.drawerTextAction}
-                >
-                  <Text style={[s.drawerTextActionLabel, pending && s.drawerTextActionDisabled]}>
-                    {saved?.watched ? 'Mark episode unwatched' : 'Mark episode watched'}
-                  </Text>
-                </Pressable>
+              <View style={s.episodeImageFallback}>
+                <Text style={s.episodeImageNumber}>{episodeNumber}</Text>
               </View>
+            )}
+          </View>
+          <View style={s.epExpand}>
+            <View style={s.epHeader}>
+              <Text numberOfLines={1} style={s.epMeta}>
+                <Text style={s.epNo}>E{episode.episode}</Text>
+                {!!episode.runtime && ` · ${episode.runtime} min`}
+                {watched && draft.timesWatched > 1 && (
+                  <Text style={s.epTimes}> · Watched {draft.timesWatched}×</Text>
+                )}
+              </Text>
             </View>
-          </DrawerContent>
-        )}
-      </Drawer>
+            {/* The synopsis lives in the episode sheet so the title keeps its room. */}
+            <Text numberOfLines={3} style={s.epName}>
+              {displayEpisodeName(episode.name)}
+            </Text>
+          </View>
+          {/* The row opens the episode's details; the circle only ticks it. */}
+          <ChevronRight size={16} color={colors.muted} strokeWidth={2} />
+        </NativePressable>
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityLabel={
+            watched
+              ? `Mark episode ${episode.episode} unwatched`
+              : `Mark episode ${episode.episode} watched`
+          }
+          accessibilityState={{ checked: watched, disabled: pending }}
+          disabled={pending}
+          hitSlop={10}
+          onPress={onToggle}
+          style={[s.check, watched && s.checkOn]}
+        >
+          {watched && <Check size={16} color={colors.bg} strokeWidth={2.6} />}
+        </Pressable>
+      </View>
+      <EpisodeEditSheet
+        open={editing}
+        onOpenChange={onEditingChange}
+        episode={episode}
+        watched={watched}
+        pending={pending}
+        draft={draft}
+        onToggleWatched={onToggle}
+        onRatingChange={(value) => onPatch('rating', value)}
+        onTagsChange={(value) => onPatch('tags', value)}
+        onTimesWatchedChange={(value) => onPatch('timesWatched', value)}
+        tagSuggestions={tagSuggestions}
+      />
     </View>
   );
 }

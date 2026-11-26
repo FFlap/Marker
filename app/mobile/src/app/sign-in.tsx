@@ -11,20 +11,26 @@ import * as Option from 'effect/Option';
 import * as Schema from 'effect/Schema';
 import { sessionStep, sessionResult, SessionError } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Pressable, Text, View, type TextInput } from 'react-native';
 import { useClerk, useSignIn, useSignUp } from '@clerk/expo';
 import { useSSO } from '@clerk/expo/experimental';
 import { useRouter } from 'expo-router';
 import ArrowLeft from 'lucide-react-native/icons/arrow-left';
+import Bookmark from 'lucide-react-native/icons/bookmark';
+import Eye from 'lucide-react-native/icons/eye';
+import EyeOff from 'lucide-react-native/icons/eye-off';
 import LogIn from 'lucide-react-native/icons/log-in';
 import UserPlus from 'lucide-react-native/icons/user-plus';
 import Svg, { Path } from 'react-native-svg';
-import { Button, Input } from '@/components/ui/primitives';
+import { Button, IconButton, Input } from '@/components/ui/primitives';
+import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { usernameError } from '@/lib/profile';
 
+type MissingField = 'identifier' | 'password' | 'confirmPassword' | 'username' | 'code';
 type AuthErrorContext = 'signIn' | 'signUp' | 'recovery' | 'verification' | 'session' | 'oauth';
 
 const AuthErrorDetail = Schema.Struct({
@@ -148,7 +154,22 @@ export default function SignIn() {
   const [username, setUsername] = useState('');
   const [code, setCode] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const { pending: busy, error, setPending: setBusy, setError } = useTaskState();
+  const { pending: busy, error, setPending: setBusy, setError: setTaskError } = useTaskState();
+  // Every field still missing, so one tap points at all of them.
+  const [missing, setMissing] = useState<Partial<Record<MissingField, string>>>({});
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const fieldRefs: Record<MissingField, RefObject<TextInput | null>> = {
+    code: useRef<TextInput>(null),
+    username: useRef<TextInput>(null),
+    identifier: useRef<TextInput>(null),
+    password: useRef<TextInput>(null),
+    confirmPassword: useRef<TextInput>(null),
+  };
+  // Any new message or a cleared one replaces the field-level hint.
+  const setError = (message: string) => {
+    setMissing({});
+    setTaskError(message);
+  };
 
   const openSignedInApp = () => router.replace('/');
 
@@ -353,6 +374,34 @@ export default function SignIn() {
   };
 
   const enteringCode = !!verification || recovery === 'code';
+  const switchPrompt =
+    recovery || verification
+      ? undefined
+      : flow === 'signIn'
+        ? (['New here?', 'Create an account'] as const)
+        : (['Already have an account?', 'Log in'] as const);
+  const leaveForm = () => {
+    if (recovery) {
+      resetToSignIn();
+      return;
+    }
+    if (verification) {
+      void (verification === 'signUp' ? signUp.reset() : signIn.reset());
+      setVerification(null);
+      setCode('');
+      setError('');
+      return;
+    }
+    setFlow(flow === 'signIn' ? 'signUp' : 'signIn');
+    setError('');
+  };
+  const identifierLabel =
+    recovery === 'identifier'
+      ? 'Username or email'
+      : flow === 'signIn'
+        ? 'Username or email'
+        : 'Email';
+  const passwordLabel = recovery === 'password' ? 'New password' : 'Password';
   const heading = verification
     ? 'Check your email'
     : recovery === 'identifier'
@@ -367,18 +416,16 @@ export default function SignIn() {
               ? 'Welcome back'
               : 'Make it yours';
   const lede = verification
-    ? 'Enter the six-digit code Clerk sent you.'
+    ? 'Enter the six-digit code we emailed you.'
     : recovery === 'identifier'
       ? 'We’ll send a reset code to the email on your account.'
       : recovery === 'code'
-        ? 'Enter the six-digit password reset code Clerk sent you.'
+        ? 'Enter the six-digit password reset code we emailed you.'
         : recovery === 'password'
           ? 'Use at least eight characters. You’ll be signed in when it’s updated.'
           : flow === 'choose'
             ? 'A quiet home for everything you watch.'
-            : flow === 'signIn'
-              ? 'Your watchlist, without the noise.'
-              : 'One identity for everything you watch.';
+            : '';
 
   const signInWithGoogle = async () => {
     setBusy(true);
@@ -420,107 +467,178 @@ export default function SignIn() {
     );
   };
 
+  const choosing = flow === 'choose' && !verification && !recovery;
+  const fieldError = (field: MissingField) =>
+    missing[field] ? (
+      <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.fieldError}>
+        {missing[field]}
+      </Text>
+    ) : null;
+  const errorStyle = (field: MissingField) => !!missing[field] && s.inputError;
+
   return (
-    <ScreenKeyboardScrollView style={s.root} contentContainerStyle={s.content}>
-      <View>
+    <ScreenKeyboardScrollView
+      style={s.root}
+      contentContainerStyle={[s.content, choosing && s.contentChoosing]}
+    >
+      <View style={s.head}>
+        {!choosing && !verification && !recovery && (
+          <IconButton
+            icon={ArrowLeft}
+            accessibilityLabel="Account options"
+            disabled={busy}
+            onPress={returnToChoices}
+            style={s.back}
+          />
+        )}
+        {choosing && (
+          <View accessibilityElementsHidden importantForAccessibility="no" style={s.brandMark}>
+            <Bookmark size={26} color={colors.bg} fill={colors.bg} strokeWidth={2} />
+          </View>
+        )}
         <Text style={s.logo}>{heading}</Text>
-        <Text style={s.lede}>{lede}</Text>
+        {!!lede && <Text style={s.lede}>{lede}</Text>}
       </View>
       <View style={s.form}>
-        {flow === 'choose' && !verification && !recovery ? (
+        {choosing ? (
           <View style={s.choiceActions}>
-            <Text style={s.choiceDetail}>
-              Log in to pick up where you left off, or sign up to start your watchlist.
-            </Text>
             <Button
               title="Log in"
+              size="lg"
               icon={<LogIn color={colors.bg} size={18} strokeWidth={2.2} />}
               onPress={() => chooseFlow('signIn')}
             />
             <Button
               title="Sign up"
+              size="lg"
               icon={<UserPlus color={colors.text} size={18} strokeWidth={2.2} />}
-              variant="outline"
+              variant="secondary"
+              style={s.secondaryChoice}
               onPress={() => chooseFlow('signUp')}
             />
           </View>
         ) : (
           <>
-            {!verification && !recovery && (
-              <Button
-                title="Account options"
-                icon={<ArrowLeft color={colors.muted} size={17} strokeWidth={2.2} />}
-                variant="ghost"
-                disabled={busy}
-                onPress={returnToChoices}
-              />
-            )}
             {enteringCode ? (
-              <Input
-                autoComplete="one-time-code"
-                keyboardType="number-pad"
-                placeholder="Verification code"
-                value={code}
-                onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
-              />
+              <>
+                <Field label="Verification code">
+                  <Input
+                    ref={fieldRefs.code}
+                    accessibilityLabel="Verification code"
+                    autoComplete="one-time-code"
+                    keyboardType="number-pad"
+                    value={code}
+                    onChangeText={(value) => {
+                      setCode(value.replace(/\D/g, '').slice(0, 6));
+                      if (missing.code) setMissing((current) => ({ ...current, code: undefined }));
+                    }}
+                    style={errorStyle('code')}
+                  />
+                </Field>
+                {fieldError('code')}
+              </>
             ) : !recovery && flow === 'signUp' ? (
               <View style={s.fieldGroup}>
-                <Text style={s.label}>Username</Text>
-                <View style={s.usernameField}>
-                  <Text style={s.at}>@</Text>
-                  <Input
-                    accessibilityLabel="Username"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    maxLength={24}
-                    placeholder="username"
-                    value={username}
-                    onChangeText={(value) => setUsername(value.replace(/\s/g, ''))}
-                    style={s.usernameInput}
-                  />
-                </View>
+                <Field label="Username">
+                  <View style={[s.usernameField, errorStyle('username')]}>
+                    <Text style={s.at}>@</Text>
+                    <Input
+                      ref={fieldRefs.username}
+                      accessibilityLabel="Username"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      maxLength={24}
+                      placeholder="username"
+                      value={username}
+                      onChangeText={(value) => {
+                        setUsername(value.replace(/\s/g, ''));
+                        if (missing.username)
+                          setMissing((current) => ({ ...current, username: undefined }));
+                      }}
+                      style={s.usernameInput}
+                    />
+                  </View>
+                </Field>
+                {fieldError('username')}
               </View>
             ) : null}
             {!verification && recovery !== 'code' && (
               <>
                 {recovery !== 'password' && (
-                  <Input
-                    autoCapitalize="none"
-                    keyboardType={flow === 'signUp' || !!recovery ? 'email-address' : 'default'}
-                    autoComplete="username"
-                    placeholder={
-                      recovery === 'identifier'
-                        ? 'Email or username'
-                        : flow === 'signIn'
-                          ? 'Username or email'
-                          : 'Email'
-                    }
-                    value={identifier}
-                    onChangeText={setIdentifier}
-                  />
+                  <Field label={identifierLabel}>
+                    <Input
+                      ref={fieldRefs.identifier}
+                      accessibilityLabel={identifierLabel}
+                      autoCapitalize="none"
+                      keyboardType={flow === 'signUp' || !!recovery ? 'email-address' : 'default'}
+                      autoComplete="username"
+                      value={identifier}
+                      onChangeText={(value) => {
+                        setIdentifier(value);
+                        if (missing.identifier)
+                          setMissing((current) => ({ ...current, identifier: undefined }));
+                      }}
+                      style={errorStyle('identifier')}
+                    />
+                  </Field>
                 )}
+                {recovery !== 'password' && fieldError('identifier')}
                 {recovery !== 'identifier' && (
-                  <Input
-                    secureTextEntry
-                    autoComplete={
-                      recovery === 'password' || flow === 'signUp'
-                        ? 'new-password'
-                        : 'current-password'
-                    }
-                    placeholder={recovery === 'password' ? 'New password' : 'Password'}
-                    value={password}
-                    onChangeText={setPassword}
-                  />
+                  <Field label={passwordLabel}>
+                    <View>
+                      <Input
+                        ref={fieldRefs.password}
+                        accessibilityLabel={passwordLabel}
+                        secureTextEntry={!passwordVisible}
+                        autoCapitalize="none"
+                        autoComplete={
+                          recovery === 'password' || flow === 'signUp'
+                            ? 'new-password'
+                            : 'current-password'
+                        }
+                        value={password}
+                        onChangeText={(value) => {
+                          setPassword(value);
+                          if (missing.password)
+                            setMissing((current) => ({ ...current, password: undefined }));
+                        }}
+                        style={[s.passwordInput, errorStyle('password')]}
+                      />
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+                        hitSlop={6}
+                        onPress={() => setPasswordVisible((visible) => !visible)}
+                        style={s.reveal}
+                      >
+                        {passwordVisible ? (
+                          <EyeOff size={19} color={colors.secondary} strokeWidth={1.8} />
+                        ) : (
+                          <Eye size={19} color={colors.secondary} strokeWidth={1.8} />
+                        )}
+                      </Pressable>
+                    </View>
+                  </Field>
                 )}
+                {recovery !== 'identifier' && fieldError('password')}
                 {recovery === 'password' && (
-                  <Input
-                    secureTextEntry
-                    autoComplete="new-password"
-                    placeholder="Confirm new password"
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                  />
+                  <Field label="Confirm new password">
+                    <Input
+                      ref={fieldRefs.confirmPassword}
+                      accessibilityLabel="Confirm new password"
+                      secureTextEntry={!passwordVisible}
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChangeText={(value) => {
+                        setConfirmPassword(value);
+                        if (missing.confirmPassword)
+                          setMissing((current) => ({ ...current, confirmPassword: undefined }));
+                      }}
+                      style={errorStyle('confirmPassword')}
+                    />
+                  </Field>
                 )}
+                {recovery === 'password' && fieldError('confirmPassword')}
                 {!recovery && flow === 'signUp' && <View nativeID="clerk-captcha" />}
               </>
             )}
@@ -538,7 +656,7 @@ export default function SignIn() {
                         : verification
                           ? 'Verify email'
                           : flow === 'signIn'
-                            ? 'Sign in'
+                            ? 'Log in'
                             : 'Create account'
               }
               icon={
@@ -548,19 +666,47 @@ export default function SignIn() {
                   <UserPlus color={colors.bg} size={18} strokeWidth={2.2} />
                 )
               }
-              onPress={submit}
-              disabled={
-                busy ||
-                (enteringCode
-                  ? code.length !== 6
+              size="lg"
+              onPress={() => {
+                // Keep the main action looking available; point at what is missing instead.
+                const next: Partial<Record<MissingField, string>> = enteringCode
+                  ? { code: code.length !== 6 ? 'Enter the 6-digit code.' : undefined }
                   : recovery === 'identifier'
-                    ? !identifier.trim()
+                    ? {
+                        identifier: !identifier.trim()
+                          ? 'Enter your username or email.'
+                          : undefined,
+                      }
                     : recovery === 'password'
-                      ? password.length < 8 || confirmPassword.length < 8
+                      ? {
+                          password: password.length < 8 ? 'Use at least 8 characters.' : undefined,
+                          confirmPassword: !confirmPassword
+                            ? 'Enter the new password again.'
+                            : confirmPassword !== password
+                              ? 'Passwords don’t match.'
+                              : undefined,
+                        }
                       : flow === 'signUp'
-                        ? !identifier || password.length < 8 || !username
-                        : !identifier || !password)
-              }
+                        ? {
+                            username: !username ? 'Choose a username.' : undefined,
+                            identifier: !identifier ? 'Enter your email.' : undefined,
+                            password:
+                              password.length < 8 ? 'Use at least 8 characters.' : undefined,
+                          }
+                        : {
+                            identifier: !identifier ? 'Enter your username or email.' : undefined,
+                            password: !password ? 'Enter your password.' : undefined,
+                          };
+                const first = (Object.keys(next) as MissingField[]).find((field) => next[field]);
+                setMissing(next);
+                if (first) {
+                  // Take people straight to the first thing that needs fixing.
+                  fieldRefs[first].current?.focus();
+                  return;
+                }
+                void submit();
+              }}
+              disabled={busy}
             />
             {!verification && !recovery && (
               <>
@@ -579,50 +725,56 @@ export default function SignIn() {
                 )}
                 <View style={s.divider}>
                   <View style={s.dividerLine} />
-                  <Text style={s.dividerText}>OR</Text>
+                  <Text style={s.dividerText}>or</Text>
                   <View style={s.dividerLine} />
                 </View>
                 <Button
                   title="Continue with Google"
+                  size="lg"
                   icon={<GoogleIcon />}
-                  variant="outline"
+                  variant="secondary"
                   disabled={busy}
                   onPress={signInWithGoogle}
                 />
               </>
             )}
-            <Button
-              title={
-                recovery
-                  ? 'Back to sign in'
-                  : verification
-                    ? 'Use a different account'
-                    : flow === 'signIn'
-                      ? 'New here? Create an account'
-                      : 'Already have an account? Sign in'
-              }
-              variant="ghost"
-              disabled={busy}
-              onPress={() => {
-                if (recovery) {
-                  resetToSignIn();
-                  return;
-                }
-                if (verification) {
-                  void (verification === 'signUp' ? signUp.reset() : signIn.reset());
-                  setVerification(null);
-                  setCode('');
-                  setError('');
-                  return;
-                }
-                setFlow(flow === 'signIn' ? 'signUp' : 'signIn');
-                setError('');
-              }}
-            />
+            {switchPrompt ? (
+              // Only the action is emphasized; the question stays quiet.
+              <NativePressable
+                accessibilityRole="button"
+                accessibilityLabel={`${switchPrompt[0]} ${switchPrompt[1]}`}
+                accessibilityState={{ disabled: busy }}
+                disabled={busy}
+                onPress={leaveForm}
+                style={s.switchLink}
+                pressedStyle={s.switchLinkPressed}
+              >
+                <Text style={s.switchText}>
+                  {switchPrompt[0]} <Text style={s.switchAction}>{switchPrompt[1]}</Text>
+                </Text>
+              </NativePressable>
+            ) : (
+              <Button
+                title={recovery ? 'Back to sign in' : 'Use a different account'}
+                variant="ghost"
+                disabled={busy}
+                onPress={leaveForm}
+              />
+            )}
           </>
         )}
       </View>
     </ScreenKeyboardScrollView>
+  );
+}
+
+/** A form field with a persistent label, so it stays clear what goes where while typing. */
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <View style={s.field}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      {children}
+    </View>
   );
 }
 
@@ -634,24 +786,59 @@ const s = createAppStyles(
       width: '100%',
       maxWidth: 520,
       alignSelf: 'center',
-      padding: 28,
-      justifyContent: 'space-between',
-      paddingTop: 72,
+      // The same 20dp side margin as every other screen.
+      padding: 20,
       paddingBottom: 40,
-      gap: 56,
+      gap: 36,
     },
+    brandMark: {
+      width: 56,
+      height: 56,
+      borderRadius: radius.md,
+      backgroundColor: colors.text,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
+    },
+    // Brand and both actions sit together, a little above center.
+    contentChoosing: { justifyContent: 'center', paddingBottom: 96 },
+    switchLink: {
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.pill,
+    },
+    switchLinkPressed: { backgroundColor: colors.surface },
+    secondaryChoice: { borderColor: colors.control },
+    switchText: { color: colors.muted, fontSize: 14 },
+    switchAction: { color: colors.text, fontWeight: '600' },
+    head: { gap: 8 },
+    // Lines the arrow up with the back button in every other screen header.
+    back: { marginLeft: -10, marginBottom: 12 },
     logo: { color: colors.text, fontSize: 36, fontWeight: '700', letterSpacing: -1.2 },
-    lede: { color: colors.muted, fontSize: 16, marginTop: 8 },
+    lede: { color: colors.secondary, fontSize: 16 },
     form: { gap: 12 },
     choiceActions: { gap: 12 },
-    choiceDetail: { color: colors.muted, fontSize: 14, lineHeight: 22, marginBottom: 10 },
+    fieldError: { color: colors.danger, fontSize: 13, marginTop: -4 },
+    inputError: { borderColor: colors.danger },
     fieldGroup: { gap: 10, marginVertical: 4 },
-    label: { color: colors.text, fontSize: 12, fontWeight: '700' },
+    field: { gap: 8 },
+    fieldLabel: { color: colors.secondary, fontSize: 13, fontWeight: '600' },
+    passwordInput: { paddingRight: 52 },
+    reveal: {
+      position: 'absolute',
+      right: 4,
+      top: 0,
+      bottom: 0,
+      width: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     usernameField: {
       height: 52,
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
+      borderColor: colors.control,
+      borderRadius: radius.md,
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,
@@ -662,7 +849,17 @@ const s = createAppStyles(
     error: { color: colors.danger, fontSize: 13 },
     divider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 4 },
     dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-    dividerText: { color: colors.muted, fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
+    dividerText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
   },
-  ['logo', 'lede', 'choiceDetail', 'label', 'at', 'error', 'dividerText'] as const,
+  [
+    'logo',
+    'lede',
+    'fieldError',
+    'fieldLabel',
+    'at',
+    'error',
+    'dividerText',
+    'switchText',
+    'switchAction',
+  ] as const,
 );

@@ -58,8 +58,10 @@ export const normalizeGenres = (genres: string[] | undefined) => {
     return value;
   });
 };
+export const MAX_TAGS_PER_ITEM = 20;
 export const normalizeTags = (tags: string[]) => {
-  if (tags.length > 20) throw new Error('Tags are limited to 20 per item or episode');
+  if (tags.length > MAX_TAGS_PER_ITEM)
+    throw new Error('Tags are limited to 20 per item or episode');
   const seen = new Set<string>();
   return tags.flatMap((raw) => {
     const tag = raw.trim();

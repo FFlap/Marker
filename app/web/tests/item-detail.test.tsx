@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   mutation: vi.fn<() => Promise<void>>(),
   request: null as { state: "inFlight" | "succeeded" | "failed" } | null,
   pages: [] as SeasonPage[],
+  progress: [] as { season: number; watchedCount: number; total: number; currentWatchedCount: number; currentTotal: number; identityStale: boolean }[],
+  upcoming: null as { upcoming: number; watchedUpcoming: number } | null | undefined,
   cast: [] as { name: string; character: string; profilePath?: string; characterImageUrl?: string }[],
   genres: [] as string[],
   loadMore: vi.fn<(count: number) => void>(),
@@ -50,7 +52,9 @@ vi.mock("convex/react", async () => {
       if (name === "library/items:getOwnedItemByTmdb") return null;
       if (name === "library/items:listTagSuggestions") return [];
       if (name.endsWith("RequestState")) return mocks.request;
-      if (name === "library/episodes:listEpisodes" || name === "library/episodes:listEpisodeProgress") return [];
+      if (name === "library/episodes:listEpisodes") return [];
+      if (name === "library/episodes:listEpisodeProgress") return mocks.progress;
+      if (name === "library/episodes:getSeasonUpcoming") return mocks.upcoming;
       throw new Error(`Unexpected query: ${name}`);
     },
     usePaginatedQuery: () => ({ results: mocks.pages, status: "Exhausted", loadMore: mocks.loadMore }),
@@ -70,6 +74,8 @@ beforeEach(() => {
   mocks.mutation.mockReset().mockResolvedValue(undefined);
   mocks.request = null;
   mocks.pages = [];
+  mocks.progress = [];
+  mocks.upcoming = null;
   mocks.cast = [];
   mocks.genres = [];
 });
@@ -217,4 +223,34 @@ it("passes the local watch date when marking a season watched from title details
     itemId: "owned-item", season: 1, watched: true,
     activityDate: localDateKey(), orderEpoch: 1, metadataProvider: "tmdb",
   }));
+});
+
+it("offers unwatching an airing season once every aired episode is watched", async () => {
+  mocks.pages = [{ season: 1, totalCount: 2, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, seasonVersion: "current", episodes: [
+    { season: 1, episode: 1, name: "Aired" },
+    { season: 1, episode: 2, name: "Next week" },
+  ] }];
+  mocks.progress = [{ season: 1, watchedCount: 1, total: 1, currentWatchedCount: 1, currentTotal: 2, identityStale: false }];
+  mocks.upcoming = { upcoming: 1, watchedUpcoming: 0 };
+  render(<ItemDetailPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Mark unwatched" }));
+  await waitFor(() => expect(mocks.mutation).toHaveBeenCalledWith(expect.objectContaining({ season: 1, watched: false })));
+});
+
+it("has nothing to mark before an airing season's first episode", () => {
+  mocks.pages = [{ season: 1, totalCount: 1, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, seasonVersion: "current", episodes: [
+    { season: 1, episode: 1, name: "Next week" },
+  ] }];
+  mocks.upcoming = { upcoming: 1, watchedUpcoming: 0 };
+  render(<ItemDetailPage />);
+  expect(screen.getByRole("button", { name: "No episodes aired yet" })).toBeDisabled();
+});
+
+it("keeps the season button disabled until its counts arrive", () => {
+  mocks.pages = [{ season: 1, totalCount: 1, chunkIndex: 0, metadataProvider: "tmdb", orderEpoch: 1, seasonVersion: "current", episodes: [
+    { season: 1, episode: 1, name: "First" },
+  ] }];
+  mocks.upcoming = undefined;
+  render(<ItemDetailPage />);
+  expect(screen.getByRole("button", { name: "Mark watched" })).toBeDisabled();
 });

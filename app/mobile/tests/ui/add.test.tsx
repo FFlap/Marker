@@ -116,7 +116,7 @@ describe('add flow', () => {
     expect(view.getByText('Rambo')).toBeTruthy();
     expect(view.queryByText('Rambo: The Series')).toBeNull();
 
-    await fireEvent.press(view.getByText('TV Shows'));
+    await fireEvent.press(view.getByText('TV shows'));
     expect(view.queryByText('Rambo')).toBeNull();
     expect(view.getByText('Rambo: The Series')).toBeTruthy();
   });

@@ -39,12 +39,21 @@ export type PrechunkedSeason = {
 const truncate = (value: string | undefined, maximum: number) =>
   value === undefined ? undefined : value.slice(0, maximum);
 
+/** Cuts prose at the last whole word and marks the cut, instead of mid-word. */
+export function truncateProse(value: string, maximum: number) {
+  if (value.length <= maximum) return value;
+  const head = value.slice(0, maximum - 1);
+  const space = head.search(/\s\S*$/);
+  const cut = space > maximum * 0.6 ? head.slice(0, space) : head;
+  return `${cut.replace(/[\s,;:.\u2013\u2014-]+$/, '')}…`;
+}
+
 export const boundedEpisode = (episode: ResolvedEpisode): ResolvedEpisode => ({
   season: episode.season,
   episode: episode.episode,
   name: episode.name.slice(0, EPISODE_FIELD_LIMITS.name),
   ...(episode.overview !== undefined && {
-    overview: truncate(episode.overview, EPISODE_FIELD_LIMITS.overview),
+    overview: truncateProse(episode.overview, EPISODE_FIELD_LIMITS.overview),
   }),
   ...(episode.runtime !== undefined && { runtime: episode.runtime }),
   ...(episode.imageUrl !== undefined && {

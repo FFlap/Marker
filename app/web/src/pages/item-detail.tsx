@@ -35,7 +35,7 @@ import type { WebLibraryItem as LibraryItem } from "@/types";
 import { posterUrl } from "@/lib/utils";
 import { titleRuntime } from "@/lib/catalog";
 import { useSeasonGuide } from "@/hooks/use-season-guide";
-import { localDateKey } from "@/hooks/use-local-today";
+import { localDateKey, useLocalToday } from "@/hooks/use-local-today";
 
 function EntryDialog({
   item,
@@ -205,6 +205,11 @@ export function ItemDetailPage() {
     api.library.episodes.listEpisodeProgress,
     item?.mediaType === "tv" ? { itemId: item._id } : "skip",
   );
+  const today = useLocalToday();
+  const seasonUpcoming = useQuery(
+    api.library.episodes.getSeasonUpcoming,
+    item?.mediaType === "tv" ? { itemId: item._id, season, today } : "skip",
+  );
   const titleRequestState = useQuery(
     api.resolvedMetadata.reads.getTitleRequestState,
     item?.tmdbId !== undefined
@@ -221,6 +226,17 @@ export function ItemDetailPage() {
   const seasonFullyWatched =
     (seasonRow?.totalCount ?? 0) > 0 &&
     watchedSeasonCount >= (seasonRow?.totalCount ?? 0);
+  // A season with listed episodes still to air: marking it covers the aired ones, so once
+  // those are watched the action offers unwatching, and with none aired there is nothing to mark.
+  const upcomingCount = seasonUpcoming?.upcoming ?? 0;
+  const airedCount = (seasonRow?.totalCount ?? 0) - upcomingCount;
+  const seasonNothingAired = upcomingCount > 0 && airedCount <= 0;
+  const seasonDone =
+    seasonFullyWatched ||
+    (upcomingCount > 0 &&
+      airedCount > 0 &&
+      watchedSeasonCount - (seasonUpcoming?.watchedUpcoming ?? 0) >=
+        airedCount);
   const { pending: seasonPending, setPending: setSeasonPending } =
     useTaskState();
   const [seasonActionError, setSeasonActionError] = useState("");
@@ -501,9 +517,16 @@ export function ItemDetailPage() {
               <Button
                 variant="outline"
                 className="h-11 px-5"
-                disabled={seasonPending || !episodes.length}
+                disabled={
+                  seasonPending ||
+                  !episodes.length ||
+                  seasonNothingAired ||
+                  // Until the counts arrive the button could offer the wrong direction.
+                  episodeProgress === undefined ||
+                  seasonUpcoming === undefined
+                }
                 onClick={() => {
-                  const watched = !seasonFullyWatched;
+                  const watched = !seasonDone;
                   setSeasonPending(true);
                   setSeasonActionError("");
                   void runOperation.write(
@@ -527,9 +550,11 @@ export function ItemDetailPage() {
               >
                 {seasonPending
                   ? "Saving…"
-                  : seasonFullyWatched
-                    ? "Mark unwatched"
-                    : "Mark watched"}
+                  : seasonNothingAired
+                    ? "No episodes aired yet"
+                    : seasonDone
+                      ? "Mark unwatched"
+                      : "Mark watched"}
               </Button>
             </div>
           )}

@@ -1,11 +1,12 @@
 import { localDateKey } from '@/hooks/use-local-today';
 import React from 'react';
 import { AccessibilityInfo } from 'react-native';
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockReorderItem = jest.fn();
 const mockUseMutation = jest.fn(() => mockReorderItem);
 const mockMoveItemToWatched = jest.fn();
+const mockRefreshWatching = jest.fn(async () => null);
 let mockQueryShouldThrow = false;
 let mockDropTargetMeasured = true;
 const mockUseQuery = jest.fn((ref: unknown) =>
@@ -160,7 +161,8 @@ const mockDragMoves = new Map<
 >();
 jest.mock('convex/react', () => ({
   useQuery: (...args: [unknown]) => mockUseQuery(...args),
-  useMutation: () => mockUseMutation(),
+  useMutation: (ref: unknown) =>
+    String(ref).includes('refreshWatching') ? mockRefreshWatching : mockUseMutation(),
   useAction: (ref: unknown) =>
     String(ref).includes('moveItemToWatched') ? mockMoveItemToWatched : jest.fn(),
 }));
@@ -173,6 +175,7 @@ jest.mock('@marker/shared/api', () => ({
     },
     settings: { getSettings: 'settings.getSettings' },
     profiles: { me: 'profiles.me' },
+    episodeHub: { refreshWatching: 'episodeHub.refreshWatching' },
   },
 }));
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
@@ -182,6 +185,7 @@ jest.mock('@/components/NativeDraggableGrid', () => {
   return {
     NativeDraggableGrid: ({
       data,
+      leading = [],
       renderItem,
       onDragEnd,
       onDragBegin,
@@ -192,6 +196,7 @@ jest.mock('@/components/NativeDraggableGrid', () => {
       onDragMove: (event: { absoluteX: number; absoluteY: number; scrollOffset: number }) => void;
       onDropTarget: (target: (() => { index: number; distance: number }) | undefined) => void;
       data: typeof items;
+      leading?: { key: string; element: React.ReactNode }[];
       renderItem: (event: {
         item: (typeof items)[number];
         index: number;
@@ -215,6 +220,11 @@ jest.mock('@/components/NativeDraggableGrid', () => {
             mockDragEnds.set(key, onDragEnd);
             return null;
           })()}
+          {leading.map((cell) => (
+            <View key={`leading-${cell.key}`} testID={`leading-${cell.key}`}>
+              {cell.element}
+            </View>
+          ))}
           {data.map((item, index) => (
             <View key={item._id}>{renderItem({ item, index, isActive: false })}</View>
           ))}
@@ -239,9 +249,22 @@ jest.mock('../../src/components/ui/drawer', () => {
     DrawerHeader: Container,
     DrawerTitle: Label,
     DrawerTrigger: ({ children }: { children: React.ReactNode }) => children,
+    DrawerScrollView: require('react-native').ScrollView,
   };
 });
 import { AccountLoadingContext } from '../../src/hooks/useAccountLoading';
+
+/** Opens a filter row in the sheet, picks an option, and returns to the list of filters. */
+async function chooseFilter(
+  q: Awaited<ReturnType<typeof render>>,
+  section: string,
+  option: string,
+  role: 'radio' | 'checkbox' = 'radio',
+) {
+  await fireEvent.press(q.getByLabelText(new RegExp(`^${section}, `)));
+  await fireEvent.press(q.getByRole(role, { name: option }));
+  await fireEvent.press(q.getByLabelText('Back to sort & filter'));
+}
 import Library from '../../src/app/(tabs)/index';
 import { ToastProvider } from '../../src/components/ui/Toast';
 
@@ -292,7 +315,7 @@ describe('Marker library', () => {
     );
 
     expect(q.queryByText('Couldn’t load your library.')).toBeNull();
-    expect(q.getAllByText('Nothing here yet')).toHaveLength(4);
+    expect(q.getAllByText('No titles yet')).toHaveLength(4);
     expect(q.getByLabelText('Add title')).toBeTruthy();
   });
   const view = () =>
@@ -303,11 +326,11 @@ describe('Marker library', () => {
     );
   it('separates movies, TV shows, and anime without changing the stored media type', async () => {
     const q = await view();
-    await fireEvent.press(q.getByLabelText('TV Shows type'));
+    await chooseFilter(q, 'Type', 'TV shows');
     expect(q.queryByText('Avengers: Endgame')).toBeNull();
     expect(q.getByText('Daredevil')).toBeTruthy();
     expect(q.queryByText('Kaguya-sama: Love Is War')).toBeNull();
-    await fireEvent.press(q.getByLabelText('Anime type'));
+    await chooseFilter(q, 'Type', 'Anime');
     expect(q.getByText('Kaguya-sama: Love Is War')).toBeTruthy();
     expect(q.getByText('Oshi no Ko')).toBeTruthy();
     expect(q.queryByText('Daredevil')).toBeNull();
@@ -316,26 +339,57 @@ describe('Marker library', () => {
 
   it('filters by entry status and only shows the selected status section', async () => {
     const q = await view();
-    await fireEvent.press(q.getByLabelText('Watching status'));
+    await chooseFilter(q, 'Status', 'Watching');
     expect(q.getByText('Daredevil')).toBeTruthy();
     expect(q.getByText("Shikimori's Not Just a Cutie")).toBeTruthy();
     expect(q.queryByText('Avengers: Endgame')).toBeNull();
     expect(q.queryByText('Game of Thrones')).toBeNull();
-    expect(q.getAllByText('Watched', { exact: true })).toHaveLength(1);
+    expect(q.queryAllByText('Watched', { exact: true })).toHaveLength(0);
     expect(q.getAllByText('Watching', { exact: true })).toHaveLength(2);
-    await fireEvent.press(q.getByLabelText('Dropped status'));
+    await chooseFilter(q, 'Status', 'Dropped');
     expect(q.getByText('Game of Thrones')).toBeTruthy();
     expect(q.queryByText('Daredevil')).toBeNull();
     expect(q.getAllByText('Dropped', { exact: true })).toHaveLength(2);
   });
 
+  it('also lists a watched show with a new episode out under Watching', async () => {
+    const airing = {
+      _id: 'airing',
+      _creationTime: 1,
+      userId: 'u',
+      tmdbId: 120089,
+      mediaType: 'tv',
+      isAnime: true,
+      title: 'SPY x FAMILY',
+      status: 'watched',
+      timesWatched: 1,
+      tags: [],
+      rank: 9,
+      createdAt: 1,
+      updatedAt: 1,
+      nextEpisode: { season: 1, episode: 3, chunkIndex: 0, airDate: '2000-01-01' },
+    } as unknown as (typeof items)[number];
+    items.push(airing);
+    try {
+      const q = await view();
+      // Ranked under Watched, and first in the Watching grid.
+      expect(q.getAllByText('SPY x FAMILY')).toHaveLength(2);
+      expect(q.getByTestId('leading-airing')).toBeTruthy();
+      await chooseFilter(q, 'Status', 'Watching');
+      expect(q.getAllByText('SPY x FAMILY')).toHaveLength(1);
+      expect(q.getByText('Daredevil')).toBeTruthy();
+    } finally {
+      items.pop();
+    }
+  });
+
   it('filters rating and tags', async () => {
     const q = await view();
-    await fireEvent.press(q.getByLabelText('5 stars and up'));
+    await chooseFilter(q, 'Rating', '5★ only');
     expect(q.getByText('Avengers: Endgame')).toBeTruthy();
     expect(q.queryByText('Oshi no Ko')).toBeNull();
-    await fireEvent.press(q.getByLabelText('Any rating'));
-    await fireEvent.press(q.getByLabelText('anime'));
+    await chooseFilter(q, 'Rating', 'Any rating');
+    await chooseFilter(q, 'Tags', 'anime', 'checkbox');
     expect(q.getByText('Oshi no Ko')).toBeTruthy();
     expect(q.queryByText('The Middle')).toBeNull();
   });
@@ -366,14 +420,14 @@ describe('Marker library', () => {
       await fireEvent.scroll(q.getByTestId('library-scroll'), {
         nativeEvent: { contentOffset: { y: 80 } },
       });
-      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('none');
+      expect(q.getByTestId('library-toolbar-motion').props.pointerEvents).toBe('none');
       await act(() => emit(true));
-      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('auto');
+      expect(q.getByTestId('library-toolbar-motion').props.pointerEvents).toBe('auto');
       await act(() => emit(false));
       await fireEvent.scroll(q.getByTestId('library-scroll'), {
         nativeEvent: { contentOffset: { y: 81 } },
       });
-      expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('auto');
+      expect(q.getByTestId('library-toolbar-motion').props.pointerEvents).toBe('auto');
       await q.unmount();
     } finally {
       subscription.mockRestore();
@@ -383,19 +437,19 @@ describe('Marker library', () => {
     }
   });
 
-  it('disables the add button while scrolled away from the top', async () => {
+  it('disables the hidden toolbar while scrolled away from the top', async () => {
     const q = await view();
     const scroll = q.getByTestId('library-scroll');
     await act(async () => {
       fireEvent.scroll(scroll, { nativeEvent: { contentOffset: { y: 80 } } });
       await Promise.resolve();
     });
-    expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('none');
+    expect(q.getByTestId('library-toolbar-motion').props.pointerEvents).toBe('none');
     await act(async () => {
       fireEvent.scroll(scroll, { nativeEvent: { contentOffset: { y: 0 } } });
       await Promise.resolve();
     });
-    expect(q.getByTestId('library-add-motion').props.pointerEvents).toBe('auto');
+    expect(q.getByTestId('library-toolbar-motion').props.pointerEvents).toBe('auto');
   });
 
   it.each([
@@ -436,7 +490,7 @@ describe('Marker library', () => {
     const titles = () =>
       q
         .getAllByRole('button')
-        .map((node) => node.props.accessibilityLabel)
+        .map((node) => String(node.props.accessibilityLabel ?? '').replace(/^\d+\. /, ''))
         .filter((label) => ['Avengers: Endgame', 'The Middle', 'Oshi no Ko'].includes(label));
     expect(titles()).toEqual(['The Middle', 'Oshi no Ko', 'Avengers: Endgame']);
     await act(async () => finish());
@@ -492,7 +546,7 @@ describe('Marker library', () => {
       const titles = () =>
         q
           .getAllByRole('button')
-          .map((node) => node.props.accessibilityLabel)
+          .map((node) => String(node.props.accessibilityLabel ?? '').replace(/^\d+\. /, ''))
           .filter((label) => original.includes(label));
       const refresh = () =>
         q.rerender(
@@ -549,7 +603,7 @@ describe('Marker library', () => {
         );
         return q
           .getAllByRole('button')
-          .map((node) => node.props.accessibilityLabel)
+          .map((node) => String(node.props.accessibilityLabel ?? '').replace(/^\d+\. /, ''))
           .filter((label) => watched.has(label));
       };
       const savedTitles = () =>
@@ -575,7 +629,7 @@ describe('Marker library', () => {
     mockReorderItem.mockImplementationOnce(() => new Promise(() => {}));
     const q = await view();
     await act(async () => {
-      fireEvent(q.getByLabelText('The Middle'), 'accessibilityAction', {
+      fireEvent(q.getByLabelText(/^(\d+\. )?The Middle$/), 'accessibilityAction', {
         nativeEvent: { actionName: 'moveUp' },
       });
       await Promise.resolve();
@@ -588,7 +642,7 @@ describe('Marker library', () => {
 
     mockReorderItem.mockClear();
     await act(async () => {
-      fireEvent(q.getByLabelText('The Middle'), 'accessibilityAction', {
+      fireEvent(q.getByLabelText(/^(\d+\. )?The Middle$/), 'accessibilityAction', {
         nativeEvent: { actionName: 'moveDown' },
       });
       await Promise.resolve();
@@ -608,7 +662,7 @@ describe('Marker library', () => {
       });
     });
     expect(q.getByText('Mark as watched?')).toBeTruthy();
-    expect(q.getByText(/every episode will be marked watched/)).toBeTruthy();
+    expect(q.getByText(/released episodes will be marked watched/)).toBeTruthy();
     await act(async () => {
       fireEvent.press(q.getByText('Mark watched'));
       await Promise.resolve();
@@ -618,6 +672,34 @@ describe('Marker library', () => {
       itemId: 'b',
       beforeId: 'e',
     });
+  });
+
+  it('moves straight to Watched without a sheet when confirmation is turned off', async () => {
+    mockUseQuery.mockImplementation((ref: unknown) => {
+      if (String(ref).includes('getSettings'))
+        return { defaultView: 'list', confirmWatchedMove: false };
+      if (String(ref).includes('profiles.me')) return { username: 'markerfan', isPublic: false };
+      return items;
+    });
+    let finish!: () => void;
+    mockMoveItemToWatched.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const q = await view();
+    await act(async () => {
+      fireEvent(q.getByLabelText('Daredevil'), 'accessibilityAction', {
+        nativeEvent: { actionName: 'moveTo:watched' },
+      });
+      await Promise.resolve();
+    });
+    // Saving is still in flight, and no confirmation appeared for it.
+    expect(mockMoveItemToWatched).toHaveBeenCalledTimes(1);
+    expect(q.queryByText('Mark as watched?')).toBeNull();
+    await act(async () => finish());
+    expect(q.queryByText('Mark as watched?')).toBeNull();
   });
 
   it('preserves a cross-status insertion through watched confirmation and saving', async () => {
@@ -641,7 +723,7 @@ describe('Marker library', () => {
       fireEvent.press(q.getByText('Mark watched'));
       await Promise.resolve();
     });
-    expect(q.getByText('Marking watched…')).toBeTruthy();
+    expect(q.getByText('Marking…')).toBeTruthy();
     expect(mockMoveItemToWatched).toHaveBeenCalledTimes(1);
     expect(mockMoveItemToWatched).toHaveBeenCalledWith({
       itemId: 'b',
@@ -652,11 +734,11 @@ describe('Marker library', () => {
     await act(async () => {
       finish();
     });
-    expect(q.queryByText('Mark as watched?')).toBeNull();
+    await waitFor(() => expect(q.queryByText('Mark as watched?')).toBeNull());
     const titles = () =>
       q
         .getAllByRole('button')
-        .map((node) => node.props.accessibilityLabel)
+        .map((node) => String(node.props.accessibilityLabel ?? '').replace(/^\d+\. /, ''))
         .filter((title) => items.some((item) => item.title === title));
     expect(titles().slice(0, 4)).toEqual([
       'Avengers: Endgame',
@@ -696,7 +778,7 @@ describe('Marker library', () => {
     const titles = () =>
       q
         .getAllByRole('button')
-        .map((node) => node.props.accessibilityLabel)
+        .map((node) => String(node.props.accessibilityLabel ?? '').replace(/^\d+\. /, ''))
         .filter((title) => items.some((item) => item.title === title));
     const before = titles();
     await act(() => mockDragBegins.get('b,f')!({ item: items[1], index: 0 }));
@@ -714,7 +796,7 @@ describe('Marker library', () => {
       false,
     );
     expect(titles()).toEqual(before);
-    expect(q.queryByText('Mark as watched?')).toBeNull();
+    await waitFor(() => expect(q.queryByText('Mark as watched?')).toBeNull());
     expect(mockMoveItemToWatched).not.toHaveBeenCalled();
   });
 
@@ -723,8 +805,12 @@ describe('Marker library', () => {
     await fireEvent(
       q
         .getAllByText('Watched')
-        .map((node) => node.parent!.parent!)
-        .find((node) => node.props.onLayout)!,
+        .map((node) => {
+          let current: typeof node | null = node;
+          while (current && !current.props.onLayout) current = current.parent;
+          return current;
+        })
+        .find((node) => node?.props.onLayout)!,
       'layout',
       {
         nativeEvent: { layout: { x: 0, y: 0, width: 400, height: 100 } },
@@ -772,7 +858,7 @@ describe('Marker library', () => {
       String(ref).includes('getSettings') ? { defaultView: 'posters' } : items,
     );
     const q = await view();
-    const tile = q.getByLabelText('The Middle');
+    const tile = q.getByLabelText(/The Middle$/);
     await act(async () => {
       fireEvent(tile, 'accessibilityAction', {
         nativeEvent: { actionName: 'moveUp' },
@@ -829,7 +915,7 @@ it('loads navigation, profile, and library in place without querying before auth
   expect(mockUseMutation).not.toHaveBeenCalled();
   expect(q.getByLabelText('Add title')).toBeDisabled();
   await fireEvent.changeText(q.getByTestId('library-search'), 'Avengers');
-  await fireEvent.press(q.getByLabelText('Movies type'));
+  await chooseFilter(q, 'Type', 'Movies');
   await q.rerender(screen(true, false));
   expect(q.queryByLabelText('Loading profile')).toBeNull();
   expect(q.getByTestId('library-loading')).toBeTruthy();
@@ -838,7 +924,7 @@ it('loads navigation, profile, and library in place without querying before auth
   expect(q.queryByTestId('library-loading')).toBeNull();
   expect(q.getByText('Avengers: Endgame')).toBeTruthy();
   expect(q.getByTestId('library-search').props.value).toBe('Avengers');
-  expect(q.getByLabelText('Movies type').props.accessibilityState.selected).toBe(true);
+  expect(q.getByLabelText('Type, Movies')).toBeTruthy();
   expect(q.queryByText('Daredevil')).toBeNull();
   expect(mockUseMutation).toHaveBeenCalled();
   expect(q.getByLabelText('Add title')).not.toBeDisabled();

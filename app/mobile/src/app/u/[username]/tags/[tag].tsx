@@ -12,9 +12,10 @@ import { LibraryFiltersDrawer } from '@/components/LibraryFiltersDrawer';
 import { PinchDensity } from '@/components/PinchDensity';
 import { PosterGridSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
-import { Button, EmptyState, Input } from '@/components/ui/primitives';
+import { Button, EmptyState, SearchField, SectionHeading } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { useGridColumns } from '@/hooks/use-grid-columns';
 import type { Status } from '@/types';
@@ -125,13 +126,6 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
   const filtersActive =
     !!search.trim() || type !== 'all' || statusFilter !== 'all' || minimumRating > 0;
 
-  const clearFilters = () => {
-    setSearch('');
-    setType('all');
-    setStatusFilter('all');
-    setMinimumRating(0);
-  };
-
   const openTitle = (title: PublicTitle) => {
     const existing = library?.find(
       (item) => item.tmdbId === title.tmdbId && item.mediaType === title.mediaType,
@@ -166,24 +160,19 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
         maxWidth={880}
       />
       <View style={s.toolbar}>
-        <Input
+        <SearchField
           accessibilityLabel={`Search ${username}'s ${tag} tag`}
           value={search}
           onChangeText={setSearch}
           placeholder={`Search ${tag}`}
-          returnKeyType="search"
-          compact
-          style={s.search}
         />
         <LibraryFiltersDrawer
-          active={filtersActive}
           mediaType={type}
           status={statusFilter}
           minimumRating={minimumRating}
           onMediaTypeChange={setType}
           onStatusChange={setStatusFilter}
           onMinimumRatingChange={setMinimumRating}
-          onClear={clearFilters}
         />
       </View>
       <KeyboardScrollView contentContainerStyle={s.content}>
@@ -200,10 +189,11 @@ function UserTagRoute({ username, tag }: { username: string; tag: string }) {
               const sectionTitles = titles.filter((title) => title.status === status);
               return (
                 <View key={status} style={s.section}>
-                  <View style={s.sectionHead}>
-                    <Text style={s.sectionTitle}>{label}</Text>
-                    <Text style={s.count}>{sectionTitles.length.toString().padStart(2, '0')}</Text>
-                  </View>
+                  <SectionHeading
+                    title={label}
+                    count={sectionTitles.length}
+                    style={s.sectionHead}
+                  />
                   {!sectionTitles.length ? (
                     <EmptyState
                       title={filtersActive ? 'No matches' : 'Nothing here yet'}
@@ -265,7 +255,9 @@ const s = createAppStyles(
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      paddingHorizontal: 20,
+      paddingLeft: 20,
+      // The filter glyph ends on the 20dp gutter, like the tag page.
+      paddingRight: 10,
       paddingTop: 8,
       paddingBottom: 8,
       backgroundColor: colors.bg,
@@ -278,24 +270,8 @@ const s = createAppStyles(
       paddingTop: 116,
       paddingBottom: 80,
     },
-    search: {
-      flex: 1,
-      height: 36,
-      minWidth: 0,
-      borderWidth: 0,
-      backgroundColor: colors.surface,
-      fontSize: 14,
-    },
     section: { marginTop: 24 },
-    sectionHead: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingBottom: 11,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-    },
-    sectionTitle: { color: colors.muted, fontSize: 12, letterSpacing: 0.2, fontWeight: '600' },
-    count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
+    sectionHead: { marginBottom: 12 },
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -304,7 +280,7 @@ const s = createAppStyles(
       paddingBottom: 4,
     },
     card: { minWidth: 0 },
-    poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 12 },
+    poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: radius.sm },
     cardTitle: {
       color: colors.text,
       fontSize: 12,
@@ -315,5 +291,5 @@ const s = createAppStyles(
     rank: { color: colors.muted },
     pressed: { opacity: 0.72 },
   },
-  ['search', 'sectionTitle', 'count', 'cardTitle', 'rank'] as const,
+  ['cardTitle', 'rank'] as const,
 );

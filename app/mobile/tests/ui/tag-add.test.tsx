@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, userEvent, waitFor } from '@testing-library/react-native';
 
-const mockAddTagToItems = jest.fn().mockResolvedValue({ updated: 2 });
+const mockAddTagToItems = jest.fn().mockResolvedValue({ updated: 2, full: [] });
+const mockRemoveTagFromItems = jest.fn().mockResolvedValue({ updated: 1 });
 const mockItems = [
   {
     _id: 'existing',
@@ -49,7 +50,8 @@ const mockItems = [
 
 jest.mock('convex/react', () => ({
   useQuery: () => mockItems,
-  useMutation: () => mockAddTagToItems,
+  useMutation: (ref: string) =>
+    ref === 'library/items:removeTagFromItems' ? mockRemoveTagFromItems : mockAddTagToItems,
 }));
 jest.mock('@marker/shared/api', () => ({
   api: {
@@ -57,12 +59,15 @@ jest.mock('@marker/shared/api', () => ({
       items: {
         listItems: 'library/items:listItems',
         addTagToItems: 'library/items:addTagToItems',
+        removeTagFromItems: 'library/items:removeTagFromItems',
       },
     },
   },
 }));
+jest.mock('expo-router/react-navigation', () => ({ usePreventRemove: jest.fn() }));
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ tag: 'Favorites' }),
+  useNavigation: () => ({ dispatch: jest.fn() }),
   router: {
     push: jest.fn(),
     replace: jest.fn(),
@@ -78,10 +83,11 @@ import { ToastProvider } from '@/components/ui/Toast';
 describe('Add titles to tag', () => {
   beforeEach(() => {
     mockAddTagToItems.mockClear();
+    mockRemoveTagFromItems.mockClear();
     jest.requireMock('expo-router').router.back.mockClear();
   });
 
-  it('searches, multi-selects, and confirms library titles', async () => {
+  it('searches, toggles membership both ways, and saves the changes', async () => {
     const user = userEvent.setup();
     const view = await render(
       <ToastProvider>
@@ -89,16 +95,17 @@ describe('Add titles to tag', () => {
       </ToastProvider>,
     );
 
-    expect(view.getByLabelText('Already Here, already in Favorites')).toBeDisabled();
+    expect(view.getByLabelText('Already Here').props.accessibilityState.checked).toBe(true);
+    expect(view.queryByTestId('confirm-add-tag-titles')).toBeNull();
     await user.type(view.getByLabelText('Search your library'), 'First');
     expect(view.getByText('First Addition')).toBeTruthy();
     expect(view.queryByText('Second Addition')).toBeNull();
     await user.clear(view.getByLabelText('Search your library'));
 
-    await user.press(view.getByLabelText('Add First Addition'));
-    await user.press(view.getByLabelText('Add Second Addition'));
-    expect(view.getByText('2')).toBeTruthy();
-    expect(view.getByText('titles selected')).toBeTruthy();
+    await user.press(view.getByLabelText('First Addition'));
+    await user.press(view.getByLabelText('Second Addition'));
+    await user.press(view.getByLabelText('Already Here'));
+    expect(view.getByText('Add 2 titles, remove 1 title')).toBeTruthy();
     await user.press(view.getByTestId('confirm-add-tag-titles'));
 
     await waitFor(() =>
@@ -107,6 +114,10 @@ describe('Add titles to tag', () => {
         itemIds: ['first', 'second'],
       }),
     );
+    expect(mockRemoveTagFromItems).toHaveBeenCalledWith({
+      tag: 'Favorites',
+      itemIds: ['existing'],
+    });
     expect(jest.requireMock('expo-router').router.back).toHaveBeenCalled();
   });
 });

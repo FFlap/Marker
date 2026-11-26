@@ -15,10 +15,13 @@ import { Image } from 'expo-image';
 import { api } from '@marker/shared/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
-import { EmptyState } from '@/components/ui/primitives';
+import { EmptyState, IconButton, SectionHeading } from '@/components/ui/primitives';
+import Settings from 'lucide-react-native/icons/settings';
+import { router, type Href } from 'expo-router';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 
 type Activity = FunctionReturnType<typeof api.notifications.feed>[number];
@@ -73,11 +76,22 @@ export default function NotificationsScreen() {
   };
   return (
     <ScreenView style={s.root}>
-      <SecondaryHeader title="Notifications" fallback="/(tabs)" maxWidth={760} />
+      <SecondaryHeader
+        title="Notifications"
+        fallback="/(tabs)"
+        maxWidth={760}
+        right={
+          <IconButton
+            icon={Settings}
+            accessibilityLabel="Notification settings"
+            onPress={() => router.push('/settings/notifications' as Href)}
+          />
+        }
+      />
       <ScrollView contentContainerStyle={s.content}>
         {!!requests?.length && (
           <View style={s.section}>
-            <Text style={s.sectionTitle}>FOLLOW REQUESTS</Text>
+            <SectionHeading title="Follow requests" count={requests.length} />
             {requests.map((request) => (
               <View key={request.username} style={s.request}>
                 <ProfileAvatar
@@ -101,7 +115,7 @@ export default function NotificationsScreen() {
                       style={s.smallButton}
                       pressedStyle={s.pressed}
                     >
-                      <X size={16} color={colors.muted} />
+                      <X size={16} color={colors.text} />
                     </NativePressable>
                     <NativePressable
                       accessibilityRole="button"
@@ -119,10 +133,8 @@ export default function NotificationsScreen() {
             ))}
           </View>
         )}
-        <View style={s.feedHead}>
-          <Text style={s.sectionTitle}>FOLLOWING ACTIVITY</Text>
-          <Text style={s.feedHint}>Manage in Settings</Text>
-        </View>
+        {/* With no requests above, the screen title already says what this list is. */}
+        {!!requests?.length && <SectionHeading title="Activity" />}
         {activity === undefined ? (
           <ActivityIndicator
             accessibilityLabel="Loading activity"
@@ -184,58 +196,41 @@ const s = createAppStyles(
       paddingTop: 88,
       paddingBottom: 80,
     },
-    section: {
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingBottom: 24,
-      marginBottom: 28,
-    },
-    sectionTitle: {
-      color: colors.muted,
-      fontSize: 10,
-      fontWeight: '700',
-      letterSpacing: 0.8,
-      marginBottom: 10,
-    },
-    request: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    section: { marginBottom: 28, gap: 4 },
+    request: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12 },
     identity: { flex: 1, minWidth: 0 },
-    name: { color: colors.text, fontSize: 13, fontWeight: '700' },
-    meta: { color: colors.muted, fontSize: 10, marginTop: 4 },
-    actions: { flexDirection: 'row', gap: 7 },
+    name: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    meta: { color: colors.muted, fontSize: 12, marginTop: 3 },
+    actions: { flexDirection: 'row', gap: 8 },
     smallButton: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
-      borderWidth: 1,
-      borderColor: colors.border,
+      width: 36,
+      height: 36,
+      borderRadius: radius.pill,
+      backgroundColor: colors.elevated,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    accept: { backgroundColor: colors.text, borderColor: colors.text },
+    accept: { backgroundColor: colors.text },
     pressed: { opacity: 0.62 },
-    feedHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    feedHint: { color: colors.muted, fontSize: 9 },
     loader: { marginTop: 60 },
     activity: {
-      minHeight: 76,
+      minHeight: 72,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 11,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 12,
+      gap: 12,
+      paddingVertical: 10,
     },
     activityCopy: { flex: 1, minWidth: 0 },
-    activityText: { color: colors.text, fontSize: 12, lineHeight: 18 },
-    poster: { width: 34, height: 50, borderRadius: 5, backgroundColor: colors.surface },
+    activityText: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+    poster: { width: 36, height: 54, borderRadius: radius.xs, backgroundColor: colors.surface },
     activityIcon: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+      width: 36,
+      height: 36,
+      borderRadius: radius.pill,
       backgroundColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
     },
   },
-  ['sectionTitle', 'name', 'meta', 'feedHint', 'activityText'] as const,
+  ['name', 'meta', 'activityText'] as const,
 );

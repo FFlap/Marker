@@ -7,6 +7,7 @@ const mockUnfollow = jest.fn();
 let mockPeople: unknown[] = [];
 let mockLibrary: unknown[] = [];
 
+jest.mock('@clerk/expo', () => ({ useAuth: () => ({ userId: 'user_explore' }) }));
 jest.mock('convex/react', () => ({
   useAction: () => mockSearchMedia,
   useMutation: (ref: string) => (ref === 'profiles.follow' ? mockFollow : mockUnfollow),
@@ -78,7 +79,7 @@ describe('Explore', () => {
     await fireEvent.press(q.getByRole('tab', { name: 'Movies' }));
     expect(q.getByText('Shared movie')).toBeTruthy();
     expect(q.queryByText('Shared show')).toBeNull();
-    await fireEvent.press(q.getByRole('tab', { name: 'TV Shows' }));
+    await fireEvent.press(q.getByRole('tab', { name: 'TV shows' }));
     expect(q.getByText('Shared show')).toBeTruthy();
     expect(q.queryByText('Shared movie')).toBeNull();
     await fireEvent.press(q.getByRole('tab', { name: 'People' }));
@@ -106,7 +107,7 @@ describe('Explore', () => {
     await act(async () => jest.advanceTimersByTimeAsync(350));
     await fireEvent.changeText(input, 'Third');
     await act(async () => rejectSearch(new Error('offline')));
-    expect(q.queryByText('Search is unavailable right now')).toBeNull();
+    expect(q.queryByText('Search isn’t available')).toBeNull();
     expect(mockSearchMedia).toHaveBeenCalledTimes(2);
   });
 
@@ -123,7 +124,7 @@ describe('Explore', () => {
     expect(q.getByText('First title')).toBeTruthy();
     await fireEvent.changeText(input, 'Second');
     await act(async () => jest.advanceTimersByTimeAsync(350));
-    expect(q.getByText('Search is unavailable right now')).toBeTruthy();
+    expect(q.getByText('Search isn’t available')).toBeTruthy();
     await fireEvent.changeText(input, 'First');
     await act(async () => jest.advanceTimersByTimeAsync(350));
     expect(q.getByText('First title')).toBeTruthy();
@@ -138,12 +139,29 @@ describe('Explore', () => {
     const input = q.getByLabelText('Search movies, TV shows, people, and tags');
     await fireEvent.changeText(input, 'First');
     await act(async () => jest.advanceTimersByTimeAsync(350));
-    expect(q.getByText('Search is unavailable right now')).toBeTruthy();
+    expect(q.getByText('Search isn’t available')).toBeTruthy();
     await act(async () => jest.advanceTimersByTimeAsync(1_000));
     expect(mockSearchMedia).toHaveBeenCalledTimes(1);
     await fireEvent.changeText(input, '');
     await act(async () => jest.advanceTimersByTimeAsync(clearDelay));
     await fireEvent.changeText(input, 'First');
+    await act(async () => jest.advanceTimersByTimeAsync(350));
+    expect(mockSearchMedia).toHaveBeenCalledTimes(2);
+    expect(q.getByText('Recovered title')).toBeTruthy();
+  });
+
+  it('offers to try a failed search again with the same query', async () => {
+    mockSearchMedia
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce([{ id: 1, mediaType: 'movie', title: 'Recovered title' }]);
+    const q = await view();
+    await fireEvent.changeText(
+      q.getByLabelText('Search movies, TV shows, people, and tags'),
+      'First',
+    );
+    await act(async () => jest.advanceTimersByTimeAsync(350));
+    expect(q.getByText('Search isn’t available')).toBeTruthy();
+    await fireEvent.press(q.getByRole('button', { name: 'Try again' }));
     await act(async () => jest.advanceTimersByTimeAsync(350));
     expect(mockSearchMedia).toHaveBeenCalledTimes(2);
     expect(q.getByText('Recovered title')).toBeTruthy();
@@ -170,7 +188,7 @@ describe('Explore', () => {
     await act(async () => {
       rejectSearch(new Error('offline'));
     });
-    expect(q.queryByText('Search is unavailable right now')).toBeNull();
+    expect(q.queryByText('Search isn’t available')).toBeNull();
   });
 
   it('shows private people as follow requests', async () => {
@@ -212,7 +230,7 @@ describe('Explore', () => {
       await jest.advanceTimersByTimeAsync(350);
     });
     await waitFor(() => expect(q.getByText('Avengers: Endgame')).toBeTruthy());
-    await fireEvent.press(q.getByLabelText('View Avengers: Endgame'));
+    await fireEvent.press(q.getByLabelText('View Avengers: Endgame, in your library'));
     expect(jest.requireMock('expo-router').router.push).toHaveBeenCalledWith('/item/existing-item');
   });
 });

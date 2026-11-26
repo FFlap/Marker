@@ -61,7 +61,7 @@ describe('title search lifecycle', () => {
     });
     await advance();
     expect(result.current.loading).toBe(false);
-    expect(mockShow).toHaveBeenCalledTimes(1);
+    expect(result.current.failed).toBe(true);
     await rerender({ query: '' });
     await rerender({ query: 'title' });
     await advance();

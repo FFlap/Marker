@@ -1,83 +1,54 @@
-import { usePendingTasks } from '@/hooks/use-pending-tasks';
+import Clock3 from 'lucide-react-native/icons/clock-3';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { ScreenView } from '@/components/ScreenLayout';
 import { startupSnapshotStore } from '@/lib/startupSnapshotStorage';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { usePendingTasks } from '@/hooks/use-pending-tasks';
+import { ScrollView, Text, View } from 'react-native';
+import { router, type Href } from 'expo-router';
 import { useClerk } from '@clerk/expo';
-import { useMutation, useQuery } from 'convex/react';
+import Bell from 'lucide-react-native/icons/bell';
+import Eye from 'lucide-react-native/icons/eye';
+import Info from 'lucide-react-native/icons/info';
+import LayoutGrid from 'lucide-react-native/icons/layout-grid';
+import { useStartupQuery as useQuery } from '@/hooks/useStartupQuery';
+import { useAccountLoading } from '@/hooks/useAccountLoading';
 import { api } from '@marker/shared/api';
-import { Button, Segmented } from '@/components/ui/primitives';
+import { Button, ListGroup, ListRow, SwitchRow } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
+import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
+import { radius, typeRamp } from '@/constants/theme';
 import { SecondaryHeader } from '@/components/BackButton';
 import { createAppStyles } from '@/lib/typography';
-import {
-  DEFAULT_DISPLAY_PREFERENCES,
-  type GridColumns,
-  type ListColumns,
-  type ListTextSize,
-} from '@/lib/displayPreferences';
+import { useSettings } from '@/hooks/use-settings';
+import { useLocalToday } from '@/hooks/use-local-today';
+import { SettingIcon } from '@/components/settings/SettingIcon';
+import { clearRecentSearches } from '@/lib/recentSearches';
 
-const views = [
-  { label: 'List', value: 'list' },
-  { label: 'Posters', value: 'posters' },
-] as const;
-const textSizes = [
-  { label: 'Small', value: 'small' },
-  { label: 'Standard', value: 'medium' },
-  { label: 'Large', value: 'large' },
-] as const;
-const listColumns = [
-  { label: 'One column', value: '1' },
-  { label: 'Two columns', value: '2' },
-] as const;
+const textSizeLabel = { small: 'Small text', medium: 'Standard text', large: 'Large text' };
 
 export default function Settings() {
   const runOperation = useOperation();
-  const settings = useQuery(api.settings.getSettings);
-  const setSettings = useMutation(api.settings.setSettings);
-  const { signOut } = useClerk();
+  const { current, pending, update } = useSettings();
+  const today = useLocalToday();
+  const { profileReady } = useAccountLoading();
+  const profile = useQuery(api.profiles.me, profileReady ? {} : 'skip');
+  const clerk = useClerk();
+  const { signOut } = clerk;
   const toast = useToast();
-  const [pending, setPending] = usePendingTasks();
-  const [optimistic, setOptimistic] = useState<Record<string, unknown>>({});
-  const current = { ...DEFAULT_DISPLAY_PREFERENCES, ...settings, ...optimistic };
+  const [signingOut, setSigningOut] = usePendingTasks();
 
-  const update = async (key: string, value: unknown) => {
-    setPending((current) => new Set(current).add(key));
-    setOptimistic((existing) => ({ ...existing, [key]: value }));
-    await runOperation.write(
-      Effect.gen(function* () {
-        yield* saveProfile(() => setSettings({ [key]: value }));
-      }),
-      {
-        failure: () => {
-          toast.show('Couldn’t update settings');
-        },
-        settled: () => {
-          setOptimistic((existing) => {
-            const next = { ...existing };
-            delete next[key];
-            return next;
-          });
-          setPending((current) => {
-            const next = new Set(current);
-            next.delete(key);
-            return next;
-          });
-        },
-      },
-    );
-  };
   const handleSignOut = async () => {
-    setPending((current) => new Set(current).add('signout'));
+    setSigningOut((existing) => new Set(existing).add('signout'));
     await runOperation(
       Effect.gen(function* () {
         yield* saveProfile(async () => {
           await startupSnapshotStore.clear();
+          clearRecentSearches(clerk.user?.id);
           await signOut();
           await startupSnapshotStore.clear();
         });
@@ -87,181 +58,129 @@ export default function Settings() {
           toast.show('Couldn’t sign out');
         },
         settled: () => {
-          setPending((current) => {
-            const next = new Set(current);
-            next.delete('signout');
-            return next;
-          });
+          setSigningOut(new Set());
         },
       },
     );
   };
 
+  const notificationsOn = [
+    current.activityRatings,
+    current.activityWatching,
+    current.activityWatched,
+  ].filter(Boolean).length;
+  const appearance =
+    current.defaultView === 'posters'
+      ? `Posters · ${current.gridColumns} per row`
+      : `List · ${textSizeLabel[current.listTextSize]}`;
+
   return (
     <ScreenView style={s.root}>
       <SecondaryHeader title="Settings" maxWidth={680} />
       <ScrollView contentContainerStyle={s.content}>
-        <View style={[s.group, s.firstGroup]}>
-          <View style={s.groupHead}>
-            <Text style={s.groupTitle}>Default view</Text>
-            <Text style={s.groupHint}>Used across Library and Tags</Text>
-          </View>
-          {settings === undefined ? (
-            <ActivityIndicator accessibilityLabel="Loading view preference" color={colors.muted} />
-          ) : (
-            <Segmented
-              options={views}
-              value={current.defaultView as 'list' | 'posters'}
-              disabled={pending.has('defaultView')}
-              onChange={(defaultView) => void update('defaultView', defaultView)}
-            />
-          )}
-        </View>
-
-        {current.defaultView === 'posters' ? (
-          <View style={s.group}>
-            <View style={s.groupHead}>
-              <Text style={s.groupTitle}>Grid scale</Text>
-              <Text style={s.groupHint}>Pinch in or out to change this anywhere</Text>
+        {profile && (
+          <NativePressable
+            accessibilityRole="button"
+            accessibilityLabel={`Edit profile, @${profile.username}`}
+            onPress={() => router.push('/profile-edit')}
+            style={s.profile}
+            pressedStyle={s.profilePressed}
+          >
+            <ProfileAvatar username={profile.username} avatarUrl={profile.avatarUrl} size={52} />
+            <View style={s.profileCopy}>
+              <Text numberOfLines={1} style={s.profileName}>
+                @{profile.username}
+              </Text>
+              <Text style={s.profileDetail}>Edit profile</Text>
             </View>
-            <View accessibilityRole="radiogroup" style={s.densityOptions}>
-              {([3, 4, 5] as GridColumns[]).map((columns) => {
-                const selected = current.gridColumns === columns;
-                return (
-                  <NativePressable
-                    key={columns}
-                    accessibilityRole="radio"
-                    accessibilityLabel={`${columns} columns`}
-                    accessibilityState={{ checked: selected, disabled: pending.has('gridColumns') }}
-                    disabled={pending.has('gridColumns')}
-                    onPress={() => void update('gridColumns', columns)}
-                    style={[s.densityOption, selected && s.densityOptionSelected]}
-                    pressedStyle={s.pressed}
-                  >
-                    <View style={s.posterPreview}>
-                      {Array.from({ length: columns }).map((_, index) => (
-                        <View
-                          key={index}
-                          style={[s.previewPoster, selected && s.previewPosterSelected]}
-                        />
-                      ))}
-                    </View>
-                    <Text style={[s.densityLabel, selected && s.densityLabelSelected]}>
-                      {columns}
-                    </Text>
-                  </NativePressable>
-                );
-              })}
-            </View>
-          </View>
-        ) : (
-          <>
-            <View style={s.group}>
-              <View style={s.groupHead}>
-                <Text style={s.groupTitle}>Text size</Text>
-                <Text style={s.groupHint}>Adjust title and rating readability</Text>
-              </View>
-              <Segmented
-                options={textSizes}
-                value={current.listTextSize as ListTextSize}
-                disabled={pending.has('listTextSize')}
-                onChange={(listTextSize) => void update('listTextSize', listTextSize)}
-              />
-            </View>
-            <View style={s.group}>
-              <View style={s.groupHead}>
-                <Text style={s.groupTitle}>List layout</Text>
-                <Text style={s.groupHint}>Fit more titles without switching to posters</Text>
-              </View>
-              <Segmented
-                options={listColumns}
-                value={String(current.listColumns) as '1' | '2'}
-                disabled={pending.has('listColumns')}
-                onChange={(value) => void update('listColumns', Number(value) as ListColumns)}
-              />
-            </View>
-          </>
+            <ChevronRight size={18} color={colors.muted} strokeWidth={1.8} />
+          </NativePressable>
         )}
 
-        <View style={s.divider} />
-        <Text style={s.section}>NOTIFICATIONS</Text>
-        <Text style={s.help}>
-          Choose which updates appear in the activity feed from people you follow.
-        </Text>
-        <View style={s.toggleGroup}>
-          <NotificationToggle
-            label="Ratings"
-            detail="Ratings shared by people you follow"
-            value={current.activityRatings !== false}
-            disabled={pending.has('activityRatings')}
-            onChange={(value) => void update('activityRatings', value)}
+        <ListGroup inset={64}>
+          <ListRow
+            label="Appearance"
+            detail={appearance}
+            icon={
+              <SettingIcon>
+                <LayoutGrid size={18} color={colors.text} strokeWidth={1.8} />
+              </SettingIcon>
+            }
+            onPress={() => router.push('/settings/appearance' as Href)}
           />
-          <NotificationToggle
-            label="Watching"
-            detail="When someone starts watching a title"
-            value={current.activityWatching !== false}
-            disabled={pending.has('activityWatching')}
-            onChange={(value) => void update('activityWatching', value)}
+          <ListRow
+            label="Notifications"
+            detail={
+              // Says what is on: activity from people you follow.
+              notificationsOn === 3
+                ? 'Following activity · All on'
+                : notificationsOn
+                  ? `Following activity · ${notificationsOn} of 3 on`
+                  : 'Following activity · Off'
+            }
+            icon={
+              <SettingIcon>
+                <Bell size={18} color={colors.text} strokeWidth={1.8} />
+              </SettingIcon>
+            }
+            onPress={() => router.push('/settings/notifications' as Href)}
           />
-          <NotificationToggle
-            label="Watched"
-            detail="Finished titles and watched episodes"
-            value={current.activityWatched !== false}
-            disabled={pending.has('activityWatched')}
-            onChange={(value) => void update('activityWatched', value)}
-          />
-        </View>
+        </ListGroup>
 
-        <View style={s.divider} />
-        <Text style={s.section}>EXTENSION SYNC</Text>
-        <Text style={s.help}>
-          Install the Marker Chrome extension and sign in with this same account to sync watch
-          history automatically.
-        </Text>
-        <View style={s.signout}>
-          <Button
-            title={pending.has('signout') ? 'Signing out…' : 'Sign out'}
-            variant="danger"
-            disabled={pending.size > 0}
-            onPress={handleSignOut}
+        {/* The optional behaviours, together. */}
+        <ListGroup inset={64}>
+          <SwitchRow
+            label="Ask before marking watched"
+            detail="When you drag a title to Watched"
+            value={current.confirmWatchedMove}
+            disabled={pending.has('confirmWatchedMove')}
+            onChange={(value) => void update('confirmWatchedMove', value)}
+            icon={
+              <SettingIcon>
+                <Eye size={18} color={colors.text} strokeWidth={1.8} />
+              </SettingIcon>
+            }
           />
-        </View>
+          <SwitchRow
+            label="Automatically add to Watching"
+            detail={
+              current.airingInWatching
+                ? 'Watched shows with new episodes'
+                : 'Use “Also in Watching” in Edit entry'
+            }
+            value={current.airingInWatching}
+            disabled={pending.has('airingInWatching')}
+            onChange={(value) => void update('airingInWatching', value, { today })}
+            icon={
+              <SettingIcon>
+                <Clock3 size={18} color={colors.text} strokeWidth={1.8} />
+              </SettingIcon>
+            }
+          />
+        </ListGroup>
+
+        <ListGroup inset={64}>
+          <ListRow
+            label="About"
+            detail="Chrome extension and data sources"
+            icon={
+              <SettingIcon>
+                <Info size={18} color={colors.text} strokeWidth={1.8} />
+              </SettingIcon>
+            }
+            onPress={() => router.push('/settings/about' as Href)}
+          />
+        </ListGroup>
+
+        <Button
+          title={signingOut.size ? 'Signing out…' : 'Sign out'}
+          variant="danger"
+          size="lg"
+          disabled={signingOut.size > 0 || pending.size > 0}
+          onPress={handleSignOut}
+        />
       </ScrollView>
     </ScreenView>
-  );
-}
-
-function NotificationToggle({
-  label,
-  detail,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  detail: string;
-  value: boolean;
-  disabled: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <NativePressable
-      accessibilityRole="switch"
-      accessibilityLabel={label}
-      accessibilityState={{ checked: value, disabled }}
-      disabled={disabled}
-      onPress={() => onChange(!value)}
-      style={s.toggleRow}
-      pressedStyle={s.pressed}
-    >
-      <View style={s.toggleCopy}>
-        <Text style={s.groupTitle}>{label}</Text>
-        <Text style={s.groupHint}>{detail}</Text>
-      </View>
-      <View style={[s.switchTrack, value && s.switchTrackOn]}>
-        <View style={[s.switchThumb, value && s.switchThumbOn]} />
-      </View>
-    </NativePressable>
   );
 }
 
@@ -272,65 +191,26 @@ const s = createAppStyles(
       width: '100%',
       maxWidth: 680,
       alignSelf: 'center',
-      padding: 20,
+      paddingHorizontal: 20,
       paddingTop: 88,
-      paddingBottom: 72,
+      paddingBottom: 56,
+      gap: 28,
     },
-    group: { marginTop: 34, gap: 14 },
-    firstGroup: { marginTop: 0 },
-    groupHead: { gap: 3 },
-    groupTitle: { color: colors.text, fontSize: 14, fontWeight: '700' },
-    groupHint: { color: colors.muted, fontSize: 11, lineHeight: 16 },
-    densityOptions: { flexDirection: 'row', gap: 10 },
-    densityOption: {
-      flex: 1,
-      minHeight: 82,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 9,
-      paddingHorizontal: 8,
-    },
-    densityOptionSelected: { backgroundColor: colors.text, borderColor: colors.text },
-    posterPreview: { height: 24, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-    previewPoster: { width: 9, height: 20, borderRadius: 2, backgroundColor: colors.muted },
-    previewPosterSelected: { backgroundColor: colors.bg },
-    densityLabel: { color: colors.muted, fontSize: 12, fontWeight: '700' },
-    densityLabelSelected: { color: colors.bg },
-    pressed: { opacity: 0.74 },
-    divider: { height: 1, backgroundColor: colors.border, marginTop: 42 },
-    section: {
-      color: colors.muted,
-      fontSize: 10,
-      fontWeight: '700',
-      letterSpacing: 1.1,
-      marginTop: 30,
-      marginBottom: 14,
-    },
-    help: { color: colors.muted, fontSize: 13, lineHeight: 20 },
-    toggleGroup: { gap: 2, marginTop: 14 },
-    toggleRow: {
-      minHeight: 62,
+    profile: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 16,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
+      gap: 14,
+      paddingVertical: 14,
+      paddingLeft: 14,
+      // The chevron lines up with the list rows' chevrons below.
+      paddingRight: 16,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
     },
-    toggleCopy: { flex: 1, minWidth: 0 },
-    switchTrack: {
-      width: 42,
-      height: 24,
-      borderRadius: 12,
-      padding: 3,
-      backgroundColor: colors.elevated,
-    },
-    switchTrackOn: { backgroundColor: colors.text },
-    switchThumb: { width: 18, height: 18, borderRadius: 9, backgroundColor: colors.muted },
-    switchThumbOn: { marginLeft: 18, backgroundColor: colors.bg },
-    signout: { marginTop: 44 },
+    profilePressed: { backgroundColor: colors.elevated },
+    profileCopy: { flex: 1, minWidth: 0, gap: 3 },
+    profileName: { ...typeRamp.rowTitle, fontSize: 17, fontWeight: '700' },
+    profileDetail: { ...typeRamp.meta },
   },
-  ['groupTitle', 'groupHint', 'densityLabel', 'densityLabelSelected', 'section', 'help'] as const,
+  ['profileName', 'profileDetail'] as const,
 );

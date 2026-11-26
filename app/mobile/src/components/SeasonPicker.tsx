@@ -9,9 +9,11 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
+  DrawerScrollView,
 } from '@/components/ui/drawer';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { availableSeasons, type SeasonChoice } from '@/features/title/seasons';
 
@@ -71,12 +73,12 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
             style={s.trigger}
             pressedStyle={s.pressed}
           >
-            <Text numberOfLines={1} style={s.value}>
+            <Text numberOfLines={1} style={s.valueText}>
               {seasonDisplayLabel(selected)}
             </Text>
             <ChevronDown
               size={15}
-              color={colors.muted}
+              color={colors.secondary}
               strokeWidth={2}
               style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}
             />
@@ -87,7 +89,7 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
             <DrawerTitle>Choose season</DrawerTitle>
           </DrawerHeader>
           <View style={[s.listFrame, { height: menuHeight }]}>
-            <ScrollView
+            <DrawerScrollView
               ref={menuRef}
               accessibilityLabel="Season options"
               style={s.list}
@@ -132,7 +134,7 @@ export function SeasonPicker({ open, value, options, onOpenChange, onChange }: S
                   </DrawerClose>
                 );
               })}
-            </ScrollView>
+            </DrawerScrollView>
           </View>
         </DrawerContent>
       </View>
@@ -144,15 +146,19 @@ const s = createAppStyles(
   {
     root: { position: 'relative' },
     trigger: {
-      minHeight: 44,
+      height: 36,
       maxWidth: '100%',
       alignSelf: 'flex-start',
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
+      paddingLeft: 14,
+      paddingRight: 10,
+      borderRadius: radius.pill,
+      backgroundColor: colors.elevated,
     },
-    pressed: { opacity: 0.6 },
-    value: { flexShrink: 1, color: colors.text, fontSize: 14, fontWeight: '600' },
+    pressed: { opacity: 0.7 },
+    valueText: { flexShrink: 1, color: colors.text, fontSize: 15, fontWeight: '600' },
     listFrame: { marginHorizontal: -SHEET_INSET, overflow: 'hidden' },
     list: { flex: 1 },
     option: {
@@ -169,5 +175,5 @@ const s = createAppStyles(
     optionTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
     optionMeta: { color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
   },
-  ['value', 'optionTitle', 'optionMeta'] as const,
+  ['valueText', 'optionTitle', 'optionMeta'] as const,
 );

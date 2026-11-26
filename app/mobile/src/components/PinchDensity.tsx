@@ -1,9 +1,11 @@
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
+import { createAppStyles } from '@/lib/typography';
 import { type GridColumns, stepGridColumns } from '@/lib/displayPreferences';
 
 export function PinchDensity({
@@ -106,23 +108,26 @@ export function PinchDensity({
   );
 }
 
-const s = StyleSheet.create({
-  badge: {
-    position: 'absolute',
-    top: 20,
-    alignSelf: 'center',
-    minWidth: 112,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderRadius: 16,
-    backgroundColor: colors.elevated,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    gap: 7,
-    boxShadow: '0 8px 18px rgba(0, 0, 0, 0.38)',
+const s = createAppStyles(
+  {
+    badge: {
+      position: 'absolute',
+      top: 20,
+      alignSelf: 'center',
+      minWidth: 112,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderRadius: radius.lg,
+      backgroundColor: colors.elevated,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      gap: 7,
+      boxShadow: '0 8px 18px rgba(0, 0, 0, 0.38)',
+    },
+    miniGrid: { height: 20, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+    miniPoster: { width: 9, height: 16, borderRadius: 2, backgroundColor: colors.text },
+    label: { color: colors.text, fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
   },
-  miniGrid: { height: 20, flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  miniPoster: { width: 9, height: 16, borderRadius: 2, backgroundColor: colors.text },
-  label: { color: colors.text, fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
-});
+  ['label'] as const,
+);

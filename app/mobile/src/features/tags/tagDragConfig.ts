@@ -5,4 +5,4 @@ export type OptimisticTagOrders = {
   orders: Partial<Record<Status, string[]>>;
 };
 
-export const TAG_HEADER_HEIGHT = 116;
+export const TAG_HEADER_HEIGHT = 132;

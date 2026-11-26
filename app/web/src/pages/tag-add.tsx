@@ -52,6 +52,10 @@ export function TagAddPage() {
     setSaving(true);
     setError("");
     let savedCount = 0;
+    // Titles already at the 20-tag limit: the server skips them and saves the rest.
+    const full: string[] = [];
+    // Batches the server finished, so a failed save only retries what is left.
+    const done = new Set<Id<"items">>();
     await runOperation.write(
       Effect.gen(function* () {
         const ids = [...selected];
@@ -60,20 +64,39 @@ export function TagAddPage() {
           (_, index) => ids.slice(index * 100, index * 100 + 100),
         );
         for (const itemIds of batches) {
-          yield* saveLibrary(() => addTagToItems({ tag, itemIds }));
-          savedCount += itemIds.length;
+          const result = yield* saveLibrary(() =>
+            addTagToItems({ tag, itemIds }),
+          );
+          savedCount += result.updated;
+          full.push(...result.full);
+          for (const itemId of itemIds) done.add(itemId);
         }
       }),
       {
         success: () => {
-          void navigate({ to: "/tags/$tag", params: { tag } });
+          if (!full.length) {
+            void navigate({ to: "/tags/$tag", params: { tag } });
+            return;
+          }
+          // Stay to say which titles were skipped; the saved ones are done.
+          setSelected(new Set());
+          setError(
+            `${savedCount ? `Added ${savedCount} to ${tag}. ` : ""}${fullNote(full)}`,
+          );
+          setSaving(false);
         },
 
         failure: () => {
+          // Keep only the unsaved titles selected, so trying again doesn't redo finished batches.
+          setSelected(
+            (current) => new Set([...current].filter((itemId) => !done.has(itemId))),
+          );
           setError(
-            savedCount
-              ? `${savedCount} ${savedCount === 1 ? "title was" : "titles were"} added to ${tag}, but the rest could not be saved.`
-              : `Couldn’t add titles to ${tag}.`,
+            `${
+              savedCount
+                ? `${savedCount} ${savedCount === 1 ? "title was" : "titles were"} added to ${tag}, but the rest could not be saved.`
+                : `Couldn’t add titles to ${tag}.`
+            }${full.length ? ` ${fullNote(full)}` : ""}`,
           );
           setSaving(false);
         },
@@ -195,4 +218,13 @@ export function TagAddPage() {
       )}
     </Page>
   );
+}
+
+/** "A and B already have 20 tags." for titles the server skipped at the tag limit. */
+function fullNote(full: readonly string[]) {
+  const names =
+    full.length > 2
+      ? `${full.slice(0, 2).join(", ")} and ${full.length - 2} more`
+      : full.join(" and ");
+  return `${names} already ${full.length === 1 ? "has" : "have"} 20 tags.`;
 }

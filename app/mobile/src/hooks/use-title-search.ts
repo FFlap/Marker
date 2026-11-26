@@ -4,7 +4,6 @@ import { searchTitles } from '@marker/shared/clientEffects';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useAction } from 'convex/react';
 import { api } from '@marker/shared/api';
-import { useToast } from '@/components/ui/Toast';
 import type { SearchResult } from '@/types';
 
 type SearchResponse =
@@ -17,10 +16,11 @@ export function useTitleSearch(
   { enabled = true, delayMs = 300 }: { enabled?: boolean; delayMs?: number } = {},
 ) {
   const search = useAction(api.tmdb.searchMulti);
-  const { show } = useToast();
   const normalizedQuery = query.trim();
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [response, setResponse] = useState<SearchResponse>();
+  // Bumped by "Try again" to search the same query once more.
+  const [attempt, setAttempt] = useState(0);
   const ready = normalizedQuery.length >= 2;
   const settled = normalizedQuery === debouncedQuery;
   const runSearch = useEffectEvent((searchQuery: string) => {
@@ -34,10 +34,8 @@ export function useTitleSearch(
     return searchTitles(() => search({ query: searchQuery })).pipe(
       Effect.match({
         onSuccess: (results) => setResponse({ state: 'succeeded', query: searchQuery, results }),
-        onFailure: () => {
-          setResponse({ state: 'failed', query: searchQuery, results: [] });
-          show('Search is unavailable right now');
-        },
+        // Shown inline by the screen ("Search isn’t available" with Try again).
+        onFailure: () => setResponse({ state: 'failed', query: searchQuery, results: [] }),
       }),
     );
   });
@@ -53,7 +51,7 @@ export function useTitleSearch(
       { signal: controller.signal },
     );
     return () => controller.abort();
-  }, [normalizedQuery, delayMs, enabled]);
+  }, [normalizedQuery, delayMs, enabled, attempt]);
 
   const current = enabled && ready && response?.query === normalizedQuery;
   return {
@@ -62,5 +60,11 @@ export function useTitleSearch(
     settled,
     results: current ? response.results : EMPTY_RESULTS,
     loading: enabled && ready && !current,
+    /** The search for this query failed (not "no matches"), so offer to try again. */
+    failed: current && response.state === 'failed',
+    retry: () => {
+      setResponse(undefined);
+      setAttempt((value) => value + 1);
+    },
   };
 }

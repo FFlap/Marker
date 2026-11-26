@@ -10,7 +10,7 @@ import { api } from "@marker/shared/api";
 import { Page, PageHeader, SectionHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 
-type Preferences = Required<FunctionArgs<typeof api.settings.setSettings>>;
+type Preferences = Required<Omit<FunctionArgs<typeof api.settings.setSettings>, "today">>;
 type FailedPreference = {
   [K in keyof Preferences]: { key: K; value: Preferences[K] };
 }[keyof Preferences];
@@ -23,6 +23,8 @@ const defaults: Preferences = {
   activityRatings: true,
   activityWatching: true,
   activityWatched: true,
+  confirmWatchedMove: true,
+  airingInWatching: true,
 };
 const densityPreviewKeys = ["one", "two", "three", "four", "five"];
 

@@ -9,6 +9,7 @@ import { AccountLoadingContext } from '@/hooks/useAccountLoading';
 import { colors } from '@/constants/colors';
 import { useAccount } from '@/hooks/useAccount';
 import { createAppStyles } from '@/lib/typography';
+import { clearRecentSearches } from '@/lib/recentSearches';
 
 export function AuthBoundary({ children, routeName }: { children: ReactNode; routeName: string }) {
   const {
@@ -22,6 +23,7 @@ export function AuthBoundary({ children, routeName }: { children: ReactNode; rou
     profile,
     pending,
     signOut,
+    userId,
     cachedContent,
   } = useAccount();
   const libraryRoute = routeName === 'index';
@@ -56,7 +58,14 @@ export function AuthBoundary({ children, routeName }: { children: ReactNode; rou
         <Text style={styles.message}>Check your connection and try again, or sign out.</Text>
         <View style={styles.actions}>
           <Button title="Retry" onPress={retryAccount} />
-          <Button title="Sign out" variant="outline" onPress={() => void signOut()} />
+          <Button
+            title="Sign out"
+            variant="outline"
+            onPress={() => {
+              clearRecentSearches(userId);
+              void signOut();
+            }}
+          />
         </View>
       </ScreenView>
     );

@@ -8,17 +8,20 @@ import {
   ScrollView,
   Text,
   useWindowDimensions,
+  PixelRatio,
   View,
 } from 'react-native';
-import { useStartupQuery as useQuery } from '@/hooks/useStartupQuery';
+import { useStartupData, useStartupQuery as useQuery } from '@/hooks/useStartupQuery';
+import { getFunctionName, type FunctionReturnType } from 'convex/server';
 import { StartupSyncStatus } from '@/components/StartupSyncStatus';
 import Reanimated from 'react-native-reanimated';
 import { useAccountLoading } from '@/hooks/useAccountLoading';
+import { useWatchingRefresh } from '@/hooks/use-watching-refresh';
 import { api } from '@marker/shared/api';
-import { router } from 'expo-router';
-import { Button, EmptyState } from '@/components/ui/primitives';
+import { SectionHeading } from '@/components/ui/primitives';
+import { WatchedConfirmSheet } from '@/components/WatchedConfirmSheet';
+import { useToast } from '@/components/ui/Toast';
 import { NativePressable } from '@/components/ui/NativePressable';
-import { colors } from '@/constants/colors';
 import type { LibraryItem } from '@/types';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { PinchDensity } from '@/components/PinchDensity';
@@ -28,12 +31,24 @@ import type { AppDrawerHandle } from '@/components/AppDrawer';
 import { MobileNav } from '@/components/MobileNav';
 import { NativePosterDragPreview } from '@/components/NativePosterDragPreview';
 import { NativeDraggableGrid } from '@/components/NativeDraggableGrid';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import Plus from 'lucide-react-native/icons/plus';
-import { DEFAULT_DISPLAY_PREFERENCES, listTypography } from '@/lib/displayPreferences';
-import { LIBRARY_STATUSES, matchesMediaType } from '@/lib/libraryFilters';
+import { DEFAULT_DISPLAY_PREFERENCES, gridMetrics, listTypography } from '@/lib/displayPreferences';
+import {
+  LIBRARY_SORTS,
+  LIBRARY_STATUSES,
+  matchesMediaType,
+  isAlsoWatching,
+  matchesStatus,
+  sortLibraryItems,
+} from '@/lib/libraryFilters';
+import { useMutation } from 'convex/react';
 
-import { LibraryPosterCard, LibraryRow } from '@/features/library/components/LibraryItemCards';
+import {
+  LibraryPosterCard,
+  LibraryRow,
+  AlsoWatchingCard,
+  twoColumnPairHeight,
+  useTitleLines,
+} from '@/features/library/components/LibraryItemCards';
 import { LibraryToolbar } from '@/features/library/components/LibraryToolbar';
 import { useLibraryReordering } from '@/features/library/hooks/useLibraryReordering';
 import {
@@ -46,6 +61,7 @@ import {
   MOBILE_NAV_HEIGHT,
   TOOLBAR_HEIGHT,
 } from '@/features/library/screens/LibraryScreen.styles';
+import { useLocalToday } from '@/hooks/use-local-today';
 const EMPTY_ITEMS: LibraryItem[] = [];
 export default function LibraryScreen() {
   return (
@@ -66,6 +82,9 @@ function LibraryContent() {
 /** Render the existing library shell without initializing item drag/reorder machinery. */
 function LibraryLoadingScreen({ controls }: { controls: LibraryFilterControls }) {
   const [drawer, setDrawer] = useState<AppDrawerHandle | null>(null);
+  // Saved settings from the last session shape the skeleton before live data arrives.
+  const cachedSettings = useStartupData()?.values[getFunctionName(api.settings.getSettings)] as
+    FunctionReturnType<typeof api.settings.getSettings> | undefined;
   const edgeSwipe = useMemo(() => createDrawerEdgeSwipe(drawer, () => false), [drawer]);
   return (
     <ScreenView style={s.root} {...edgeSwipe.panHandlers}>
@@ -74,28 +93,17 @@ function LibraryLoadingScreen({ controls }: { controls: LibraryFilterControls })
           filters={{ ...controls.filters, allTags: [] }}
           setFilters={controls.actions}
           onDrawerChange={setDrawer}
+          addDisabled
         />
       </View>
       <ScrollView testID="library-scroll" contentContainerStyle={s.content}>
-        {controls.filters.active && (
-          <Text accessibilityLiveRegion="polite" style={s.hint}>
-            Clear filters to reorder
-          </Text>
-        )}
-        <LibraryPageSkeleton list />
+        <LibraryPageSkeleton
+          list={(cachedSettings?.defaultView ?? 'list') === 'list'}
+          columns={cachedSettings?.gridColumns}
+          listColumns={cachedSettings?.listColumns}
+          textSize={cachedSettings?.listTextSize}
+        />
       </ScrollView>
-      <View testID="library-add-motion" style={s.addButtonShell}>
-        <NativePressable
-          accessibilityRole="button"
-          accessibilityLabel="Add title"
-          accessibilityHint="Opens title search"
-          accessibilityState={{ disabled: true }}
-          disabled
-          style={s.addButton}
-        >
-          <Plus size={23} color={colors.bg} strokeWidth={1.9} />
-        </NativePressable>
-      </View>
       <MobileNav current="library" />
     </ScreenView>
   );
@@ -106,11 +114,28 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
   const itemQuery = useQuery(api.library.items.listItems, libraryReady ? {} : 'skip');
   const items = itemQuery ?? EMPTY_ITEMS;
   const settings = useQuery(api.settings.getSettings, libraryReady ? {} : 'skip');
+  useWatchingRefresh({ enabled: libraryReady });
+  const titleLines = useTitleLines();
+  const setSettings = useMutation(api.settings.setSettings);
+  const toast = useToast();
   const view = settings?.defaultView ?? 'list';
   const { gridColumns, updateGridColumns } = useGridColumns(settings?.gridColumns);
   const listColumns = settings?.listColumns ?? DEFAULT_DISPLAY_PREFERENCES.listColumns;
   const listTextSize = settings?.listTextSize ?? DEFAULT_DISPLAY_PREFERENCES.listTextSize;
-  const { fontScale } = useWindowDimensions();
+  const today = useLocalToday();
+  const automaticAiring = settings?.airingInWatching !== false;
+  // Watched shows also listed under Watching (a new episode is out, or set by hand).
+  const alsoWatchingIds = useMemo(
+    () =>
+      new Set(
+        items
+          .filter((item) => isAlsoWatching(item, automaticAiring, today))
+          .map((item) => item._id),
+      ),
+    [automaticAiring, items, today],
+  );
+  const { fontScale, width: windowWidth } = useWindowDimensions();
+  const listCellWidth = gridMetrics(Math.min(windowWidth, 880) - 40, 2, PixelRatio.get()).itemWidth;
   const typography = listTypography(listTextSize);
   // Window only unscaled rows. Accessibility scaling can wrap the fixed-width
   // rating, so those rows must retain their natural measured height.
@@ -124,11 +149,14 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
     status: statusFilter,
     minimumRating: min,
     selectedTags: tags,
+    sort,
     active,
   } = controls.filters;
+  const sorted = sort !== 'custom';
+  const reorderLocked = active || sorted;
   const motionReduced = useReducedMotion();
-  const [addButtonHidden, setAddButtonHidden] = useState(false);
-  if (motionReduced && addButtonHidden) setAddButtonHidden(false);
+  const [toolbarHidden, setToolbarHidden] = useState(false);
+  if (motionReduced && toolbarHidden) setToolbarHidden(false);
   const [scrollY] = useState(() => new Animated.Value(0));
   const toolbarY = useMemo(
     () => Animated.multiply(Animated.diffClamp(scrollY, 0, TOOLBAR_HEIGHT), -1),
@@ -160,21 +188,23 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
       items.filter(
         (i) =>
           matchesMediaType(i, type) &&
-          (statusFilter === 'all' || i.status === statusFilter) &&
+          matchesStatus(i, statusFilter, alsoWatchingIds.has(i._id)) &&
           (!min || (i.rating ?? -1) >= min) &&
           tags.every((tag) =>
             i.tags.some((itemTag) => itemTag.toLocaleLowerCase() === tag.toLocaleLowerCase()),
           ) &&
           i.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
       ),
-    [items, type, statusFilter, min, tags, search],
+    [items, type, statusFilter, min, tags, search, alsoWatchingIds],
   );
   const visibleItemIds = useMemo(() => new Set(filtered.map((item) => item._id)), [filtered]);
   const visibleStatuses =
     statusFilter === 'all'
       ? LIBRARY_STATUSES
       : LIBRARY_STATUSES.filter(([status]) => status === statusFilter);
-  const reordering = useLibraryReordering(items, active);
+  const reordering = useLibraryReordering(items, reorderLocked, {
+    confirmWatched: settings?.confirmWatchedMove !== false,
+  });
   const {
     moveToStatus: performCategoryMove,
     orderedForStatus,
@@ -217,7 +247,7 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
       const next =
         y === 0 ? 0 : Math.max(-TOOLBAR_HEIGHT, Math.min(0, toolbarPosition.current - delta));
       toolbarPosition.current = next;
-      setAddButtonHidden(next <= -TOOLBAR_HEIGHT + 1);
+      setToolbarHidden(next <= -TOOLBAR_HEIGHT + 1);
     },
     [lastScrollY, motionReduced],
   );
@@ -243,6 +273,9 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
       {...(view === 'posters' ? {} : edgeSwipe.panHandlers)}
     >
       <Animated.View
+        testID="library-toolbar-motion"
+        // Off-screen toolbar controls shouldn't take touches.
+        pointerEvents={!motionReduced && toolbarHidden ? 'none' : 'auto'}
         style={[
           s.toolbar,
           {
@@ -264,11 +297,14 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
             minimumRating: min,
             search,
             selectedTags: tags,
+            sort,
             status: statusFilter,
             type,
           }}
           setFilters={controls.actions}
           onDrawerChange={setDrawerHandle}
+          resultCount={filtered.length}
+          addDisabled={!libraryReady}
         />
       </Animated.View>
       <Reanimated.ScrollView
@@ -285,14 +321,31 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
         scrollEnabled={!nativeDrag}
         scrollEventThrottle={16}
       >
-        {active && (
-          <Text accessibilityLiveRegion="polite" style={s.hint}>
-            {filtered.length} {filtered.length === 1 ? 'result' : 'results'} · Clear filters to
-            reorder
-          </Text>
+        {reorderLocked && (
+          <View style={s.hintRow}>
+            <Text accessibilityLiveRegion="polite" numberOfLines={1} style={s.hint}>
+              {filtered.length} {filtered.length === 1 ? 'title' : 'titles'}
+              {sorted ? ` · ${LIBRARY_SORTS.find((option) => option.value === sort)?.label}` : ''}
+            </Text>
+            <NativePressable
+              accessibilityRole="button"
+              accessibilityLabel="Reset sort and filters"
+              hitSlop={8}
+              onPress={controls.actions.clear}
+              style={s.hintAction}
+              pressedStyle={s.hintActionPressed}
+            >
+              <Text style={s.hintActionText}>Reset</Text>
+            </NativePressable>
+          </View>
         )}
         {itemQuery === undefined ? (
-          <LibraryPageSkeleton list={view === 'list'} />
+          <LibraryPageSkeleton
+            list={view === 'list'}
+            columns={gridColumns}
+            listColumns={listColumns}
+            textSize={listTextSize}
+          />
         ) : (
           <PinchDensity
             columns={gridColumns}
@@ -301,7 +354,26 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
             }}
           >
             {visibleStatuses.map(([status, label]) => {
-              const data = orderedForStatus(status).filter((item) => visibleItemIds.has(item._id));
+              const own = orderedForStatus(status).filter((item) => visibleItemIds.has(item._id));
+              const also =
+                status === 'watching'
+                  ? orderedForStatus('watched').filter(
+                      (item) => alsoWatchingIds.has(item._id) && visibleItemIds.has(item._id),
+                    )
+                  : [];
+              // In your order, shows also in Watched lead the grid in their Watched order. Any
+              // other sort orders the whole section together (it is read-only then).
+              const alsoWatching = sorted ? [] : also;
+              const data = sortLibraryItems(sorted ? [...also, ...own] : own, sort);
+              // Ranks are the saved Watched positions, also when filters hide some titles.
+              const savedRank =
+                status === 'watched'
+                  ? new Map(orderedForStatus('watched').map((item, index) => [item._id, index + 1]))
+                  : undefined;
+              // Shows ranked under Watched lead the Watching grid, so pairs span both.
+              const sectionCards = [...alsoWatching, ...data];
+              const dropTarget =
+                !!nativeDrag && nativeTargetStatus === status && nativeDrag.status !== status;
               return (
                 <View
                   key={status}
@@ -323,16 +395,20 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                       s.categoryDropActive,
                   ]}
                 >
-                  <View style={s.sectionHead}>
-                    <Text style={s.sectionTitle}>{label}</Text>
-                    <Text style={s.count}>{data.length.toString().padStart(2, '0')}</Text>
-                  </View>
-                  {!data.length &&
-                  !(nativeDrag && nativeTargetStatus === status && nativeDrag.status !== status) ? (
-                    <EmptyState
-                      title={active ? 'No matches' : 'Nothing here yet'}
-                      detail={active ? 'Try a broader filter.' : 'Add a title when you’re ready.'}
-                    />
+                  <SectionHeading
+                    title={label}
+                    count={data.length + alsoWatching.length}
+                    style={s.sectionHead}
+                    large={view === 'list' && listTextSize === 'large'}
+                  />
+                  {!data.length && !alsoWatching.length && !dropTarget ? (
+                    nativeDrag ? (
+                      <View style={s.emptySection}>
+                        <Text style={s.emptySectionText}>Drop here</Text>
+                      </View>
+                    ) : (
+                      <Text style={s.emptyLine}>{active ? 'No matches' : 'No titles yet'}</Text>
+                    )
                   ) : (
                     <NativeDraggableGrid
                       key={`${view}-${view === 'posters' ? gridColumns : listColumns}`}
@@ -350,8 +426,33 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                             }
                           : undefined
                       }
+                      leading={alsoWatching.map((item, index) => ({
+                        key: item._id,
+                        element: (
+                          <AlsoWatchingCard
+                            item={item}
+                            view={view}
+                            textSize={listTextSize}
+                            compact={gridColumns === 5}
+                            contained={listColumns === 2}
+                            pairHeight={
+                              view === 'list' && listColumns === 2
+                                ? twoColumnPairHeight(
+                                    sectionCards,
+                                    index,
+                                    listCellWidth,
+                                    listTextSize,
+                                    titleLines.measured,
+                                    false,
+                                  )
+                                : undefined
+                            }
+                            onTitleLines={titleLines.report}
+                          />
+                        ),
+                      }))}
                       data={data}
-                      disabled={active || statusMovePending}
+                      disabled={reorderLocked || statusMovePending}
                       columns={view === 'posters' ? gridColumns : listColumns}
                       rowHeight={
                         view === 'list' && listColumns === 1 && fontScale <= 1
@@ -388,10 +489,24 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
                           <Card
                             textSize={listTextSize}
                             contained={listColumns === 2}
+                            pairHeight={
+                              view === 'list' && listColumns === 2
+                                ? twoColumnPairHeight(
+                                    sectionCards,
+                                    alsoWatching.length + index,
+                                    listCellWidth,
+                                    listTextSize,
+                                    titleLines.measured,
+                                    status === 'watched',
+                                  )
+                                : undefined
+                            }
+                            onTitleLines={titleLines.report}
+                            compact={gridColumns === 5}
                             item={item}
-                            rank={index + 1}
+                            rank={savedRank?.get(item._id) ?? index + 1}
                             ranked={status === 'watched'}
-                            disabled={active || statusMovePending}
+                            disabled={reorderLocked || statusMovePending}
                             onCategoryMove={(target) => requestCategoryMove(item._id, target)}
                             onMove={(direction) => {
                               const to = index + direction;
@@ -413,36 +528,21 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
         )}
       </Reanimated.ScrollView>
       <StartupSyncStatus bottom={72} />
-      <Drawer
-        open={!!pendingWatchedMove}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen && !statusMovePending) reordering.confirmation.close();
-        }}
-      >
-        {!!pendingWatchedMove && (
-          <DrawerContent className="max-w-md gap-6 rounded-2xl border-border bg-background p-6">
-            <DrawerHeader>
-              <DrawerTitle>Mark as watched?</DrawerTitle>
-            </DrawerHeader>
-            <Text style={s.confirmMessage}>
-              {pendingWatchedMove.mediaType === 'tv'
-                ? `${pendingWatchedMove.title} will move to Watched and every episode will be marked watched. Times Watched will be set to at least 1.`
-                : `${pendingWatchedMove.title} will move to Watched. Times Watched will be set to at least 1.`}
-            </Text>
-            <Button
-              title={statusMovePending ? 'Marking watched…' : 'Mark watched'}
-              disabled={statusMovePending}
-              onPress={() => {
-                if (!pendingWatchedMove || statusMovePending) return;
-                const item = pendingWatchedMove;
-                void performCategoryMove(item, 'watched', reordering.confirmation.index).finally(
-                  reordering.confirmation.close,
+      <WatchedConfirmSheet
+        item={pendingWatchedMove}
+        pending={statusMovePending}
+        onClose={reordering.confirmation.close}
+        onConfirm={(item, { dontAskAgain }) => {
+          void performCategoryMove(item, 'watched', reordering.confirmation.index)
+            .then((saved) => {
+              if (saved && dontAskAgain)
+                return setSettings({ confirmWatchedMove: false }).catch(() =>
+                  toast.show('Couldn’t save that preference'),
                 );
-              }}
-            />
-          </DrawerContent>
-        )}
-      </Drawer>
+            })
+            .finally(reordering.confirmation.close);
+        }}
+      />
       {!!nativeDrag && !!nativeDragPreviewLayout && !!nativePosterMotion[nativeDrag.status] && (
         <NativePosterDragPreview
           bounds={{ top: TOOLBAR_HEIGHT, bottom: rootHeight - MOBILE_NAV_HEIGHT }}
@@ -464,54 +564,6 @@ function Library({ controls }: { controls: LibraryFilterControls }) {
           )}
         </NativePosterDragPreview>
       )}
-      <Animated.View
-        testID="library-add-motion"
-        pointerEvents={!motionReduced && addButtonHidden ? 'none' : 'auto'}
-        style={[
-          s.addButtonShell,
-          {
-            opacity: motionReduced
-              ? 1
-              : toolbarY.interpolate({
-                  inputRange: [-TOOLBAR_HEIGHT, 0],
-                  outputRange: [0, 1],
-                  extrapolate: 'clamp',
-                }),
-            transform: [
-              {
-                scale: motionReduced
-                  ? 1
-                  : toolbarY.interpolate({
-                      inputRange: [-TOOLBAR_HEIGHT, 0],
-                      outputRange: [0.35, 1],
-                      extrapolate: 'clamp',
-                    }),
-              },
-              {
-                translateY: motionReduced
-                  ? 0
-                  : toolbarY.interpolate({
-                      inputRange: [-TOOLBAR_HEIGHT, 0],
-                      outputRange: [24, 0],
-                      extrapolate: 'clamp',
-                    }),
-              },
-            ],
-          },
-        ]}
-      >
-        <NativePressable
-          accessibilityRole="button"
-          accessibilityLabel="Add title"
-          disabled={!libraryReady}
-          accessibilityHint="Opens title search"
-          onPress={() => router.push('/add')}
-          style={s.addButton}
-          pressedStyle={s.addButtonPressed}
-        >
-          <Plus size={23} color={colors.bg} strokeWidth={1.9} />
-        </NativePressable>
-      </Animated.View>
       <MobileNav current="library" />
     </ScreenView>
   );

@@ -50,7 +50,7 @@ const mockOverview = {
 };
 
 jest.mock('convex/react', () => ({
-  useQuery: () => mockOverview,
+  useQuery: (ref: string) => (ref === 'library/items:listItems' ? [] : mockOverview),
   useMutation: (ref: string) =>
     ref === 'episodeHub.refreshWatching' ? mockRefreshWatching : mockSetEpisode,
 }));
@@ -60,7 +60,10 @@ jest.mock('@marker/shared/api', () => ({
       overview: 'episodeHub.overview',
       refreshWatching: 'episodeHub.refreshWatching',
     },
-    library: { episodes: { setEpisodeState: 'library/episodes:setEpisodeState' } },
+    library: {
+      episodes: { setEpisodeState: 'library/episodes:setEpisodeState' },
+      items: { listItems: 'library/items:listItems' },
+    },
   },
 }));
 jest.mock('../../src/components/AppDrawer', () => ({
@@ -90,6 +93,7 @@ jest.mock('../../src/components/ui/drawer', () => {
     DrawerHeader: container,
     DrawerTitle: ({ children }: { children: React.ReactNode }) => <Text>{children}</Text>,
     DrawerTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    DrawerScrollView: require('react-native').ScrollView,
   };
 });
 
@@ -117,19 +121,19 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
       <EpisodesScreen />
     </ToastProvider>,
   );
-  expect(view.getByText('One Piece')).toBeTruthy();
+  expect(view.getByText(/^· S\d+ E\d+$/)).toBeTruthy();
   expect(view.getByText('The First Line of Defense')).toBeTruthy();
-  expect(view.queryByText('EP 62')).toBeNull();
+  expect(view.queryByText('E62')).toBeNull();
   expect(view.queryByText('24 min')).toBeNull();
-  expect(view.getByText('The crew reaches the Grand Line.')).toBeTruthy();
+  // The synopsis lives in the episode sheet, not the row.
+  expect(view.queryByText('The crew reaches the Grand Line.')).toBeNull();
 
-  await fireEvent.press(view.getByLabelText('View One Piece, episode 62'));
-  expect(view.getByText('EP 62')).toBeTruthy();
-  expect(view.getByText('24 min')).toBeTruthy();
-  expect(view.getByText('The crew reaches the Grand Line.')).toBeTruthy();
-  expect(view.getByText('Aired 2001-05-27')).toBeTruthy();
+  await fireEvent.press(view.getByLabelText(/^View One Piece, season 2 episode 62,/));
+  expect(view.getByText('One Piece · S2 E62 · 24 min')).toBeTruthy();
+  expect(view.getAllByText('The crew reaches the Grand Line.').length).toBeGreaterThan(0);
+  expect(view.getByText('Aired May 27, 2001')).toBeTruthy();
 
-  await fireEvent.press(view.getByLabelText('Mark One Piece episode 62 watched'));
+  await fireEvent.press(view.getByLabelText('Mark One Piece season 2 episode 62 watched'));
   await waitFor(() =>
     expect(mockSetEpisode).toHaveBeenCalledWith({
       itemId: 'one-piece',
@@ -144,18 +148,26 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
       activityDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
     }),
   );
+  // A mistap in Up next can be undone from the toast.
+  expect(await view.findByText('One Piece · S2 E62 marked watched')).toBeTruthy();
+  await fireEvent.press(view.getByRole('button', { name: 'Undo' }));
+  await waitFor(() =>
+    expect(mockSetEpisode).toHaveBeenLastCalledWith(
+      expect.objectContaining({ itemId: 'one-piece', season: 2, episode: 62, watched: false }),
+    ),
+  );
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
   expect(view.getByText('Miyuki Shirogane Wants to Gaze at the Moon')).toBeTruthy();
   expect(view.getByLabelText('Rated 5 out of 5 stars')).toBeTruthy();
-  expect(view.getByText('The student council spends an evening beneath the moon.')).toBeTruthy();
-  await fireEvent.press(view.getByLabelText('View Kaguya-sama: Love Is War, episode 3'));
-  expect(view.getByText('The student council spends an evening beneath the moon.')).toBeTruthy();
-  expect(view.getByText('EP 03')).toBeTruthy();
-  expect(view.getByText('24 min')).toBeTruthy();
-  expect(view.getByText('Aired 2020-04-25')).toBeTruthy();
-  await fireEvent.press(view.getByLabelText('Kaguya-sama: Love Is War episode 3 options'));
+  expect(view.queryByText('The student council spends an evening beneath the moon.')).toBeNull();
+  await fireEvent.press(view.getByLabelText(/^View Kaguya-sama: Love Is War, season 2 episode 3,/));
+  expect(
+    view.getAllByText('The student council spends an evening beneath the moon.').length,
+  ).toBeGreaterThan(0);
+  expect(view.getByText('Kaguya-sama: Love Is War · S2 E3 · 24 min')).toBeTruthy();
+  expect(view.getByText('Aired Apr 25, 2020')).toBeTruthy();
   expect(view.getAllByText('Tags').length).toBeGreaterThan(0);
-  expect(view.getByText('Mark episode unwatched')).toBeTruthy();
+  expect(view.getByRole('switch', { name: 'Watched' }).props.accessibilityState.checked).toBe(true);
   await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'Romance');
   await fireEvent.press(view.getByLabelText('Create tag Romance'));
   await waitFor(() =>
@@ -172,6 +184,7 @@ it('expands episode details, tracks the next episode, and keeps editing in the o
   );
   expect(view.getByLabelText('Search favorites episodes')).toBeTruthy();
   expect(view.getByLabelText('Filter favorites episodes')).toBeTruthy();
+  await fireEvent.press(view.getByLabelText('Tag, Any tag'));
   expect(view.getByRole('radio', { name: 'Comedy' })).toBeTruthy();
 });
 
@@ -184,7 +197,7 @@ it('reports a refresh failure without repeatedly scheduling repair', async () =>
   );
   await waitFor(() => expect(view.getByText('Couldn’t refresh your episodes')).toBeTruthy());
   expect(mockRefreshWatching).toHaveBeenCalledTimes(1);
-  expect(view.getByText('One Piece')).toBeTruthy();
+  expect(view.getByText(/^· S\d+ E\d+$/)).toBeTruthy();
 });
 
 it('keeps the newest rating when an earlier queued save fails', async () => {
@@ -196,7 +209,7 @@ it('keeps the newest rating when an earlier queued save fails', async () => {
     </ToastProvider>,
   );
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
-  await fireEvent.press(view.getByLabelText('Kaguya-sama: Love Is War episode 3 options'));
+  await fireEvent.press(view.getByLabelText(/^View Kaguya-sama: Love Is War, season 2 episode 3,/));
   await fireEvent.press(view.getByLabelText('Rate 4 stars'));
   await fireEvent.press(view.getByLabelText('Rate 3 stars'));
   expect(mockSetEpisode).toHaveBeenCalledTimes(1);
@@ -218,7 +231,7 @@ it('restores the last saved rating when all queued changes fail', async () => {
     </ToastProvider>,
   );
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
-  await fireEvent.press(view.getByLabelText('Kaguya-sama: Love Is War episode 3 options'));
+  await fireEvent.press(view.getByLabelText(/^View Kaguya-sama: Love Is War, season 2 episode 3,/));
   await fireEvent.press(view.getByLabelText('Rate 4 stars'));
   await fireEvent.press(view.getByLabelText('Rate 3 stars'));
 
@@ -238,7 +251,7 @@ it('rolls a failed rating back to the preceding successful save', async () => {
     </ToastProvider>,
   );
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
-  await fireEvent.press(view.getByLabelText('Kaguya-sama: Love Is War episode 3 options'));
+  await fireEvent.press(view.getByLabelText(/^View Kaguya-sama: Love Is War, season 2 episode 3,/));
   await fireEvent.press(view.getByLabelText('Rate 4 stars'));
   await fireEvent.press(view.getByLabelText('Rate 3 stars'));
 
@@ -260,7 +273,7 @@ it.each(['rating', 'tags'] as const)(
         <EpisodesScreen />
       </ToastProvider>,
     );
-    const optionsLabel = 'Kaguya-sama: Love Is War episode 3 options';
+    const optionsLabel = /^View Kaguya-sama: Love Is War, season 2 episode 3,/;
     await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
     await fireEvent.press(view.getByLabelText(optionsLabel));
     if (field === 'rating') {
@@ -278,7 +291,7 @@ it.each(['rating', 'tags'] as const)(
     await fireEvent.press(view.getByLabelText(optionsLabel));
     expect(view.queryByLabelText('Current rating')).toBeNull();
     expect(view.queryByPlaceholderText('Add a tag')).toBeNull();
-    expect(view.getByLabelText('Frieren episode 1 options')).toBeEnabled();
+    expect(view.getByLabelText(/^View Frieren, season 1 episode 1,/)).toBeEnabled();
 
     await act(async () => first.resolve());
     await waitFor(() => expect(mockSetEpisode).toHaveBeenCalledTimes(2));
@@ -312,7 +325,7 @@ it('restores saved tags when queued changes fail without rolling back a saved ra
     </ToastProvider>,
   );
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
-  await fireEvent.press(view.getByLabelText('Kaguya-sama: Love Is War episode 3 options'));
+  await fireEvent.press(view.getByLabelText(/^View Kaguya-sama: Love Is War, season 2 episode 3,/));
   await fireEvent.press(view.getByLabelText('Rate 4 stars'));
   await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'Romance');
   await fireEvent.press(view.getByLabelText('Create tag Romance'));
@@ -336,11 +349,11 @@ it('does not restore another episode’s tags after closing and reopening the ed
     </ToastProvider>,
   );
   await fireEvent.press(view.getByRole('tab', { name: 'Favorites' }));
-  await fireEvent.press(view.getByLabelText('Kaguya-sama: Love Is War episode 3 options'));
+  await fireEvent.press(view.getByLabelText(/^View Kaguya-sama: Love Is War, season 2 episode 3,/));
   await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'Romance');
   await fireEvent.press(view.getByLabelText('Create tag Romance'));
   await fireEvent.press(view.getAllByText('Done').at(-1)!);
-  await fireEvent.press(view.getByLabelText('Frieren episode 1 options'));
+  await fireEvent.press(view.getByLabelText(/^View Frieren, season 1 episode 1,/));
 
   await act(async () => first.reject(new Error('offline')));
   expect(view.getByLabelText('Remove Fantasy tag')).toBeTruthy();

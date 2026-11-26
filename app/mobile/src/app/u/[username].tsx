@@ -1,24 +1,27 @@
 import { useTaskState } from '@/hooks/use-task-state';
+import { useSharedValue } from 'react-native-reanimated';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import LockKeyhole from 'lucide-react-native/icons/lock-keyhole';
 import { api } from '@marker/shared/api';
-import { EmptyState } from '@/components/ui/primitives';
-import { NativePressable } from '@/components/ui/NativePressable';
+import { Button, EmptyState } from '@/components/ui/primitives';
 import { useToast } from '@/components/ui/Toast';
 import { SecondaryHeader } from '@/components/BackButton';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { ProfileCollection, ProfileMetrics } from '@/components/ProfileStats';
 import { ProfileTabs, type ProfileTab } from '@/components/ProfileTabs';
+import { SwipePages } from '@/components/SwipePages';
 import { PublicTagsSection } from '@/components/PublicTagsSection';
 import { ProfilePageSkeleton } from '@/components/PageSkeletons';
 import { colors } from '@/constants/colors';
+import { typeRamp } from '@/constants/theme';
+import { useTabScrollMemory } from '@/hooks/use-tab-scroll-memory';
 import { createAppStyles } from '@/lib/typography';
 
 export default function PublicProfile() {
@@ -30,6 +33,8 @@ export default function PublicProfile() {
   const toast = useToast();
   const { pending, setPending } = useTaskState();
   const [tab, setTab] = useState<ProfileTab>('collection');
+  const tabScroll = useTabScrollMemory(tab, { topInset: CONTENT_TOP });
+  const pagerPosition = useSharedValue(0);
   if (result === undefined)
     return (
       <ScreenView style={s.root}>
@@ -74,93 +79,118 @@ export default function PublicProfile() {
       },
     );
   };
+  const requestHint =
+    relationship === 'pending'
+      ? 'Your follow request is waiting for approval.'
+      : 'Follow this person to request access to their activity.';
   return (
     <ScreenView style={s.root}>
       <SecondaryHeader title={`@${result.profile.username}`} maxWidth={880} />
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView
+        ref={tabScroll.scrollRef}
+        onScroll={tabScroll.onScroll}
+        onScrollBeginDrag={tabScroll.onScrollBeginDrag}
+        onContentSizeChange={tabScroll.onContentSizeChange}
+        onLayout={tabScroll.onViewportLayout}
+        scrollEventThrottle={32}
+        contentContainerStyle={s.content}
+      >
         <View style={s.hero}>
           <ProfileAvatar
             username={result.profile.username}
             avatarUrl={result.profile.avatarUrl}
-            size={104}
+            size={80}
           />
           <View style={s.identity}>
-            <Text style={s.handle}>@{result.profile.username}</Text>
-            <Text style={s.connections}>
-              {result.profile.followerCount.toLocaleString()} followers ·{' '}
-              {result.profile.followingCount.toLocaleString()} following
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={s.handle}>
+              @{result.profile.username}
             </Text>
+            {/* Counts read like your own profile: the number bold, the word muted. */}
+            <View style={s.connectionsRow}>
+              <Text style={s.connections}>
+                <Text style={s.connectionsStrong}>
+                  {result.profile.followerCount.toLocaleString()}
+                </Text>{' '}
+                followers
+              </Text>
+              <Text style={s.connections}>
+                <Text style={s.connectionsStrong}>
+                  {result.profile.followingCount.toLocaleString()}
+                </Text>{' '}
+                following
+              </Text>
+            </View>
           </View>
-          {relationship && relationship !== 'self' && (
-            <NativePressable
-              accessibilityRole="button"
-              accessibilityLabel={`${followLabel} @${result.profile.username}`}
-              disabled={pending}
-              onPress={() => void updateFollow()}
-              hitSlop={3}
-              style={[s.followButton, relationship === 'none' && s.followButtonPrimary]}
-              pressedStyle={s.pressed}
-            >
-              {pending ? (
-                <ActivityIndicator size="small" color={colors.muted} />
-              ) : (
-                <Text style={[s.followText, relationship === 'none' && s.followTextPrimary]}>
-                  {followLabel}
-                </Text>
-              )}
-            </NativePressable>
-          )}
         </View>
-        <ProfileTabs value={tab} onChange={setTab} />
-        {'stats' in result ? (
-          tab === 'collection' ? (
-            <>
+        {relationship && relationship !== 'self' && (
+          // Below the identity, like Edit profile on your own profile, so long names and
+          // "Request to follow" both have room.
+          <Button
+            title={pending ? '…' : followLabel}
+            accessibilityLabel={`${followLabel} @${result.profile.username}`}
+            variant={relationship === 'none' ? 'primary' : 'secondary'}
+            size="sm"
+            disabled={pending}
+            onPress={() => void updateFollow()}
+            style={s.follow}
+          />
+        )}
+        <View onLayout={tabScroll.onContentLayout}>
+          <ProfileTabs value={tab} onChange={setTab} position={pagerPosition} />
+        </View>
+        {/* Both profile states swipe between their tabs, private ones included. */}
+        <SwipePages
+          onSwipeStart={tabScroll.onSwipeStart}
+          gutter={20}
+          position={pagerPosition}
+          index={tab === 'collection' ? 0 : 1}
+          onIndexChange={(index) => setTab(index === 0 ? 'collection' : 'stats')}
+        >
+          {'stats' in result ? (
+            <View style={s.page}>
               <ProfileCollection stats={result.stats} interactive={false} />
               <PublicTagsSection tags={result.publicTags} username={result.profile.username} />
-            </>
-          ) : (
-            <ProfileMetrics stats={result.stats} />
-          )
-        ) : tab === 'collection' ? (
-          result.publicTags.length ? (
-            <>
+            </View>
+          ) : result.publicTags.length ? (
+            <View>
               <Text style={s.privateNotice}>Other profile activity is private.</Text>
               <PublicTagsSection tags={result.publicTags} username={result.profile.username} />
-            </>
+            </View>
           ) : (
             <View style={s.privateState}>
               <LockKeyhole size={22} color={colors.muted} strokeWidth={1.6} />
               <Text style={s.privateTitle}>This profile is private</Text>
-              <Text style={s.privateDetail}>
-                {relationship === 'pending'
-                  ? 'Your follow request is waiting for approval.'
-                  : 'Follow this person to request access to their activity.'}
-              </Text>
+              <Text style={s.privateDetail}>{requestHint}</Text>
             </View>
-          )
-        ) : (
-          <View style={s.privateState}>
-            <LockKeyhole size={22} color={colors.muted} strokeWidth={1.6} />
-            <Text style={s.privateTitle}>Stats are private</Text>
-            <Text style={s.privateDetail}>
-              Follow this person to request access to their activity.
-            </Text>
-          </View>
-        )}
+          )}
+          {'stats' in result ? (
+            <ProfileMetrics stats={result.stats} />
+          ) : (
+            <View style={s.privateState}>
+              <LockKeyhole size={22} color={colors.muted} strokeWidth={1.6} />
+              <Text style={s.privateTitle}>Stats are private</Text>
+              <Text style={s.privateDetail}>{requestHint}</Text>
+            </View>
+          )}
+        </SwipePages>
       </ScrollView>
     </ScreenView>
   );
 }
 
+// Room for the header floating over the scroll view.
+const CONTENT_TOP = 96;
+
 const s = createAppStyles(
   {
+    page: { gap: 36 },
     root: { flex: 1, backgroundColor: colors.bg },
     content: {
       width: '100%',
       maxWidth: 880,
       alignSelf: 'center',
       padding: 20,
-      paddingTop: 96,
+      paddingTop: CONTENT_TOP,
       paddingBottom: 72,
     },
     state: { flex: 1, paddingTop: 96 },
@@ -171,21 +201,12 @@ const s = createAppStyles(
       paddingBottom: 24,
     },
     identity: { flex: 1, minWidth: 0 },
-    handle: { color: colors.text, fontSize: 27, fontWeight: '700', letterSpacing: -0.7 },
-    connections: { color: colors.muted, fontSize: 11, marginTop: 8 },
-    followButton: {
-      minHeight: 42,
-      paddingHorizontal: 15,
-      borderRadius: 21,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    followButtonPrimary: { backgroundColor: colors.text, borderColor: colors.text },
-    followText: { color: colors.text, fontSize: 11, fontWeight: '700' },
-    followTextPrimary: { color: colors.bg },
-    pressed: { opacity: 0.64 },
+    handle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: '700' },
+    connectionsRow: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, marginTop: 6 },
+    // The same spacing as Edit profile under your own profile's header.
+    follow: { alignSelf: 'flex-start', marginTop: -8, marginBottom: 20 },
+    connections: { color: colors.muted, fontSize: 13 },
+    connectionsStrong: { color: colors.text, fontWeight: '700' },
     privateState: {
       minHeight: 260,
       alignItems: 'center',
@@ -194,14 +215,13 @@ const s = createAppStyles(
       borderColor: colors.border,
     },
     privateTitle: { color: colors.text, fontSize: 16, fontWeight: '700', marginTop: 14 },
-    privateDetail: { color: colors.muted, fontSize: 12, marginTop: 7 },
-    privateNotice: { color: colors.muted, fontSize: 11, marginBottom: 8 },
+    privateDetail: { ...typeRamp.meta, marginTop: 7 },
+    privateNotice: { ...typeRamp.meta, marginBottom: 8 },
   },
   [
     'handle',
     'connections',
-    'followText',
-    'followTextPrimary',
+    'connectionsStrong',
     'privateTitle',
     'privateDetail',
     'privateNotice',

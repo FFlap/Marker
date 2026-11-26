@@ -3,14 +3,15 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Check from 'lucide-react-native/icons/check';
 import Minus from 'lucide-react-native/icons/minus';
 import Plus from 'lucide-react-native/icons/plus';
-import Search from 'lucide-react-native/icons/search';
+import TagIcon from 'lucide-react-native/icons/tag';
 import Star from 'lucide-react-native/icons/star';
 import X from 'lucide-react-native/icons/x';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
+import { radius, typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { useKeyboardFieldSpace } from '@/components/ui/KeyboardScrollView';
-import { Input } from './primitives';
+import { SearchField } from './primitives';
 
 const TAG_HIT_SLOP = { top: 6, bottom: 6, left: 2, right: 2 };
 const MAX_TAG_MATCHES = 5;
@@ -45,6 +46,7 @@ export function Stepper({
   max = 99,
   step = 1,
   label,
+  icon,
 }: {
   value: number;
   onChange: (value: number) => void;
@@ -52,12 +54,19 @@ export function Stepper({
   max?: number;
   step?: number;
   label?: string;
+  /** Leading icon, so the row lines up with icon rows above or below it. */
+  icon?: ReactNode;
 }) {
   const accessibleLabel = label ? label.toLocaleLowerCase() : 'value';
   const changeBy = (delta: number) => onChange(Math.max(min, Math.min(max, value + delta)));
   return (
     <View style={styles.stepperRow}>
-      {label ? <Text style={styles.sectionLabel}>{label}</Text> : null}
+      {label ? (
+        <View style={styles.stepperLead}>
+          {icon}
+          <Text style={styles.stepperLabel}>{label}</Text>
+        </View>
+      ) : null}
       <View style={styles.stepper}>
         <NativePressable
           accessibilityRole="button"
@@ -127,10 +136,15 @@ export function RatingControl({
       label="Rating"
       accessory={
         value !== undefined ? (
-          <ClearAction label="Clear rating" onPress={() => onChange(undefined)} />
+          <View style={styles.accessory}>
+            <Text style={styles.ratingValue}>★ {formatRating(starValue)}</Text>
+            <ClearAction label="Clear rating" onPress={() => onChange(undefined)} />
+          </View>
         ) : undefined
       }
     >
+      {/* One full-size target per star. Tapping the selected star again takes off half a
+          star, so half ratings never depend on hitting the left or right edge. */}
       <View
         accessibilityRole="radiogroup"
         accessibilityLabel="Current rating"
@@ -138,29 +152,38 @@ export function RatingControl({
         style={styles.ratingRow}
       >
         {Array.from({ length: 5 }, (_, index) => {
-          const halfRating = index + 0.5;
           const wholeRating = index + 1;
+          const halfRating = index + 0.5;
+          const onThisStar = starValue === wholeRating || starValue === halfRating;
           return (
-            <View key={wholeRating} style={styles.ratingButton}>
+            <Pressable
+              key={wholeRating}
+              accessibilityRole="radio"
+              accessibilityLabel={`Rate ${wholeRating} ${wholeRating === 1 ? 'star' : 'stars'}`}
+              accessibilityHint={
+                starValue === wholeRating ? `Tap again for ${halfRating} stars` : undefined
+              }
+              // The picked star says the exact rating, half stars included ("3.5 stars").
+              accessibilityState={{ checked: onThisStar }}
+              accessibilityValue={
+                onThisStar ? { text: `${formatRating(starValue)} stars` } : undefined
+              }
+              onPress={() => onChange(starValue === wholeRating ? halfRating : wholeRating)}
+              style={styles.ratingButton}
+            >
               <StarGlyph fill={Math.max(0, Math.min(1, starValue - index))} />
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityLabel={`Rate ${halfRating} stars`}
-                accessibilityState={{ selected: starValue === halfRating }}
-                onPress={() => onChange(halfRating)}
-                style={styles.ratingHalfLeft}
-              />
-              <Pressable
-                accessibilityRole="radio"
-                accessibilityLabel={`Rate ${wholeRating} ${wholeRating === 1 ? 'star' : 'stars'}`}
-                accessibilityState={{ selected: starValue === wholeRating }}
-                onPress={() => onChange(wholeRating)}
-                style={styles.ratingHalfRight}
-              />
-            </View>
+            </Pressable>
           );
         })}
       </View>
+      {/* Stays in place once rated (just hidden), so the sections below don't jump. */}
+      <Text
+        accessibilityElementsHidden={value !== undefined}
+        importantForAccessibility={value === undefined ? 'auto' : 'no-hide-descendants'}
+        style={[styles.ratingHint, value !== undefined && styles.ratingHintHidden]}
+      >
+        Tap a star twice for a half star.
+      </Text>
     </ControlSection>
   );
 }
@@ -250,6 +273,10 @@ function MatchedTagLabel({ tag, query }: { tag: string; query: string }) {
   );
 }
 
+/** Matches the server: at most 20 tags per title or episode, each up to 40 characters. */
+const MAX_TAGS = 20;
+const MAX_TAG_LENGTH = 40;
+
 export function TagEditor({
   tags,
   onChange,
@@ -276,47 +303,50 @@ export function TagEditor({
     !unusedSuggestions.some((tag) => normalize(tag) === normalize(query)) &&
     !selectedTags.has(normalize(query));
 
-  const optionCount = matches.length + (canCreate ? 1 : 0);
+  const optionCount = tags.length >= MAX_TAGS ? 0 : matches.length + (canCreate ? 1 : 0);
   useKeyboardFieldSpace(optionCount > 0 ? optionCount * TAG_OPTION_HEIGHT + TAG_OPTIONS_GAP : 0);
 
   const setQuery = (value: string) => {
     setText(value);
     onInputChange?.(value);
   };
+  // The server's limits, applied here so a save never fails on them.
+  const full = tags.length >= MAX_TAGS;
   const appendTag = (rawTag: string) => {
-    const tag = rawTag.trim();
-    if (tag && !selectedTags.has(normalize(tag))) onChange([...tags, tag]);
+    const tag = rawTag.trim().slice(0, MAX_TAG_LENGTH);
+    if (tag && !full && !selectedTags.has(normalize(tag))) onChange([...tags, tag]);
     setQuery('');
   };
 
   return (
     <ControlSection label="Tags">
       <View>
-        <View style={styles.tagField}>
-          <Search size={16} color={colors.muted} strokeWidth={1.8} />
-          <Input
-            value={text}
-            onChangeText={setQuery}
-            onSubmitEditing={() => appendTag(text)}
-            submitBehavior="submit"
-            returnKeyType="done"
-            autoCorrect={false}
-            placeholder="Add a tag"
-            style={styles.tagFieldInput}
-          />
-          {query.length > 0 && (
-            <NativePressable
-              accessibilityRole="button"
-              accessibilityLabel="Clear tag search"
-              hitSlop={10}
-              onPress={() => setQuery('')}
-              style={styles.tagFieldClear}
-              pressedStyle={styles.tagPressed}
-            >
-              <X size={15} color={colors.muted} strokeWidth={2} />
-            </NativePressable>
-          )}
-        </View>
+        <SearchField
+          icon={TagIcon}
+          containerStyle={styles.tagField}
+          value={text}
+          onChangeText={setQuery}
+          onSubmitEditing={() => appendTag(text)}
+          submitBehavior="submit"
+          returnKeyType="done"
+          maxLength={MAX_TAG_LENGTH}
+          editable={!full}
+          placeholder={full ? `Up to ${MAX_TAGS} tags` : 'Add a tag'}
+          trailing={
+            query.length > 0 ? (
+              <NativePressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear tag search"
+                hitSlop={10}
+                onPress={() => setQuery('')}
+                style={styles.tagFieldClear}
+                pressedStyle={styles.tagPressed}
+              >
+                <X size={15} color={colors.muted} strokeWidth={2} />
+              </NativePressable>
+            ) : undefined
+          }
+        />
         {optionCount > 0 && (
           <View accessibilityLabel="Tag suggestions" style={styles.options}>
             {matches.map((tag, index) => (
@@ -371,7 +401,8 @@ export function TagEditor({
           ))}
         </View>
       )}
-      {query.length === 0 && unusedSuggestions.length > 0 && (
+      {/* At the limit nothing more can be added, so suggestions would do nothing. */}
+      {!full && query.length === 0 && unusedSuggestions.length > 0 && (
         <View style={styles.suggestions}>
           <Text style={styles.suggestionsLabel}>Suggested</Text>
           <View style={styles.wrap}>
@@ -408,10 +439,12 @@ const styles = createAppStyles(
       justifyContent: 'space-between',
       gap: 12,
     },
-    sectionLabel: { color: colors.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.15 },
+    sectionLabel: { ...typeRamp.sectionTitle, fontSize: 15 },
+    stepperLabel: { ...typeRamp.rowTitle, fontWeight: '500' },
+    stepperLead: { flexDirection: 'row', alignItems: 'center', gap: 14, flexShrink: 1 },
     accessory: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     accessoryValue: { color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
-    clear: { color: colors.text, fontSize: 12, fontWeight: '600' },
+    clear: { color: colors.text, fontSize: 13, fontWeight: '600' },
     disabled: { opacity: 0.4 },
     stepperRow: {
       minHeight: 44,
@@ -423,13 +456,19 @@ const styles = createAppStyles(
     stepper: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      backgroundColor: colors.surface,
+      gap: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.elevated,
+      padding: 3,
     },
-    stepButton: { width: 44, height: 40, alignItems: 'center', justifyContent: 'center' },
-    stepButtonPressed: { backgroundColor: colors.elevated },
+    stepButton: {
+      width: 36,
+      height: 36,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepButtonPressed: { backgroundColor: colors.borderStrong },
     stepValue: {
       color: colors.text,
       fontSize: 15,
@@ -442,34 +481,21 @@ const styles = createAppStyles(
     ratingButton: { width: 48, height: 44, alignItems: 'center', justifyContent: 'center' },
     ratingStar: { width: 30, height: 30 },
     ratingStarFill: { position: 'absolute', left: 0, top: 0, height: 30, overflow: 'hidden' },
-    ratingHalfLeft: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 24 },
-    ratingHalfRight: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 24 },
-    tagField: {
-      height: 48,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      backgroundColor: colors.surface,
-      paddingLeft: 14,
-      paddingRight: 8,
+    ratingValue: {
+      color: colors.text,
+      fontSize: 13,
+      fontWeight: '600',
+      fontVariant: ['tabular-nums'],
     },
-    tagFieldInput: {
-      flex: 1,
-      height: 46,
-      paddingHorizontal: 0,
-      borderWidth: 0,
-      backgroundColor: 'transparent',
-    },
+    ratingHint: { ...typeRamp.meta, marginTop: -4, textAlign: 'center' },
+    ratingHintHidden: { opacity: 0 },
+
+    tagField: { flex: 0 },
     tagFieldClear: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
     options: {
       marginTop: TAG_OPTIONS_GAP,
       overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
+      borderRadius: radius.md,
       backgroundColor: colors.surface,
     },
     option: {
@@ -486,27 +512,28 @@ const styles = createAppStyles(
     optionMatch: { color: colors.text, fontWeight: '600' },
     wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     tag: {
-      height: 32,
+      height: 34,
       maxWidth: '100%',
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      paddingHorizontal: 11,
+      paddingHorizontal: 13,
       borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
+      borderColor: colors.borderStrong,
+      borderRadius: radius.pill,
     },
     tagSelected: { borderColor: colors.text, backgroundColor: colors.text },
     tagOwned: { borderColor: colors.elevated, backgroundColor: colors.elevated },
-    tagSuggestion: { borderStyle: 'dashed' },
+    tagSuggestion: { borderColor: colors.borderStrong },
     tagPressed: { opacity: 0.7 },
     tagText: { flexShrink: 1, color: colors.text, fontSize: 13, fontWeight: '500' },
     tagTextSelected: { color: colors.bg },
     suggestions: { gap: 8 },
-    suggestionsLabel: { color: colors.muted, fontSize: 11 },
+    suggestionsLabel: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   },
   [
     'sectionLabel',
+    'stepperLabel',
     'accessoryValue',
     'clear',
     'stepValue',
@@ -515,5 +542,7 @@ const styles = createAppStyles(
     'tagText',
     'tagTextSelected',
     'suggestionsLabel',
+    'ratingValue',
+    'ratingHint',
   ] as const,
 );

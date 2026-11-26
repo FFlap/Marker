@@ -75,10 +75,20 @@ export default defineSchema({
     .index('by_user_status', ['userId', 'status', 'rank'])
     .index('by_user_status_active', ['userId', 'status', 'deletingAt', 'rank'])
     .index('by_user_status_title', ['userId', 'status', 'normalizedTitle'])
+    .index('by_user_status_media_title', ['userId', 'status', 'mediaType', 'normalizedTitle'])
     .index('by_user_normalized', ['userId', 'normalizedTitle'])
     .index('by_user_tmdb', ['userId', 'mediaType', 'tmdbId'])
     .index('by_user_tmdb_active', ['userId', 'mediaType', 'deletingAt', 'tmdbId'])
-    .index('by_media_tmdb', ['mediaType', 'tmdbId']),
+    .index('by_media_tmdb', ['mediaType', 'tmdbId'])
+    // Shows with a new episode out (see `showsWithNewEpisode`).
+    .index('by_user_status_tv_air_date', ['userId', 'status', 'mediaType', 'nextEpisode.airDate'])
+    .index('by_user_status_tv_undated', [
+      'userId',
+      'status',
+      'mediaType',
+      'nextEpisode.undatedReleased',
+    ])
+    .index('by_user_also_watching', ['userId', 'alsoWatching']),
   profileFavorites: defineTable({
     userId: v.id('users'),
     itemId: v.id('items'),
@@ -215,6 +225,8 @@ export default defineSchema({
     activityRatings: v.optional(v.boolean()),
     activityWatching: v.optional(v.boolean()),
     activityWatched: v.optional(v.boolean()),
+    confirmWatchedMove: v.optional(v.boolean()),
+    airingInWatching: v.optional(v.boolean()),
   }).index('by_user', ['userId']),
   follows: defineTable({
     followerId: v.id('users'),

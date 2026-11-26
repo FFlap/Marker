@@ -18,7 +18,7 @@ jest.mock(
 
 jest.mock('react-native-reanimated', () => {
   const { useRef } = jest.requireActual('react');
-  const { ScrollView, View } = jest.requireActual('react-native');
+  const { ScrollView, Text, View } = jest.requireActual('react-native');
   const useSharedValue = (initialValue: unknown) => {
     const ref = useRef();
     if (!ref.current) {
@@ -38,9 +38,10 @@ jest.mock('react-native-reanimated', () => {
   chain.delay = () => chain;
   chain.easing = () => chain;
   chain.reduceMotion = () => chain;
+  chain.withInitialValues = () => chain;
   return {
     __esModule: true,
-    default: { ScrollView, View, createAnimatedComponent: (component: unknown) => component },
+    default: { ScrollView, Text, View, createAnimatedComponent: (component: unknown) => component },
     Easing: {
       bezier: () => (value: number) => value,
       cubic: (value: number) => value,
@@ -48,12 +49,18 @@ jest.mock('react-native-reanimated', () => {
     },
     FadeIn: chain,
     FadeOut: chain,
+    FadeOutDown: chain,
     LinearTransition: chain,
     ReduceMotion: { System: 'system' },
     runOnJS: (callback: (...args: unknown[]) => unknown) => callback,
     scrollTo: jest.fn(),
     SlideInDown: chain,
+    SlideInLeft: chain,
+    SlideInRight: chain,
     SlideOutDown: chain,
+    SlideOutLeft: chain,
+    SlideOutRight: chain,
+    ZoomIn: chain,
     useAnimatedScrollHandler: (handler: unknown) => handler,
     useAnimatedStyle: (factory: () => unknown) => factory(),
     useAnimatedReaction: jest.fn(),
@@ -74,7 +81,13 @@ jest.mock('react-native-gesture-handler', () => {
     },
   );
   return {
-    Gesture: { Pan: () => gesture, Pinch: () => gesture, Native: () => gesture },
+    Gesture: {
+      Pan: () => gesture,
+      Pinch: () => gesture,
+      Native: () => gesture,
+      Tap: () => gesture,
+      Exclusive: () => gesture,
+    },
     GestureDetector: ({ children }: { children: React.ReactNode }) =>
       React.createElement(React.Fragment, null, children),
   };

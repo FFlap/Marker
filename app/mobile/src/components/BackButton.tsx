@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import Animated, { FadeIn, ReduceMotion } from 'react-native-reanimated';
 import { router, type Href } from 'expo-router';
 import ArrowLeft from 'lucide-react-native/icons/arrow-left';
-import { NativePressable } from '@/components/ui/NativePressable';
+import { IconButton } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
+import { typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 
 type BackButtonProps = {
@@ -23,18 +25,7 @@ function BackButton({
     router.replace(fallback);
   };
 
-  return (
-    <NativePressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      hitSlop={2}
-      onPress={goBack}
-      style={s.button}
-      pressedStyle={s.pressed}
-    >
-      <ArrowLeft size={18} color={colors.text} strokeWidth={1.7} />
-    </NativePressable>
-  );
+  return <IconButton icon={ArrowLeft} accessibilityLabel={accessibilityLabel} onPress={goBack} />;
 }
 
 type SecondaryHeaderProps = {
@@ -54,11 +45,18 @@ export function SecondaryHeader({
 }: SecondaryHeaderProps) {
   return (
     <View style={s.toolbar}>
-      <View style={[s.header, { maxWidth }]}>
+      {/* With no trailing icon, the title ends on the 20dp gutter like page content. */}
+      <View style={[s.header, { maxWidth }, !right && s.headerPlain]}>
         <BackButton accessibilityLabel={backLabel} fallback={fallback} />
-        <Text numberOfLines={1} style={s.title}>
+        <Animated.Text
+          key={title}
+          entering={FadeIn.duration(180).reduceMotion(ReduceMotion.System)}
+          accessibilityRole="header"
+          numberOfLines={1}
+          style={s.title}
+        >
           {title}
-        </Text>
+        </Animated.Text>
         {right}
       </View>
     </View>
@@ -67,16 +65,6 @@ export function SecondaryHeader({
 
 const s = createAppStyles(
   {
-    button: {
-      width: 40,
-      height: 40,
-      flexShrink: 0,
-      borderRadius: 20,
-      backgroundColor: 'transparent',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    pressed: { opacity: 0.62 },
     toolbar: {
       position: 'absolute',
       top: 0,
@@ -89,18 +77,20 @@ const s = createAppStyles(
       width: '100%',
       alignSelf: 'center',
       height: 72,
-      paddingHorizontal: 20,
+      // Mirrors the left side: icon glyphs sit on the 20dp gutter.
+      paddingLeft: 10,
+      paddingRight: 10,
       paddingTop: 20,
       paddingBottom: 12,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
+      gap: 6,
     },
+    headerPlain: { paddingRight: 20 },
     title: {
-      color: colors.text,
+      ...typeRamp.screenTitle,
       fontSize: 24,
-      fontWeight: '700',
-      letterSpacing: -0.6,
+      lineHeight: 30,
       flex: 1,
       minWidth: 0,
     },

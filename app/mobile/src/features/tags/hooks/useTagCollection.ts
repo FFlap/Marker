@@ -3,6 +3,7 @@ import type { Id } from '@marker/shared/dataModel';
 import {
   LIBRARY_STATUSES,
   matchesMediaType,
+  matchesStatus,
   type MediaTypeFilter,
   type StatusFilter,
 } from '@/lib/libraryFilters';
@@ -15,12 +16,15 @@ export function useTagCollection({
   optimisticStatuses,
   ranks,
   tagKey,
+  alsoWatching,
 }: {
   items: LibraryItem[] | undefined;
   optimisticOrders: Partial<Record<Status, string[]>>;
   optimisticStatuses: Record<string, Status>;
   ranks: { itemId: Id<'items'>; rank: number }[] | undefined;
   tagKey: string;
+  /** Watched shows that also count as Watching, so the Watching filter keeps them. */
+  alsoWatching?: (item: LibraryItem) => boolean;
 }) {
   const [search, setSearch] = useState('');
   const [type, setType] = useState<MediaTypeFilter>('all');
@@ -54,13 +58,13 @@ export function useTagCollection({
       (item) =>
         (!query || item.title.toLocaleLowerCase().includes(query)) &&
         matchesMediaType(item, type) &&
-        (status === 'all' || item.status === status) &&
+        matchesStatus(item, status, status === 'watching' && !!alsoWatching?.(item)) &&
         (!minimumRating || (item.rating ?? -1) >= minimumRating),
     );
-  }, [members, minimumRating, search, status, type]);
+  }, [alsoWatching, members, minimumRating, search, status, type]);
 
-  const itemsForStatus = (target: Status) => {
-    const visible = filtered.filter((item) => item.status === target);
+  const ordered = (source: RankedItem[], target: Status) => {
+    const visible = source.filter((item) => item.status === target);
     const order = optimisticOrders[target];
     if (!order) return visible;
     const orderIndexById = new Map(order.map((id, index) => [id, index]));
@@ -72,11 +76,17 @@ export function useTagCollection({
       return leftIndex - rightIndex;
     });
   };
+  const itemsForStatus = (target: Status) => ordered(filtered, target);
+  /** Positions in the tag's full order, so filtering never renumbers ranked titles. */
+  const savedRanks = (target: Status) =>
+    new Map(ordered(members, target).map((item, index) => [String(item._id), index + 1]));
 
   const active = !!search.trim() || type !== 'all' || status !== 'all' || minimumRating > 0;
   return {
     active,
     itemsForStatus,
+    savedRanks,
+    resultCount: filtered.length,
     members,
     minimumRating,
     search,

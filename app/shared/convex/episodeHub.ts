@@ -4,6 +4,12 @@ import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
 import { consumeWindowBudget } from './providerRateLimits';
+import {
+  airingInWatchingFor,
+  handPickedAlsoWatching,
+  newEpisodeOut,
+  showsWithNewEpisode,
+} from './settings';
 
 const episodeCard = {
   itemId: v.id('items'),
@@ -21,6 +27,7 @@ const episodeCard = {
   providerEpisodeId: v.optional(v.number()),
   rating: v.optional(v.number()),
   tags: v.array(v.string()),
+  timesWatched: v.optional(v.number()),
 };
 
 const requireLocalDate = (today: string) => {
@@ -47,11 +54,17 @@ export const overview = query({
   handler: async (ctx, { today }) => {
     requireLocalDate(today);
     const userId = await requireUser(ctx);
-    const [watching, rated] = await Promise.all([
-      ctx.db
-        .query('items')
-        .withIndex('by_user_status', (q) => q.eq('userId', userId).eq('status', 'watching'))
-        .take(200),
+    const [watchingItems, watchedShows, rated] = await Promise.all([
+      showsWithNewEpisode(ctx, userId, 'watching', today, 200),
+      // Watched shows join Up next when a new episode is out: automatically, or when set by
+      // hand while the automatic setting is off.
+      airingInWatchingFor(ctx, userId).then((automatic) =>
+        automatic
+          ? showsWithNewEpisode(ctx, userId, 'watched', today, 200)
+          : // Hand-set flags only exist on shows the person chose, so read them all (bounded)
+            // and let the release check below pick the ones with a new episode.
+            handPickedAlsoWatching(ctx, userId, 1000),
+      ),
       ctx.db
         .query('episodes')
         .withIndex('by_user_watched_rating', (q) =>
@@ -60,14 +73,13 @@ export const overview = query({
         .order('desc')
         .take(200),
     ]);
+    // Same order as the library's Watching section: shows also in Watched first, by their
+    // Watched rank, then Watching titles by rank.
+    const byRank = (left: { rank: number }, right: { rank: number }) => left.rank - right.rank;
+    const watching = [...watchedShows.sort(byRank), ...watchingItems.sort(byRank)];
     const released = watching.filter(
       (item) =>
-        item.mediaType === 'tv' &&
-        item.deletingAt === undefined &&
-        item.nextEpisode !== undefined &&
-        (item.nextEpisode.airDate !== undefined
-          ? item.nextEpisode.airDate <= today
-          : item.nextEpisode.undatedReleased === true),
+        item.mediaType === 'tv' && item.deletingAt === undefined && newEpisodeOut(item, today),
     );
     const nextEpisodesPromise = Promise.all(
       released.map(async (item) => {
@@ -104,6 +116,9 @@ export const overview = query({
           }),
           ...(savedMatches && saved?.rating !== undefined && { rating: saved.rating }),
           tags: savedMatches ? (saved?.tags ?? []) : [],
+          // A count kept from an earlier, unticked watch carries over when it is ticked again.
+          ...(savedMatches &&
+            saved?.timesWatched !== undefined && { timesWatched: saved.timesWatched }),
         };
       }),
     );
@@ -141,6 +156,7 @@ export const overview = query({
             ...(episode.airDate !== undefined && { airDate: episode.airDate }),
             rating: episode.rating!,
             tags: episode.tags,
+            ...(episode.timesWatched !== undefined && { timesWatched: episode.timesWatched }),
           },
         ];
       })
@@ -156,13 +172,21 @@ export const overview = query({
   },
 });
 
-async function refreshWatchingPage(ctx: MutationCtx, userId: Id<'users'>, cursor: string | null) {
+async function refreshWatchingPage(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  cursor: string | null,
+  status: 'watching' | 'watched' = 'watching',
+) {
   const page = await ctx.db
     .query('items')
-    .withIndex('by_user_status', (query) => query.eq('userId', userId).eq('status', 'watching'))
+    .withIndex('by_user_status', (query) => query.eq('userId', userId).eq('status', status))
     .paginate({ cursor, numItems: 10 });
+  // Watched shows are checked for new episodes when they can join Watching.
+  const airingInWatching = status === 'watched' && (await airingInWatchingFor(ctx, userId));
   for (const item of page.page) {
     if (item.mediaType !== 'tv' || item.deletingAt !== undefined) continue;
+    if (status === 'watched' && !airingInWatching && !item.alsoWatching) continue;
     await ctx.scheduler.runAfter(0, internal.nextEpisode.startNextEpisodeRefresh, {
       itemId: item._id,
     });
@@ -171,6 +195,13 @@ async function refreshWatchingPage(ctx: MutationCtx, userId: Id<'users'>, cursor
     await ctx.scheduler.runAfter(0, internal.episodeHub.continueWatchingRefresh, {
       userId,
       cursor: page.continueCursor,
+      status,
+    });
+  else if (status === 'watching')
+    await ctx.scheduler.runAfter(0, internal.episodeHub.continueWatchingRefresh, {
+      userId,
+      cursor: null,
+      status: 'watched',
     });
 }
 
@@ -185,7 +216,12 @@ export const refreshWatching = mutation({
 });
 
 export const continueWatchingRefresh = internalMutation({
-  args: { userId: v.id('users'), cursor: v.string() },
+  args: {
+    userId: v.id('users'),
+    cursor: v.union(v.string(), v.null()),
+    status: v.optional(v.union(v.literal('watching'), v.literal('watched'))),
+  },
   returns: v.null(),
-  handler: async (ctx, { userId, cursor }) => refreshWatchingPage(ctx, userId, cursor),
+  handler: async (ctx, { userId, cursor, status }) =>
+    refreshWatchingPage(ctx, userId, cursor, status),
 });

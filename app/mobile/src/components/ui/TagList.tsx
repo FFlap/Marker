@@ -1,5 +1,6 @@
 import { Text, View } from 'react-native';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 
 export function TagList({ tags }: { tags: readonly string[] }) {
@@ -18,16 +19,15 @@ const styles = createAppStyles(
   {
     list: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     tag: {
-      minHeight: 24,
+      minHeight: 26,
       maxWidth: '100%',
-      paddingHorizontal: 9,
-      paddingVertical: 3,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 6,
+      paddingHorizontal: 11,
+      paddingVertical: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.elevated,
       justifyContent: 'center',
     },
-    tagText: { color: colors.muted, fontSize: 11, fontWeight: '500', letterSpacing: 0.1 },
+    tagText: { color: colors.secondary, fontSize: 12, fontWeight: '500' },
   },
   ['tagText'] as const,
 );

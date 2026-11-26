@@ -1,13 +1,16 @@
 import { transitionDraft, type DraftState } from '@marker/shared/lifecycle';
 import { useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Hash from 'lucide-react-native/icons/hash';
+import Clock3 from 'lucide-react-native/icons/clock-3';
 import {
   ControlSection,
   RatingControl,
   Stepper,
   TagEditor,
 } from '@/components/ui/library-controls';
-import { Button, Segmented } from '@/components/ui/primitives';
+import { Button, Segmented, SwitchRow } from '@/components/ui/primitives';
 import {
   Drawer,
   DrawerClose,
@@ -16,12 +19,16 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { ENTRY_STATUS_OPTIONS } from '@/components/ui/entryStatusOptions';
 import type { Status } from '@/types';
+import { SettingIcon } from '@/components/settings/SettingIcon';
 
 export type LibraryEntryDraft = {
   status: Status;
+  /** Watched shows only: also listed under Watching (set by hand when not automatic). */
+  alsoWatching?: boolean;
   rating?: number;
   timesWatched: number;
   tags: string[];
@@ -37,17 +44,28 @@ type EntryContentProps = {
   onRemove?: () => void;
   removePending?: boolean;
   onTagPrefixChange?: (prefix: string) => void;
+  /**
+   * Offer "Also in Watching" for a watched show. Only when the automatic setting is off;
+   * otherwise new episodes decide it.
+   */
+  offerAlsoWatching?: boolean;
 };
 
 type LibraryEntryDrawerProps = EntryContentProps & {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Changes whose save failed. The sheet reopens with them and retries when closed. */
+  unsaved?: LibraryEntryDraft;
 };
 
 export function LibraryEntryDrawer(props: LibraryEntryDrawerProps) {
   // Each opening owns a fresh draft and submission guard. Prop refreshes while
-  // editing must not discard unsaved changes.
-  return <LibraryEntryDrawerSession key={props.open ? 'open' : 'closed'} {...props} />;
+  // editing must not discard unsaved changes, and closing keeps the draft on screen
+  // until the sheet has animated away.
+  const [session, setSession] = useState({ open: props.open, id: 0 });
+  if (session.open !== props.open)
+    setSession({ open: props.open, id: props.open ? session.id + 1 : session.id });
+  return <LibraryEntryDrawerSession key={session.id} {...props} />;
 }
 
 function LibraryEntryDrawerSession({
@@ -60,13 +78,15 @@ function LibraryEntryDrawerSession({
   onRemove,
   removePending = false,
   onTagPrefixChange,
+  offerAlsoWatching = false,
   open,
   onOpenChange,
+  unsaved,
 }: LibraryEntryDrawerProps) {
-  const [editor, setEditor] = useState<DraftState<LibraryEntryDraft>>(() => ({
-    state: 'clean',
-    draft: { ...initial, tags: [...initial.tags] },
-  }));
+  const [editor, setEditor] = useState<DraftState<LibraryEntryDraft>>(() => {
+    const start = unsaved ?? initial;
+    return { state: unsaved ? 'dirty' : 'clean', draft: { ...start, tags: [...start.tags] } };
+  });
   const submission = useRef<'ready' | 'submitted'>('ready');
   const { draft } = editor;
 
@@ -78,6 +98,7 @@ function LibraryEntryDrawerSession({
     updateDraft((current) => ({
       ...current,
       status,
+      alsoWatching: status === 'watched' ? current.alsoWatching : undefined,
       timesWatched:
         status === 'watched'
           ? Math.max(1, current.timesWatched)
@@ -114,8 +135,58 @@ function LibraryEntryDrawerSession({
         <View style={s.controls}>
           <ControlSection label="Status">
             <Segmented options={ENTRY_STATUS_OPTIONS} value={draft.status} onChange={setStatus} />
-            {draft.status === 'watched' && watchedHint && <Text style={s.hint}>{watchedHint}</Text>}
+            {draft.status === 'watched' && initial.status !== 'watched' && watchedHint && (
+              <Animated.Text entering={FadeIn} exiting={FadeOut} style={s.hint}>
+                {watchedHint}
+              </Animated.Text>
+            )}
           </ControlSection>
+          {draft.status === 'watched' && (
+            <Animated.View
+              entering={FadeIn.duration(180)}
+              exiting={FadeOut.duration(120)}
+              layout={LinearTransition.duration(200)}
+              style={s.watchedGroup}
+            >
+              {mode === 'update' && offerAlsoWatching && (
+                <>
+                  <SwitchRow
+                    label="Also in Watching"
+                    detail="Turn off when you’re caught up"
+                    value={!!draft.alsoWatching}
+                    onChange={(alsoWatching) =>
+                      updateDraft((current) => ({
+                        ...current,
+                        alsoWatching: alsoWatching || undefined,
+                      }))
+                    }
+                    icon={
+                      <SettingIcon>
+                        <Clock3 size={17} color={colors.text} strokeWidth={1.8} />
+                      </SettingIcon>
+                    }
+                  />
+                  <View style={s.watchedDivider} />
+                </>
+              )}
+              <View style={s.stepperRow}>
+                <Stepper
+                  label="Times watched"
+                  value={draft.timesWatched}
+                  min={1}
+                  onChange={setTimesWatched}
+                  // Iconned only beside "Also in Watching", to line up with its clock.
+                  icon={
+                    mode === 'update' && offerAlsoWatching ? (
+                      <SettingIcon>
+                        <Hash size={17} color={colors.text} strokeWidth={1.8} />
+                      </SettingIcon>
+                    ) : undefined
+                  }
+                />
+              </View>
+            </Animated.View>
+          )}
           <RatingControl
             value={draft.rating}
             onChange={(rating) =>
@@ -125,14 +196,6 @@ function LibraryEntryDrawerSession({
               }))
             }
           />
-          {draft.status === 'watched' && (
-            <Stepper
-              label="Times watched"
-              value={draft.timesWatched}
-              min={1}
-              onChange={setTimesWatched}
-            />
-          )}
           <TagEditor
             tags={draft.tags}
             suggestions={suggestions}
@@ -142,6 +205,7 @@ function LibraryEntryDrawerSession({
           <View style={s.footer}>
             {mode === 'add' ? (
               <Button
+                size="lg"
                 title={saving ? 'Adding…' : 'Add to library'}
                 disabled={saving}
                 onPress={() => {
@@ -154,7 +218,7 @@ function LibraryEntryDrawerSession({
               />
             ) : (
               <DrawerClose asChild>
-                <Button title="Done" onPress={() => undefined} />
+                <Button size="lg" title="Done" onPress={() => undefined} />
               </DrawerClose>
             )}
             {mode === 'update' && onRemove && (
@@ -179,8 +243,17 @@ function LibraryEntryDrawerSession({
 
 const s = createAppStyles(
   {
-    controls: { gap: 28 },
+    controls: { gap: 22 },
     hint: { color: colors.muted, fontSize: 12, lineHeight: 17 },
+    watchedGroup: {
+      marginTop: -12,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      overflow: 'hidden',
+    },
+    watchedDivider: { height: 1, marginLeft: 64, backgroundColor: colors.border },
+    // Same right inset as the switch row above, so the controls end on one line.
+    stepperRow: { paddingHorizontal: 16, paddingVertical: 6 },
     footer: { gap: 8, marginTop: 4 },
     destructiveAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     destructiveText: { color: colors.danger, fontSize: 14, fontWeight: '600' },

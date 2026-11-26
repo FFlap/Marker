@@ -436,4 +436,74 @@ describe('episode hub and profile favorites', () => {
       expect.objectContaining({ title: 'Zulu Search Target' }),
     );
   });
+  it('keeps a shelf reachable when another type fills the first picker page', async () => {
+    const { t, userId, asUser } = await setup();
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      const insert = (index: number, mediaType: 'tv' | 'movie', title: string) =>
+        ctx.db.insert('items', {
+          userId,
+          tmdbId: 30_000 + index,
+          mediaType,
+          title,
+          normalizedTitle: title.toLocaleLowerCase(),
+          isAnime: false,
+          status: 'watched',
+          timesWatched: 1,
+          tags: [],
+          rank: index,
+          createdAt: now,
+          updatedAt: now,
+        });
+      // A thousand shows sort before the only movie.
+      for (let index = 0; index < 1001; index += 1)
+        await insert(index, 'tv', `Alpha show ${String(index).padStart(4, '0')}`);
+      await insert(2000, 'movie', 'Zulu Movie');
+    });
+
+    expect(await asUser.query(api.profileFavorites.eligible, { section: 'movie' })).toEqual([
+      expect.objectContaining({ title: 'Zulu Movie', mediaType: 'movie' }),
+    ]);
+  });
+  it('finds a live-action show behind a page of anime series', async () => {
+    const { t, userId, asUser } = await setup();
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      for (let index = 0; index < 251; index += 1) {
+        const title = `Alpha anime ${String(index).padStart(3, '0')}`;
+        await ctx.db.insert('items', {
+          userId,
+          tmdbId: 40_000 + index,
+          mediaType: 'tv',
+          title,
+          normalizedTitle: title.toLocaleLowerCase(),
+          isAnime: true,
+          status: 'watched',
+          timesWatched: 1,
+          tags: [],
+          rank: index,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await ctx.db.insert('items', {
+        userId,
+        tmdbId: 41_000,
+        mediaType: 'tv',
+        title: 'Zulu Drama',
+        normalizedTitle: 'zulu drama',
+        isAnime: false,
+        status: 'watched',
+        timesWatched: 1,
+        tags: [],
+        rank: 300,
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    expect(await asUser.query(api.profileFavorites.eligible, { section: 'tv' })).toEqual([
+      expect.objectContaining({ title: 'Zulu Drama' }),
+    ]);
+  });
 });

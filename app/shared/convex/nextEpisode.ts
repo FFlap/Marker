@@ -8,6 +8,7 @@ import { isEpisodeReleased } from './episodeAvailability';
 import { episodeMatchesCanonicalIdentity, seasonSummaryIdentityKey } from './episodeSummaries';
 import { requestRefresh } from './resolvedMetadata/touch';
 import { EPISODES_PER_CHUNK } from './seasonStorage';
+import { airingInWatchingFor } from './settings';
 
 const MAX_TITLE_SEASONS = 1_000;
 const MAX_ITEM_SUMMARIES = 1_001;
@@ -32,8 +33,15 @@ const refreshResultValidator = v.object({
 
 const seasonOrderValue = (season: number) => (season === 0 ? Number.MAX_SAFE_INTEGER : season);
 
+/** Shows whose new episodes matter: being watched, or watched and able to join Watching. */
+async function followsNewEpisodes(ctx: MutationCtx, item: Doc<'items'>) {
+  if (item.status === 'watching') return true;
+  if (item.status !== 'watched') return false;
+  return !!item.alsoWatching || (await airingInWatchingFor(ctx, item.userId));
+}
+
 async function loadMissingMetadata(ctx: MutationCtx, item: Doc<'items'>, season?: number) {
-  if (item.status !== 'watching') return;
+  if (!(await followsNewEpisodes(ctx, item))) return;
   // Provider admission runs separately so an outage or rate limit cannot roll
   // back a saved watch. Canonical publication resumes the coordinate refresh.
   await ctx.scheduler.runAfter(0, internal.nextEpisode.requestMissingMetadata, {
@@ -50,8 +58,8 @@ export const requestMissingMetadata = internalMutation({
     if (
       !item ||
       item.mediaType !== 'tv' ||
-      item.status !== 'watching' ||
-      itemLifecycle(item).state !== 'active'
+      itemLifecycle(item).state !== 'active' ||
+      !(await followsNewEpisodes(ctx, item))
     )
       return;
     await requestRefresh(ctx, {

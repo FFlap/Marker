@@ -4,6 +4,7 @@ import { Text, View } from 'react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
+import { Radio } from '@/components/ui/primitives';
 
 const choices = [
   {
@@ -50,9 +51,7 @@ export function ProfileVisibility({
               <Text style={s.title}>{title}</Text>
               <Text style={s.detail}>{detail}</Text>
             </View>
-            <View style={[s.radio, selected && s.radioSelected]}>
-              {selected && <View style={s.radioDot} />}
-            </View>
+            <Radio selected={selected} />
           </NativePressable>
         );
       })}
@@ -89,17 +88,6 @@ const s = createAppStyles(
     copy: { flex: 1 },
     title: { color: colors.text, fontSize: 14, fontWeight: '700' },
     detail: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
-    radio: {
-      width: 18,
-      height: 18,
-      borderRadius: 9,
-      borderWidth: 1,
-      borderColor: colors.muted,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    radioSelected: { borderColor: colors.text },
-    radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.text },
   },
   ['title', 'detail'] as const,
 );

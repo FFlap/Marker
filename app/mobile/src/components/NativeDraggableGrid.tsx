@@ -165,6 +165,7 @@ export function NativeDraggableGrid<T>({
   data,
   disabled,
   externalPlaceholder,
+  leading,
   onDropTarget,
   columns,
   keyExtractor,
@@ -184,6 +185,11 @@ export function NativeDraggableGrid<T>({
   data: T[];
   disabled: boolean;
   externalPlaceholder?: { index: number; height: number };
+  /**
+   * Cells shown before `data` in the same rows. They are fixed: never dragged, and never a
+   * slot to drop into. Indexes in events and `externalPlaceholder` count only `data`.
+   */
+  leading?: { key: string; element: ReactNode }[];
   onDropTarget?: (target: NativeGridDropTarget | undefined) => void;
   columns: number;
   keyExtractor: (item: T) => string;
@@ -220,7 +226,11 @@ export function NativeDraggableGrid<T>({
   const externalPlaceholderRef = useRef(externalPlaceholder);
   externalPlaceholderRef.current = externalPlaceholder;
   const contentTop = useRef<number | null>(null);
-  const windowed = !!autoScroll && columns === 1 && !!rowHeight && data.length > 40;
+  const leadingCount = leading?.length ?? 0;
+  // Leading cells sit in the first rows, so windowing counts and spans leading + data rows
+  // (rows in that combined order) and only mounts the ones near the viewport.
+  const windowed = !!autoScroll && columns === 1 && !!rowHeight && data.length + leadingCount > 40;
+  const leadingOffset = leadingCount * (rowHeight ?? 0);
   // Measure the full-height container before mounting rows, including distant sections.
   const [rowWindow, setRowWindow] = useState<{ start: number; end: number } | null>(null);
   const updateRowWindow = useCallback(
@@ -229,7 +239,7 @@ export function NativeDraggableGrid<T>({
       const bounds = autoScroll.getBounds();
       if (bounds.bottom <= bounds.top) return;
       const next = nativeRowWindow(
-        data.length,
+        data.length + leadingCount,
         rowHeight,
         offset + bounds.top - contentTop.current,
         offset + bounds.bottom - contentTop.current,
@@ -238,7 +248,7 @@ export function NativeDraggableGrid<T>({
         current?.start === next.start && current?.end === next.end ? current : next,
       );
     },
-    [autoScroll, data.length, rowHeight, windowed],
+    [autoScroll, data.length, leadingCount, rowHeight, windowed],
   );
   const measureGridOrigin = useCallback(() => {
     gridRef.current?.measureInWindow((x, y, width, height) => {
@@ -286,11 +296,18 @@ export function NativeDraggableGrid<T>({
   const paddingTop = typeof gridStyle?.paddingTop === 'number' ? gridStyle.paddingTop : 0;
   const paddingBottom = typeof gridStyle?.paddingBottom === 'number' ? gridStyle.paddingBottom : 0;
   const geometry = useMemo(() => {
-    const heights = displayed.map(
-      (item) => rowHeight ?? measuredHeights.current.get(keyExtractor(item)),
-    );
+    const heights = [
+      ...(leading ?? []).map(
+        (cell) => rowHeight ?? measuredHeights.current.get(leadingKey(cell.key)),
+      ),
+      ...displayed.map((item) => rowHeight ?? measuredHeights.current.get(keyExtractor(item))),
+    ];
     if (externalPlaceholder)
-      heights.splice(externalPlaceholder.index, 0, rowHeight ?? externalPlaceholder.height);
+      heights.splice(
+        leadingCount + externalPlaceholder.index,
+        0,
+        rowHeight ?? externalPlaceholder.height,
+      );
     return nativeGridGeometry(
       heights,
       columns,
@@ -308,14 +325,19 @@ export function NativeDraggableGrid<T>({
     gap,
     itemWidth,
     keyExtractor,
+    leading,
+    leadingCount,
     measurement,
     paddingBottom,
     paddingTop,
     rowGap,
     rowHeight,
   ]);
+  // Drag and drop work in `data` indexes; the leading cells' slots are not targets.
   slotLayouts.current = new Map(
-    [...geometry.slots].filter(([index]) => index < geometry.readyThrough),
+    [...geometry.slots]
+      .filter(([index]) => index >= leadingCount && index < geometry.readyThrough)
+      .map(([index, layout]) => [index - leadingCount, layout]),
   );
 
   useEffect(() => {
@@ -329,10 +351,11 @@ export function NativeDraggableGrid<T>({
       const placeholder = externalPlaceholderRef.current;
       if (windowed && rowHeight) {
         if (contentTop.current === null) return { index: 0, distance: Number.POSITIVE_INFINITY };
+        const y = point.y - leadingOffset;
         const height = (dataRef.current.length + (placeholder ? 1 : 0)) * rowHeight;
         return {
-          index: Math.max(0, Math.min(dataRef.current.length, Math.floor(point.y / rowHeight))),
-          distance: Math.max(-point.y, point.y - height, 0),
+          index: Math.max(0, Math.min(dataRef.current.length, Math.floor(y / rowHeight))),
+          distance: Math.max(-y, y - height, 0),
         };
       }
       const slots = slotLayouts.current;
@@ -353,7 +376,7 @@ export function NativeDraggableGrid<T>({
       };
     });
     return () => onDropTarget?.(undefined);
-  }, [columns, data.length, onDropTarget, rowHeight, windowed]);
+  }, [columns, data.length, leadingOffset, onDropTarget, rowHeight, windowed]);
 
   const onPreviewReady = useCallback(() => {
     const current = session.current;
@@ -403,7 +426,7 @@ export function NativeDraggableGrid<T>({
                   slot,
                   {
                     x: 0,
-                    y: slot * rowHeight,
+                    y: leadingOffset + slot * rowHeight,
                     width: slotLayouts.current.get(index)?.width ?? 0,
                     height: rowHeight,
                   },
@@ -441,6 +464,7 @@ export function NativeDraggableGrid<T>({
       onDragLayout,
       onMotionInit,
       motion,
+      leadingOffset,
       rowHeight,
       windowed,
     ],
@@ -556,14 +580,16 @@ export function NativeDraggableGrid<T>({
       }}
     />
   ) : null;
+  // Whether combined row `row` (leading cells first) is near enough the viewport to mount.
+  const rowShown = (row: number) =>
+    !windowed || (!!rowWindow && row >= rowWindow.start && row < rowWindow.end);
   const visible = windowed
     ? displayed.flatMap((item, index) =>
-        (rowWindow && index >= rowWindow.start && index < rowWindow.end) ||
-        keyExtractor(item) === activeKey
-          ? [{ item, index }]
-          : [],
+        rowShown(leadingCount + index) || keyExtractor(item) === activeKey ? [{ item, index }] : [],
       )
     : displayed.map((item, index) => ({ item, index }));
+  const slotOf = (index: number) =>
+    leadingCount + index + (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0);
 
   return (
     <View
@@ -580,6 +606,28 @@ export function NativeDraggableGrid<T>({
         { height: Math.max(1, geometry.height), overflow: 'hidden' },
       ]}
     >
+      {leading?.map((cell, index) => {
+        if (!rowShown(index)) return null;
+        const slot = geometry.slots.get(index);
+        return (
+          <View
+            key={leadingKey(cell.key)}
+            onLayout={(event) => measureCard(leadingKey(cell.key), event.nativeEvent.layout)}
+            pointerEvents={index < geometry.readyThrough ? 'auto' : 'none'}
+            style={[
+              styles.cell,
+              {
+                width: itemWidth,
+                height: rowHeight,
+                opacity: index < geometry.readyThrough ? 1 : 0,
+                transform: [{ translateX: slot?.x ?? 0 }, { translateY: slot?.y ?? 0 }],
+              },
+            ]}
+          >
+            {cell.element}
+          </View>
+        );
+      })}
       {visible.flatMap(({ item, index }) => {
         const itemKey = keyExtractor(item);
         return [
@@ -595,20 +643,9 @@ export function NativeDraggableGrid<T>({
             itemKey={itemKey}
             itemWidth={itemWidth}
             fixedHeight={rowHeight}
-            targetX={
-              geometry.slots.get(
-                index + (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0),
-              )?.x ?? 0
-            }
-            targetY={
-              geometry.slots.get(
-                index + (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0),
-              )?.y ?? 0
-            }
-            positionReady={
-              index + (placeholderIndex !== undefined && index >= placeholderIndex ? 1 : 0) <
-              geometry.readyThrough
-            }
+            targetX={geometry.slots.get(slotOf(index))?.x ?? 0}
+            targetY={geometry.slots.get(slotOf(index))?.y ?? 0}
+            positionReady={slotOf(index) < geometry.readyThrough}
             onMeasure={measureCard}
             horizontalTranslate={horizontalTranslate}
             touchTranslate={touchTranslate}
@@ -788,6 +825,8 @@ function NativeGridCellImpl<T>({
 }
 
 const NativeGridCell = memo(NativeGridCellImpl) as typeof NativeGridCellImpl;
+
+const leadingKey = (key: string) => `leading:${key}`;
 
 const styles = StyleSheet.create({
   grid: {

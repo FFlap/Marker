@@ -1,15 +1,16 @@
 import { CastSection } from '@/features/title/components/CastSection';
+import Pencil from 'lucide-react-native/icons/pencil';
 import { ExpandableOverview } from '@/components/ExpandableOverview';
 import { usePendingTasks } from '@/hooks/use-pending-tasks';
 import { useTaskState } from '@/hooks/use-task-state';
 import { castForDisplay } from '@marker/shared/castPresentation';
-import { RemoveTitleDialog } from '@/components/RemoveTitleDialog';
+import { ConfirmDialog, RemoveTitleDialog } from '@/components/RemoveTitleDialog';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
-import { FlatList, Linking, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
@@ -34,17 +35,19 @@ import {
 } from '@/features/title/components/EntryActionBar';
 import { useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
-import { localDateKey } from '@/hooks/use-local-today';
+import { localDateKey, useLocalToday } from '@/hooks/use-local-today';
 import { SEASON_EPISODE_RENDER_BATCH, useSeasonView } from '@/hooks/use-season-view';
 import { libraryItemScreenStyles as s } from '@/features/title/screens/LibraryItemScreen.styles';
-import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
+import { isAlsoWatching, LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import { EpisodeCard } from '@/features/title/components/EpisodeCard';
+import { useScrolledPast } from '@/hooks/use-scrolled-past';
 import {
   type Episode,
   type EpisodeDraft,
   isStaleSeasonError,
   type SeasonRow,
 } from '@/features/title/libraryItemTypes';
+import { clipSynopsis, displayGenres } from '@/lib/text';
 type PendingEpisodeDraft = {
   [Field in keyof EpisodeDraft]?: { version: number; value: EpisodeDraft[Field] };
 };
@@ -87,7 +90,6 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     item ? { itemId, season, pageCount: Math.max(1, seasonView.pageCount) } : 'skip',
   );
   const episodeProgress = useQuery(episodeApi.listEpisodeProgress, item ? { itemId } : 'skip');
-  const [expanded, setExpanded] = useState<string>();
   const [editingEpisode, setEditingEpisode] = useState<string>();
   const metadataRefresh = useRefreshControl(() => refresh({ force: true }));
   const entryBar = useEntryActionBarLayout();
@@ -96,12 +98,23 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [removeError, setRemoveError] = useState<string>();
   const [removeOpen, setRemoveOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  // "Also in Watching" is chosen by hand only when the automatic setting is off.
+  const settings = useQuery(api.settings.getSettings);
+  const today = useLocalToday();
+  const seasonUpcoming = useQuery(
+    episodeApi.getSeasonUpcoming,
+    item?.mediaType === 'tv' ? { itemId, season, today } : 'skip',
+  );
+  const [unsavedEntry, setUnsavedEntry] = useState<LibraryEntryDraft>();
   const [tagPrefix, setTagPrefix] = useState('');
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
+  const [seasonUnwatchOpen, setSeasonUnwatchOpen] = useState(false);
   const { pending: entrySaving, setPending: setEntrySaving } = useTaskState();
   const { pending: seasonPending, setPending: setSeasonPending } = useTaskState();
   const draft = item;
   const [episodeDrafts, setEpisodeDrafts] = useState<Record<string, PendingEpisodeDraft>>({});
+  // The header names the title once the poster and title scroll out of view.
+  const { past: heroHidden, onScroll: onListScroll } = useScrolledPast(200);
   // IDs are allocated only in event handlers and never reused after acknowledgment.
   const nextEditVersion = useRef(0);
   const detail = title;
@@ -125,6 +138,18 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       api.library.items.listTagSuggestions,
       entryOpen ? { prefix: tagPrefix.trim() || undefined } : 'skip',
     ) ?? [];
+  // Tags already used on this show's episodes, suggested in the episode sheet.
+  const episodeTagSuggestions = useMemo(
+    () =>
+      [
+        ...new Map(
+          (savedEpisodes ?? [])
+            .flatMap((episode) => episode.tags)
+            .map((tag) => [tag.toLocaleLowerCase(), tag] as const),
+        ).values(),
+      ].sort((left, right) => left.localeCompare(right)),
+    [savedEpisodes],
+  );
   const savedByEpisode = useMemo(
     () =>
       new Map(
@@ -193,7 +218,8 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         const remaining = { ...current[draftKey] };
         delete remaining[field];
         const drafts = { ...current };
-        if (remaining.rating || remaining.tags) drafts[draftKey] = remaining;
+        if (remaining.rating || remaining.tags || remaining.timesWatched)
+          drafts[draftKey] = remaining;
         else delete drafts[draftKey];
         return drafts;
       });
@@ -203,7 +229,9 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         ? value === undefined
           ? { clearRating: true }
           : { rating: value as number }
-        : { tags: value as string[] };
+        : field === 'timesWatched'
+          ? { timesWatched: value as number }
+          : { tags: value as string[] };
     void runOperation.write(
       saveLibrary(() => setEpisode({ itemId, season: seasonNumber, episode, ...args })),
       {
@@ -246,38 +274,55 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const saveEntry = async (entryForm: LibraryEntryDraft) => {
     if (entrySaving) return;
     setEntrySaving(true);
+    // Only a show newly marked Watched needs the whole-series action. Running it for an
+    // already-watched show would move it to the top of the ranking on every edit.
+    const becameWatchedShow =
+      item.mediaType === 'tv' && entryForm.status === 'watched' && item.status !== 'watched';
+    // The two writes can't be one transaction (marking a series runs as its own action),
+    // so remember whether the first landed to say exactly what still needs saving.
+    let markedWatched = false;
     await runOperation.write(
       Effect.gen(function* () {
-        if (item.mediaType === 'tv' && entryForm.status === 'watched') {
+        if (becameWatchedShow) {
           yield* saveLibrary(() =>
             moveItemToWatched({
               itemId,
               activityDate: localDateKey(),
             }),
           );
+          markedWatched = true;
         }
         yield* saveLibrary(() =>
           update({
             itemId,
-            status:
-              item.mediaType !== 'tv' || entryForm.status !== 'watched'
-                ? entryForm.status
-                : undefined,
+            status: becameWatchedShow ? undefined : entryForm.status,
             rating: entryForm.rating,
             clearRating: entryForm.rating === undefined,
             timesWatched: entryForm.timesWatched,
+            alsoWatching:
+              entryForm.status === 'watched' && item.mediaType === 'tv'
+                ? !!entryForm.alsoWatching
+                : undefined,
             tags: entryForm.tags,
           }),
         );
       }),
       {
         success: () => {
+          setUnsavedEntry(undefined);
           setEntryOpen(false);
           toast.show('Entry updated');
         },
 
         failure: () => {
-          toast.show('Couldn’t update this entry');
+          // Bring the changes back so nothing typed is lost; closing tries again.
+          setUnsavedEntry(entryForm);
+          setEntryOpen(true);
+          toast.show(
+            markedWatched
+              ? 'Marked as watched, but your rating, tags and count didn’t save. Try again.'
+              : 'Couldn’t save your changes. Try again.',
+          );
         },
         settled: () => {
           setEntrySaving(false);
@@ -306,7 +351,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
             availableSeasons.find((entry) => entry.season === ep.season)?.name ??
             (ep.season === 0 ? 'Specials' : `Season ${ep.season}`),
           name: ep.name,
-          ...(ep.overview !== undefined && { overview: ep.overview.slice(0, 400) }),
+          ...(ep.overview !== undefined && { overview: clipSynopsis(ep.overview) }),
           ...(ep.runtime !== undefined && { runtime: ep.runtime }),
           ...(ep.imageUrl !== undefined && { imageUrl: ep.imageUrl }),
           ...(ep.airDate !== undefined && { airDate: ep.airDate }),
@@ -324,6 +369,45 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
       },
     );
   };
+  // A season with listed episodes still to air: marking it covers the aired ones. Once those
+  // are all watched it counts as done for the action (offering "unwatched"), and with none
+  // aired yet there is nothing to mark. Counted over the whole season, not the loaded pages.
+  const upcomingCount = seasonUpcoming?.upcoming ?? 0;
+  const airedCount = (seasonRow?.totalCount ?? 0) - upcomingCount;
+  const seasonOngoing = upcomingCount > 0;
+  const seasonNothingAired = seasonOngoing && airedCount <= 0;
+  const seasonCaughtUp =
+    seasonOngoing &&
+    airedCount > 0 &&
+    watchedSeasonCount - (seasonUpcoming?.watchedUpcoming ?? 0) >= airedCount;
+  const seasonDone = seasonFullyWatched || seasonCaughtUp;
+  const applySeasonWatched = (watched: boolean) => {
+    if (!seasonRow) return;
+    setSeasonPending(true);
+    void runOperation.write(
+      saveLibrary(() => setSeasonState(season, watched, seasonRow)),
+      {
+        settled: () => {
+          setSeasonPending(false);
+          setSeasonUnwatchOpen(false);
+        },
+        failure: ({ cause: error }: { cause: unknown }) => {
+          if (isStaleSeasonError(error)) {
+            toast.show('Season data changed — refreshing');
+            refresh({ force: true });
+          } else toast.show('Couldn’t update this season');
+        },
+        success: () =>
+          toast.show(
+            !watched
+              ? 'Season marked unwatched'
+              : seasonOngoing
+                ? 'Aired episodes marked watched'
+                : 'Season marked watched',
+          ),
+      },
+    );
+  };
   const renderEpisode = ({ item: episode }: { item: Episode }) => {
     const episodeKey = `${episode.season}:${episode.episode}`;
     const saved = savedByEpisode.get(episodeKey);
@@ -331,24 +415,47 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
     const episodeDraft: EpisodeDraft = {
       rating: pendingDraft?.rating ? pendingDraft.rating.value : saved?.rating,
       tags: pendingDraft?.tags ? pendingDraft.tags.value : (saved?.tags ?? []),
+      timesWatched: pendingDraft?.timesWatched
+        ? pendingDraft.timesWatched.value
+        : (saved?.timesWatched ?? 1),
     };
     return (
       <EpisodeCard
         episode={episode}
         saved={saved}
         draft={episodeDraft}
-        expanded={expanded === episodeKey}
         editing={editingEpisode === episodeKey}
         pending={pendingEpisodes.has(episodeKey)}
-        onExpand={() => setExpanded(expanded === episodeKey ? undefined : episodeKey)}
         onEditingChange={(editing) => setEditingEpisode(editing ? episodeKey : undefined)}
         onPatch={(field, value) => patchEpisode(episode.season, episode.episode, field, value)}
         onToggle={() => void toggle(episode)}
+        tagSuggestions={episodeTagSuggestions}
       />
     );
   };
   return (
     <ScreenView style={s.root}>
+      <ConfirmDialog
+        open={seasonUnwatchOpen}
+        title="Mark season unwatched?"
+        message={`${
+          seasonFullyWatched
+            ? seasonRow?.totalCount === 1
+              ? 'The episode'
+              : `All ${seasonRow?.totalCount ?? 0} episodes`
+            : watchedSeasonCount === 1
+              ? 'The watched episode'
+              : `The ${watchedSeasonCount} watched episodes`
+        } in ${
+          availableSeasons.find((entry) => entry.season === season)?.name ?? `Season ${season}`
+        } will be marked unwatched.`}
+        confirmLabel="Mark unwatched"
+        pendingLabel="Updating…"
+        destructive
+        pending={seasonPending}
+        onCancel={() => setSeasonUnwatchOpen(false)}
+        onConfirm={() => applySeasonWatched(false)}
+      />
       <RemoveTitleDialog
         open={removeOpen}
         title={item.title}
@@ -357,9 +464,11 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
         onCancel={() => setRemoveOpen(false)}
         onConfirm={() => void performRemoval()}
       />
-      <SecondaryHeader title="Details" maxWidth={760} />
+      <SecondaryHeader title={heroHidden ? meta.title : ''} maxWidth={760} />
       <FlatList
         testID="episode-list"
+        onScroll={onListScroll}
+        scrollEventThrottle={16}
         data={item.mediaType === 'tv' ? episodes : []}
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
@@ -385,7 +494,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 <Text style={s.meta}>{(meta.releaseDate ?? meta.firstAirDate)?.slice(0, 4)}</Text>
                 {meta.genres?.length ? (
                   <View style={s.genres}>
-                    <TagList tags={meta.genres} />
+                    <TagList tags={displayGenres(meta.genres)} />
                   </View>
                 ) : null}
               </View>
@@ -400,27 +509,33 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
               </View>
             )}
             {titleUpdateFailed && title && (
-              <Text style={s.metadataHint}>couldn’t update — pull to retry</Text>
+              <Text style={s.metadataHint}>Couldn’t update. Pull to retry.</Text>
             )}
-            <SectionHeader title="Your Entry" />
+            <SectionHeader title="Your entry" />
             {draft && (
               <View style={s.entry}>
                 <View style={s.entrySummary}>
-                  <View>
+                  <View style={s.entryStat}>
                     <Text style={s.entryLabel}>Status</Text>
                     <Text style={s.entryValue}>
                       {LIBRARY_STATUSES.find(([status]) => status === draft.status)?.[1]}
                     </Text>
+                    {/* Listed under Watching too, as the library shows it. */}
+                    {draft.status === 'watched' &&
+                      item.status === 'watched' &&
+                      isAlsoWatching(item, settings?.airingInWatching !== false, today) && (
+                        <Text style={s.entryNote}>Also in Watching</Text>
+                      )}
                   </View>
-                  <View>
+                  <View style={s.entryStat}>
                     <Text style={s.entryLabel}>Rating</Text>
-                    <Text style={s.entryValue}>
-                      {draft.rating === undefined ? 'Not rated' : draft.rating.toFixed(1)}
+                    <Text style={[s.entryValue, draft.rating === undefined && s.entryValueEmpty]}>
+                      {draft.rating === undefined ? 'Not rated' : `★ ${draft.rating.toFixed(1)}`}
                     </Text>
                   </View>
-                  <View>
-                    <Text style={s.entryLabel}>Watched</Text>
-                    <Text style={s.entryValue}>{draft.timesWatched}×</Text>
+                  <View style={s.entryStat}>
+                    <Text style={s.entryLabel}>Times watched</Text>
+                    <Text style={s.entryValue}>{draft.timesWatched}</Text>
                   </View>
                 </View>
                 <View style={s.entryTags}>
@@ -439,13 +554,15 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 onOpenChange={setEntryOpen}
                 mode="update"
                 initial={draft}
+                unsaved={unsavedEntry}
+                offerAlsoWatching={item.mediaType === 'tv' && settings?.airingInWatching === false}
                 suggestions={tags}
                 onTagPrefixChange={setTagPrefix}
                 saving={entrySaving}
                 onSubmit={saveEntry}
                 watchedHint={
                   item.mediaType === 'tv'
-                    ? 'Marking this show as Watched will mark every episode as watched.'
+                    ? 'Marking this show as Watched will mark all released episodes as watched.'
                     : undefined
                 }
                 onRemove={requestRemoval}
@@ -487,27 +604,23 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                       loading={!seasonRow}
                       watched={watchedSeasonCount}
                       total={seasonRow?.totalCount ?? 0}
-                      complete={seasonFullyWatched}
-                      disabled={seasonPending || seasonError || !seasonRow || episodes.length === 0}
+                      complete={seasonDone}
+                      ongoing={seasonOngoing}
+                      nothingAired={seasonNothingAired}
+                      disabled={
+                        seasonPending ||
+                        seasonError ||
+                        !seasonRow ||
+                        episodes.length === 0 ||
+                        seasonNothingAired ||
+                        // Until the counts arrive the action could offer the wrong direction.
+                        episodeProgress === undefined ||
+                        seasonUpcoming === undefined
+                      }
                       onToggle={() => {
-                        const watched = !seasonFullyWatched;
-                        setSeasonPending(true);
-                        void runOperation.write(
-                          saveLibrary(() => setSeasonState(season, watched, seasonRow!)),
-                          {
-                            settled: () => setSeasonPending(false),
-                            failure: ({ cause: error }: { cause: unknown }) => {
-                              if (isStaleSeasonError(error)) {
-                                toast.show('Season data changed — refreshing');
-                                refresh({ force: true });
-                              } else toast.show('Couldn’t update this season');
-                            },
-                            success: () =>
-                              toast.show(
-                                watched ? 'Season marked watched' : 'Season marked unwatched',
-                              ),
-                          },
-                        );
+                        // Unwatching a whole season asks first; marking it watched doesn't.
+                        if (seasonDone) setSeasonUnwatchOpen(true);
+                        else applySeasonWatched(true);
                       }}
                     />
                     {!seasonRow && !seasonError && <EpisodeSkeletonRows />}
@@ -522,7 +635,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                       </View>
                     )}
                     {seasonRequestState?.state === 'failed' && seasonRow && (
-                      <Text style={s.metadataHint}>couldn’t update — pull to retry</Text>
+                      <Text style={s.metadataHint}>Couldn’t update. Pull to retry.</Text>
                     )}
                   </>
                 ) : (
@@ -542,22 +655,14 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                 onPress={() => seasonView.loadMore(1)}
               />
             )}
-            {detail?.metadataProvider === 'tvdb' && (
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel="Season and episode metadata provided by TheTVDB; artwork provided by TMDB where available"
-                onPress={() => void Linking.openURL('https://thetvdb.com')}
-              >
-                <Text style={s.tvdbAttribution}>
-                  Season and episode metadata by TheTVDB · artwork by TMDB where available
-                </Text>
-              </Pressable>
-            )}
           </>
         }
       />
+      {/* A second edit can't start while the last one is saving, so neither is lost. */}
       <EntryActionBar
-        label="Update Entry"
+        label={entrySaving ? 'Saving…' : 'Edit entry'}
+        disabled={entrySaving}
+        icon={entrySaving ? undefined : <Pencil size={18} color={colors.bg} strokeWidth={2.2} />}
         onLayout={entryBar.onLayout}
         onPress={() => setEntryOpen(true)}
       />

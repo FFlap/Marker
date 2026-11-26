@@ -1,4 +1,6 @@
 import { CastSection } from '@/features/title/components/CastSection';
+import ChevronDown from 'lucide-react-native/icons/chevron-down';
+import Plus from 'lucide-react-native/icons/plus';
 import { ExpandableOverview } from '@/components/ExpandableOverview';
 import { useTaskState } from '@/hooks/use-task-state';
 import { castForDisplay } from '@marker/shared/castPresentation';
@@ -9,13 +11,14 @@ import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import type { Episode } from '@/features/title/libraryItemTypes';
 import { useMemo, useState } from 'react';
-import { FlatList, Linking, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
 import { LibraryEntryDrawer, type LibraryEntryDraft } from '@/components/LibraryEntryDrawer';
 import { SecondaryHeader } from '@/components/BackButton';
+import { useScrolledPast } from '@/hooks/use-scrolled-past';
 import { SeasonPicker } from '@/components/SeasonPicker';
 import { availableSeasons as getAvailableSeasons } from '@/features/title/seasons';
 import { SectionHeader } from '@/features/title/components/SectionHeader';
@@ -31,6 +34,7 @@ import { TagList } from '@/components/ui/TagList';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
+import { NativePressable } from '@/components/ui/NativePressable';
 import { useTitleView } from '@/hooks/use-title-view';
 import { useRefreshControl } from '@/hooks/use-refresh-control';
 import { SEASON_EPISODE_RENDER_BATCH, useSeasonView } from '@/hooks/use-season-view';
@@ -41,6 +45,9 @@ import {
   parseTitlePreview,
   type TitleRouteParams,
 } from '@/features/title/titleRoute';
+import { displayEpisodeName, displayGenres } from '@/lib/text';
+import { formatActivityDate } from '@marker/shared/watchActivityStats';
+import { DetailPageSkeleton } from '@/components/PageSkeletons';
 
 function MetadataPlaceholder({
   label,
@@ -89,6 +96,8 @@ export default function TitleDetailScreen() {
 /** Show catalog metadata and actions for adding or tracking a title. */
 function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   const runOperation = useOperation();
+  // Only labels air dates ("Airs" / "Aired"); no need to re-render at midnight.
+  const today = localDateKey();
   const { mediaType, tmdbId, validId } = parseTitleRoute(params);
   const parsedPreview = useMemo(() => parseTitlePreview(params.preview), [params.preview]);
   const preview =
@@ -145,6 +154,8 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     seasonRow !== undefined &&
     episodes.length < seasonRow.totalCount;
   const [seasonMenuOpen, setSeasonMenuOpen] = useState(false);
+  // The header names the title once the poster and title scroll out of view.
+  const { past: heroHidden, onScroll: onListScroll } = useScrolledPast(200);
   const [expanded, setExpanded] = useState<string>();
   const entryBar = useEntryActionBarLayout();
 
@@ -229,17 +240,23 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
     const isExpanded = hasDetails && expanded === episodeKey;
     const summary = (
       <>
-        <View style={s.epHeader}>
-          <Text style={s.epNo}>EP {episode.episode.toString().padStart(2, '0')}</Text>
-          {!!episode.runtime && <Text style={s.epTime}>{episode.runtime} min</Text>}
-        </View>
-        <Text numberOfLines={2} style={s.epName}>
-          {episode.name}
-        </Text>
-        {!!episode.overview && !isExpanded && (
-          <Text numberOfLines={2} style={s.epOverview}>
-            {episode.overview}
+        <View style={s.epCopy}>
+          <Text numberOfLines={1} style={s.epMeta}>
+            <Text style={s.epNo}>E{episode.episode}</Text>
+            {!!episode.runtime && ` · ${episode.runtime} min`}
           </Text>
+          <Text numberOfLines={2} style={s.epName}>
+            {displayEpisodeName(episode.name)}
+          </Text>
+        </View>
+        {/* Tapping shows the synopsis and air date below the row. */}
+        {hasDetails && (
+          <ChevronDown
+            size={16}
+            color={colors.muted}
+            strokeWidth={2}
+            style={isExpanded ? { transform: [{ rotate: '180deg' }] } : undefined}
+          />
         )}
       </>
     );
@@ -258,23 +275,24 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               />
             ) : (
               <View style={s.episodeImageFallback}>
+                {/* No still for this episode: a quiet number, not a loading shimmer. */}
                 <Text style={s.episodeImageNumber}>
                   {episode.episode.toString().padStart(2, '0')}
                 </Text>
-                <SkeletonShimmer />
               </View>
             )}
           </View>
           {hasDetails ? (
-            <Pressable
+            <NativePressable
               accessibilityRole="button"
               accessibilityLabel={`View episode ${episode.episode}`}
               accessibilityState={{ expanded: isExpanded }}
               style={s.epExpand}
+              pressedStyle={s.epExpandPressed}
               onPress={() => setExpanded(isExpanded ? undefined : episodeKey)}
             >
               {summary}
-            </Pressable>
+            </NativePressable>
           ) : (
             <View style={s.epExpand}>{summary}</View>
           )}
@@ -282,7 +300,16 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         {isExpanded && (
           <View style={s.epDetails}>
             {!!episode.overview && <Text style={s.epFullOverview}>{episode.overview}</Text>}
-            {!!episode.airDate && <Text style={s.episodeDate}>Aired {episode.airDate}</Text>}
+            {!!episode.airDate && (
+              <Text style={s.episodeDate}>
+                {/^\d{4}-\d{2}-\d{2}$/.test(episode.airDate) && episode.airDate > today
+                  ? 'Airs'
+                  : 'Aired'}{' '}
+                {/^\d{4}-\d{2}-\d{2}$/.test(episode.airDate)
+                  ? formatActivityDate(episode.airDate)
+                  : episode.airDate}
+              </Text>
+            )}
           </View>
         )}
       </View>
@@ -327,22 +354,23 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
   if (heroOwner === undefined)
     return (
       <ScreenView testID="title-detail-initial-placeholder" style={s.root}>
-        <View style={s.initialPlaceholder}>
-          <SkeletonShimmer />
-        </View>
+        <SecondaryHeader title="Details" maxWidth={760} />
+        <DetailPageSkeleton />
       </ScreenView>
     );
 
   return (
     <ScreenView style={s.root}>
       <SecondaryHeader
-        title="Details"
+        title={heroHidden ? meta.title : ''}
         maxWidth={760}
         backLabel="Back to explore"
         fallback="/explore"
       />
       <FlatList
         testID="episode-list"
+        onScroll={onListScroll}
+        scrollEventThrottle={16}
         data={mediaType === 'tv' ? episodes : []}
         keyExtractor={(episode) => `${episode.season}:${episode.episode}`}
         initialNumToRender={SEASON_EPISODE_RENDER_BATCH}
@@ -373,7 +401,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                 </Text>
                 <View style={s.genres}>
                   {detail ? (
-                    <TagList tags={meta.genres} />
+                    <TagList tags={displayGenres(meta.genres)} />
                   ) : (
                     <MetadataPlaceholder label="Loading genres" kind="chip" />
                   )}
@@ -397,7 +425,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
               </View>
             )}
             {(titleRequestState?.state === 'failed' || touchError !== undefined) && detail && (
-              <Text style={s.metadataLoadingText}>couldn’t update — pull to retry</Text>
+              <Text style={s.metadataLoadingText}>Couldn’t update. Pull to retry.</Text>
             )}
 
             <CastSection
@@ -444,7 +472,7 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                       </View>
                     )}
                     {seasonRequestState?.state === 'failed' && seasonRow && (
-                      <Text style={s.metadataLoadingText}>couldn’t update — pull to retry</Text>
+                      <Text style={s.metadataLoadingText}>Couldn’t update. Pull to retry.</Text>
                     )}
                   </>
                 ) : (
@@ -464,23 +492,13 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
                 onPress={() => canonicalSeason.loadMore(1)}
               />
             )}
-            {detail?.metadataProvider === 'tvdb' && (
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel="Season and episode metadata provided by TheTVDB; artwork provided by TMDB where available"
-                onPress={() => void Linking.openURL('https://thetvdb.com')}
-              >
-                <Text style={s.tvdbAttribution}>
-                  Season and episode metadata by TheTVDB · artwork by TMDB where available
-                </Text>
-              </Pressable>
-            )}
           </>
         }
       />
 
       <EntryActionBar
-        label="Add Entry"
+        label="Add entry"
+        icon={<Plus size={18} color={colors.bg} strokeWidth={2.2} />}
         onLayout={entryBar.onLayout}
         disabled={existing === undefined || loading || !meta.title.trim()}
         onPress={() => setEntryOpen(true)}
@@ -498,6 +516,11 @@ function TitleDetailRoute({ params }: { params: TitleRouteParams }) {
         onTagPrefixChange={setTagPrefix}
         saving={entrySaving}
         onSubmit={saveEntry}
+        watchedHint={
+          mediaType === 'tv'
+            ? 'Marking this show as Watched will mark all released episodes as watched.'
+            : undefined
+        }
       />
     </ScreenView>
   );

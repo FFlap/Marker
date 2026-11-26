@@ -184,6 +184,9 @@ export async function moveItemToSlot(
     ...(targetStatus === 'watched' && {
       timesWatched: Math.max(1, item.timesWatched),
     }),
+    // "Also in Watching" only describes a watched show.
+    ...(targetStatus !== 'watched' &&
+      item.alsoWatching !== undefined && { alsoWatching: undefined }),
     updatedAt: Date.now(),
   });
   await updateProfileStatsForItem(ctx, item, {

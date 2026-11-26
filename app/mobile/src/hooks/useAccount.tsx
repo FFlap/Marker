@@ -6,7 +6,7 @@ import { StartupQueries } from '@/components/StartupQueries';
 import { useStartupData, useStartupQuery } from './useStartupQuery';
 
 function useAccountState(account: ReturnType<typeof useMarkerAccount>) {
-  const { isLoaded: clerkLoaded, isSignedIn } = useAuth();
+  const { isLoaded: clerkLoaded, isSignedIn, userId } = useAuth();
   const { signOut } = useClerk();
   const cachedContent = !!useStartupData()?.cached;
   const profile = useStartupQuery(
@@ -20,7 +20,7 @@ function useAccountState(account: ReturnType<typeof useMarkerAccount>) {
   const pending =
     !clerkLoaded ||
     !!(isSignedIn && (account.isLoading || !account.accountReady || profile === undefined));
-  return { ...account, clerkLoaded, isSignedIn, signOut, profile, pending, cachedContent };
+  return { ...account, clerkLoaded, isSignedIn, userId, signOut, profile, pending, cachedContent };
 }
 
 const AccountContext = createContext<ReturnType<typeof useAccountState> | null>(null);

@@ -6,6 +6,7 @@ import ListVideo from 'lucide-react-native/icons/list-video';
 import Tags from 'lucide-react-native/icons/tags';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 
 type Destination = 'library' | 'episodes' | 'tags';
@@ -36,8 +37,16 @@ export function MobileNav({ current }: { current: Destination }) {
               style={s.item}
               pressedStyle={s.pressed}
             >
-              <Icon size={19} color={selected ? colors.text : colors.muted} strokeWidth={1.8} />
-              <Text style={[s.label, selected && s.labelSelected]}>{label}</Text>
+              <View style={[s.indicator, selected && s.indicatorSelected]}>
+                <Icon
+                  size={20}
+                  color={selected ? colors.text : colors.muted}
+                  strokeWidth={selected ? 2 : 1.8}
+                />
+              </View>
+              <Text numberOfLines={1} style={[s.label, selected && s.labelSelected]}>
+                {label}
+              </Text>
             </NativePressable>
           );
         })}
@@ -57,7 +66,8 @@ const s = createAppStyles(
       backgroundColor: colors.bg,
       borderTopWidth: 1,
       borderTopColor: colors.border,
-      paddingBottom: 8,
+      paddingTop: 2,
+      paddingBottom: 6,
     },
     navigation: {
       width: '100%',
@@ -68,12 +78,20 @@ const s = createAppStyles(
     },
     item: {
       flex: 1,
-      minHeight: 52,
+      height: 58,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 4,
+      gap: 3,
     },
-    label: { color: colors.muted, fontSize: 9, fontWeight: '600' },
+    indicator: {
+      width: 56,
+      height: 30,
+      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    indicatorSelected: { backgroundColor: colors.elevated },
+    label: { color: colors.muted, fontSize: 11, lineHeight: 14, fontWeight: '600' },
     labelSelected: { color: colors.text },
     pressed: { opacity: 0.62 },
   },
