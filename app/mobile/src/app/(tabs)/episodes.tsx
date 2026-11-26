@@ -375,7 +375,12 @@ function Episodes() {
                               </Text>
                             </View>
                             {/* The row opens the episode's details; the circle only ticks it. */}
-                            <ChevronRight size={16} color={colors.muted} strokeWidth={2} />
+                            <ChevronRight
+                              size={16}
+                              color={colors.muted}
+                              strokeWidth={2}
+                              style={s.chevron}
+                            />
                           </NativePressable>
                           {page === 'watching' ? (
                             <NativePressable
@@ -521,6 +526,10 @@ function Episodes() {
 // Room for the bar floating over the scroll view.
 const CONTENT_TOP = 76;
 
+/** The episode still's height, which the row's other parts centre on. */
+const STILL_HEIGHT = 54;
+const ROW_PADDING = 10;
+
 const s = createAppStyles(
   {
     root: { flex: 1, backgroundColor: colors.bg },
@@ -545,25 +554,27 @@ const s = createAppStyles(
     page: {},
     upNext: { marginBottom: 4 },
     list: { gap: 2 },
+    // Everything lines up on the still: a long title wraps downward from its top instead of
+    // pushing the show line above it, and the chevron and check stay centred on it.
     episodeRow: {
       minHeight: 76,
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: 10,
     },
     rowOpen: {
       flex: 1,
       minWidth: 0,
       flexDirection: 'row',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       gap: 12,
-      paddingVertical: 10,
+      paddingVertical: ROW_PADDING,
       borderRadius: radius.md,
     },
     rowPressed: { opacity: 0.7 },
     artwork: {
       width: 96,
-      height: 54,
+      height: STILL_HEIGHT,
       borderRadius: radius.xs,
       overflow: 'hidden',
       backgroundColor: colors.surface,
@@ -576,13 +587,16 @@ const s = createAppStyles(
       fontVariant: ['tabular-nums'],
     },
     imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    copy: { flex: 1, minWidth: 0, minHeight: 64, justifyContent: 'center', gap: 3 },
+    copy: { flex: 1, minWidth: 0, minHeight: STILL_HEIGHT, justifyContent: 'center', gap: 3 },
+    chevron: { marginTop: (STILL_HEIGHT - 16) / 2 },
     showTitle: { color: colors.secondary, fontSize: 12, fontWeight: '600' },
     showLine: { flexDirection: 'row', minWidth: 0 },
     showName: { flexShrink: 1 },
-    episodeNumber: { color: colors.text, fontWeight: '700' },
+    // The show name is what a mixed list is scanned by; the episode code follows it quietly.
+    episodeNumber: { color: colors.muted, fontWeight: '600' },
     episodeTitle: { color: colors.text, fontSize: 15, lineHeight: 19, fontWeight: '600' },
     check: {
+      marginTop: ROW_PADDING + (STILL_HEIGHT - 32) / 2,
       width: 32,
       height: 32,
       borderRadius: radius.pill,
@@ -593,6 +607,7 @@ const s = createAppStyles(
     },
     pressed: { backgroundColor: colors.elevated },
     ratingPill: {
+      marginTop: ROW_PADDING + (STILL_HEIGHT - 28) / 2,
       height: 28,
       paddingHorizontal: 10,
       flexDirection: 'row',

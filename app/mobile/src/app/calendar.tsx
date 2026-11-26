@@ -101,17 +101,21 @@ export default function CalendarScreen() {
             <Text accessibilityLiveRegion="polite" style={s.month}>
               {visibleMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
             </Text>
-            {/* Under the month, where the settled "no releases" note goes, so a month still
-                loading never reads as an empty one. */}
-            {loading ? (
-              <Text accessibilityLiveRegion="polite" style={s.monthNote}>
-                {result?.needsRefresh && result.events.length > 0
+            {/* One status line under the month, always reserved so the month never moves: a
+                month still loading never reads as an empty one, and an empty one says so. */}
+            <Text
+              accessibilityLiveRegion="polite"
+              importantForAccessibility={loading || quietMonth ? 'auto' : 'no'}
+              style={s.monthNote}
+            >
+              {loading
+                ? result?.needsRefresh && result.events.length > 0
                   ? 'Updating release dates…'
-                  : 'Loading releases…'}
-              </Text>
-            ) : (
-              quietMonth && <Text style={s.monthNote}>No releases from your library</Text>
-            )}
+                  : 'Loading releases…'
+                : quietMonth
+                  ? 'No releases from your library'
+                  : ' '}
+            </Text>
           </View>
           <IconButton
             icon={ChevronRight}
