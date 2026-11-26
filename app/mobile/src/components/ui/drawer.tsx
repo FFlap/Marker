@@ -466,7 +466,6 @@ function MountedDrawerContent({
                       accessibilityLabel="Close"
                       accessible={motion.dismissible}
                       disabled={!motion.dismissible}
-                      hitSlop={{ top: 12, bottom: 12 }}
                       onPress={() => onOpenChange(false)}
                       style={styles.handleTarget}
                     >
@@ -488,7 +487,7 @@ function MountedDrawerContent({
 
 function DrawerHeader({ className, children, ...props }: ViewProps) {
   return (
-    <View className={cn('h-14 w-full justify-center px-5', className)} {...props}>
+    <View className={cn('h-9 w-full justify-center px-5', className)} {...props}>
       <View pointerEvents="none" style={styles.headerTitle}>
         {children}
       </View>
@@ -549,14 +548,16 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.sheet,
     borderTopRightRadius: radius.sheet,
   },
+  // A full 44dp touch target (Android won't take touches outside the parent), balanced by a
+  // shorter header so a sheet's title and content sit where they did.
   handleArea: {
-    height: 24,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
   handleTarget: {
     width: 96,
-    height: 24,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },

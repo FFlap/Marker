@@ -698,7 +698,8 @@ describe('item detail metadata subscriptions', () => {
       .mockImplementationOnce(() => new Promise<void>((resolve) => (resolveRating = resolve)));
     // A second tap on the same star takes off half a star.
     await user.press(view.getByLabelText('Rate 4 stars'));
-    await user.press(view.getByLabelText('Rate 4 stars'));
+    // The selected star now says what it sets: half a star less.
+    await user.press(view.getByLabelText('Rate 3.5 stars'));
     expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
       itemId: 'item',
       season: 1,

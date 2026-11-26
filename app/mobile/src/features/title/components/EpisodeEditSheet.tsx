@@ -70,7 +70,7 @@ export function EpisodeEditSheet({
       onOpenChange={(next) => {
         // A tag still typed in the field is kept when the sheet closes.
         if (!next) {
-          const tags = withPendingTag(draft.tags, pendingTag.current);
+          const tags = withPendingTag(draft.tags, pendingTag.current, tagSuggestions);
           if (tags !== draft.tags) onTagsChange(tags);
           pendingTag.current = '';
         }

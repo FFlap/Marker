@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   mapMovieDetails,
+  mapCategoryPage,
   mapSearchResponse,
   mapSeasonDetails,
   mapTvDetails,
@@ -96,4 +97,19 @@ it('omits retired title facts from provider metadata', () => {
   expect(movie).not.toHaveProperty('voteAverage');
   expect(tv).not.toHaveProperty('voteAverage');
   expect(tv.episodeRunTime).toEqual([24]);
+});
+
+describe('mapCategoryPage', () => {
+  it('labels every result with the category and says whether a later page exists', () => {
+    const payload = {
+      page: 1,
+      total_pages: 3,
+      results: [{ id: 7, name: 'Spy Show', first_air_date: '2022-04-09' }],
+    };
+    expect(mapCategoryPage(payload, 'tv', 1)).toEqual({
+      results: [expect.objectContaining({ id: 7, title: 'Spy Show', mediaType: 'tv' })],
+      hasMore: true,
+    });
+    expect(mapCategoryPage({ ...payload, page: 3 }, 'tv', 3).hasMore).toBe(false);
+  });
 });

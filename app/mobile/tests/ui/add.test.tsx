@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockSearch = jest.fn();
+const mockSearchCategory = jest.fn();
 const mockAddItemAndMarkWatched = jest.fn();
 const mockTouchTitle = jest.fn().mockResolvedValue(undefined);
 const mockAddItem = jest.fn();
@@ -9,13 +10,17 @@ let mockResolvedTitle: Record<string, unknown> | undefined;
 let mockParams: { prefill?: string } = {};
 jest.mock('convex/react', () => ({
   useAction: (ref: string) =>
-    ref === 'addItemAndMarkWatched' ? mockAddItemAndMarkWatched : mockSearch,
+    ref === 'addItemAndMarkWatched'
+      ? mockAddItemAndMarkWatched
+      : ref === 'searchCategory'
+        ? mockSearchCategory
+        : mockSearch,
   useMutation: (ref: string) => (ref === 'touchTitle' ? mockTouchTitle : mockAddItem),
   useQuery: (ref: string) => (ref === 'getTitle' ? mockResolvedTitle : []),
 }));
 jest.mock('@marker/shared/api', () => ({
   api: {
-    tmdb: { searchMulti: 'search' },
+    tmdb: { searchMulti: 'search', searchCategory: 'searchCategory' },
     resolvedMetadata: {
       reads: { getTitle: 'getTitle' },
       touch: { touchTitle: 'touchTitle' },
@@ -39,6 +44,7 @@ describe('add flow', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     mockSearch.mockReset();
+    mockSearchCategory.mockReset();
     mockParams = {};
     mockResolvedTitle = undefined;
     mockTouchTitle.mockClear();
@@ -95,11 +101,17 @@ describe('add flow', () => {
     );
   });
 
-  it('filters search results by movies and TV shows', async () => {
-    mockSearch.mockResolvedValue([
-      { id: 1, mediaType: 'movie', title: 'Rambo' },
-      { id: 2, mediaType: 'tv', title: 'Rambo: The Series' },
-    ]);
+  it('searches movies and TV shows as their own categories, a page at a time', async () => {
+    const movie = { id: 1, mediaType: 'movie', title: 'Rambo' };
+    const show = { id: 2, mediaType: 'tv', title: 'Rambo: The Series' };
+    mockSearch.mockResolvedValue([movie, show]);
+    mockSearchCategory.mockImplementation(async ({ type, page }) =>
+      type === 'movie'
+        ? page === 1
+          ? { results: [movie], hasMore: true }
+          : { results: [{ id: 3, mediaType: 'movie', title: 'Rambo III' }], hasMore: false }
+        : { results: [show], hasMore: false },
+    );
     const view = await render(
       <ToastProvider>
         <Add />
@@ -113,10 +125,17 @@ describe('add flow', () => {
     expect(view.getByText('Rambo: The Series')).toBeTruthy();
 
     await fireEvent.press(view.getByText('Movies'));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
     expect(view.getByText('Rambo')).toBeTruthy();
     expect(view.queryByText('Rambo: The Series')).toBeNull();
+    await fireEvent.press(view.getByText('Load more'));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
+    expect(view.getByText('Rambo III')).toBeTruthy();
+    expect(view.queryByText('Load more')).toBeNull();
+    expect(mockSearchCategory).toHaveBeenCalledWith({ query: 'Rambo', type: 'movie', page: 2 });
 
     await fireEvent.press(view.getByText('TV shows'));
+    await act(async () => jest.advanceTimersByTimeAsync(0));
     expect(view.queryByText('Rambo')).toBeNull();
     expect(view.getByText('Rambo: The Series')).toBeTruthy();
   });

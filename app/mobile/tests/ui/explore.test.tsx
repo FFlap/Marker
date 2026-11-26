@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 const mockSearchMedia = jest.fn();
+const mockSearchCategory = jest.fn();
 const mockFollow = jest.fn();
 const mockUnfollow = jest.fn();
 let mockPeople: unknown[] = [];
@@ -9,7 +10,8 @@ let mockLibrary: unknown[] = [];
 
 jest.mock('@clerk/expo', () => ({ useAuth: () => ({ userId: 'user_explore' }) }));
 jest.mock('convex/react', () => ({
-  useAction: () => mockSearchMedia,
+  useAction: (ref: string) =>
+    ref === 'tmdb.searchCategory' ? mockSearchCategory : mockSearchMedia,
   useMutation: (ref: string) => (ref === 'profiles.follow' ? mockFollow : mockUnfollow),
   useQuery: (ref: string) => {
     if (ref === 'library/items:listItems') return mockLibrary;
@@ -19,7 +21,7 @@ jest.mock('convex/react', () => ({
 }));
 jest.mock('@marker/shared/api', () => ({
   api: {
-    tmdb: { searchMulti: 'tmdb.searchMulti' },
+    tmdb: { searchMulti: 'tmdb.searchMulti', searchCategory: 'tmdb.searchCategory' },
     library: { items: { listItems: 'library/items:listItems' } },
     tags: { searchPublic: 'tags.searchPublic' },
     profiles: {
@@ -50,6 +52,8 @@ describe('Explore', () => {
     mockLibrary = [];
     mockSearchMedia.mockReset();
     mockSearchMedia.mockResolvedValue([]);
+    mockSearchCategory.mockReset();
+    mockSearchCategory.mockResolvedValue({ results: [], hasMore: false });
     mockFollow.mockReset();
     mockUnfollow.mockReset();
     (jest.requireMock('expo-router').router.push as jest.Mock).mockReset();
@@ -66,10 +70,13 @@ describe('Explore', () => {
     );
 
   it('searches each title category once and reuses the results when returning', async () => {
-    mockSearchMedia.mockResolvedValue([
-      { id: 1, mediaType: 'movie', title: 'Shared movie' },
-      { id: 2, mediaType: 'tv', title: 'Shared show' },
-    ]);
+    const movie = { id: 1, mediaType: 'movie', title: 'Shared movie' };
+    const show = { id: 2, mediaType: 'tv', title: 'Shared show' };
+    mockSearchMedia.mockResolvedValue([movie, show]);
+    mockSearchCategory.mockImplementation(async ({ type }) => ({
+      results: [type === 'movie' ? movie : show],
+      hasMore: false,
+    }));
     const q = await view();
     await fireEvent.changeText(
       q.getByLabelText('Search movies, TV shows, people, and tags'),
@@ -90,10 +97,10 @@ describe('Explore', () => {
     await fireEvent.press(q.getByRole('tab', { name: 'All' }));
     await act(async () => jest.advanceTimersByTimeAsync(0));
     expect(q.getByText('Shared movie')).toBeTruthy();
-    expect(mockSearchMedia.mock.calls).toEqual([
-      [{ query: 'Shared' }],
-      [{ query: 'Shared', type: 'movie' }],
-      [{ query: 'Shared', type: 'tv' }],
+    expect(mockSearchMedia.mock.calls).toEqual([[{ query: 'Shared' }]]);
+    expect(mockSearchCategory.mock.calls).toEqual([
+      [{ query: 'Shared', type: 'movie', page: 1 }],
+      [{ query: 'Shared', type: 'tv', page: 1 }],
     ]);
   });
 

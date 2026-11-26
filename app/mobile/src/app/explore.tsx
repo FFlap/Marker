@@ -25,6 +25,7 @@ import { SecondaryHeader } from '@/components/BackButton';
 import { SearchResultsSkeleton } from '@/components/PageSkeletons';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import {
+  Button,
   EmptyState,
   IconButton,
   SearchField,
@@ -114,6 +115,9 @@ export default function Explore() {
     loading: mediaLoading,
     failed: mediaFailed,
     retry: retryMedia,
+    hasMore: mediaHasMore,
+    loadingMore: mediaLoadingMore,
+    loadMore: loadMoreMedia,
   } = useTitleSearch(query, {
     enabled: filter !== 'people' && filter !== 'tags',
     // Movies and TV shows search their own category, so "See all" isn't limited to the
@@ -408,14 +412,26 @@ export default function Explore() {
               />
             ))
           ) : (
-            visibleMedia.map((result) => (
-              <MediaResult
-                key={`${result.mediaType}-${result.id}`}
-                result={result}
-                saved={isSaved(result)}
-                onPress={openTitle}
-              />
-            ))
+            <>
+              {visibleMedia.map((result) => (
+                <MediaResult
+                  key={`${result.mediaType}-${result.id}`}
+                  result={result}
+                  saved={isSaved(result)}
+                  onPress={openTitle}
+                />
+              ))}
+              {/* A category lists every page of its own search, one page at a time. */}
+              {mediaHasMore && (
+                <Button
+                  title={mediaLoadingMore ? 'Loading…' : 'Load more'}
+                  variant="secondary"
+                  disabled={mediaLoadingMore}
+                  onPress={loadMoreMedia}
+                  style={s.loadMore}
+                />
+              )}
+            </>
           )}
         </SwipeTabsArea>
       </KeyboardScrollView>
@@ -622,6 +638,7 @@ const ROW_CHEVRON = { marginRight: -5 };
 const s = createAppStyles(
   {
     root: { flex: 1, backgroundColor: colors.bg },
+    loadMore: { alignSelf: 'center', marginTop: 16 },
     content: {
       width: '100%',
       maxWidth: 760,

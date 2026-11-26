@@ -93,7 +93,7 @@ function LibraryEntryDrawerSession({
   const pendingTag = useRef('');
   const { draft } = editor;
   const withTyped = (entry: LibraryEntryDraft) => {
-    const tags = withPendingTag(entry.tags, pendingTag.current);
+    const tags = withPendingTag(entry.tags, pendingTag.current, suggestions);
     return tags === entry.tags ? entry : { ...entry, tags };
   };
 
@@ -189,13 +189,10 @@ function LibraryEntryDrawerSession({
                   value={draft.timesWatched}
                   min={1}
                   onChange={setTimesWatched}
-                  // Iconned only beside "Also in Watching", to line up with its clock.
                   icon={
-                    mode === 'update' && offerAlsoWatching ? (
-                      <SettingIcon>
-                        <Hash size={17} color={colors.text} strokeWidth={1.8} />
-                      </SettingIcon>
-                    ) : undefined
+                    <SettingIcon>
+                      <Hash size={17} color={colors.text} strokeWidth={1.8} />
+                    </SettingIcon>
                   }
                 />
               </View>

@@ -34,6 +34,8 @@ import { useTitleSearch } from '@/hooks/use-title-search';
 import { SwipeTabsArea } from '@/components/SwipeTabsArea';
 import { SearchFailed } from '@/components/SearchFailed';
 import { useChipInView } from '@/hooks/use-chip-in-view';
+import Hash from 'lucide-react-native/icons/hash';
+import { SettingIcon } from '@/components/settings/SettingIcon';
 type MediaFilter = 'all' | SearchResult['mediaType'];
 const mediaFilters: { value: MediaFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -62,10 +64,15 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   const [filter, setFilter] = useState<MediaFilter>('all');
   const chipStrip = useChipInView(filter);
   const [picked, setPicked] = useState<SearchResult | undefined>(initialResult);
-  const { results, loading, ready, failed, retry } = useTitleSearch(query, {
-    enabled: !picked,
-    delayMs: 350,
-  });
+  const { results, loading, ready, failed, retry, hasMore, loadingMore, loadMore } = useTitleSearch(
+    query,
+    {
+      enabled: !picked,
+      delayMs: 350,
+      // Movies and TV shows search their own category, like Explore.
+      type: filter === 'all' ? undefined : filter,
+    },
+  );
   const library = useQuery(api.library.items.listItems);
   const libraryEntry = (result: SearchResult) =>
     library?.find((item) => item.tmdbId === result.id && item.mediaType === result.mediaType);
@@ -147,7 +154,7 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
           rating,
           timesWatched: times,
           // A tag still typed in the field counts too.
-          tags: withPendingTag(tags, tagPrefix),
+          tags: withPendingTag(tags, tagPrefix, suggestions),
         };
         if (picked.mediaType === 'tv' && status === 'watched') {
           yield* saveLibrary(() =>
@@ -288,6 +295,15 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
                 );
               })
             )}
+            {!loading && hasMore && (
+              <Button
+                title={loadingMore ? 'Loading…' : 'Load more'}
+                variant="secondary"
+                disabled={loadingMore}
+                onPress={loadMore}
+                style={s.loadMore}
+              />
+            )}
           </SwipeTabsArea>
         ) : (
           <View style={s.form}>
@@ -319,7 +335,17 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
             </ControlSection>
             {status === 'watched' && (
               <View style={s.watchedGroup}>
-                <Stepper label="Times watched" value={times} onChange={setTimes} min={1} />
+                <Stepper
+                  label="Times watched"
+                  value={times}
+                  onChange={setTimes}
+                  min={1}
+                  icon={
+                    <SettingIcon>
+                      <Hash size={17} color={colors.text} strokeWidth={1.8} />
+                    </SettingIcon>
+                  }
+                />
               </View>
             )}
             <RatingControl value={rating} onChange={setRating} />
@@ -352,6 +378,7 @@ const ROW_CHEVRON = { marginRight: -5 };
 
 const s = createAppStyles(
   {
+    loadMore: { alignSelf: 'center', marginTop: 16 },
     root: { flex: 1, backgroundColor: colors.bg },
     content: {
       width: '100%',

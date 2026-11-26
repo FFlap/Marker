@@ -2,7 +2,7 @@ import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import Plus from 'lucide-react-native/icons/plus';
@@ -14,7 +14,13 @@ import { PosterCaption } from '@/components/ui/PosterCaption';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerScrollView,
+  DrawerTitle,
+} from '@/components/ui/drawer';
 import { SearchField, SectionHeading, TextAction } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
 import { radius, typeRamp } from '@/constants/theme';
@@ -56,6 +62,9 @@ export function ProfileFavorites({
 }) {
   const runOperation = useOperation();
   const [favoriteSearch, setFavoriteSearch] = useState('');
+  // The picker's list fills the sheet below its title and search field (about 220dp).
+  const { height: windowHeight } = useWindowDimensions();
+  const pickerListHeight = Math.max(240, Math.round(windowHeight * 0.92 - 220));
   const [pickerType, setPickerType] = useState<FavoriteSection>();
   const eligible = useQuery(
     api.profileFavorites.eligible,
@@ -306,8 +315,14 @@ export function ProfileFavorites({
               placeholder="Search titles"
               containerStyle={s.pickerSearch}
             />
-            {/* The sheet scrolls as a whole, so its drag-to-close gesture stays in charge. */}
-            <View style={s.pickerContent}>
+            {/* A list of fixed height under a pinned search field, so the sheet (and the field
+                being typed in) stays put however many titles match. */}
+            <DrawerScrollView
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
+              style={{ height: pickerListHeight }}
+              contentContainerStyle={s.pickerContent}
+            >
               {currentFavorites.length > 0 && (
                 <>
                   <Text style={s.pickerGroup}>Your favorites</Text>
@@ -372,7 +387,7 @@ export function ProfileFavorites({
                   <Text style={s.emptyText}>No matching titles.</Text>
                 )
               )}
-            </View>
+            </DrawerScrollView>
           </DrawerContent>
         )}
       </Drawer>

@@ -155,20 +155,19 @@ export function RatingControl({
           const wholeRating = index + 1;
           const halfRating = index + 0.5;
           const onThisStar = starValue === wholeRating || starValue === halfRating;
+          // What activating this star sets: the selected whole star steps down to its half.
+          const target = starValue === wholeRating ? halfRating : wholeRating;
           return (
             <Pressable
               key={wholeRating}
               accessibilityRole="radio"
-              accessibilityLabel={`Rate ${wholeRating} ${wholeRating === 1 ? 'star' : 'stars'}`}
-              accessibilityHint={
-                starValue === wholeRating ? `Tap again for ${halfRating} stars` : undefined
-              }
+              accessibilityLabel={`Rate ${formatRating(target)} ${target === 1 ? 'star' : 'stars'}`}
               // The picked star says the exact rating, half stars included ("3.5 stars").
               accessibilityState={{ checked: onThisStar }}
               accessibilityValue={
                 onThisStar ? { text: `${formatRating(starValue)} stars` } : undefined
               }
-              onPress={() => onChange(starValue === wholeRating ? halfRating : wholeRating)}
+              onPress={() => onChange(target)}
               style={styles.ratingButton}
             >
               <StarGlyph fill={Math.max(0, Math.min(1, starValue - index))} />
@@ -176,14 +175,8 @@ export function RatingControl({
           );
         })}
       </View>
-      {/* Stays in place once rated (just hidden), so the sections below don't jump. */}
-      <Text
-        accessibilityElementsHidden={value !== undefined}
-        importantForAccessibility={value === undefined ? 'auto' : 'no-hide-descendants'}
-        style={[styles.ratingHint, value !== undefined && styles.ratingHintHidden]}
-      >
-        Tap a star twice for a half star.
-      </Text>
+      {/* Always shown: half stars stay discoverable after the first rating. */}
+      <Text style={styles.ratingHint}>Tap the selected star again for a half star.</Text>
     </ControlSection>
   );
 }
@@ -278,17 +271,18 @@ const MAX_TAGS = 20;
 const MAX_TAG_LENGTH = 40;
 
 /**
- * Tags plus any text still typed in the tag field, so closing a sheet or saving doesn't drop
- * a tag the person typed but didn't confirm.
+ * Tags plus a tag still typed in the field, so closing a sheet or saving doesn't drop it. Only
+ * a whole tag counts: an existing tag typed in full, or new text that matches no existing tag.
+ * Text that only partly matches an existing tag was a search, and is left out.
  */
-export function withPendingTag(tags: string[], pending: string) {
-  const tag = pending.trim().slice(0, MAX_TAG_LENGTH);
-  const key = tag.toLocaleLowerCase();
-  if (
-    !tag ||
-    tags.length >= MAX_TAGS ||
-    tags.some((entry) => entry.trim().toLocaleLowerCase() === key)
-  )
+export function withPendingTag(tags: string[], pending: string, suggestions: string[] = []) {
+  const typed = pending.trim().slice(0, MAX_TAG_LENGTH);
+  const key = typed.toLocaleLowerCase();
+  if (!typed || tags.length >= MAX_TAGS) return tags;
+  const existing = suggestions.find((tag) => tag.trim().toLocaleLowerCase() === key);
+  if (!existing && suggestions.some((tag) => tag.toLocaleLowerCase().includes(key))) return tags;
+  const tag = existing?.trim() ?? typed;
+  if (tags.some((entry) => entry.trim().toLocaleLowerCase() === tag.toLocaleLowerCase()))
     return tags;
   return [...tags, tag];
 }
@@ -504,7 +498,6 @@ const styles = createAppStyles(
       fontVariant: ['tabular-nums'],
     },
     ratingHint: { ...typeRamp.meta, marginTop: -4, textAlign: 'center' },
-    ratingHintHidden: { opacity: 0 },
 
     tagField: { flex: 0 },
     tagFieldClear: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },

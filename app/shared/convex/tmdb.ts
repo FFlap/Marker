@@ -90,6 +90,18 @@ export function mapSearchResponse(payload: unknown) {
       ];
     });
 }
+/** One page of a single-category search, and whether the provider has a later page. */
+export function mapCategoryPage(payload: unknown, type: 'movie' | 'tv', page: number) {
+  const root = record(payload) ?? malformed();
+  const totalPages = typeof root.total_pages === 'number' ? root.total_pages : page;
+  return {
+    results: mapSearchResponse({
+      ...root,
+      results: requiredRecords(root.results).map((result) => ({ ...result, media_type: type })),
+    }),
+    hasMore: page < totalPages,
+  };
+}
 export function mapMovieDetails(r: Json) {
   const genreNames = genres(r.genres);
   return {
@@ -275,18 +287,46 @@ async function authorizeAction(ctx: Parameters<typeof requireUser>[0] & { runMut
   if (!allowed) throw new Error('Too many requests — try again shortly');
 }
 export const searchMulti = action({
-  args: {
-    query: v.string(),
-    /** Only movies or only TV shows, for a category's full list rather than the mixed page. */
-    type: v.optional(v.union(v.literal('movie'), v.literal('tv'))),
-  },
+  args: { query: v.string() },
   returns: providerSearchResultsValidator,
-  handler: async (ctx, { query, type }) => {
+  handler: async (ctx, { query }) => {
     await authorizeAction(ctx);
     const normalized = query.trim();
     if (normalized.length < 1 || normalized.length > 100)
       throw new Error('Search query must be between 1 and 100 characters');
-    return search(ctx, normalized, type);
+    return search(ctx, normalized);
+  },
+});
+
+const searchCategoryEffect = Effect.fnUntraced(function* (
+  ctx: ProviderRequestCtx,
+  query: string,
+  type: 'movie' | 'tv',
+  page: number,
+) {
+  const raw = yield* requestEffect(
+    ctx,
+    `/search/${type}?query=${encodeURIComponent(query)}&page=${page}`,
+  );
+  return yield* parseProvider(() => mapCategoryPage(raw, type, page));
+});
+
+/** One page of a single category (movies or TV shows), for its full, paged list. */
+export const searchCategory = action({
+  args: {
+    query: v.string(),
+    type: v.union(v.literal('movie'), v.literal('tv')),
+    page: v.optional(v.number()),
+  },
+  returns: v.object({ results: providerSearchResultsValidator, hasMore: v.boolean() }),
+  handler: async (ctx, { query, type, page = 1 }) => {
+    await authorizeAction(ctx);
+    const normalized = query.trim();
+    if (normalized.length < 1 || normalized.length > 100)
+      throw new Error('Search query must be between 1 and 100 characters');
+    if (!Number.isInteger(page) || page < 1 || page > 20)
+      throw new Error('Search page must be between 1 and 20');
+    return runProviderEffect(searchCategoryEffect(ctx, normalized, type, page));
   },
 });
 export const internalSearchTv = internalAction({
