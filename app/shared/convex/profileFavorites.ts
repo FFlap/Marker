@@ -54,7 +54,32 @@ export const eligible = query({
           q.eq('userId', userId).eq('status', 'watched').eq('mediaType', mediaType),
         )
         .take(limit);
+    // A search finds titles by their words across the whole library (not just the first
+    // page of a type); every typed word must appear in the title.
+    const words = normalizedSearch.split(/\s+/).filter(Boolean);
+    const searchWatched = (mediaType?: 'tv' | 'movie') =>
+      ctx.db
+        .query('items')
+        .withSearchIndex('search_title', (q) => {
+          const matched = q
+            .search('normalizedTitle', normalizedSearch)
+            .eq('userId', userId)
+            .eq('status', 'watched');
+          return mediaType ? matched.eq('mediaType', mediaType) : matched;
+        })
+        .take(500);
     const watchedItems = async () => {
+      if (normalizedSearch) {
+        const found =
+          section === 'tv' || section === 'movie'
+            ? await searchWatched(section)
+            : section === 'anime'
+              ? (await Promise.all([searchWatched('tv'), searchWatched('movie')])).flat()
+              : await searchWatched();
+        return found
+          .filter((item) => words.every((word) => item.normalizedTitle.includes(word)))
+          .sort((left, right) => (left.normalizedTitle < right.normalizedTitle ? -1 : 1));
+      }
       if (section === 'tv' || section === 'movie') return watchedOfType(section, 1000);
       if (section === 'anime') {
         // Anime can be either type; both halves are merged back into title order.
@@ -79,12 +104,8 @@ export const eligible = query({
         .take(50),
     ]);
     const selected = new Set(favorites.map((favorite) => favorite.itemId));
-    // Anywhere in the title, like the "Your favorites" group ("oshi" finds 【OSHI NO KO】).
     const available = items.filter(
-      (item) =>
-        item.deletingAt === undefined &&
-        !selected.has(item._id) &&
-        (!normalizedSearch || item.normalizedTitle.includes(normalizedSearch)),
+      (item) => item.deletingAt === undefined && !selected.has(item._id),
     );
     // Canonical lookups are bounded, so likely members by their stored type go first (a shelf
     // can't be crowded out by another shelf's titles), then the rest in case the stored type is

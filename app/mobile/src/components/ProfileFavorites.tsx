@@ -232,9 +232,10 @@ export function ProfileFavorites({
   const noWatchedMatches =
     !!favoriteSearch.trim() && eligible !== undefined && !pickerItems?.length;
   // The search narrows both groups, so a favorite to remove is as easy to find as one to add.
-  const favoriteQuery = favoriteSearch.trim().toLocaleLowerCase();
-  const currentFavorites = (pickerType ? displayedFor(pickerType) : []).filter(
-    (favorite) => !favoriteQuery || favorite.title.toLocaleLowerCase().includes(favoriteQuery),
+  // Every typed word appears in the title, the same rule the search uses for titles to add.
+  const favoriteWords = favoriteSearch.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const currentFavorites = (pickerType ? displayedFor(pickerType) : []).filter((favorite) =>
+    favoriteWords.every((word) => favorite.title.toLocaleLowerCase().includes(word)),
   );
 
   return (

@@ -404,6 +404,7 @@ export function ProfileMetrics({
     [period, stats.watchActivity, today],
   );
   const library = useMemo(() => (items ? analyzeLibrary(items) : undefined), [items]);
+  const rated = library ? library.ratings.reduce((sum, count) => sum + count, 0) : 0;
   const change = activity.total - activity.previousTotal;
   const busiest = activity.weekdays.reduce(
     (best, day) => (day.episodes > best.episodes ? day : best),
@@ -555,9 +556,15 @@ export function ProfileMetrics({
           </Card>
           <Card
             title="Ratings"
-            detail={stats.avgRating ? `Average ★ ${stats.avgRating.toFixed(1)}` : undefined}
+            // Its bars measure against the rated titles, so the header says how many.
+            detail={
+              rated
+                ? `${plural(rated, 'rated title')} · Average ★ ${stats.avgRating?.toFixed(1) ?? '–'}`
+                : undefined
+            }
           >
             <HorizontalBars
+              total={rated || undefined}
               rows={RATING_ROWS.map((row) => ({
                 label: row.label,
                 value: library.ratings[row.index]!,
@@ -566,7 +573,9 @@ export function ProfileMetrics({
           </Card>
           {library.genres.length > 0 && (
             <Card title="Top genres">
+              {/* Against the title count, like By status, so equal tracks mean equal scales. */}
               <HorizontalBars
+                total={items?.length ?? stats.totalItems}
                 rows={library.genres.map((genre) => ({ label: genre.genre, value: genre.count }))}
               />
             </Card>

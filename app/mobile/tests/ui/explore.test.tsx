@@ -246,7 +246,7 @@ describe('Explore', () => {
       await jest.advanceTimersByTimeAsync(350);
     });
     await waitFor(() => expect(q.getByText('Avengers: Endgame')).toBeTruthy());
-    await fireEvent.press(q.getByLabelText('View Avengers: Endgame, in your library'));
+    await fireEvent.press(q.getByLabelText(/^View Avengers: Endgame, .*in your library$/));
     expect(jest.requireMock('expo-router').router.push).toHaveBeenCalledWith('/item/existing-item');
   });
 });

@@ -88,7 +88,12 @@ export default defineSchema({
       'mediaType',
       'nextEpisode.undatedReleased',
     ])
-    .index('by_user_also_watching', ['userId', 'alsoWatching']),
+    .index('by_user_also_watching', ['userId', 'alsoWatching'])
+    // Title words, for finding a watched title by name however large the library is.
+    .searchIndex('search_title', {
+      searchField: 'normalizedTitle',
+      filterFields: ['userId', 'status', 'mediaType'],
+    }),
   profileFavorites: defineTable({
     userId: v.id('users'),
     itemId: v.id('items'),

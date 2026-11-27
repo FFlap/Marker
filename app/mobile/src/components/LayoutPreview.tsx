@@ -70,10 +70,12 @@ export function LayoutPreview({
   // height, so the controls below stay put while a slider is dragged.
   const shown = source.slice(0, view === 'posters' ? gridColumns * 2 : listColumns === 2 ? 8 : 6);
   const typography = listTypography(textSize);
-  // Fixed for the screen width (never for the setting), and tall enough that the first row
-  // of the biggest posters (three per row) shows with its captions above the fade.
+  // Fixed for the screen width and layout (never moved by a slider), and tall enough that the
+  // first row of the biggest posters (three per row) shows with its captions above the fade.
   const largestRow = width > 0 ? gridMetrics(width, 3, PixelRatio.get()).itemWidth * 1.5 + 38 : 0;
-  const windowHeight = Math.max(WINDOW_HEIGHT, Math.ceil(largestRow + FADE));
+  // List rows are shorter, so the list preview keeps the compact window.
+  const windowHeight =
+    view === 'posters' ? Math.max(WINDOW_HEIGHT, Math.ceil(largestRow + FADE)) : WINDOW_HEIGHT;
   return (
     <View
       accessibilityElementsHidden

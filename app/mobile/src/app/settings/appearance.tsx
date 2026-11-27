@@ -81,8 +81,11 @@ export default function AppearanceSettings() {
           Loading appearance
         </Text>
       )}
+      {/* The preview stays pinned at the top while the controls scroll under it, so its
+          change is always in view. */}
       <ScrollView
         contentContainerStyle={s.content}
+        stickyHeaderIndices={[0]}
         style={!loaded && s.waiting}
         pointerEvents={loaded ? 'auto' : 'none'}
         accessibilityElementsHidden={!loaded}

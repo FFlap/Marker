@@ -164,7 +164,7 @@ it('shows period activity, streaks, the heatmap and library breakdowns on the st
   expect(view.getByRole('header', { name: 'All time' })).toBeTruthy();
   expect(view.getByText('Busiest days')).toBeTruthy();
   expect(view.getByLabelText('Watched, 1')).toBeTruthy();
-  expect(view.getByText('Average ★ 8.3')).toBeTruthy();
+  expect(view.getByText('1 rated title · Average ★ 8.3')).toBeTruthy();
 
   await act(async () => fireEvent.press(view.getByLabelText('Week')));
   expect(view.getByText('Episodes watched · last 7 days')).toBeTruthy();

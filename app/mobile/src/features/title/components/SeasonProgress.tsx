@@ -69,16 +69,23 @@ export function SeasonProgress({
           )
         }
       />
-      {total > 0 && (
-        <View
-          accessible
-          accessibilityRole="progressbar"
-          accessibilityLabel="Season progress"
-          accessibilityValue={{ min: 0, max: total, now: shown }}
-          style={styles.track}
-        >
-          <View style={[styles.fill, { width: `${percent}%` }]} />
+      {/* While the counts load, the track keeps its place as a placeholder with no value. */}
+      {loading ? (
+        <View style={styles.track}>
+          <SkeletonShimmer />
         </View>
+      ) : (
+        total > 0 && (
+          <View
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel="Season progress"
+            accessibilityValue={{ min: 0, max: total, now: shown }}
+            style={styles.track}
+          >
+            <View style={[styles.fill, { width: `${percent}%` }]} />
+          </View>
+        )
       )}
       <View style={styles.toggleRow}>
         {nothingAired ? (

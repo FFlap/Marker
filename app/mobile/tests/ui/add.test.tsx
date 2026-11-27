@@ -223,12 +223,12 @@ describe('add flow', () => {
     );
     await fireEvent.changeText(view.getByTestId('tmdb-search'), 'Fi');
     await act(async () => jest.advanceTimersByTimeAsync(350));
-    await fireEvent.press(view.getByLabelText('Select First'));
+    await fireEvent.press(view.getByLabelText(/^Select First,/));
     await fireEvent.press(view.getByText('Dropped'));
     // A different search and title: the dropped status doesn't come along.
     await fireEvent.changeText(view.getByTestId('tmdb-search'), 'Se');
     await act(async () => jest.advanceTimersByTimeAsync(350));
-    await fireEvent.press(view.getByLabelText('Select Second'));
+    await fireEvent.press(view.getByLabelText(/^Select Second,/));
     await fireEvent.press(view.getByTestId('add-submit'));
     expect(mockAddItem).toHaveBeenCalledWith(
       expect.objectContaining({ tmdbId: 2, status: 'watchlist' }),
@@ -248,7 +248,7 @@ describe('add flow', () => {
     );
     await fireEvent.changeText(view.getByTestId('tmdb-search'), 'Avengers');
     await act(async () => jest.advanceTimersByTimeAsync(350));
-    await fireEvent.press(view.getByLabelText('Select Avengers: Endgame'));
+    await fireEvent.press(view.getByLabelText(/^Select Avengers: Endgame,/));
     expect(mockTouchTitle).toHaveBeenCalledWith({
       mediaType: 'movie',
       tmdbId: 299534,
@@ -269,7 +269,7 @@ describe('add flow', () => {
     );
     await fireEvent.changeText(view.getByTestId('tmdb-search'), 'Breaking Bad');
     await act(async () => jest.advanceTimersByTimeAsync(350));
-    await fireEvent.press(view.getByLabelText('Select Breaking Bad'));
+    await fireEvent.press(view.getByLabelText(/^Select Breaking Bad,/));
     await fireEvent.press(view.getByText('Watched'));
     await fireEvent.press(view.getByTestId('add-submit'));
 

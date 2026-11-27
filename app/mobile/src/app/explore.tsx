@@ -539,7 +539,15 @@ function MediaResult({
   return (
     <NativePressable
       accessibilityRole="button"
-      accessibilityLabel={`View ${result.title}${saved ? ', in your library' : ''}`}
+      // The year and kind tell same-named titles apart, as the row shows.
+      accessibilityLabel={[
+        `View ${result.title}`,
+        result.releaseDate?.slice(0, 4),
+        result.mediaType === 'movie' ? 'movie' : 'TV show',
+        saved && 'in your library',
+      ]
+        .filter(Boolean)
+        .join(', ')}
       onPress={() => onPress(result)}
       style={s.mediaResult}
       pressedStyle={s.pressed}

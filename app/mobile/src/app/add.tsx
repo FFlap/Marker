@@ -264,9 +264,15 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
                 return (
                   <NativePressable
                     accessibilityRole="button"
-                    accessibilityLabel={
-                      entry ? `Open ${r.title}, in your library` : `Select ${r.title}`
-                    }
+                    // The year and kind tell same-named titles apart, as the row shows.
+                    accessibilityLabel={[
+                      entry ? `Open ${r.title}` : `Select ${r.title}`,
+                      r.releaseDate?.slice(0, 4),
+                      r.mediaType === 'movie' ? 'movie' : 'TV show',
+                      entry && 'in your library',
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
                     testID={`result-${r.id}`}
                     key={`${r.mediaType}-${r.id}`}
                     onPress={() => (entry ? router.push(`/item/${entry._id}`) : selectResult(r))}

@@ -464,6 +464,10 @@ describe('episode hub and profile favorites', () => {
     expect(await asUser.query(api.profileFavorites.eligible, { section: 'movie' })).toEqual([
       expect.objectContaining({ title: 'Zulu Movie', mediaType: 'movie' }),
     ]);
+    // A search reaches a show past the first thousand of its type.
+    expect(
+      await asUser.query(api.profileFavorites.eligible, { section: 'tv', search: '1000' }),
+    ).toEqual([expect.objectContaining({ title: 'Alpha show 1000' })]);
   });
   it('finds a live-action show behind a page of anime series', async () => {
     const { t, userId, asUser } = await setup();
