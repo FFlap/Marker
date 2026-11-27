@@ -54,10 +54,11 @@ export function CastSection({ members, loading }: { members: Member[]; loading: 
                 key={member.characterImageUrl ?? member.profilePath ?? ''}
                 member={member}
               />
-              <Text numberOfLines={1} style={styles.name}>
+              {/* Two lines each, so longer names read in full instead of cutting off. */}
+              <Text numberOfLines={2} style={styles.name}>
                 {member.name}
               </Text>
-              <Text numberOfLines={1} style={styles.role}>
+              <Text numberOfLines={2} style={styles.role}>
                 {member.character}
               </Text>
             </View>

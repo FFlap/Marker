@@ -95,7 +95,10 @@ export function EpisodeCard({
               ? `Mark episode ${episode.episode} unwatched`
               : `Mark episode ${episode.episode} watched`
           }
-          // Until the saved state loads the circle can't say watched or not, so it waits.
+          // Until the saved state loads the circle can't say watched or not, so it waits
+          // (and screen readers skip it rather than hear "Mark watched").
+          accessibilityElementsHidden={!editable}
+          importantForAccessibility={editable ? 'auto' : 'no-hide-descendants'}
           accessibilityState={{ checked: editable && watched, disabled: pending || !editable }}
           disabled={pending || !editable}
           hitSlop={10}

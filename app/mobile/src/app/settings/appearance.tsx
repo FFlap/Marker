@@ -75,10 +75,17 @@ export default function AppearanceSettings() {
       />
       {/* Held back (space kept) until the saved layout is known, so the preview and controls
           never show a default that isn't yours. */}
+      {!loaded && (
+        <Text accessibilityRole="progressbar" style={s.loadingLabel}>
+          Loading appearance
+        </Text>
+      )}
       <ScrollView
         contentContainerStyle={s.content}
         style={!loaded && s.waiting}
         pointerEvents={loaded ? 'auto' : 'none'}
+        accessibilityElementsHidden={!loaded}
+        importantForAccessibility={loaded ? 'auto' : 'no-hide-descendants'}
       >
         <LayoutPreview
           view={current.defaultView}
@@ -163,6 +170,8 @@ export default function AppearanceSettings() {
 const s = createAppStyles(
   {
     waiting: { opacity: 0 },
+    // Read by screen readers only; the page itself stays empty until the layout is known.
+    loadingLabel: { position: 'absolute', opacity: 0 },
     root: { flex: 1, backgroundColor: colors.bg },
     content: {
       width: '100%',

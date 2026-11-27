@@ -346,7 +346,7 @@ export function ProfileFavorites({
                         style={s.pickerAction}
                         pressedStyle={s.addPressed}
                       >
-                        <Minus size={16} color={colors.text} strokeWidth={2.2} />
+                        <Minus size={20} color={colors.text} strokeWidth={2} />
                       </NativePressable>
                     </View>
                   ))}
@@ -374,7 +374,7 @@ export function ProfileFavorites({
                       {item.title}
                     </Text>
                     <View style={s.pickerAction}>
-                      <Plus size={16} color={colors.text} strokeWidth={2.2} />
+                      <Plus size={20} color={colors.text} strokeWidth={2} />
                     </View>
                   </NativePressable>
                 ))
@@ -440,11 +440,11 @@ const s = createAppStyles(
       paddingVertical: 6,
     },
     pickerGroupNext: { marginTop: 12 },
+    // A transparent glyph, like other icon buttons; the target stays 48dp (remove) or the
+    // whole row (add).
     pickerAction: {
       width: 32,
       height: 32,
-      borderRadius: radius.pill,
-      backgroundColor: colors.elevated,
       alignItems: 'center',
       justifyContent: 'center',
     },

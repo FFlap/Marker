@@ -1,14 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  ReduceMotion,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-  type SharedValue,
-} from 'react-native-reanimated';
 import TrendingDown from 'lucide-react-native/icons/trending-down';
 import TrendingUp from 'lucide-react-native/icons/trending-up';
 import { Chip, SectionHeading, Segmented, StatTile } from '@/components/ui/primitives';
@@ -45,7 +37,6 @@ export type ProfileStatsValue = {
 };
 
 const CHART_HEIGHT = 128;
-const grow = { duration: 520, easing: Easing.bezier(0.22, 1, 0.36, 1) } as const;
 const periodWord: Record<StatsPeriod, string> = {
   week: 'last 7 days',
   month: 'last 30 days',
@@ -83,19 +74,9 @@ function shortDate(date: string, today: string) {
 
 const oneDecimal = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1));
 
-function useGrowth(key: string) {
-  const progress = useSharedValue(0);
-  useEffect(() => {
-    progress.set(0);
-    progress.set(withTiming(1, { ...grow, reduceMotion: ReduceMotion.System }));
-  }, [key, progress]);
-  return progress;
-}
-
 function Bar({
   value,
   max,
-  progress,
   highlighted,
   peak,
   peakDate,
@@ -103,7 +84,6 @@ function Bar({
 }: {
   value: number;
   max: number;
-  progress: SharedValue<number>;
   highlighted: boolean;
   peak: boolean;
   /** Shown beside the peak value where the axis doesn't name the day ("22 · Nov 23"). */
@@ -112,7 +92,7 @@ function Bar({
   peakAlign?: 'left' | 'center' | 'right';
 }) {
   const height = max && value ? Math.max(4, (value / max) * CHART_HEIGHT) : 0;
-  const style = useAnimatedStyle(() => ({ height: height * progress.get() }));
+  // Drawn at its final size: a chart must never show anything but its data.
   return (
     <View style={s.barSlot}>
       {peak && (
@@ -129,7 +109,7 @@ function Bar({
       )}
       {/* Empty days keep a stub, so every day (today included) has a visible slot. */}
       {value ? (
-        <Animated.View style={[s.bar, highlighted ? s.barStrong : s.barSoft, style]} />
+        <View style={[s.bar, highlighted ? s.barStrong : s.barSoft, { height }]} />
       ) : (
         <View style={s.barEmpty} />
       )}
@@ -146,7 +126,6 @@ function ActivityChart({
   periodKey: string;
   summary: string;
 }) {
-  const progress = useGrowth(periodKey);
   const max = Math.max(0, ...buckets.map((bucket) => bucket.episodes));
   let peakIndex = -1;
   buckets.forEach((bucket, index) => {
@@ -202,7 +181,6 @@ function ActivityChart({
             key={bucket.key}
             value={bucket.episodes}
             max={max}
-            progress={progress}
             peak={index === labelled}
             // A picked bar always names its day; the peak does wherever the axis doesn't
             // name its own bar (Month, and Year's unlabelled months).
@@ -291,18 +269,15 @@ function Card({
 
 function HorizontalBars({
   rows,
-  progressKey,
   // One label column for every bar card, so stacked charts start their bars on one line.
   labelWidth = BAR_LABEL_WIDTH,
   total,
 }: {
   rows: { label: string; value: number; display?: string }[];
-  progressKey: string;
   labelWidth?: number;
   /** Bars measure against this (such as the title count) instead of the largest row. */
   total?: number;
 }) {
-  const progress = useGrowth(progressKey);
   const peak = Math.max(0, ...rows.map((row) => row.value));
   const max = total ?? peak;
   return (
@@ -315,7 +290,6 @@ function HorizontalBars({
           display={row.display ?? row.value.toLocaleString()}
           max={max}
           strong={peak > 0 && row.value === peak}
-          progress={progress}
           labelWidth={labelWidth}
         />
       ))}
@@ -329,7 +303,6 @@ function HorizontalBar({
   display,
   max,
   strong,
-  progress,
   labelWidth,
 }: {
   label: string;
@@ -338,20 +311,17 @@ function HorizontalBar({
   max: number;
   /** The largest row is drawn in white. */
   strong: boolean;
-  progress: SharedValue<number>;
   labelWidth: number;
 }) {
   const fraction = max ? value / max : 0;
-  const style = useAnimatedStyle(() => ({
-    width: `${Math.max(value ? 3 : 0, fraction * 100 * progress.get())}%`,
-  }));
+  const width = `${Math.max(value ? 3 : 0, fraction * 100)}%` as const;
   return (
     <View accessible accessibilityLabel={`${label}, ${display}`} style={s.hbarRow}>
       <Text numberOfLines={2} style={[s.hbarLabel, { width: labelWidth }]}>
         {label}
       </Text>
       <View style={s.hbarTrack}>
-        <Animated.View style={[s.hbarFill, strong && s.hbarFillStrong, style]} />
+        <View style={[s.hbarFill, strong && s.hbarFillStrong, { width }]} />
       </View>
       <Text style={s.hbarValue}>{display}</Text>
     </View>
@@ -513,7 +483,6 @@ export function ProfileMetrics({
       {activity.activeDays > 1 && (
         <Card title="Busiest days" detail={`Most on ${WEEKDAY_NAMES[busiest.label]}`}>
           <HorizontalBars
-            progressKey={`weekday-${period}`}
             rows={activity.weekdays.map((day) => ({ label: day.label, value: day.episodes }))}
           />
         </Card>
@@ -558,7 +527,6 @@ export function ProfileMetrics({
             {/* One bar per section against the title count: like the library, a show can be
                 in both Watched and Watching, so these are not parts of one whole. */}
             <HorizontalBars
-              progressKey="status"
               // The same titles the counts come from (all of them unless the note above says).
               total={items?.length ?? stats.totalItems}
               rows={[
@@ -590,7 +558,6 @@ export function ProfileMetrics({
             detail={stats.avgRating ? `Average ★ ${stats.avgRating.toFixed(1)}` : undefined}
           >
             <HorizontalBars
-              progressKey="ratings"
               rows={RATING_ROWS.map((row) => ({
                 label: row.label,
                 value: library.ratings[row.index]!,
@@ -600,7 +567,6 @@ export function ProfileMetrics({
           {library.genres.length > 0 && (
             <Card title="Top genres">
               <HorizontalBars
-                progressKey="genres"
                 rows={library.genres.map((genre) => ({ label: genre.genre, value: genre.count }))}
               />
             </Card>

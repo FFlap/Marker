@@ -632,7 +632,8 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
                           onChange={setSeason}
                         />
                       }
-                      loading={!seasonRow}
+                      // The count waits for progress too, so it never reads "0 / 25" first.
+                      loading={!seasonRow || episodeProgress === undefined}
                       watched={watchedSeasonCount}
                       total={seasonRow?.totalCount ?? 0}
                       complete={seasonDone}
