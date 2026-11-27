@@ -717,7 +717,8 @@ const s = createAppStyles(
     axisLabelStrong: { color: colors.text, fontWeight: '700' },
     tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
     hbars: { gap: 10 },
-    cardNote: { ...typeRamp.meta, marginTop: 12 },
+    // The card's own gap spaces the note like everything else in it.
+    cardNote: { ...typeRamp.meta },
     hbarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     hbarLabel: { color: colors.secondary, fontSize: 12, lineHeight: 15, fontWeight: '500' },
     hbarTrack: {

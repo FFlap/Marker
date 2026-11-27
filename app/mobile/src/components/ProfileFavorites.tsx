@@ -410,7 +410,8 @@ const s = createAppStyles(
     shelfTitle: { ...typeRamp.label, color: colors.secondary, flexShrink: 1 },
     shelfCount: { color: colors.muted, fontWeight: '500' },
 
-    addPressed: { backgroundColor: colors.borderStrong },
+    // The round highlight icon buttons use.
+    addPressed: { backgroundColor: colors.elevated },
     railShell: { marginHorizontal: -20 },
     rail: { gap: 12, paddingHorizontal: 20 },
     card: { width: 112, position: 'relative' },
@@ -446,6 +447,7 @@ const s = createAppStyles(
     pickerAction: {
       width: 32,
       height: 32,
+      borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
     },

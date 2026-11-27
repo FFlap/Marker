@@ -164,7 +164,7 @@ export default function AddTitlesToTagScreen() {
   return (
     <ScreenView style={s.root}>
       <SecondaryHeader
-        title={`Edit ${tag} titles`}
+        title={`${tag} titles`}
         backLabel={`Back to ${tag}`}
         fallback={{ pathname: '/tags/[tag]', params: { tag } }}
         maxWidth={760}

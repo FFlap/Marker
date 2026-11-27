@@ -52,9 +52,11 @@ const listColumns = [
 ] as const;
 
 export default function AppearanceSettings() {
-  const { current, loaded, pending, update } = useSettings();
+  const { current, loaded: settingsLoaded, pending, update } = useSettings();
   // Through the startup data, like the settings, so the preview has your titles at once.
   const items = useStartupQuery(api.library.items.listItems);
+  // Shown once both your settings and your titles are known, so neither shows a stand-in.
+  const loaded = settingsLoaded && items !== undefined;
   const watched = items
     ?.filter((item) => item.status === 'watched')
     .sort((left, right) => left.rank - right.rank);
@@ -77,7 +79,7 @@ export default function AppearanceSettings() {
       {/* Held back (space kept) until the saved layout is known, so the preview and controls
           never show a default that isn't yours. */}
       {!loaded && (
-        <Text accessibilityRole="progressbar" style={s.loadingLabel}>
+        <Text accessibilityRole="progressbar" pointerEvents="none" style={s.loadingLabel}>
           Loading appearance
         </Text>
       )}
@@ -187,13 +189,10 @@ const s = createAppStyles(
       gap: 28,
     },
     group: { gap: 14 },
-    labelRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
     label: { ...typeRamp.sectionTitle },
-    valueText: { ...typeRamp.label, color: colors.muted },
     caption: { ...typeRamp.meta, marginTop: -16 },
     hint: { ...typeRamp.meta },
-    sliderRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
     slider: { flex: 1, minWidth: 0 },
   },
-  ['label', 'valueText', 'caption', 'hint'] as const,
+  ['label', 'caption', 'hint'] as const,
 );
