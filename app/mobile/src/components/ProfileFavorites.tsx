@@ -2,21 +2,30 @@ import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import Plus from 'lucide-react-native/icons/plus';
-import X from 'lucide-react-native/icons/x';
+import Minus from 'lucide-react-native/icons/minus';
 import DraggableFlatList, { type RenderItemParams } from 'react-native-draggable-flatlist';
 import { api } from '@marker/shared/api';
 import type { Id } from '@marker/shared/dataModel';
+import { PosterCaption } from '@/components/ui/PosterCaption';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Input } from '@/components/ui/primitives';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerScrollView,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import { SearchField, SectionHeading, TextAction } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
+import { radius, typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
+import { compareTitles } from '@/lib/text';
 
 type MediaType = 'movie' | 'tv';
 type FavoriteSection = MediaType | 'anime';
@@ -33,7 +42,7 @@ export type ProfileFavorite = {
 type EligibleFavorite = Omit<ProfileFavorite, 'rank'>;
 
 const sections: { section: FavoriteSection; title: string; singular: string }[] = [
-  { section: 'tv', title: 'TV Shows', singular: 'TV show' },
+  { section: 'tv', title: 'TV shows', singular: 'TV show' },
   { section: 'anime', title: 'Anime', singular: 'anime' },
   { section: 'movie', title: 'Movies', singular: 'movie' },
 ];
@@ -53,11 +62,14 @@ export function ProfileFavorites({
 }) {
   const runOperation = useOperation();
   const [favoriteSearch, setFavoriteSearch] = useState('');
+  // The picker's list fills the sheet below its title and search field (about 220dp).
+  const { height: windowHeight } = useWindowDimensions();
+  const pickerListHeight = Math.max(240, Math.round(windowHeight * 0.92 - 220));
   const [pickerType, setPickerType] = useState<FavoriteSection>();
   const eligible = useQuery(
     api.profileFavorites.eligible,
     interactive && pickerType !== undefined
-      ? { search: favoriteSearch.trim() || undefined }
+      ? { search: favoriteSearch.trim() || undefined, section: pickerType }
       : 'skip',
   ) as EligibleFavorite[] | undefined;
   const add = useMutation(api.profileFavorites.add);
@@ -153,7 +165,6 @@ export function ProfileFavorites({
       {
         success: () => {
           setOrders((current) => ({ ...current, [pickerType]: undefined }));
-          setPickerType(undefined);
         },
 
         failure: () => {
@@ -166,12 +177,33 @@ export function ProfileFavorites({
     );
   };
 
-  const card = (favorite: ProfileFavorite, drag?: () => void, active = false) => (
+  const card = (
+    favorite: ProfileFavorite,
+    drag?: () => void,
+    active = false,
+    // Where it sits on its shelf, for the screen-reader "Move earlier / later" actions.
+    place?: { section: FavoriteSection; index: number; count: number },
+  ) => (
     <View style={[s.card, active && s.cardActive]}>
       <NativePressable
         accessibilityRole="button"
         accessibilityLabel={favorite.title}
         accessibilityHint={interactive ? 'Long press and drag to reorder this favorite' : undefined}
+        accessibilityActions={
+          interactive && place
+            ? [
+                ...(place.index > 0 ? [{ name: 'moveEarlier', label: 'Move earlier' }] : []),
+                ...(place.index < place.count - 1
+                  ? [{ name: 'moveLater', label: 'Move later' }]
+                  : []),
+              ]
+            : undefined
+        }
+        onAccessibilityAction={(event) => {
+          if (!place) return;
+          const step = event.nativeEvent.actionName === 'moveEarlier' ? -1 : 1;
+          void move(place.section, place.index, place.index + step);
+        }}
         onPress={() => router.push(`/item/${favorite._id}`)}
         onLongPress={!interactive ? undefined : drag}
         delayLongPress={220}
@@ -181,74 +213,86 @@ export function ProfileFavorites({
         <View pointerEvents="none" style={s.posterWrap}>
           <PosterImage path={favorite.posterPath} title={favorite.title} style={s.poster} />
         </View>
-        <Text numberOfLines={1} style={s.title}>
-          {favorite.title}
-        </Text>
+        {/* Measured like library captions: two lines ending at a whole word. */}
+        <PosterCaption
+          title={favorite.title}
+          textStyle={s.title}
+          boxStyle={captionBox}
+          ellipsisFontSize={13}
+        />
       </NativePressable>
-      <View pointerEvents="box-none" style={s.cardOverlay}>
-        {interactive && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${favorite.title} from favorites`}
-            disabled={pendingId === favorite._id}
-            onPress={() => void removeFavorite(favorite)}
-            hitSlop={8}
-            style={s.remove}
-          >
-            <X size={13} color={colors.text} strokeWidth={2} />
-          </Pressable>
-        )}
-      </View>
     </View>
   );
 
-  const pickerItems = eligible?.filter((item) => favoriteSection(item) === pickerType);
+  const pickerItems = eligible
+    ?.filter((item) => favoriteSection(item) === pickerType)
+    // The library's A–Z order (【OSHI NO KO】 under O).
+    .sort((left, right) => compareTitles(left.title, right.title));
+  // Searching found nothing new to add (either group may still have matches).
+  const noWatchedMatches =
+    !!favoriteSearch.trim() && eligible !== undefined && !pickerItems?.length;
+  // The search narrows both groups, so a favorite to remove is as easy to find as one to add.
+  // Every typed word appears in the title, the same rule the search uses for titles to add.
+  const favoriteWords = favoriteSearch.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const currentFavorites = (pickerType ? displayedFor(pickerType) : []).filter((favorite) =>
+    favoriteWords.every((word) => favorite.title.toLocaleLowerCase().includes(word)),
+  );
 
   return (
     <View style={s.favorites}>
+      {/* One heading for the shelves, so they read as favorites, not a library breakdown. */}
+      <SectionHeading title="Favorites" />
       {sections.map(({ section, title, singular }) => {
         const displayed = displayedFor(section);
         return (
           <View key={section} style={s.section}>
-            <View style={s.sectionHeader}>
-              <View style={s.sectionTitleRow}>
-                <Text style={s.sectionTitle}>{title}</Text>
-                <Text style={s.count}>{displayed.length}</Text>
-              </View>
+            <View style={s.shelfHead}>
+              <Text accessibilityRole="header" style={s.shelfTitle}>
+                {title}
+                {displayed.length > 0 && (
+                  <Text style={s.shelfCount}>{`  ${displayed.length}`}</Text>
+                )}
+              </Text>
               {interactive && (
-                <NativePressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Add favorite ${singular}`}
+                <TextAction
+                  title={displayed.length ? 'Edit' : 'Add'}
+                  icon={displayed.length ? undefined : Plus}
+                  accessibilityLabel={
+                    displayed.length ? `Edit favorite ${title}` : `Add favorite ${singular}`
+                  }
                   onPress={() => {
                     setFavoriteSearch('');
                     setPickerType(section);
                   }}
-                  hitSlop={6}
-                  style={s.addButton}
-                  pressedStyle={s.pressed}
-                >
-                  <Plus size={14} color={colors.text} strokeWidth={2} />
-                  <Text style={s.addText}>Add</Text>
-                </NativePressable>
+                />
               )}
             </View>
 
             {displayed.length ? (
-              <DraggableFlatList
-                horizontal
-                data={displayed}
-                keyExtractor={(favorite) => favorite._id}
-                onDragEnd={({ from, to }) => void move(section, from, to)}
-                renderItem={({ item, drag, isActive }: RenderItemParams<ProfileFavorite>) =>
-                  card(item, drag, isActive)
-                }
-                contentContainerStyle={s.rail}
-                showsHorizontalScrollIndicator={false}
-              />
-            ) : (
-              <View style={s.empty}>
-                <Text style={s.emptyText}>No favorite {title.toLowerCase()} yet.</Text>
+              <View style={s.railShell}>
+                <DraggableFlatList
+                  horizontal
+                  data={displayed}
+                  keyExtractor={(favorite) => favorite._id}
+                  onDragEnd={({ from, to }) => void move(section, from, to)}
+                  renderItem={({
+                    item,
+                    drag,
+                    isActive,
+                    getIndex,
+                  }: RenderItemParams<ProfileFavorite>) =>
+                    card(item, drag, isActive, {
+                      section,
+                      index: getIndex() ?? displayed.indexOf(item),
+                      count: displayed.length,
+                    })
+                  }
+                  contentContainerStyle={s.rail}
+                  showsHorizontalScrollIndicator={false}
+                />
               </View>
+            ) : interactive ? null : (
+              <Text style={s.emptyText}>None yet</Text>
             )}
           </View>
         );
@@ -259,18 +303,60 @@ export function ProfileFavorites({
         onOpenChange={(open) => !open && setPickerType(undefined)}
       >
         {pickerType !== undefined && (
-          <DrawerContent className="max-w-xl gap-5 rounded-2xl border-border bg-background p-6">
+          <DrawerContent className="max-w-xl">
             <DrawerHeader>
-              <DrawerTitle>Add {sectionLabel(pickerType)}</DrawerTitle>
+              <DrawerTitle>
+                Favorite {sections.find((entry) => entry.section === pickerType)?.title}
+              </DrawerTitle>
             </DrawerHeader>
-            <Input
-              accessibilityLabel="Search watched titles"
+            <SearchField
+              accessibilityLabel="Search titles"
               value={favoriteSearch}
               onChangeText={setFavoriteSearch}
-              placeholder="Search watched titles"
-              returnKeyType="search"
+              placeholder="Search titles"
+              containerStyle={s.pickerSearch}
             />
-            <ScrollView style={s.picker} contentContainerStyle={s.pickerContent}>
+            {/* A list of fixed height under a pinned search field, so the sheet (and the field
+                being typed in) stays put however many titles match. */}
+            <DrawerScrollView
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}
+              style={{ height: pickerListHeight }}
+              contentContainerStyle={s.pickerContent}
+            >
+              {currentFavorites.length > 0 && (
+                <>
+                  <Text style={s.pickerGroup}>Your favorites</Text>
+                  {currentFavorites.map((favorite) => (
+                    <View key={favorite._id} style={s.pickerRow}>
+                      <PosterImage
+                        path={favorite.posterPath}
+                        title={favorite.title}
+                        style={s.pickerPoster}
+                      />
+                      <Text numberOfLines={2} style={s.pickerTitle}>
+                        {favorite.title}
+                      </Text>
+                      <NativePressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${favorite.title} from favorites`}
+                        disabled={pendingId === favorite._id}
+                        onPress={() => void removeFavorite(favorite)}
+                        // A 48dp target around the 32dp mark, like the whole add row.
+                        hitSlop={8}
+                        style={s.pickerAction}
+                        pressedStyle={s.addPressed}
+                      >
+                        <Minus size={20} color={colors.text} strokeWidth={2} />
+                      </NativePressable>
+                    </View>
+                  ))}
+                  {/* A search that only matches favorites doesn't leave an empty section. */}
+                  {!noWatchedMatches && (
+                    <Text style={[s.pickerGroup, s.pickerGroupNext]}>Add from watched</Text>
+                  )}
+                </>
+              )}
               {eligible === undefined ? (
                 <ActivityIndicator color={colors.muted} style={s.loader} />
               ) : pickerItems?.length ? (
@@ -288,17 +374,21 @@ export function ProfileFavorites({
                     <Text numberOfLines={2} style={s.pickerTitle}>
                       {item.title}
                     </Text>
-                    <Plus size={17} color={colors.text} />
+                    <View style={s.pickerAction}>
+                      <Plus size={20} color={colors.text} strokeWidth={2} />
+                    </View>
                   </NativePressable>
                 ))
-              ) : (
+              ) : !noWatchedMatches ? (
                 <Text style={s.emptyText}>
-                  {favoriteSearch.trim()
-                    ? 'No matching watched titles are available.'
-                    : `No more watched ${pickerType === 'tv' ? 'TV shows' : pickerType} are available.`}
+                  {`No more watched ${pickerType === 'tv' ? 'TV shows' : pickerType === 'movie' ? 'movies' : 'anime'} are available.`}
                 </Text>
+              ) : (
+                currentFavorites.length === 0 && (
+                  <Text style={s.emptyText}>No matching titles.</Text>
+                )
               )}
-            </ScrollView>
+            </DrawerScrollView>
           </DrawerContent>
         )}
       </Drawer>
@@ -308,72 +398,63 @@ export function ProfileFavorites({
 
 const s = createAppStyles(
   {
-    favorites: { gap: 38 },
-    section: { gap: 16 },
-    sectionHeader: {
-      minHeight: 38,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingBottom: 8,
+    favorites: { gap: 16 },
+    section: { gap: 12 },
+    shelfHead: {
+      minHeight: 28,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 16,
+      gap: 12,
     },
-    sectionTitleRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10, minWidth: 0 },
-    sectionTitle: { color: colors.text, fontSize: 13, fontWeight: '700', letterSpacing: 0.1 },
-    count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
-    addButton: {
-      minHeight: 32,
-      paddingHorizontal: 8,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 5,
-    },
-    addText: { color: colors.text, fontSize: 11, fontWeight: '700' },
-    rail: { gap: 14, paddingRight: 20 },
-    card: { width: 124, position: 'relative' },
+    shelfTitle: { ...typeRamp.label, color: colors.secondary, flexShrink: 1 },
+    shelfCount: { color: colors.muted, fontWeight: '500' },
+
+    // The round highlight icon buttons use.
+    addPressed: { backgroundColor: colors.elevated },
+    railShell: { marginHorizontal: -20 },
+    rail: { gap: 12, paddingHorizontal: 20 },
+    card: { width: 112, position: 'relative' },
     cardActive: { opacity: 0.72, transform: [{ scale: 1.025 }] },
-    cardButton: { width: 124, gap: 8 },
-    cardOverlay: { position: 'absolute', inset: 0 },
-    posterWrap: { width: 124, height: 186, position: 'relative' },
-    poster: { width: 124, height: 186, borderRadius: 8 },
-    remove: {
-      position: 'absolute',
-      right: 7,
-      top: 7,
-      width: 28,
-      height: 28,
-      borderRadius: 7,
-      backgroundColor: 'rgba(10,10,11,0.9)',
+    cardButton: { width: 112, gap: 8 },
+    posterWrap: { width: 112, height: 168, position: 'relative' },
+    poster: { width: 112, height: 168, borderRadius: radius.sm },
+    title: { color: colors.text, fontSize: 13, lineHeight: 17, fontWeight: '600' },
+    pressed: { opacity: 0.64 },
+
+    emptyText: { ...typeRamp.meta },
+    pickerSearch: { flex: 0 },
+    pickerContent: { gap: 2 },
+    pickerRow: {
+      minHeight: 60,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      // Flush with the search field and section labels, like other sheets' rows.
+      paddingVertical: 6,
+      borderRadius: radius.md,
+    },
+    pickerPoster: { width: 32, height: 48, borderRadius: radius.xs },
+    pickerTitle: { ...typeRamp.rowTitle, flex: 1 },
+    pickerGroup: {
+      ...typeRamp.sectionTitle,
+      fontSize: 15,
+      paddingVertical: 6,
+    },
+    pickerGroupNext: { marginTop: 12 },
+    // A transparent glyph, like other icon buttons; the target stays 48dp (remove) or the
+    // whole row (add).
+    pickerAction: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    title: { color: colors.text, fontSize: 12, lineHeight: 16, fontWeight: '600' },
-    pressed: { opacity: 0.64 },
-    empty: {
-      minHeight: 92,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      alignItems: 'center',
-      flexDirection: 'row',
-    },
-    emptyText: { flexShrink: 1, color: colors.muted, fontSize: 12, lineHeight: 18 },
-    picker: { maxHeight: 440 },
-    pickerContent: { gap: 4 },
-    pickerRow: {
-      minHeight: 76,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 13,
-      paddingVertical: 8,
-    },
-    pickerPoster: { width: 40, height: 60, borderRadius: 4 },
-    pickerTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: '700' },
     loader: { minHeight: 120 },
   },
-  ['sectionTitle', 'count', 'addText', 'title', 'emptyText', 'pickerTitle'] as const,
+  ['title', 'emptyText', 'pickerTitle', 'pickerGroup', 'shelfTitle'] as const,
 );
+
+// Two caption lines (at the rendered line height), so every card in a shelf is the same height.
+const captionBox = { minHeight: 2 * (StyleSheet.flatten(s.title).lineHeight ?? 18) };

@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 import Check from 'lucide-react-native/icons/check';
-import RotateCcw from 'lucide-react-native/icons/rotate-ccw';
+import Clock3 from 'lucide-react-native/icons/clock-3';
+import EyeOff from 'lucide-react-native/icons/eye-off';
 import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { colors } from '@/constants/colors';
+import { typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { InlineAction } from './SectionHeader';
 
@@ -22,6 +24,9 @@ export function SeasonProgress({
   watched,
   total,
   complete,
+  ongoing = false,
+  nothingAired = false,
+  ready = true,
   disabled,
   onToggle,
 }: {
@@ -30,6 +35,12 @@ export function SeasonProgress({
   watched: number;
   total: number;
   complete: boolean;
+  /** The season still has listed episodes to air; marking it covers only the aired ones. */
+  ongoing?: boolean;
+  /** Every listed episode is still to air. */
+  nothingAired?: boolean;
+  /** The counts that decide the action have loaded. */
+  ready?: boolean;
   disabled: boolean;
   onToggle: () => void;
 }) {
@@ -58,24 +69,52 @@ export function SeasonProgress({
           )
         }
       />
-      {total > 0 && (
-        <View
-          accessible
-          accessibilityRole="progressbar"
-          accessibilityLabel="Season progress"
-          accessibilityValue={{ min: 0, max: total, now: shown }}
-          style={styles.track}
-        >
-          <View style={[styles.fill, { width: `${percent}%` }]} />
+      {/* While the counts load, the track keeps its place as a placeholder with no value. */}
+      {loading ? (
+        <View style={styles.track}>
+          <SkeletonShimmer />
         </View>
+      ) : (
+        total > 0 && (
+          <View
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel="Season progress"
+            accessibilityValue={{ min: 0, max: total, now: shown }}
+            style={styles.track}
+          >
+            <View style={[styles.fill, { width: `${percent}%` }]} />
+          </View>
+        )
       )}
       <View style={styles.toggleRow}>
-        <InlineAction
-          label={complete ? 'Mark unwatched' : 'Mark watched'}
-          icon={complete ? RotateCcw : Check}
-          disabled={disabled}
-          onPress={onToggle}
-        />
+        {nothingAired ? (
+          // A status, not a button: there is nothing to mark until an episode airs.
+          <View accessible style={styles.status}>
+            <Clock3 size={14} color={colors.muted} strokeWidth={2} />
+            <Text style={styles.statusText}>No episodes aired yet</Text>
+          </View>
+        ) : (
+          // Held in place (invisible) until the counts arrive, so its label never flips.
+          <View
+            style={!ready && styles.waiting}
+            accessibilityElementsHidden={!ready}
+            importantForAccessibility={ready ? 'auto' : 'no-hide-descendants'}
+          >
+            <InlineAction
+              label={
+                complete
+                  ? 'Mark season unwatched'
+                  : ongoing
+                    ? 'Mark aired episodes watched'
+                    : 'Mark season watched'
+              }
+              icon={complete ? EyeOff : Check}
+              disabled={disabled || !ready}
+              onPress={onToggle}
+            />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -85,7 +124,8 @@ const styles = createAppStyles(
   {
     root: { paddingBottom: 6 },
     headerRow: {
-      marginTop: -10,
+      marginTop: -4,
+      marginBottom: 10,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -93,15 +133,19 @@ const styles = createAppStyles(
     },
     picker: { flexShrink: 1, minWidth: 0 },
     track: {
-      height: 4,
-      marginTop: 2,
+      height: 6,
+      marginTop: 4,
       overflow: 'hidden',
-      borderRadius: 2,
-      backgroundColor: colors.border,
+      borderRadius: 3,
+      backgroundColor: colors.elevated,
     },
-    fill: { height: '100%', borderRadius: 2, backgroundColor: colors.text },
+    fill: { height: '100%', borderRadius: 3, backgroundColor: colors.text },
     toggleRow: { flexDirection: 'row', marginTop: 14 },
-    count: { color: colors.muted, fontSize: 12, fontVariant: ['tabular-nums'] },
+    // The same height as the action it stands in for.
+    status: { height: 34, flexDirection: 'row', alignItems: 'center', gap: 6 },
+    statusText: { ...typeRamp.meta },
+    waiting: { opacity: 0 },
+    count: { color: colors.muted, fontSize: 13, fontVariant: ['tabular-nums'] },
     countStrong: { color: colors.text, fontWeight: '600' },
     countSkeleton: {
       position: 'relative',
@@ -112,5 +156,5 @@ const styles = createAppStyles(
       backgroundColor: colors.surface,
     },
   },
-  ['count', 'countStrong'] as const,
+  ['count', 'countStrong', 'statusText'] as const,
 );

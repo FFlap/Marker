@@ -11,12 +11,14 @@ import { SecondaryHeader } from '@/components/BackButton';
 import { PinchDensity } from '@/components/PinchDensity';
 import { PosterGridSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
-import { Button, EmptyState, Input } from '@/components/ui/primitives';
+import { Button, EmptyState, SearchField, SectionHeading } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { useGridColumns } from '@/hooks/use-grid-columns';
 import type { GridColumns } from '@/lib/displayPreferences';
+import { compareTitles } from '@/lib/text';
 
 type PublicTitle = {
   tmdbId: number;
@@ -64,7 +66,7 @@ function GlobalTagRoute({ tag }: { tag: string }) {
       }
     return {
       ...available[0],
-      titles: [...titles.values()].sort((left, right) => left.title.localeCompare(right.title)),
+      titles: [...titles.values()].sort((left, right) => compareTitles(left.title, right.title)),
     };
   }, [collectionPage, previousPages]);
   const nextCursor = collectionPage?.nextCursor;
@@ -117,14 +119,12 @@ function GlobalTagRoute({ tag }: { tag: string }) {
         maxWidth={880}
       />
       <KeyboardScrollView contentContainerStyle={s.content}>
-        <Input
+        <SearchField
           accessibilityLabel={`Search public ${tag} titles`}
           value={search}
           onChangeText={setSearch}
           placeholder={`Search ${tag}`}
-          returnKeyType="search"
-          compact
-          style={s.search}
+          containerStyle={s.search}
         />
         {!tag ? (
           <EmptyState title="Public tag not found" detail="The tag address is incomplete." />
@@ -146,7 +146,7 @@ function GlobalTagRoute({ tag }: { tag: string }) {
               columns={gridColumns}
             />
             <TitleSection
-              title="TV Shows"
+              title="TV shows"
               titles={titles.filter((title: PublicTitle) => title.mediaType === 'tv')}
               onPress={openTitle}
               columns={gridColumns}
@@ -174,10 +174,7 @@ function TitleSection({
   if (!titles.length) return null;
   return (
     <View style={s.section}>
-      <View style={s.sectionHead}>
-        <Text style={s.sectionTitle}>{title}</Text>
-        <Text style={s.count}>{titles.length.toString().padStart(2, '0')}</Text>
-      </View>
+      <SectionHeading title={title} count={titles.length} style={s.sectionHead} />
       <View onLayout={grid.onLayout} style={[s.grid, { columnGap: grid.gap }]}>
         {titles.map((item) => (
           <NativePressable
@@ -210,23 +207,10 @@ const s = createAppStyles(
       paddingTop: 88,
       paddingBottom: 80,
     },
-    search: {
-      height: 36,
-      borderWidth: 0,
-      backgroundColor: colors.surface,
-      fontSize: 14,
-    },
+    search: { flex: 0 },
     summary: { color: colors.muted, fontSize: 11, marginTop: 14 },
     section: { marginTop: 28 },
-    sectionHead: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingBottom: 11,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-    },
-    sectionTitle: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-    count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
+    sectionHead: { marginBottom: 12 },
     grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -234,7 +218,7 @@ const s = createAppStyles(
       paddingTop: 16,
     },
     card: { minWidth: 0 },
-    poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 12 },
+    poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: radius.sm },
     cardTitle: {
       color: colors.text,
       fontSize: 12,
@@ -244,5 +228,5 @@ const s = createAppStyles(
     },
     pressed: { opacity: 0.72 },
   },
-  ['search', 'summary', 'sectionTitle', 'count', 'cardTitle'] as const,
+  ['search', 'summary', 'cardTitle'] as const,
 );

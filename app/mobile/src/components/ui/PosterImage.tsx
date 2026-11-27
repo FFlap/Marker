@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ImageStyle, StyleProp, ViewStyle } from 'react-native';
 import { Text, View } from 'react-native';
 import { Image } from 'expo-image';
@@ -28,15 +29,21 @@ export function PosterImage({
   // Restored artwork appears with the saved screen; newly fetched content keeps its fade.
   const saved = useStartupData()?.cached;
   const duration = transition ?? (saved ? 0 : 150);
-  if (imageUrl || path)
+  const source = imageUrl || (path ? `https://image.tmdb.org/t/p/w342${path}` : undefined);
+  // A poster that fails to load shows the title's initials instead of an empty tile.
+  const [failed, setFailed] = useState<string>();
+  if (source && failed !== source)
     return (
       <Image
         testID={testID}
-        source={imageUrl || `https://image.tmdb.org/t/p/w342${path}`}
+        source={source}
         contentFit="cover"
         transition={duration}
         onDisplay={onDisplay}
-        onError={onError}
+        onError={() => {
+          setFailed(source);
+          onError?.();
+        }}
         style={[styles.poster, style]}
       />
     );

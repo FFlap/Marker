@@ -1,7 +1,7 @@
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+import { SectionHeading } from '@/components/ui/primitives';
 import { router } from 'expo-router';
 import { TagGallery } from '@/components/TagGallery';
-import { colors } from '@/constants/colors';
 import { createAppStyles } from '@/lib/typography';
 
 export type PublicTagPreview = {
@@ -20,13 +20,12 @@ export function PublicTagsSection({
   if (!tags.length) return null;
   return (
     <View style={s.section}>
-      <View style={s.sectionHead}>
-        <Text style={s.sectionTitle}>Public Tags</Text>
-      </View>
+      <SectionHeading title="Public tags" count={tags.length} />
       <TagGallery
         entries={tags.map((tag) => ({
           key: tag.tag.toLocaleLowerCase(),
           label: tag.tag,
+          count: tag.count,
           posters: tag.posters.map((poster, index) => ({
             key: `${poster.title}-${index}`,
             title: poster.title,
@@ -46,13 +45,7 @@ export function PublicTagsSection({
 
 const s = createAppStyles(
   {
-    section: { marginTop: 34 },
-    sectionHead: {
-      paddingBottom: 11,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-    },
-    sectionTitle: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+    section: { gap: 12 },
   },
-  ['sectionTitle'] as const,
+  [] as const,
 );

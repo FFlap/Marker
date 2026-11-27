@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import type { LucideProps } from 'lucide-react-native';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
+import { radius, typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 
 type InlineActionProps = {
@@ -26,12 +27,12 @@ export function InlineAction({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={{ top: 12, bottom: 12, left: 12, right: 8 }}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
       onPress={onPress}
       style={[styles.action, disabled && styles.disabled]}
       pressedStyle={styles.pressed}
     >
-      <Icon size={13} color={colors.text} strokeWidth={2} />
+      <Icon size={14} color={colors.text} strokeWidth={2} />
       <Text style={styles.actionText}>{label}</Text>
     </NativePressable>
   );
@@ -55,15 +56,20 @@ const styles = createAppStyles(
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 16,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingBottom: 9,
-      marginTop: 28,
-      marginBottom: 16,
+      marginTop: 32,
+      marginBottom: 14,
     },
-    title: { color: colors.text, fontSize: 13, fontWeight: '600' },
-    action: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    actionText: { color: colors.text, fontSize: 12, fontWeight: '600' },
+    title: { ...typeRamp.sectionTitle },
+    action: {
+      height: 34,
+      paddingHorizontal: 14,
+      borderRadius: radius.pill,
+      backgroundColor: colors.elevated,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    actionText: { color: colors.text, fontSize: 13, fontWeight: '600' },
     disabled: { opacity: 0.4 },
     pressed: { opacity: 0.6 },
   },

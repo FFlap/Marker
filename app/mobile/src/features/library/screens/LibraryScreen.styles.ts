@@ -1,7 +1,8 @@
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 
-export const TOOLBAR_HEIGHT = 60;
+export const TOOLBAR_HEIGHT = 68;
 export const MOBILE_NAV_HEIGHT = 66;
 
 export const libraryScreenStyles = createAppStyles(
@@ -13,7 +14,7 @@ export const libraryScreenStyles = createAppStyles(
       alignSelf: 'center',
       padding: 20,
       paddingTop: TOOLBAR_HEIGHT,
-      paddingBottom: 112,
+      paddingBottom: 120,
     },
     toolbar: {
       position: 'absolute',
@@ -23,38 +24,43 @@ export const libraryScreenStyles = createAppStyles(
       zIndex: 10,
       backgroundColor: colors.bg,
     },
-    addButtonShell: {
-      position: 'absolute',
-      right: 24,
-      bottom: 88,
-      width: 56,
-      height: 56,
-      elevation: 5,
-      zIndex: 2,
+
+    hintRow: {
+      minHeight: 40,
+      marginTop: 8,
+      paddingLeft: 16,
+      paddingRight: 4,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
     },
-    addButton: {
-      width: 56,
+    hint: { flex: 1, color: colors.secondary, fontSize: 13, fontWeight: '500' },
+    hintAction: {
+      height: 32,
+      paddingHorizontal: 14,
+      borderRadius: radius.pill,
+      justifyContent: 'center',
+      backgroundColor: colors.elevated,
+    },
+    hintActionPressed: { opacity: 0.7 },
+    hintActionText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+    section: { marginTop: 28 },
+    categoryDropActive: { backgroundColor: colors.surface, borderRadius: radius.lg },
+    sectionHead: { marginBottom: 12 },
+    emptySection: {
       height: 56,
-      borderRadius: 28,
-      backgroundColor: colors.text,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: colors.border,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    addButtonPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
-    hint: { color: colors.muted, fontSize: 11, marginTop: 12, marginBottom: 4 },
-    confirmMessage: { color: colors.text, fontSize: 14, lineHeight: 20 },
-    section: { marginTop: 24 },
-    categoryDropActive: { backgroundColor: colors.surface, borderRadius: 12 },
-    sectionHead: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingBottom: 11,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-    },
-    sectionTitle: { color: colors.muted, fontSize: 12, letterSpacing: 0.2, fontWeight: '600' },
-    count: { color: colors.muted, fontSize: 11, fontVariant: ['tabular-nums'] },
-    grid: { paddingTop: 16, paddingBottom: 4 },
+    emptySectionText: { color: colors.muted, fontSize: 13 },
+    emptyLine: { color: colors.muted, fontSize: 13, paddingVertical: 4 },
+    grid: { paddingTop: 4, paddingBottom: 4 },
   },
-  ['hint', 'confirmMessage', 'sectionTitle', 'count'] as const,
+  ['hint', 'hintActionText', 'emptySectionText', 'emptyLine'] as const,
 );

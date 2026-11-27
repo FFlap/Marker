@@ -103,15 +103,12 @@ describe('sign-in screen', () => {
     const view = await render(<SignIn />);
     expect(view.getByText('Log in')).toBeTruthy();
     expect(view.getByText('Sign up')).toBeTruthy();
-    expect(view.queryByPlaceholderText('Username or email')).toBeNull();
+    expect(view.queryByLabelText('Username or email')).toBeNull();
 
     await user.press(view.getByText('Log in'));
-    await fireEvent.changeText(
-      view.getByPlaceholderText('Username or email'),
-      'person@example.com',
-    );
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'password');
-    await user.press(view.getByText('Sign in'));
+    await fireEvent.changeText(view.getByLabelText('Username or email'), 'person@example.com');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'password');
+    await user.press(view.getByText('Log in'));
     expect(mockSignInPassword).toHaveBeenCalled();
     await waitFor(() =>
       expect(view.getByText('That email or password is not correct.')).toBeTruthy(),
@@ -120,13 +117,23 @@ describe('sign-in screen', () => {
     await waitFor(() => expect(view.getByText('Create account')).toBeTruthy());
   });
 
+  it('points at every empty field at once', async () => {
+    const user = userEvent.setup();
+    const view = await render(<SignIn />);
+    await user.press(view.getByText('Log in'));
+    await user.press(view.getByText('Log in'));
+    expect(view.getByText('Enter your username or email.')).toBeTruthy();
+    expect(view.getByText('Enter your password.')).toBeTruthy();
+    expect(mockSignInPassword).not.toHaveBeenCalled();
+  });
+
   it('finalizes Clerk after a successful password sign-in', async () => {
     const user = userEvent.setup();
     const view = await render(<SignIn />);
     await user.press(view.getByText('Log in'));
-    await fireEvent.changeText(view.getByPlaceholderText('Username or email'), 'viewer_name');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
-    await user.press(view.getByText('Sign in'));
+    await fireEvent.changeText(view.getByLabelText('Username or email'), 'viewer_name');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
+    await user.press(view.getByText('Log in'));
     await waitFor(() =>
       expect(mockSignInPassword).toHaveBeenCalledWith({
         identifier: 'viewer_name',
@@ -145,9 +152,9 @@ describe('sign-in screen', () => {
     );
     const view = await render(<SignIn />);
     await fireEvent.press(view.getByText('Log in'));
-    await fireEvent.changeText(view.getByPlaceholderText('Username or email'), 'viewer_name');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
-    await user.press(view.getByText('Sign in'));
+    await fireEvent.changeText(view.getByLabelText('Username or email'), 'viewer_name');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
+    await user.press(view.getByText('Log in'));
 
     expect(view.getByText('New here? Create an account')).toBeDisabled();
     await fireEvent.press(view.getByText('New here? Create an account'));
@@ -162,8 +169,8 @@ describe('sign-in screen', () => {
     const view = await render(<SignIn />);
     await fireEvent.press(view.getByText('Sign up'));
     await fireEvent.changeText(view.getByLabelText('Username'), 'Flappy_7');
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@marker.local');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'new@marker.local');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
     await fireEvent.press(view.getByText('Create account'));
 
     await waitFor(() =>
@@ -174,13 +181,26 @@ describe('sign-in screen', () => {
     expect(view.getByText('Create account')).toBeEnabled();
   });
 
+  it('points at an invalid username under its field during sign-up', async () => {
+    const user = userEvent.setup();
+    const view = await render(<SignIn />);
+    await user.press(view.getByText('Sign up'));
+    await fireEvent.changeText(view.getByLabelText('Username'), 'ab');
+    await fireEvent.changeText(view.getByLabelText('Email'), '   ');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
+    await user.press(view.getByText('Create account'));
+    expect(view.getByText('Use at least 3 characters.')).toBeTruthy();
+    expect(view.getByText('Enter your email.')).toBeTruthy();
+    expect(mockSignUpPassword).not.toHaveBeenCalled();
+  });
+
   it('starts Clerk email verification during sign-up', async () => {
     const user = userEvent.setup();
     const view = await render(<SignIn />);
     await user.press(view.getByText('Sign up'));
     await fireEvent.changeText(view.getByLabelText('Username'), 'Flappy_7');
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@marker.local');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'new@marker.local');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
     await user.press(view.getByText('Create account'));
     await waitFor(() =>
       expect(mockSignUpPassword).toHaveBeenCalledWith({
@@ -190,7 +210,7 @@ describe('sign-in screen', () => {
       }),
     );
     expect(mockSignUpSendCode).toHaveBeenCalled();
-    expect(view.getByPlaceholderText('Verification code')).toBeTruthy();
+    expect(view.getByLabelText('Verification code')).toBeTruthy();
   });
 
   it('finalizes immediately after Clerk accepts a sign-up verification code', async () => {
@@ -198,10 +218,10 @@ describe('sign-in screen', () => {
     const view = await render(<SignIn />);
     await user.press(view.getByText('Sign up'));
     await fireEvent.changeText(view.getByLabelText('Username'), 'Flappy_7');
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@marker.local');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'new@marker.local');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
     await user.press(view.getByText('Create account'));
-    await fireEvent.changeText(view.getByPlaceholderText('Verification code'), '424242');
+    await fireEvent.changeText(view.getByLabelText('Verification code'), '424242');
     await user.press(view.getByText('Verify email'));
 
     await waitFor(() => expect(mockSignUpVerifyEmailCode).toHaveBeenCalledWith({ code: '424242' }));
@@ -219,10 +239,10 @@ describe('sign-in screen', () => {
     const view = await render(<SignIn />);
     await user.press(view.getByText('Sign up'));
     await fireEvent.changeText(view.getByLabelText('Username'), 'Flappy_7');
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@marker.local');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'new@marker.local');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
     await user.press(view.getByText('Create account'));
-    await fireEvent.changeText(view.getByPlaceholderText('Verification code'), '424242');
+    await fireEvent.changeText(view.getByLabelText('Verification code'), '424242');
     await user.press(view.getByText('Verify email'));
 
     await waitFor(() => expect(mockSignUpReload).toHaveBeenCalled());
@@ -239,10 +259,10 @@ describe('sign-in screen', () => {
 
     await user.press(view.getByText('Sign up'));
     await fireEvent.changeText(view.getByLabelText('Username'), 'Flappy_7');
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@marker.local');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'new@marker.local');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
     await user.press(view.getByText('Create account'));
-    await fireEvent.changeText(view.getByPlaceholderText('Verification code'), '424242');
+    await fireEvent.changeText(view.getByLabelText('Verification code'), '424242');
     await user.press(view.getByText('Verify email'));
 
     await waitFor(() => expect(mockClientReload).toHaveBeenCalled());
@@ -261,10 +281,10 @@ describe('sign-in screen', () => {
     const view = await render(<SignIn />);
 
     await user.press(view.getByText('Log in'));
-    await fireEvent.changeText(view.getByPlaceholderText('Username or email'), 'viewer_name');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
-    await user.press(view.getByText('Sign in'));
-    await fireEvent.changeText(view.getByPlaceholderText('Verification code'), '424242');
+    await fireEvent.changeText(view.getByLabelText('Username or email'), 'viewer_name');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
+    await user.press(view.getByText('Log in'));
+    await fireEvent.changeText(view.getByLabelText('Verification code'), '424242');
     await user.press(view.getByText('Verify email'));
 
     await waitFor(() =>
@@ -291,8 +311,8 @@ describe('sign-in screen', () => {
 
     await user.press(view.getByText('Sign up'));
     await fireEvent.changeText(view.getByLabelText('Username'), 'Flappy_7');
-    await fireEvent.changeText(view.getByPlaceholderText('Email'), 'new@marker.local');
-    await fireEvent.changeText(view.getByPlaceholderText('Password'), 'long-password');
+    await fireEvent.changeText(view.getByLabelText('Email'), 'new@marker.local');
+    await fireEvent.changeText(view.getByLabelText('Password'), 'long-password');
     await user.press(view.getByText('Create account'));
 
     await waitFor(() =>
@@ -310,8 +330,8 @@ describe('sign-in screen', () => {
 
     await user.press(view.getByText('Log in'));
     await user.press(view.getByText('Forgot password?'));
-    expect(view.queryByPlaceholderText('Password')).toBeNull();
-    await fireEvent.changeText(view.getByPlaceholderText('Email or username'), 'viewer_name');
+    expect(view.queryByLabelText('Password')).toBeNull();
+    await fireEvent.changeText(view.getByLabelText('Username or email'), 'viewer_name');
     await user.press(view.getByText('Send reset code'));
 
     await waitFor(() =>
@@ -319,12 +339,18 @@ describe('sign-in screen', () => {
     );
     expect(mockResetSendCode).toHaveBeenCalled();
 
-    await fireEvent.changeText(view.getByPlaceholderText('Verification code'), '123456');
+    await fireEvent.changeText(view.getByLabelText('Verification code'), '123456');
     await user.press(view.getByText('Verify code'));
     await waitFor(() => expect(mockResetVerifyCode).toHaveBeenCalledWith({ code: '123456' }));
 
-    await fireEvent.changeText(view.getByPlaceholderText('New password'), 'new-password');
-    await fireEvent.changeText(view.getByPlaceholderText('Confirm new password'), 'new-password');
+    await fireEvent.changeText(view.getByLabelText('New password'), 'new-password');
+    await fireEvent.changeText(view.getByLabelText('Confirm new password'), 'new-pasword');
+    await user.press(view.getByText('Update password'));
+    // A mismatch is pointed out under the confirmation, not the new password.
+    expect(view.getByText('Passwords don’t match.')).toBeTruthy();
+    expect(view.queryByText('Use at least 8 characters.')).toBeNull();
+    expect(mockResetSubmitPassword).not.toHaveBeenCalled();
+    await fireEvent.changeText(view.getByLabelText('Confirm new password'), 'new-password');
     await user.press(view.getByText('Update password'));
 
     await waitFor(() =>

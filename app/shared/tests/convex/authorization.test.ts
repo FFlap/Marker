@@ -88,6 +88,7 @@ describe('public API authorization', () => {
     ['profiles.generateAvatarUploadUrl', 'mutation', api.profiles.generateAvatarUploadUrl, {}],
     ['profiles.removeAvatar', 'mutation', api.profiles.removeAvatar, {}],
     ['tmdb.searchMulti', 'action', api.tmdb.searchMulti, { query: 'x' }],
+    ['tmdb.searchCategory', 'action', api.tmdb.searchCategory, { query: 'x', type: 'movie' }],
     [
       'calendar.upcoming',
       'action',

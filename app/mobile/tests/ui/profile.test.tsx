@@ -34,6 +34,18 @@ jest.mock('convex/react', () => ({
     if (ref === 'profiles.followRequests') return [];
     if (ref === 'tags.myPublic') return [{ tag: 'wholesome', count: 3, posters: [] }];
     if (ref === 'profileFavorites.eligible') return [];
+    if (ref === 'library.items.listItems')
+      return [
+        {
+          status: 'watched',
+          mediaType: 'tv',
+          isAnime: true,
+          rating: 4.5,
+          genres: ['Animation', 'Fantasy'],
+          timesWatched: 2,
+        },
+        { status: 'watchlist', mediaType: 'movie', isAnime: false, genres: [], timesWatched: 0 },
+      ];
     return {
       totalWatchMinutes: 1560,
       episodesWatched: 12,
@@ -50,12 +62,14 @@ jest.mock('convex/react', () => ({
 jest.mock('@marker/shared/api', () => ({
   api: {
     stats: { profile: 'stats.profile' },
+    settings: { getSettings: 'settings.getSettings' },
     profiles: {
       me: 'profiles.me',
       followRequests: 'profiles.followRequests',
       respondToFollow: 'profiles.respondToFollow',
     },
     tags: { myPublic: 'tags.myPublic' },
+    library: { items: { listItems: 'library.items.listItems' } },
     profileFavorites: {
       eligible: 'profileFavorites.eligible',
       add: 'profileFavorites.add',
@@ -123,15 +137,35 @@ it('keeps an optimistic favorite order while a save is pending', async () => {
   await act(async () => finishSave());
 });
 
-it('shows streaks, daily average, this week and the activity heatmap on the stats tab', async () => {
+it('lets screen readers move a favorite without dragging', async () => {
+  const view = await render(<Profile />);
+  const spirited = view.getByLabelText('Spirited Away');
+  expect(spirited.props.accessibilityActions).toEqual([{ name: 'moveLater', label: 'Move later' }]);
+  await act(async () => {
+    fireEvent(spirited, 'accessibilityAction', { nativeEvent: { actionName: 'moveLater' } });
+    await Promise.resolve();
+  });
+  expect(mockRespond).toHaveBeenCalledWith(
+    expect.objectContaining({ itemId: 'favorite-1', beforeId: 'favorite-2' }),
+  );
+});
+
+it('shows period activity, streaks, the heatmap and library breakdowns on the stats tab', async () => {
   const view = await render(<Profile />);
   await act(async () => fireEvent.press(view.getByText('Stats')));
 
-  expect(view.getByText('Daily Streak')).toBeTruthy();
-  expect(view.getAllByText('2 days')).toHaveLength(2);
+  expect(view.getByText('Episodes watched · last 30 days')).toBeTruthy();
+  expect(view.getByText('7')).toBeTruthy();
+  expect(view.getByText('Current streak')).toBeTruthy();
   expect(view.getByText('Watched today')).toBeTruthy();
-  expect(view.getByText('3.5')).toBeTruthy();
-  expect(view.getByText('This Week')).toBeTruthy();
-  expect(view.getByText(/^Last week: \d+$/)).toBeTruthy();
-  expect(view.getByText('Watch Activity')).toBeTruthy();
+  expect(view.getByText('Longest streak')).toBeTruthy();
+  expect(view.getByText(/^episodes · /)).toBeTruthy();
+  expect(view.getByText(/^Last \d+ weeks$/)).toBeTruthy();
+  expect(view.getByRole('header', { name: 'All time' })).toBeTruthy();
+  expect(view.getByText('Busiest days')).toBeTruthy();
+  expect(view.getByLabelText('Watched, 1')).toBeTruthy();
+  expect(view.getByText('1 rated title · Average ★ 8.3')).toBeTruthy();
+
+  await act(async () => fireEvent.press(view.getByLabelText('Week')));
+  expect(view.getByText('Episodes watched · last 7 days')).toBeTruthy();
 });

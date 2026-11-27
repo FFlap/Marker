@@ -134,6 +134,7 @@ jest.mock('../../src/components/ui/drawer', () => {
     DrawerHeader: container,
     DrawerTitle: label,
     DrawerTrigger: Trigger,
+    DrawerScrollView: require('react-native').ScrollView,
   };
 });
 

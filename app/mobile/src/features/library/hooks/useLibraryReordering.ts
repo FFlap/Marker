@@ -16,7 +16,11 @@ import { isOrderAcknowledged } from '@/lib/optimisticOrder';
 import type { LibraryItem, Status } from '@/types';
 import { MOBILE_NAV_HEIGHT, TOOLBAR_HEIGHT } from '../screens/LibraryScreen.styles';
 
-export function useLibraryReordering(items: LibraryItem[], filtersActive: boolean) {
+export function useLibraryReordering(
+  items: LibraryItem[],
+  filtersActive: boolean,
+  { confirmWatched = true }: { confirmWatched?: boolean } = {},
+) {
   const insertion = useCrossSectionDrop();
   const runOperation = useOperation();
   const reorderItem = useMutation(api.library.ordering.reorderItem);
@@ -28,16 +32,18 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
   type StatusMove =
     | { state: 'idle' }
     | { state: 'confirming'; item: LibraryItem }
-    | { state: 'saving'; item: LibraryItem; target: Status };
+    | { state: 'saving'; item: LibraryItem; target: Status; fromSheet: boolean };
   const [statusMove, setStatusMove] = useState<StatusMove>({ state: 'idle' });
   const statusMoveRef = useRef<StatusMove>({ state: 'idle' });
   const publishMove = (next: StatusMove) => {
     statusMoveRef.current = next;
     setStatusMove(next);
   };
+  // The confirmation sheet stays up while its own move saves, but a move that skipped
+  // the sheet ("Don't ask again") never opens it.
   const pendingWatchedMove =
     statusMove.state === 'confirming' ||
-    (statusMove.state === 'saving' && statusMove.target === 'watched')
+    (statusMove.state === 'saving' && statusMove.target === 'watched' && statusMove.fromSheet)
       ? statusMove.item
       : undefined;
   const statusMovePending = statusMove.state === 'saving';
@@ -177,9 +183,16 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
     );
   };
 
-  const moveToStatus = async (item: LibraryItem, target: Status, targetIndex?: number) => {
-    if (statusMoveRef.current.state === 'saving' || effectiveStatus(item) === target) return;
-    publishMove({ state: 'saving', item, target });
+  /** Resolves to whether the move was saved. */
+  const moveToStatus = async (
+    item: LibraryItem,
+    target: Status,
+    targetIndex?: number,
+  ): Promise<boolean> => {
+    if (statusMoveRef.current.state === 'saving' || effectiveStatus(item) === target) return false;
+    let saved = false;
+    const fromSheet = statusMoveRef.current.state === 'confirming';
+    publishMove({ state: 'saving', item, target, fromSheet });
     const source = effectiveStatus(item);
     const sourceItems = orderedForStatus(source).filter((entry) => entry._id !== item._id);
     const targetItems = orderedForStatus(target).filter((entry) => entry._id !== item._id);
@@ -227,18 +240,22 @@ export function useLibraryReordering(items: LibraryItem[], filtersActive: boolea
             return next;
           });
         },
+        success: () => {
+          saved = true;
+        },
         settled: () => {
           publishMove({ state: 'idle' });
         },
       },
     );
+    return saved;
   };
 
   const requestStatusMove = (itemId: string, target: Status, index?: number) => {
     if (filtersActive || statusMoveRef.current.state === 'saving') return;
     const item = items.find((entry) => entry._id === itemId);
     if (!item || effectiveStatus(item) === target) return;
-    if (target === 'watched') {
+    if (target === 'watched' && confirmWatched) {
       insertion.pendingIndex.current = index;
       publishMove({ state: 'confirming', item });
     } else void moveToStatus(item, target, index);

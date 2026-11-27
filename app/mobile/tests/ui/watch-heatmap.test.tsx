@@ -65,7 +65,7 @@ it('drops an out-of-range selection after resizing or advancing to a new week', 
   });
   expect(view.getByText('0 episodes · Aug 23, 2026')).toBeTruthy();
   await layout(12);
-  expect(view.getByText('0 episodes in the last 1 week')).toBeTruthy();
+  expect(view.getByText('0 episodes')).toBeTruthy();
   expect(view.getByRole('adjustable').props.accessibilityValue.text).toBe(
     '0 episodes on Oct 10, 2026',
   );

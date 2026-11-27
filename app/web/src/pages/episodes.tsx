@@ -344,7 +344,7 @@ export function EpisodesPage() {
               {search || filtersActive
                 ? "Try clearing your search or filters."
                 : tab === "watching"
-                  ? "Move a series into Watching to track its next episode here."
+                  ? "New episodes from the shows you’re watching will appear here."
                   : "Rate watched episodes and your highest scores will appear here."}
             </p>
           </div>

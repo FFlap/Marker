@@ -76,6 +76,36 @@ describe('cross-section grid targets', () => {
   });
 });
 
+it('places fixed leading cells first and keeps drops in data slots', async () => {
+  let target: NativeGridDropTarget | undefined;
+  const view = await render(
+    <NativeDraggableGrid
+      data={items}
+      leading={[{ key: 'pinned', element: <Text>pinned</Text> }]}
+      contentContainerStyle={{ rowGap: 0 }}
+      disabled={false}
+      columns={1}
+      keyExtractor={(item: { id: string }) => item.id}
+      onDragBegin={jest.fn()}
+      onDragEnd={jest.fn()}
+      onDropTarget={(next) => {
+        target = next;
+      }}
+      renderItem={({ item }: { item: { id: string } }) => <Text>{item.id}</Text>}
+    />,
+  );
+  const layout = { nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 50 } } };
+  await fireEvent(view.getByText('pinned').parent!, 'layout', layout);
+  for (const item of items)
+    await fireEvent(view.getByTestId(`native-grid-item-${item.id}`).parent!, 'layout', layout);
+  // The leading cell takes the first row; data starts below it.
+  expect(StyleSheet.flatten(view.getByText('pinned').parent!.props.style).opacity).toBe(1);
+  // Hovering the leading cell or the first data card both target data index 0.
+  expect(target?.(150, 25, 0).index).toBe(0);
+  expect(target?.(150, 75, 0).index).toBe(0);
+  expect(target?.(150, 125, 0).index).toBe(1);
+});
+
 it('targets the extra poster row created by a cross-section placeholder', async () => {
   let target: NativeGridDropTarget | undefined;
   const data = [...items, { id: 'd' }];

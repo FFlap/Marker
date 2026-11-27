@@ -8,6 +8,7 @@ import ChevronLeft from 'lucide-react-native/icons/chevron-left';
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { SecondaryHeader } from '@/components/BackButton';
 import { colors } from '@/constants/colors';
+import { IconButton } from '@/components/ui/primitives';
 import { type CalendarEvent } from '@marker/shared/calendar';
 import { useCalendar } from '@/hooks/useCalendar';
 import { createAppStyles } from '@/lib/typography';
@@ -60,7 +61,17 @@ export default function CalendarScreen() {
     [moveMonth],
   );
   const gridStart = addDays(start, -start.getDay());
-  const days = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index));
+  // Only the weeks this month touches, so short months don't end in a row of next month.
+  const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+  const weeks = Math.ceil((start.getDay() + daysInMonth) / 7);
+  const days = Array.from({ length: weeks * 7 }, (_, index) => addDays(gridStart, index));
+  const monthKey = keyFor(visibleMonth).slice(0, 7);
+  const quietMonth =
+    !loading &&
+    !error &&
+    !partialFailure &&
+    events !== undefined &&
+    !events.some((event) => event.date.startsWith(monthKey));
   const byDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const event of events ?? []) {
@@ -76,29 +87,41 @@ export default function CalendarScreen() {
       <SecondaryHeader title="Calendar" fallback="/(tabs)" maxWidth={720} />
       <View style={s.content}>
         <View style={s.monthHead}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Previous month"
-            accessibilityState={{ disabled: !canGoBack }}
-            disabled={!canGoBack}
-            onPress={() => moveMonth(-1)}
-            hitSlop={8}
-            style={s.arrow}
-          >
-            <ChevronLeft size={18} color={canGoBack ? colors.text : colors.muted} />
-          </Pressable>
-          <Text accessibilityLiveRegion="polite" style={s.month}>
-            {visibleMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
+          {canGoBack ? (
+            // The same icon buttons as everywhere else.
+            <IconButton
+              icon={ChevronLeft}
+              accessibilityLabel="Previous month"
+              onPress={() => moveMonth(-1)}
+            />
+          ) : (
+            <View style={s.arrow} />
+          )}
+          <View style={s.monthCopy}>
+            <Text accessibilityLiveRegion="polite" style={s.month}>
+              {visibleMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+            </Text>
+            {/* One status line under the month, always reserved so the month never moves: a
+                month still loading never reads as an empty one, and an empty one says so. */}
+            <Text
+              accessibilityLiveRegion="polite"
+              importantForAccessibility={loading || quietMonth ? 'auto' : 'no'}
+              style={s.monthNote}
+            >
+              {loading
+                ? result?.needsRefresh && result.events.length > 0
+                  ? 'Updating release dates…'
+                  : 'Loading releases…'
+                : quietMonth
+                  ? 'No releases from your library'
+                  : ' '}
+            </Text>
+          </View>
+          <IconButton
+            icon={ChevronRight}
             accessibilityLabel="Next month"
             onPress={() => moveMonth(1)}
-            hitSlop={8}
-            style={s.arrow}
-          >
-            <ChevronRight size={18} color={colors.text} />
-          </Pressable>
+          />
         </View>
         <View style={s.week}>
           {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
@@ -126,7 +149,13 @@ export default function CalendarScreen() {
                 <Pressable
                   key={date}
                   accessibilityRole="button"
-                  accessibilityLabel={`${day.toLocaleDateString()}, ${dayEvents.length} release${dayEvents.length === 1 ? '' : 's'}`}
+                  // A count only once releases are known, not "0 releases" while loading.
+                  // Neighbouring months' days aren't covered by this month's releases.
+                  accessibilityLabel={
+                    events === undefined || !inMonth
+                      ? day.toLocaleDateString()
+                      : `${day.toLocaleDateString()}, ${dayEvents.length} release${dayEvents.length === 1 ? '' : 's'}`
+                  }
                   accessibilityState={{ selected: active, disabled: past }}
                   disabled={past}
                   onPress={() => router.push({ pathname: '/calendar/[date]', params: { date } })}
@@ -138,9 +167,16 @@ export default function CalendarScreen() {
                         }
                       : undefined
                   }
-                  style={[s.day, index % 7 !== 6 && s.dayColumn]}
+                  style={[s.day, { height: `${100 / weeks}%` }, index % 7 !== 6 && s.dayColumn]}
                 >
-                  <Text style={[s.dayText, !inMonth && s.dayOutside, active && s.dayTextSelected]}>
+                  <Text
+                    style={[
+                      s.dayText,
+                      // Neighbouring-month days still open; only unavailable (past) days fade.
+                      !inMonth && (past ? s.dayUnavailable : s.dayOutside),
+                      active && s.dayTextSelected,
+                    ]}
+                  >
                     {day.getDate()}
                   </Text>
                   {inMonth && dayEvents.length > 0 && (
@@ -164,15 +200,9 @@ export default function CalendarScreen() {
             })}
           </View>
         </GestureDetector>
-        <View style={s.status}>
-          {loading && (
-            <Text accessibilityLiveRegion="polite" style={s.notice}>
-              {result?.needsRefresh && result.events.length > 0
-                ? 'Updating release dates…'
-                : 'Loading releases for your library…'}
-            </Text>
-          )}
-          {!loading && (error || partialFailure) && (
+        {/* Only when something failed, so the month grid otherwise fills the screen. */}
+        {!loading && (error || partialFailure) && (
+          <View style={s.status}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Retry loading releases"
@@ -184,8 +214,8 @@ export default function CalendarScreen() {
                 to retry.
               </Text>
             </Pressable>
-          )}
-        </View>
+          </View>
+        )}
       </View>
     </ScreenView>
   );
@@ -199,29 +229,28 @@ const s = createAppStyles(
       width: '100%',
       maxWidth: 720,
       alignSelf: 'center',
-      paddingHorizontal: 12,
+      paddingHorizontal: 20,
       paddingTop: 72,
       paddingBottom: 12,
     },
     monthHead: {
       minHeight: 52,
+      // Pull the arrow buttons out so their icons sit on the page margin.
+      marginHorizontal: -13,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
     },
+    monthCopy: { flex: 1, alignItems: 'center', gap: 2 },
     month: { color: colors.text, fontSize: 17, fontWeight: '700' },
-    arrow: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
+    monthNote: { color: colors.muted, fontSize: 12, lineHeight: 16 },
+    // Holds the place of the hidden "Previous month" button.
+    arrow: { width: 40, height: 40 },
     week: { height: 28, flexDirection: 'row', alignItems: 'center' },
     weekday: {
       width: '14.2857%',
       color: colors.muted,
-      fontSize: 9,
+      fontSize: 11,
       fontWeight: '700',
       textAlign: 'center',
     },
@@ -233,7 +262,6 @@ const s = createAppStyles(
     },
     day: {
       width: '14.2857%',
-      height: '16.6667%',
       borderTopWidth: 1,
       borderColor: colors.border,
       minWidth: 0,
@@ -244,29 +272,32 @@ const s = createAppStyles(
     },
     dayColumn: { borderRightWidth: 1 },
     dayText: {
-      alignSelf: 'flex-end',
-      width: 20,
-      height: 20,
+      alignSelf: 'center',
+      width: 24,
+      height: 24,
       color: colors.text,
-      fontSize: 10,
-      lineHeight: 20,
+      fontSize: 12,
+      lineHeight: 24,
       fontWeight: '600',
       textAlign: 'center',
       fontVariant: ['tabular-nums'],
+      borderRadius: 12,
+      overflow: 'hidden',
     },
     dayOutside: { color: colors.muted },
-    dayTextSelected: { color: colors.bg, backgroundColor: colors.text, borderRadius: 10 },
+    dayUnavailable: { color: colors.faint },
+    dayTextSelected: { color: colors.bg, backgroundColor: colors.text },
     dayEvents: { gap: 2, minWidth: 0, marginTop: 3 },
     dayEvent: {
       minWidth: 0,
-      height: 15,
-      borderRadius: 3,
+      height: 16,
+      borderRadius: 6,
       backgroundColor: colors.elevated,
-      paddingHorizontal: 3,
+      paddingHorizontal: 4,
       justifyContent: 'center',
     },
-    dayEventTitle: { color: colors.text, fontSize: 8, lineHeight: 11, fontWeight: '600' },
-    more: { color: colors.muted, fontSize: 8, lineHeight: 11, paddingHorizontal: 3 },
+    dayEventTitle: { color: colors.text, fontSize: 9, lineHeight: 12, fontWeight: '600' },
+    more: { color: colors.muted, fontSize: 9, lineHeight: 12, paddingHorizontal: 4 },
     status: { minHeight: 48, justifyContent: 'center' },
     retry: { minHeight: 44, justifyContent: 'center' },
     error: { color: colors.danger, fontSize: 12, lineHeight: 18 },
@@ -274,9 +305,11 @@ const s = createAppStyles(
   },
   [
     'month',
+    'monthNote',
     'weekday',
     'dayText',
     'dayOutside',
+    'dayUnavailable',
     'dayTextSelected',
     'dayEventTitle',
     'more',

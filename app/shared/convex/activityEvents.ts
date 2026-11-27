@@ -65,6 +65,43 @@ export async function writeActivityEvents(ctx: MutationCtx, events: ActivityEven
     await ctx.db.patch(counter._id, { count: retainedCount });
 }
 
+/** How long an episode tick can still be taken back without leaving it in the feed. */
+const RETRACT_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * Removes the actor's own recent "watched an episode" event when that episode is unticked
+ * soon after (an Undo, or a mistap), so followers never see a watch that didn't happen.
+ * Older events are history and stay.
+ */
+export async function retractRecentEpisodeEvent(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  episode: { itemId: Id<'items'>; season: number; episode: number },
+) {
+  const recent = await ctx.db
+    .query('activityEvents')
+    .withIndex('by_actor_time', (q) =>
+      q.eq('userId', userId).gte('createdAt', Date.now() - RETRACT_WINDOW_MS),
+    )
+    .order('desc')
+    // Everything the actor keeps fits in one read, so a bulk watch can't hide the event.
+    .take(HISTORY_LIMIT);
+  const event = recent.find(
+    (entry) =>
+      entry.kind === 'episode' &&
+      entry.itemId === episode.itemId &&
+      entry.season === episode.season &&
+      entry.episode === episode.episode,
+  );
+  if (!event) return;
+  await ctx.db.delete(event._id);
+  const counter = await ctx.db
+    .query('activityEventCounts')
+    .withIndex('by_user', (q) => q.eq('userId', userId))
+    .unique();
+  if (counter && counter.count > 0) await ctx.db.patch(counter._id, { count: counter.count - 1 });
+}
+
 export const itemActivityBase = (item: Doc<'items'>) => ({
   userId: item.userId,
   itemId: item._id,

@@ -176,6 +176,7 @@ jest.mock('@/components/ui/drawer', () => {
     DrawerHeader: container,
     DrawerTitle: label,
     DrawerTrigger: passthrough,
+    DrawerScrollView: require('react-native').ScrollView,
   };
 });
 
@@ -204,12 +205,12 @@ describe('Tags screens', () => {
   it('searches tag collections and opens the selected tag', async () => {
     const user = userEvent.setup();
     const view = await render(<TagsScreen />);
-    expect(view.getByLabelText('Open Favorites tag')).toBeTruthy();
-    expect(view.getByLabelText('Open Weekend tag')).toBeTruthy();
+    expect(view.getByLabelText(/^Open Favorites tag/)).toBeTruthy();
+    expect(view.getByLabelText(/^Open Weekend tag/)).toBeTruthy();
     await user.type(view.getByLabelText('Search your tags'), 'fav');
-    expect(view.getByLabelText('Open Favorites tag')).toBeTruthy();
-    expect(view.queryByLabelText('Open Weekend tag')).toBeNull();
-    await user.press(view.getByLabelText('Open Favorites tag'));
+    expect(view.getByLabelText(/^Open Favorites tag/)).toBeTruthy();
+    expect(view.queryByLabelText(/^Open Weekend tag/)).toBeNull();
+    await user.press(view.getByLabelText(/^Open Favorites tag/));
     expect(mockedRouter.push).toHaveBeenCalledWith({
       pathname: '/tags/[tag]',
       params: { tag: 'Favorites' },
@@ -232,10 +233,11 @@ describe('Tags screens', () => {
       fireEvent.changeText(view.getByLabelText('Search titles in Favorites'), ''),
     );
     await user.press(view.getByLabelText('Filter tag titles'));
-    await user.press(view.getByText('Movies'));
+    await user.press(view.getByLabelText('Type, All types'));
+    await user.press(view.getByRole('radio', { name: 'Movies' }));
     expect(view.getByText('First Movie')).toBeTruthy();
     expect(view.queryByText('Second Show')).toBeNull();
-    await user.press(view.getByText('Clear filters'));
+    await user.press(view.getByLabelText('Reset Type'));
     await act(async () => mockDragEnd?.({ from: 0, to: 1 }));
     expect(mockReorderTag).toHaveBeenCalledWith({
       tag: 'Favorites',

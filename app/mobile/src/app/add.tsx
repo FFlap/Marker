@@ -5,33 +5,48 @@ import * as Effect from 'effect/Effect';
 import { touchMetadata, saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
-import { Button, EmptyState, Input, Segmented } from '@/components/ui/primitives';
+import { Button, EmptyState, SearchField, Segmented } from '@/components/ui/primitives';
 import { PosterImage } from '@/components/ui/PosterImage';
-import { RatingControl, Stepper, TagEditor } from '@/components/ui/library-controls';
+import {
+  ControlSection,
+  RatingControl,
+  Stepper,
+  TagEditor,
+  withPendingTag,
+} from '@/components/ui/library-controls';
 import { ENTRY_STATUS_OPTIONS } from '@/components/ui/entryStatusOptions';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
+import { NativePressable } from '@/components/ui/NativePressable';
+import { radius, typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SearchResultsSkeleton } from '@/components/PageSkeletons';
 import type { SearchResult, Status } from '@/types';
 import { parseTitlePreview } from '@/features/title/titleRoute';
 import { useTitleSearch } from '@/hooks/use-title-search';
+import { SwipeTabsArea } from '@/components/SwipeTabsArea';
+import { SearchFailed } from '@/components/SearchFailed';
+import { useChipInView } from '@/hooks/use-chip-in-view';
+import Hash from 'lucide-react-native/icons/hash';
+import { SettingIcon } from '@/components/settings/SettingIcon';
 type MediaFilter = 'all' | SearchResult['mediaType'];
 const mediaFilters: { value: MediaFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'movie', label: 'Movies' },
-  { value: 'tv', label: 'TV Shows' },
+  { value: 'tv', label: 'TV shows' },
 ];
+const MEDIA_FILTER_VALUES = mediaFilters.map((entry) => entry.value);
 const mediaLabel = (mediaType: SearchResult['mediaType'], genres?: string[]) => {
   const anime = genres?.some((genre) => genre.toLocaleLowerCase() === 'anime');
-  if (anime) return mediaType === 'movie' ? 'Anime Movie' : 'Anime';
-  return mediaType === 'movie' ? 'Movie' : 'TV Show';
+  if (anime) return mediaType === 'movie' ? 'Anime movie' : 'Anime';
+  return mediaType === 'movie' ? 'Movie' : 'TV show';
 };
 export default function Add() {
   const { prefill } = useLocalSearchParams<{ prefill?: string }>();
@@ -47,8 +62,18 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   const toast = useToast();
   const [query, setQuery] = useState(initialResult?.title ?? '');
   const [filter, setFilter] = useState<MediaFilter>('all');
+  const chipStrip = useChipInView(filter);
   const [picked, setPicked] = useState<SearchResult | undefined>(initialResult);
-  const { results, loading } = useTitleSearch(query, { enabled: !picked, delayMs: 350 });
+  const { results, loading, ready, failed, retry, hasMore, loadingMore, loadMoreFailed, loadMore } =
+    useTitleSearch(query, {
+      enabled: !picked,
+      delayMs: 350,
+      // Movies and TV shows search their own category, like Explore.
+      type: filter === 'all' ? undefined : filter,
+    });
+  const library = useQuery(api.library.items.listItems);
+  const libraryEntry = (result: SearchResult) =>
+    library?.find((item) => item.tmdbId === result.id && item.mediaType === result.mediaType);
   const resolvedTitle = useQuery(
     api.resolvedMetadata.reads.getTitle,
     picked ? { mediaType: picked.mediaType, tmdbId: picked.id } : 'skip',
@@ -57,6 +82,7 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   const [rating, setRating] = useState<number>();
   const [times, setTimes] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
+  const [tagPrefix, setTagPrefix] = useState('');
   const { pending: submitting, setPending: setSubmitting } = useTaskState();
   const changeStatus = (nextStatus: Status) => {
     setStatus(nextStatus);
@@ -70,6 +96,12 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   };
   const selectResult = useCallback(
     (result: SearchResult) => {
+      // Each title starts from a fresh entry, so nothing chosen for another one carries over.
+      setStatus('watchlist');
+      setRating(undefined);
+      setTimes(0);
+      setTags([]);
+      setTagPrefix('');
       setPicked(result);
       void runOperation(
         touchMetadata(() =>
@@ -97,12 +129,11 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
       { failure: () => undefined },
     );
   }, [initialResult, touchTitle, runOperation]);
-  const [tagPrefix, setTagPrefix] = useState('');
-  const suggestions =
-    useQuery(
-      api.library.items.listTagSuggestions,
-      picked ? { prefix: tagPrefix.trim() || undefined } : 'skip',
-    ) ?? [];
+  const suggestionQuery = useQuery(
+    api.library.items.listTagSuggestions,
+    picked ? { prefix: tagPrefix.trim() || undefined } : 'skip',
+  );
+  const suggestions = suggestionQuery ?? [];
   const visibleResults =
     filter === 'all' ? results : results.filter((result) => result.mediaType === filter);
   const resolvedRuntime = resolvedTitle?.episodeRunTime?.length
@@ -126,7 +157,8 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
           status,
           rating,
           timesWatched: times,
-          tags,
+          // A tag still typed in the field counts too.
+          tags: withPendingTag(tags, tagPrefix, suggestionQuery),
         };
         if (picked.mediaType === 'tv' && status === 'watched') {
           yield* saveLibrary(() =>
@@ -160,9 +192,9 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
   };
   return (
     <ScreenView style={s.root}>
-      <SecondaryHeader title="Add Title" maxWidth={680} />
+      <SecondaryHeader title="Add title" maxWidth={680} />
       <KeyboardScrollView contentContainerStyle={s.content}>
-        <Input
+        <SearchField
           testID="tmdb-search"
           autoFocus
           value={query}
@@ -170,10 +202,18 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
             setQuery(v);
             setPicked(undefined);
           }}
-          placeholder="Search movies and TV…"
+          placeholder="Search movies and TV"
+          containerStyle={s.searchField}
         />
         {!picked && (
-          <View accessibilityRole="tablist" style={s.filters}>
+          <ScrollView
+            {...chipStrip.stripProps}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            accessibilityRole="tablist"
+            style={s.filtersShell}
+            contentContainerStyle={s.filters}
+          >
             {mediaFilters.map((entry) => {
               const selected = filter === entry.value;
               return (
@@ -182,6 +222,8 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
                   accessibilityRole="tab"
                   accessibilityState={{ selected }}
                   onPress={() => setFilter(entry.value)}
+                  hitSlop={{ top: 4, bottom: 4 }}
+                  onLayout={chipStrip.onChipLayout(entry.value)}
                   style={[s.filter, selected && s.filterSelected]}
                 >
                   <Text style={[s.filterText, selected && s.filterTextSelected]}>
@@ -190,39 +232,96 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
         )}
-        {loading && <SearchResultsSkeleton />}
         {!picked ? (
-          query.trim().length < 2 ? (
-            <View style={s.emptySearch}>
-              <EmptyState title="Search all of Marker" detail="Find movies, TV shows, or people." />
-            </View>
-          ) : (
-            visibleResults.map((r) => (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Select ${r.title}`}
-                testID={`result-${r.id}`}
-                key={`${r.mediaType}-${r.id}`}
-                onPress={() => void selectResult(r)}
-                style={s.result}
-              >
-                <PosterImage
-                  path={r.posterPath}
-                  title={r.title}
-                  style={{ width: 54, height: 81 }}
+          <SwipeTabsArea tabs={MEDIA_FILTER_VALUES} value={filter} onChange={setFilter}>
+            {/* While a search runs, the skeleton replaces the previous results. */}
+            {query.trim().length >= 2 && loading ? (
+              <SearchResultsSkeleton />
+            ) : query.trim().length < 2 ? (
+              <View style={s.emptySearch}>
+                <EmptyState
+                  title="Find a title"
+                  detail="Search by name to add it to your library."
                 />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.resultTitle}>{r.title}</Text>
-                  <Text style={s.meta}>
-                    {r.releaseDate?.slice(0, 4) ?? '—'} · {mediaLabel(r.mediaType)}
-                  </Text>
-                </View>
-                <Text style={s.chev}>›</Text>
-              </Pressable>
-            ))
-          )
+              </View>
+            ) : ready && failed ? (
+              <View style={s.emptySearch}>
+                <SearchFailed onRetry={retry} />
+              </View>
+            ) : ready && !loading && visibleResults.length === 0 ? (
+              <View style={s.emptySearch}>
+                <EmptyState
+                  title="No matching titles"
+                  detail="Check the spelling or try another name."
+                />
+              </View>
+            ) : (
+              visibleResults.map((r) => {
+                // Titles already saved open their entry instead of adding a duplicate.
+                const entry = libraryEntry(r);
+                return (
+                  <NativePressable
+                    accessibilityRole="button"
+                    // The year and kind tell same-named titles apart, as the row shows.
+                    accessibilityLabel={[
+                      entry ? `Open ${r.title}` : `Select ${r.title}`,
+                      r.releaseDate?.slice(0, 4),
+                      r.mediaType === 'movie' ? 'movie' : 'TV show',
+                      entry && 'in your library',
+                    ]
+                      .filter(Boolean)
+                      .join(', ')}
+                    testID={`result-${r.id}`}
+                    key={`${r.mediaType}-${r.id}`}
+                    onPress={() => (entry ? router.push(`/item/${entry._id}`) : selectResult(r))}
+                    style={s.result}
+                    pressedStyle={s.resultPressed}
+                  >
+                    <PosterImage path={r.posterPath} title={r.title} style={s.resultPoster} />
+                    <View style={s.resultCopy}>
+                      <Text numberOfLines={2} style={s.resultTitle}>
+                        {r.title}
+                      </Text>
+                      <Text style={s.meta}>
+                        {[
+                          r.releaseDate?.slice(0, 4),
+                          filter === 'all' &&
+                            mediaLabel(r.mediaType, entry?.isAnime ? ['Anime'] : undefined),
+                          entry && 'In library',
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </Text>
+                    </View>
+                    <ChevronRight
+                      size={18}
+                      color={colors.muted}
+                      strokeWidth={1.8}
+                      // The glyph's own padding: end it on the 20dp gutter like the text above.
+                      style={ROW_CHEVRON}
+                    />
+                  </NativePressable>
+                );
+              })
+            )}
+            {!loading && hasMore && (
+              <Button
+                title={
+                  loadingMore
+                    ? 'Loading…'
+                    : loadMoreFailed
+                      ? 'Couldn’t load more · Try again'
+                      : 'Load more'
+                }
+                variant="secondary"
+                disabled={loadingMore}
+                onPress={loadMore}
+                style={s.loadMore}
+              />
+            )}
+          </SwipeTabsArea>
         ) : (
           <View style={s.form}>
             <View style={s.picked}>
@@ -234,16 +333,39 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
               <View style={{ flex: 1 }}>
                 <Text style={s.pickedTitle}>{picked.title}</Text>
                 <Text style={s.meta}>
-                  {picked.releaseDate?.slice(0, 4)} ·{' '}
-                  {mediaLabel(picked.mediaType, resolvedTitle?.genres)}
+                  {[
+                    picked.releaseDate?.slice(0, 4),
+                    mediaLabel(picked.mediaType, resolvedTitle?.genres),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </Text>
               </View>
             </View>
-            <Segmented options={ENTRY_STATUS_OPTIONS} value={status} onChange={changeStatus} />
-            <RatingControl value={rating} onChange={setRating} />
+            <ControlSection label="Status">
+              <Segmented options={ENTRY_STATUS_OPTIONS} value={status} onChange={changeStatus} />
+              {status === 'watched' && picked.mediaType === 'tv' && (
+                <Text style={s.hint}>
+                  Marking this show as Watched will mark all released episodes as watched.
+                </Text>
+              )}
+            </ControlSection>
             {status === 'watched' && (
-              <Stepper label="Times watched" value={times} onChange={setTimes} min={1} />
+              <View style={s.watchedGroup}>
+                <Stepper
+                  label="Times watched"
+                  value={times}
+                  onChange={setTimes}
+                  min={1}
+                  icon={
+                    <SettingIcon>
+                      <Hash size={17} color={colors.text} strokeWidth={1.8} />
+                    </SettingIcon>
+                  }
+                />
+              </View>
             )}
+            <RatingControl value={rating} onChange={setRating} />
             <TagEditor
               tags={tags}
               onChange={setTags}
@@ -251,6 +373,7 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
               onInputChange={setTagPrefix}
             />
             <Button
+              size="lg"
               testID="add-submit"
               title={
                 resolvedTitle === undefined
@@ -268,49 +391,58 @@ function AddForm({ initialResult }: { initialResult?: SearchResult }) {
     </ScreenView>
   );
 }
+const ROW_CHEVRON = { marginRight: -5 };
+
 const s = createAppStyles(
   {
+    loadMore: { alignSelf: 'center', marginTop: 16 },
     root: { flex: 1, backgroundColor: colors.bg },
     content: {
       width: '100%',
       maxWidth: 680,
       alignSelf: 'center',
       paddingHorizontal: 20,
-      paddingTop: 96,
+      paddingTop: 88,
       paddingBottom: 70,
     },
+    searchField: { flex: 0 },
+    resultPressed: { opacity: 0.7 },
+    hint: { color: colors.muted, fontSize: 12, lineHeight: 17 },
     result: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 14,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
+      paddingVertical: 8,
     },
+    resultPoster: { width: 52, height: 78, borderRadius: radius.xs },
+    resultCopy: { flex: 1, minWidth: 0, gap: 3 },
     emptySearch: { paddingTop: 12 },
-    filters: {
-      flexDirection: 'row',
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      marginTop: 18,
-    },
+    // 4dp above and below the 36dp chips gives each a 44dp touch area inside the strip.
+    filtersShell: { marginTop: 10, marginBottom: 4, marginHorizontal: -20 },
+    filters: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingVertical: 4 },
     filter: {
-      minHeight: 46,
-      flex: 1,
+      height: 36,
+      paddingHorizontal: 13,
+      borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
-      borderBottomWidth: 2,
-      borderBottomColor: 'transparent',
+      backgroundColor: colors.surface,
     },
-    filterSelected: { borderBottomColor: colors.text },
-    filterText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
-    filterTextSelected: { color: colors.text },
-    resultTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
-    meta: { color: colors.muted, fontSize: 11, marginTop: 6, letterSpacing: 0.1 },
-    chev: { color: colors.muted, fontSize: 28 },
+    filterSelected: { backgroundColor: colors.text },
+    filterText: { color: colors.secondary, fontSize: 13, fontWeight: '600' },
+    filterTextSelected: { color: colors.bg },
+    resultTitle: { ...typeRamp.rowTitle },
+    meta: { ...typeRamp.meta },
     form: { gap: 24, paddingTop: 22 },
+    watchedGroup: {
+      marginTop: -8,
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+    },
     picked: { flexDirection: 'row', gap: 16 },
-    pickedTitle: { color: colors.text, fontSize: 22, fontWeight: '700', marginBottom: 8 },
+    pickedTitle: { ...typeRamp.screenTitle, fontSize: 22, lineHeight: 28, marginBottom: 6 },
   },
-  ['filterText', 'filterTextSelected', 'resultTitle', 'meta', 'chev', 'pickedTitle'] as const,
+  ['filterText', 'filterTextSelected', 'resultTitle', 'meta', 'pickedTitle', 'hint'] as const,
 );

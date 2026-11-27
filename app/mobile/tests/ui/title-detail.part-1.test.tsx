@@ -13,7 +13,7 @@ import {
 describe('Explore title metadata subscriptions', () => {
   it('marks every episode watched when a TV show is added as Watched', async () => {
     const view = await screen();
-    await act(async () => fireEvent.press(view.getByText('Add Entry')));
+    await act(async () => fireEvent.press(view.getByText('Add entry')));
     await act(async () => fireEvent.press(view.getByText('Watched', { exact: true })));
     await act(async () =>
       fireEvent.press(view.getAllByRole('button', { name: 'Add to library' })[0]!),
@@ -30,14 +30,14 @@ describe('Explore title metadata subscriptions', () => {
   it('offers a single sticky Add Entry action without inline add controls', async () => {
     const view = await screen();
     expect(view.getByTestId('entry-action-bar')).toBeTruthy();
-    expect(view.getAllByRole('button', { name: 'Add Entry' })).toHaveLength(1);
-    expect(view.queryByText('Your Entry')).toBeNull();
+    expect(view.getAllByRole('button', { name: 'Add entry' })).toHaveLength(1);
+    expect(view.queryByText('Your entry')).toBeNull();
     expect(view.queryByText('Add to track')).toBeNull();
     expect(view.queryByLabelText('Add title to track episode 1')).toBeNull();
 
     await act(async () => fireEvent.press(view.getByLabelText('View episode 1')));
     expect(view.getByText('Frieren sets out.')).toBeTruthy();
-    expect(view.getAllByRole('button', { name: 'Add Entry' })).toHaveLength(1);
+    expect(view.getAllByRole('button', { name: 'Add entry' })).toHaveLength(1);
   });
 
   it('shows episodes without an overview or air date as plain rows', async () => {
@@ -114,7 +114,7 @@ describe('Explore title metadata subscriptions', () => {
     mockState.titleView = { title: null, requestState: { state: 'inFlight' } };
     const view = await screen();
     expect(view.getByTestId('title-detail-initial-placeholder')).toBeTruthy();
-    expect(view.queryByText('Add Entry')).toBeNull();
+    expect(view.queryByText('Add entry')).toBeNull();
 
     mockState.titleView = { title: canonical, requestState: { state: 'succeeded' } };
     await act(async () =>
@@ -125,7 +125,7 @@ describe('Explore title metadata subscriptions', () => {
       ),
     );
     expect(view.getByTestId('title-detail-name').props.children).toBe('Canonical Frieren');
-    await act(async () => fireEvent.press(view.getByText('Add Entry')));
+    await act(async () => fireEvent.press(view.getByText('Add entry')));
     await act(async () =>
       fireEvent.press(view.getAllByRole('button', { name: 'Add to library' })[0]!),
     );
@@ -329,7 +329,7 @@ describe('Explore title metadata subscriptions', () => {
       mockState.mockSeasonView[1].requestState = { state: 'failed', retryAt, delayMs: 5_000 };
       const view = await screen();
       expect(view.getByTestId('title-detail-name').props.children).toBe('Canonical Frieren');
-      expect(view.getAllByText('couldn’t update — pull to retry')).toHaveLength(2);
+      expect(view.getAllByText('Couldn’t update. Pull to retry.')).toHaveLength(2);
       expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
       expect(mockTouchTitle).toHaveBeenCalledTimes(1);
       await act(async () => jest.advanceTimersByTime(5_000));
@@ -494,7 +494,7 @@ describe('Explore title metadata subscriptions', () => {
       expect.objectContaining({ season: 2, force: true }),
     );
     await act(async () => rejectSeasonOne(new Error('late season one failure')));
-    expect(view.queryByText('couldn’t update — pull to retry')).toBeNull();
+    expect(view.queryByText('Couldn’t update. Pull to retry.')).toBeNull();
     expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
     expect(view.queryByText('Episodes couldn’t be loaded.')).toBeNull();
   });
@@ -546,7 +546,7 @@ describe('Explore title metadata subscriptions', () => {
     await act(async () => fireEvent.press(view.getByLabelText('Choose season, current Season 1')));
     await act(async () => fireEvent.press(view.getByLabelText('Select Season 2')));
     await act(async () => fireEvent.press(view.getByLabelText('View episode 1')));
-    await act(async () => fireEvent.press(view.getAllByText('Add Entry')[0]));
+    await act(async () => fireEvent.press(view.getAllByText('Add entry')[0]));
     expect(view.getByLabelText('View episode 1').props.accessibilityState.expanded).toBe(true);
     expect(view.getAllByText('Add to library')).not.toHaveLength(0);
 

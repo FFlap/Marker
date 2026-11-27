@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { MediaTypeFilter, StatusFilter } from '@/lib/libraryFilters';
+import type { LibrarySort, MediaTypeFilter, StatusFilter } from '@/lib/libraryFilters';
 
 // Keep input state above the account-loading/ready screen boundary.
 export function useLibraryFilters() {
@@ -8,6 +8,7 @@ export function useLibraryFilters() {
   const [status, setStatus] = useState<StatusFilter>('all');
   const [minimumRating, setMinimumRating] = useState(0);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [sort, setSort] = useState<LibrarySort>('custom');
   const active =
     !!search.trim() ||
     type !== 'all' ||
@@ -16,19 +17,21 @@ export function useLibraryFilters() {
     selectedTags.length > 0;
 
   return {
-    filters: { search, type, status, minimumRating, selectedTags, active },
+    filters: { search, type, status, minimumRating, selectedTags, sort, active },
     actions: {
       setSearch,
       setType,
       setStatus,
       setMinimumRating,
       setSelectedTags,
+      setSort,
       clear: () => {
         setSearch('');
         setType('all');
         setStatus('all');
         setMinimumRating(0);
         setSelectedTags([]);
+        setSort('custom');
       },
     },
   };

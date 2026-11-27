@@ -1,4 +1,5 @@
 import { usePendingTasks } from '@/hooks/use-pending-tasks';
+import { useSharedValue } from 'react-native-reanimated';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
@@ -15,15 +16,21 @@ import Pencil from 'lucide-react-native/icons/pencil';
 import { api } from '@marker/shared/api';
 import { useToast } from '@/components/ui/Toast';
 import { NativePressable } from '@/components/ui/NativePressable';
+import { Button } from '@/components/ui/primitives';
+import { SwipePages } from '@/components/SwipePages';
 import { colors } from '@/constants/colors';
+import { radius, typeRamp } from '@/constants/theme';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { SecondaryHeader } from '@/components/BackButton';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
 import { ProfileCollection, ProfileMetrics } from '@/components/ProfileStats';
 import { ProfileTabs, type ProfileTab } from '@/components/ProfileTabs';
+import { useTabScrollMemory } from '@/hooks/use-tab-scroll-memory';
 import { PublicTagsSection } from '@/components/PublicTagsSection';
 import { ProfilePageSkeleton } from '@/components/PageSkeletons';
 import { createAppStyles } from '@/lib/typography';
+import { useLocalToday } from '@/hooks/use-local-today';
+import { isAlsoWatching } from '@/lib/libraryFilters';
 
 export default function Profile() {
   return (
@@ -39,10 +46,18 @@ function ProfileContent() {
   const stats = useQuery(api.stats.profile);
   const publicTags = useQuery(api.tags.myPublic);
   const requests = useQuery(api.profiles.followRequests);
+  const items = useQuery(api.library.items.listItems);
+  const settings = useQuery(api.settings.getSettings);
+  const today = useLocalToday();
+  const alsoWatching = (items ?? []).filter((item) =>
+    isAlsoWatching(item, settings?.airingInWatching !== false, today),
+  ).length;
   const respond = useMutation(api.profiles.respondToFollow);
   const toast = useToast();
   const [requestPending, setRequestPending] = usePendingTasks();
   const [tab, setTab] = useState<ProfileTab>('collection');
+  const tabScroll = useTabScrollMemory(tab, { topInset: CONTENT_TOP });
+  const pagerPosition = useSharedValue(0);
   if (profile === undefined || stats === undefined) {
     return (
       <ScreenView style={s.root}>
@@ -75,37 +90,52 @@ function ProfileContent() {
   return (
     <ScreenView style={s.root}>
       <SecondaryHeader title="Profile" maxWidth={880} />
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView
+        ref={tabScroll.scrollRef}
+        onScroll={tabScroll.onScroll}
+        onScrollBeginDrag={tabScroll.onScrollBeginDrag}
+        onContentSizeChange={tabScroll.onContentSizeChange}
+        scrollEventThrottle={32}
+        contentContainerStyle={s.content}
+      >
         <View style={s.hero}>
-          <ProfileAvatar username={profile.username} avatarUrl={profile.avatarUrl} size={104} />
+          <ProfileAvatar username={profile.username} avatarUrl={profile.avatarUrl} size={80} />
           <View style={s.identity}>
-            <Text style={s.handle}>@{profile.username}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={s.handle}>
+              @{profile.username}
+            </Text>
             <View style={s.visibility}>
               <VisibilityIcon size={13} color={colors.muted} strokeWidth={1.8} />
-              <Text style={s.visibilityText}>
-                {profile.isPublic ? 'Public profile' : 'Private profile'}
+              <Text style={s.visibilityText}>{profile.isPublic ? 'Public' : 'Private'}</Text>
+            </View>
+            <View style={s.connectionsRow}>
+              <Text style={s.connections}>
+                <Text style={s.connectionsStrong}>{profile.followerCount.toLocaleString()}</Text>{' '}
+                followers
+              </Text>
+              <Text style={s.connections}>
+                <Text style={s.connectionsStrong}>{profile.followingCount.toLocaleString()}</Text>{' '}
+                following
               </Text>
             </View>
-            <Text style={s.connections}>
-              {profile.followerCount.toLocaleString()} followers ·{' '}
-              {profile.followingCount.toLocaleString()} following
-            </Text>
           </View>
-          <NativePressable
-            accessibilityRole="button"
-            accessibilityLabel="Edit profile"
-            onPress={() => router.push('/profile-edit')}
-            style={s.edit}
-            pressedStyle={s.pressed}
-          >
-            <Pencil size={15} color={colors.text} strokeWidth={1.8} />
-            <Text style={s.editText}>Edit</Text>
-          </NativePressable>
         </View>
-        <ProfileTabs value={tab} onChange={setTab} />
+        <Button
+          title="Edit profile"
+          variant="secondary"
+          size="sm"
+          icon={<Pencil size={14} color={colors.text} strokeWidth={2} />}
+          onPress={() => router.push('/profile-edit')}
+          style={s.edit}
+        />
+        <View onLayout={tabScroll.onContentLayout}>
+          <ProfileTabs value={tab} onChange={setTab} position={pagerPosition} />
+        </View>
         {!!requests?.length && (
           <View style={s.requests}>
-            <Text style={s.requestSection}>Follow requests</Text>
+            <Text accessibilityRole="header" style={s.requestSection}>
+              Follow requests
+            </Text>
             {requests.map((request) => (
               <View key={request.username} style={s.requestRow}>
                 <ProfileAvatar
@@ -154,21 +184,29 @@ function ProfileContent() {
             ))}
           </View>
         )}
-        {tab === 'collection' ? (
-          <>
-            <ProfileCollection stats={stats} />
+        <SwipePages
+          onSwipeStart={tabScroll.onSwipeStart}
+          gutter={20}
+          position={pagerPosition}
+          index={tab === 'collection' ? 0 : 1}
+          onIndexChange={(index) => setTab(index === 0 ? 'collection' : 'stats')}
+        >
+          <View style={s.page}>
+            <ProfileCollection stats={stats} items={items} />
             {profile.username && (
               <PublicTagsSection tags={publicTags ?? []} username={profile.username} />
             )}
-          </>
-        ) : (
-          <ProfileMetrics stats={stats} />
-        )}
+          </View>
+          <ProfileMetrics stats={stats} items={items} alsoWatching={alsoWatching} />
+        </SwipePages>
       </ScrollView>
       <StartupSyncStatus />
     </ScreenView>
   );
 }
+
+// Room for the bar floating over the scroll view.
+const CONTENT_TOP = 88;
 
 const s = createAppStyles(
   {
@@ -178,69 +216,49 @@ const s = createAppStyles(
       maxWidth: 880,
       alignSelf: 'center',
       padding: 20,
-      paddingTop: 88,
+      paddingTop: CONTENT_TOP,
       paddingBottom: 72,
     },
-    hero: { minHeight: 152, flexDirection: 'row', alignItems: 'center', gap: 20 },
-    identity: { flex: 1, minWidth: 0 },
-    handle: {
-      color: colors.text,
-      fontSize: 27,
-      lineHeight: 32,
-      fontWeight: '700',
-      letterSpacing: -0.7,
-    },
-    visibility: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-    visibilityText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-    connections: { color: colors.muted, fontSize: 11, marginTop: 7 },
-    edit: {
-      minHeight: 44,
-      paddingHorizontal: 15,
-      borderRadius: 22,
-      borderWidth: 1,
-      borderColor: colors.border,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 7,
-    },
-    editText: { color: colors.text, fontSize: 12, fontWeight: '700' },
+    hero: { flexDirection: 'row', alignItems: 'center', gap: 18, paddingTop: 8 },
+    identity: { flex: 1, minWidth: 0, gap: 6 },
+    handle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: '700' },
+    visibility: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    visibilityText: { color: colors.muted, fontSize: 13, fontWeight: '500' },
+    connectionsRow: { flexDirection: 'row', gap: 14 },
+    connections: { color: colors.muted, fontSize: 13 },
+    connectionsStrong: { color: colors.text, fontWeight: '700' },
+    edit: { alignSelf: 'flex-start', marginTop: 16, marginBottom: 20 },
+    page: { gap: 36 },
     pressed: { opacity: 0.64 },
     requests: {
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingBottom: 30,
-      marginBottom: 34,
+      padding: 16,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
+      marginBottom: 24,
     },
-    requestSection: {
-      color: colors.muted,
-      fontSize: 10,
-      fontWeight: '700',
-      letterSpacing: 0.5,
-      marginBottom: 10,
-    },
-    requestRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11 },
+    requestSection: { ...typeRamp.sectionTitle, marginBottom: 6 },
+    requestRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12 },
     requestIdentity: { flex: 1, minWidth: 0 },
-    requestName: { color: colors.text, fontSize: 13, fontWeight: '700' },
-    requestMeta: { color: colors.muted, fontSize: 10, marginTop: 4 },
-    requestActions: { flexDirection: 'row', gap: 7 },
+    requestName: { ...typeRamp.rowTitle },
+    requestMeta: { ...typeRamp.meta, marginTop: 2 },
+    requestActions: { flexDirection: 'row', gap: 8 },
     requestButton: {
-      minHeight: 38,
-      paddingHorizontal: 11,
-      borderRadius: 19,
-      borderWidth: 1,
-      borderColor: colors.border,
+      height: 36,
+      paddingHorizontal: 14,
+      borderRadius: radius.pill,
+      backgroundColor: colors.elevated,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    requestButtonText: { color: colors.muted, fontSize: 10, fontWeight: '700' },
-    requestAccept: { backgroundColor: colors.text, borderColor: colors.text },
-    requestAcceptText: { color: colors.bg, fontSize: 10, fontWeight: '700' },
+    requestButtonText: { color: colors.text, fontSize: 13, fontWeight: '600' },
+    requestAccept: { backgroundColor: colors.text },
+    requestAcceptText: { color: colors.bg, fontSize: 13, fontWeight: '600' },
   },
   [
     'handle',
     'visibilityText',
     'connections',
-    'editText',
+    'connectionsStrong',
     'requestSection',
     'requestName',
     'requestMeta',

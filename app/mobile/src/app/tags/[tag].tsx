@@ -1,19 +1,20 @@
 import { useCrossSectionDrop } from '@/hooks/use-cross-section-drop';
 import { useTaskState } from '@/hooks/use-task-state';
-import { localDateKey } from '@/hooks/use-local-today';
+import { localDateKey, useLocalToday } from '@/hooks/use-local-today';
 import { ScreenView } from '@/components/ScreenLayout';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import * as Effect from 'effect/Effect';
 import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { ScrollView, Text, View } from 'react-native';
+import { PixelRatio, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import Reanimated, { useAnimatedRef, useScrollOffset } from 'react-native-reanimated';
 import { useLocalSearchParams } from 'expo-router';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
 import { PinchDensity } from '@/components/PinchDensity';
 import { useGridColumns } from '@/hooks/use-grid-columns';
-import { EmptyState } from '@/components/ui/primitives';
+import { SectionHeading } from '@/components/ui/primitives';
+import { WatchedConfirmSheet } from '@/components/WatchedConfirmSheet';
 import {
   NativeDraggableGrid,
   type NativeGridAutoScroll,
@@ -24,16 +25,17 @@ import {
   type NativePosterDragLayout,
 } from '@/components/NativePosterDragPreview';
 import { useToast } from '@/components/ui/Toast';
-import { DEFAULT_DISPLAY_PREFERENCES } from '@/lib/displayPreferences';
-import type { Status } from '@/types';
-import { LIBRARY_STATUSES } from '@/lib/libraryFilters';
+import { DEFAULT_DISPLAY_PREFERENCES, gridMetrics } from '@/lib/displayPreferences';
+import type { LibraryItem, Status } from '@/types';
+import { isAlsoWatching, LIBRARY_STATUSES } from '@/lib/libraryFilters';
 import { isOrderAcknowledged } from '@/lib/optimisticOrder';
 import { tagDetailStyles as s } from '@/features/tags/screens/TagDetailScreen.styles';
 import { TagHeader } from '@/features/tags/components/TagHeader';
 import {
-  AddTagTitlesButton,
-  ConfirmWatchedMove,
-} from '@/features/tags/components/TagScreenActions';
+  AlsoWatchingCard,
+  twoColumnPairHeight,
+  useTitleLines,
+} from '@/features/library/components/LibraryItemCards';
 import { useTagCollection } from '@/features/tags/hooks/useTagCollection';
 import { useTagVisibility } from '@/features/tags/hooks/useTagVisibility';
 import { TAG_HEADER_HEIGHT, type OptimisticTagOrders } from '@/features/tags/tagDragConfig';
@@ -43,6 +45,7 @@ import {
   TagPoster,
   TagSkeleton,
 } from '@/features/tags/components/TagScreenParts';
+import { useStartupQuery } from '@/hooks/useStartupQuery';
 
 export default function TagDetailScreen() {
   const insertion = useCrossSectionDrop();
@@ -52,7 +55,16 @@ export default function TagDetailScreen() {
   const tagKey = tag.trim().toLocaleLowerCase();
   const library = useQuery(api.library.items.listItems);
   const ranks = useQuery(api.library.items.listTagRanks, tag ? { tag } : 'skip');
-  const settings = useQuery(api.settings.getSettings);
+  // Through the startup data, like the library, so the skeleton already has the saved layout.
+  const settings = useStartupQuery(api.settings.getSettings);
+  const today = useLocalToday();
+  const automaticAiring = settings?.airingInWatching !== false;
+  const titleLines = useTitleLines();
+  const alsoWatchingFor = useCallback(
+    (item: LibraryItem) => isAlsoWatching(item, automaticAiring, today),
+    [automaticAiring, today],
+  );
+  const setSettings = useMutation(api.settings.setSettings);
   const reorderItem = useMutation(api.library.ordering.reorderItem);
   const reorderTagItem = useMutation(api.library.ordering.reorderTagItem);
   const moveItemToWatched = useAction(api.library.seasonWatched.moveItemToWatched);
@@ -75,6 +87,8 @@ export default function TagDetailScreen() {
     Partial<Record<Status, NativeGridDragMotion>>
   >({});
   const [nativePosterDragActive, setNativePosterDragActive] = useState(false);
+  const { width: windowWidth } = useWindowDimensions();
+  const listCellWidth = gridMetrics(Math.min(windowWidth, 880) - 40, 2, PixelRatio.get()).itemWidth;
   const [rootHeight, setRootHeight] = useState(0);
   const [optimisticState, setOptimisticState] = useState<OptimisticTagOrders>({
     tagKey,
@@ -99,11 +113,13 @@ export default function TagDetailScreen() {
     optimisticStatuses,
     ranks,
     tagKey,
+    alsoWatching: alsoWatchingFor,
   });
   const {
     active: filtersActive,
-    clear: clearFilters,
     itemsForStatus: sectionItems,
+    savedRanks,
+    resultCount,
     members,
     minimumRating,
     search,
@@ -201,12 +217,14 @@ export default function TagDetailScreen() {
       },
     );
   };
+  /** Resolves to whether the status change was saved. */
   const performCategoryMove = async (
     item: RankedItem,
     targetStatus: Status,
     targetIndex?: number,
-  ) => {
-    if (filtersActive || statusMovePendingRef.current || item.status === targetStatus) return;
+  ): Promise<boolean> => {
+    if (filtersActive || statusMovePendingRef.current || item.status === targetStatus) return false;
+    let saved = false;
     const sourceStatus = item.status;
     const sourceItems = sectionItems(sourceStatus).filter((entry) => entry._id !== item._id);
     const targetItems = sectionItems(targetStatus).filter((entry) => entry._id !== item._id);
@@ -273,6 +291,7 @@ export default function TagDetailScreen() {
       }),
       {
         success: (ordered) => {
+          saved = true;
           if (!ordered) {
             clearMoveOrder();
             toast.show('Title moved, but its tag order couldn’t be saved');
@@ -297,12 +316,13 @@ export default function TagDetailScreen() {
         },
       },
     );
+    return saved;
   };
   const requestCategoryMove = (itemId: string, targetStatus: Status, index?: number) => {
     if (filtersActive || statusMovePendingRef.current) return;
     const item = members.find((entry) => String(entry._id) === itemId);
     if (!item || item.status === targetStatus) return;
-    if (targetStatus === 'watched') {
+    if (targetStatus === 'watched' && settings?.confirmWatchedMove !== false) {
       insertion.pendingIndex.current = index;
       setPendingWatchedMove(item);
       return;
@@ -427,18 +447,17 @@ export default function TagDetailScreen() {
     >
       <TagHeader
         tag={tag}
+        resultCount={resultCount}
         isPublic={tagVisibility.isPublic}
         visibilityPending={tagVisibility.loading || tagVisibility.pending}
         onVisibilityChange={(isPublic) => void tagVisibility.update(isPublic)}
         filters={{
-          active: filtersActive,
           mediaType: type,
           minimumRating,
           search,
           status: statusFilter,
         }}
         setFilters={{
-          clear: clearFilters,
           minimumRating: setMinimumRating,
           search: setSearch,
           status: setStatusFilter,
@@ -446,23 +465,35 @@ export default function TagDetailScreen() {
         }}
       />
 
-      {library === undefined || (tagKey && ranks === undefined) ? (
-        <TagSkeleton />
-      ) : (
-        <Reanimated.ScrollView
-          ref={nativePosterScrollRef}
-          testID="tag-scroll"
-          contentContainerStyle={s.content}
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={(_width, height) => {
-            nativeScrollContentHeight.current = height;
-          }}
-          onLayout={(event) => {
-            nativeScrollViewportHeight.current = event.nativeEvent.layout.height;
-          }}
-          scrollEnabled={!nativePosterDragActive}
-          scrollEventThrottle={16}
-        >
+      {/* The scroll view stays mounted while loading so its animated ref is always attached. */}
+      <Reanimated.ScrollView
+        ref={nativePosterScrollRef}
+        testID="tag-scroll"
+        contentContainerStyle={s.content}
+        keyboardShouldPersistTaps="handled"
+        onContentSizeChange={(_width, height) => {
+          nativeScrollContentHeight.current = height;
+        }}
+        onLayout={(event) => {
+          nativeScrollViewportHeight.current = event.nativeEvent.layout.height;
+        }}
+        scrollEnabled={!nativePosterDragActive}
+        scrollEventThrottle={16}
+      >
+        {library === undefined || (tagKey && ranks === undefined) ? (
+          <TagSkeleton
+            // Once the library is in, the tag's title count is known even if ranks aren't.
+            total={
+              library?.filter((item) =>
+                item.tags.some((entry) => entry.trim().toLocaleLowerCase() === tagKey),
+              ).length
+            }
+            list={view === 'list'}
+            columns={gridColumns}
+            listColumns={listColumns}
+            textSize={listTextSize}
+          />
+        ) : (
           <PinchDensity
             columns={gridColumns}
             enabled={view === 'posters'}
@@ -470,6 +501,11 @@ export default function TagDetailScreen() {
           >
             {visibleStatuses.map(([status, label]) => {
               let items = sectionItems(status);
+              // While a drop into Watched awaits confirmation, ranks follow the proposed order.
+              const previewing = !!pendingWatchedMove && !statusMovePending && !filtersActive;
+              const ranks = status === 'watched' && !previewing ? savedRanks('watched') : undefined;
+              const alsoWatching =
+                status === 'watching' ? sectionItems('watched').filter(alsoWatchingFor) : [];
               if (pendingWatchedMove && !statusMovePending && !filtersActive) {
                 items = items.filter((item) => item._id !== pendingWatchedMove._id);
                 if (status === 'watched')
@@ -497,32 +533,34 @@ export default function TagDetailScreen() {
                       s.categoryDropActive,
                   ]}
                 >
-                  <View style={s.sectionHead}>
-                    <Text style={s.sectionTitle}>{label}</Text>
-                    <Text style={s.count}>{items.length.toString().padStart(2, '0')}</Text>
-                  </View>
+                  <SectionHeading
+                    title={label}
+                    count={items.length + alsoWatching.length}
+                    style={s.sectionHead}
+                    large={view === 'list' && listTextSize === 'large'}
+                  />
                   {!items.length &&
+                  !alsoWatching.length &&
                   !(
                     nativeDragRef.current &&
                     nativeTargetStatus === status &&
                     nativeDragRef.current.status !== status
                   ) ? (
-                    <EmptyState
-                      title={filtersActive ? 'No matches' : 'Nothing here yet'}
-                      detail={
-                        filtersActive
-                          ? 'Try a broader filter.'
-                          : 'Add a tagged title when you’re ready.'
-                      }
-                    />
+                    nativePosterDragActive ? (
+                      <View style={s.emptySection}>
+                        <Text style={s.emptySectionText}>Drop here</Text>
+                      </View>
+                    ) : (
+                      <Text style={s.emptyLine}>
+                        {filtersActive ? 'No matches' : 'Drag a title here to move it'}
+                      </Text>
+                    )
                   ) : (
                     <NativeDraggableGrid
                       key={`${view}-${view === 'posters' ? gridColumns : listColumns}`}
                       autoScroll={nativePosterAutoScroll}
                       sectionTop={sectionLayouts[status]?.top}
-                      contentContainerStyle={
-                        view === 'posters' ? s.grid : { rowGap: listColumns === 2 ? 12 : 0 }
-                      }
+                      contentContainerStyle={view === 'posters' ? s.grid : { rowGap: 0 }}
                       onDropTarget={(target) => {
                         insertion.targets.current[status] = target;
                       }}
@@ -536,6 +574,31 @@ export default function TagDetailScreen() {
                             }
                           : undefined
                       }
+                      leading={alsoWatching.map((item, index) => ({
+                        key: String(item._id),
+                        element: (
+                          <AlsoWatchingCard
+                            item={item}
+                            view={view}
+                            textSize={listTextSize}
+                            compact={gridColumns === 5}
+                            contained={listColumns === 2}
+                            pairHeight={
+                              view === 'list' && listColumns === 2
+                                ? twoColumnPairHeight(
+                                    [...alsoWatching, ...items],
+                                    index,
+                                    listCellWidth,
+                                    listTextSize,
+                                    titleLines.measured,
+                                    false,
+                                  )
+                                : undefined
+                            }
+                            onTitleLines={titleLines.report}
+                          />
+                        ),
+                      }))}
                       data={items}
                       disabled={filtersActive || statusMovePending}
                       columns={view === 'posters' ? gridColumns : listColumns}
@@ -564,8 +627,23 @@ export default function TagDetailScreen() {
                           <Card
                             textSize={listTextSize}
                             contained={listColumns === 2}
+                            pairHeight={
+                              view === 'list' && listColumns === 2
+                                ? twoColumnPairHeight(
+                                    [...alsoWatching, ...items],
+                                    alsoWatching.length + index,
+                                    listCellWidth,
+                                    listTextSize,
+                                    titleLines.measured,
+                                    status === 'watched',
+                                  )
+                                : undefined
+                            }
+                            onTitleLines={titleLines.report}
+                            compact={gridColumns === 5}
                             item={item}
                             index={index}
+                            rank={ranks?.get(String(item._id))}
                             ranked={status === 'watched'}
                             disabled={filtersActive || statusMovePending}
                             onCategoryMove={(target) =>
@@ -580,13 +658,23 @@ export default function TagDetailScreen() {
               );
             })}
           </PinchDensity>
-        </Reanimated.ScrollView>
-      )}
-      <ConfirmWatchedMove
+        )}
+      </Reanimated.ScrollView>
+      <WatchedConfirmSheet
         item={pendingWatchedMove}
         pending={statusMovePending}
         onClose={() => setPendingWatchedMove(undefined)}
-        onConfirm={(item) => performCategoryMove(item, 'watched', insertion.pendingIndex.current)}
+        onConfirm={(item, { dontAskAgain }) => {
+          void performCategoryMove(item, 'watched', insertion.pendingIndex.current)
+            .then((saved) => {
+              if (saved && dontAskAgain)
+                return setSettings({ confirmWatchedMove: false }).catch(() =>
+                  toast.show('Couldn’t save that preference'),
+                );
+            })
+            .catch(() => undefined)
+            .finally(() => setPendingWatchedMove(undefined));
+        }}
       />
       {!!nativeDragPreview && !!nativePosterMotion[nativeDragPreview.status] && (
         <NativePosterDragPreview
@@ -609,7 +697,6 @@ export default function TagDetailScreen() {
           )}
         </NativePosterDragPreview>
       )}
-      <AddTagTitlesButton tag={tag} />
     </ScreenView>
   );
 }

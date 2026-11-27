@@ -237,7 +237,18 @@ describe('Marker backend', () => {
         itemIds: [existing, first, second, second],
         tag: ' favorites ',
       }),
-    ).resolves.toEqual({ updated: 2 });
+    ).resolves.toEqual({ updated: 2, full: [] });
+
+    // A title already at the 20-tag limit is skipped and reported; the rest still save.
+    const crowded = await asUser.mutation(
+      api.library.items.addItem,
+      add('Crowded', 214, 'movie', {
+        tags: Array.from({ length: 20 }, (_, index) => `Tag ${index}`),
+      }),
+    );
+    await expect(
+      asUser.mutation(api.library.items.addTagToItems, { itemIds: [crowded], tag: 'Extra' }),
+    ).resolves.toEqual({ updated: 0, full: ['Crowded'] });
 
     const items = await asUser.query(api.library.items.listItems, {});
     expect(items.find((item) => item._id === existing)?.tags).toEqual(['Favorites']);

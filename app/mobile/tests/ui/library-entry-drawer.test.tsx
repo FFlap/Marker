@@ -43,7 +43,12 @@ it('preserves edits through refreshes and exit animation, then resets on reopeni
   expect(onSubmit).not.toHaveBeenCalled();
   await act(() => jest.advanceTimersByTime(200));
   expect(onSubmit).toHaveBeenCalledTimes(1);
-  expect(onSubmit).toHaveBeenLastCalledWith({ status: 'watched', timesWatched: 1, tags: [] });
+  // A tag still typed in the field is saved rather than dropped on Done.
+  expect(onSubmit).toHaveBeenLastCalledWith({
+    status: 'watched',
+    timesWatched: 1,
+    tags: ['unsaved search'],
+  });
   expect(onOpenChange).toHaveBeenCalledWith(false);
 
   await view.rerender(drawer(false));
@@ -56,6 +61,60 @@ it('preserves edits through refreshes and exit animation, then resets on reopeni
   await act(() => jest.advanceTimersByTime(200));
   expect(onSubmit).toHaveBeenCalledTimes(2);
   expect(onSubmit).toHaveBeenLastCalledWith({ ...initial, status: 'dropped', tags: ['fresh'] });
+});
+
+it('drops a partly typed search for an existing tag but keeps a typed existing tag', async () => {
+  const onSubmit = jest.fn();
+  const drawer = (open: boolean) => (
+    <>
+      <LibraryEntryDrawer
+        open={open}
+        mode="update"
+        initial={initial}
+        suggestions={['Fant', 'Cozy']}
+        saving={false}
+        onSubmit={onSubmit}
+        onOpenChange={jest.fn()}
+      />
+      <PortalHost />
+    </>
+  );
+  const view = await render(drawer(true));
+  await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'fa');
+  await fireEvent.press(view.getByText('Done'));
+  await act(() => jest.advanceTimersByTime(200));
+  // Only a search was typed, so nothing changed and nothing is saved.
+  expect(onSubmit).not.toHaveBeenCalled();
+
+  await view.rerender(drawer(false));
+  await view.rerender(drawer(true));
+  await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'cozy');
+  await fireEvent.press(view.getByText('Done'));
+  await act(() => jest.advanceTimersByTime(200));
+  expect(onSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ tags: ['Cozy'] }));
+});
+
+it('drops typed text while the tags matching it are still loading', async () => {
+  const onSubmit = jest.fn();
+  const view = await render(
+    <>
+      <LibraryEntryDrawer
+        open
+        mode="update"
+        initial={initial}
+        suggestions={[]}
+        suggestionsReady={false}
+        saving={false}
+        onSubmit={onSubmit}
+        onOpenChange={jest.fn()}
+      />
+      <PortalHost />
+    </>,
+  );
+  await fireEvent.changeText(view.getByPlaceholderText('Add a tag'), 'fa');
+  await fireEvent.press(view.getByText('Done'));
+  await act(() => jest.advanceTimersByTime(200));
+  expect(onSubmit).not.toHaveBeenCalled();
 });
 
 it('cancels a pending close when its editing session is replaced', async () => {

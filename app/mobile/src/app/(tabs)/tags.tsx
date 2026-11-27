@@ -9,6 +9,7 @@ import { SkeletonShimmer } from '@/components/SkeletonShimmer';
 import { TagGallery } from '@/components/TagGallery';
 import { EmptyState } from '@/components/ui/primitives';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { TabHeader } from '@/components/TabHeader';
 
@@ -79,6 +80,7 @@ export default function TagsScreen() {
             entries={(visible as TagPreview[]).map((group) => ({
               key: group.tag.toLocaleLowerCase(),
               label: group.tag,
+              count: group.count,
               posters: group.posters.map((item) => ({
                 key: item.itemId ?? `${group.tag}:${item.title}`,
                 title: item.title,
@@ -111,12 +113,17 @@ export default function TagsScreen() {
 function TagSkeletons() {
   return (
     <View accessibilityRole="progressbar" accessibilityLabel="Loading tags" style={s.cards}>
-      {[0, 1, 2].map((index) => (
+      {[0, 1, 2, 3].map((index) => (
         <View key={index} style={s.card}>
-          <View style={s.skeletonPosters}>
-            <SkeletonShimmer />
+          <View style={s.skeletonStage}>
+            <View style={s.skeletonPoster}>
+              <SkeletonShimmer />
+            </View>
           </View>
           <View style={s.skeletonTitle}>
+            <SkeletonShimmer />
+          </View>
+          <View style={s.skeletonCount}>
             <SkeletonShimmer />
           </View>
         </View>
@@ -149,31 +156,43 @@ const s = createAppStyles(
       flexDirection: 'row',
       flexWrap: 'wrap',
       columnGap: '4%',
-      rowGap: 24,
+      rowGap: 14,
+      paddingTop: 16,
     },
     card: {
       width: '48%',
       minWidth: 0,
-      alignItems: 'center',
-      justifyContent: 'flex-start',
-      paddingVertical: 4,
+      padding: 12,
+      borderRadius: radius.lg,
+      backgroundColor: colors.surface,
     },
-    skeletonPosters: {
+    skeletonStage: { height: 148, alignItems: 'center', justifyContent: 'flex-end' },
+    skeletonPoster: {
       position: 'relative',
       overflow: 'hidden',
-      width: 68,
-      height: 102,
-      borderRadius: 10,
+      width: '50%',
+      aspectRatio: 2 / 3,
+      marginBottom: 4,
+      borderRadius: radius.sm,
       backgroundColor: colors.elevated,
     },
     skeletonTitle: {
       position: 'relative',
       overflow: 'hidden',
-      width: 82,
-      height: 12,
-      borderRadius: 6,
+      width: '62%',
+      height: 14,
+      borderRadius: 7,
       backgroundColor: colors.elevated,
-      marginTop: 10,
+      marginTop: 14,
+    },
+    skeletonCount: {
+      position: 'relative',
+      overflow: 'hidden',
+      width: '36%',
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.elevated,
+      marginTop: 8,
     },
   },
   [] as const,

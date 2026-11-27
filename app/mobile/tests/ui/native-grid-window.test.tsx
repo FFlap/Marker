@@ -29,10 +29,12 @@ function LibraryRows({
   data = items,
   sectionTop = 0,
   externalPlaceholder,
+  leading,
 }: {
   data?: typeof items;
   sectionTop?: number;
   externalPlaceholder?: { index: number; height: number };
+  leading?: { key: string; element: React.ReactNode }[];
 }) {
   const offset = useSharedValue(0);
   const scrollRef = useAnimatedRef<ScrollView>();
@@ -46,6 +48,7 @@ function LibraryRows({
       }}
       sectionTop={sectionTop}
       externalPlaceholder={externalPlaceholder}
+      leading={leading}
       onDropTarget={(target) => {
         dropTarget = target;
       }}
@@ -138,4 +141,23 @@ it('waits for the grid origin and keeps targeting unmounted rows after auto-scro
   expect(dropTarget?.(150, 66, 2640)).toEqual({ index: 61, distance: 0 });
   expect(dropTarget?.(150, 66, 5000).index).toBe(100);
   expect(dropTarget?.(150, -10, 0).index).toBe(0);
+});
+
+it('windows fixed leading rows too, so many of them never mount at once', async () => {
+  const leading = Array.from({ length: 100 }, (_, index) => ({
+    key: `pinned-${index}`,
+    element: <Text>Pinned {index}</Text>,
+  }));
+  const view = await render(<LibraryRows data={items.slice(0, 2)} leading={leading} />);
+  mockMeasured = true;
+  await fireEvent(view.getByTestId('native-grid'), 'layout', {
+    nativeEvent: { layout: { width: 400, height: 4488 } },
+  });
+  expect(view.getByText('Pinned 0')).toBeTruthy();
+  expect(view.queryByText('Pinned 60')).toBeNull();
+  expect(view.queryAllByText(/^Pinned /)).toHaveLength(32);
+  // Scrolled to the end: the draggable rows after the leading ones mount.
+  await act(() => updateOffset(3784, 0));
+  expect(view.queryByText('Pinned 0')).toBeNull();
+  expect(view.getByText('Title 1')).toBeTruthy();
 });

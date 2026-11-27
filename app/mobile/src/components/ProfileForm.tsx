@@ -15,6 +15,7 @@ import { Button, Input } from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { useToast } from '@/components/ui/Toast';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
 import { getConvexSiteUrl } from '@/lib/convexUrl';
 import { usernameError } from '@/lib/profile';
 import { createAppStyles } from '@/lib/typography';
@@ -274,7 +275,7 @@ const s = createAppStyles(
       height: 52,
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
+      borderRadius: radius.md,
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,

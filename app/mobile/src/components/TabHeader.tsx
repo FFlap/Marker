@@ -2,8 +2,7 @@ import { forwardRef, type ReactNode } from 'react';
 import type { TextInputProps } from 'react-native';
 import { View } from 'react-native';
 import { AppDrawer, type AppDrawerHandle } from '@/components/AppDrawer';
-import { Input } from '@/components/ui/primitives';
-import { colors } from '@/constants/colors';
+import { SearchField } from '@/components/ui/primitives';
 import { createAppStyles } from '@/lib/typography';
 
 type TabHeaderProps = Pick<
@@ -20,9 +19,10 @@ export const TabHeader = forwardRef<AppDrawerHandle, TabHeaderProps>(function Ta
   ref,
 ) {
   return (
-    <View style={[s.header, { maxWidth }]}>
+    // Without a trailing icon the search field itself ends on the 20dp gutter.
+    <View style={[s.header, { maxWidth }, !trailing && s.headerPlain]}>
       <AppDrawer ref={ref} current={current} />
-      <Input {...inputProps} compact hitSlop={{ top: 4, bottom: 4 }} style={s.searchInput} />
+      <SearchField {...inputProps} />
       {trailing}
     </View>
   );
@@ -37,18 +37,14 @@ const s = createAppStyles(
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      paddingHorizontal: 20,
+      paddingLeft: 20,
+      // Trailing icon buttons are 40dp around a ~20dp glyph: 10dp here puts the glyph on
+      // the 20dp gutter, the edge text actions and sheet rows end on.
+      paddingRight: 10,
       paddingTop: 16,
       paddingBottom: 8,
     },
-    searchInput: {
-      flex: 1,
-      minWidth: 0,
-      height: 36,
-      borderWidth: 0,
-      backgroundColor: colors.surface,
-      fontSize: 14,
-    },
+    headerPlain: { paddingRight: 20 },
   },
-  ['searchInput'] as const,
+  [] as const,
 );

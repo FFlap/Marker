@@ -14,7 +14,8 @@ afterEach(() => {
 
 async function setup(cached = true) {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date('2026-11-06T12:00:00Z'));
+  // The viewer's local day (2026-11-05) matches the UTC day of the catalog refresh.
+  vi.setSystemTime(new Date('2026-11-05T20:00:00Z'));
   const t = convexTest({ schema, modules, transactionLimits: true });
   const userId = await t.run((ctx) => ctx.db.insert('users', { clerkId: 'declare-watch' }));
   const user = t.withIdentity({ subject: 'declare-watch' });
@@ -485,4 +486,56 @@ it('keeps a season unwatch authoritative over pre-existing unwatched rows', asyn
   expect((await states()).map((episode) => episode.watched)).toEqual([false, false, false]);
   await hydrate();
   expect((await states()).map((episode) => episode.watched)).toEqual([false, false, false]);
+});
+
+it("leaves an episode dated after the viewer's local day unwatched, even if UTC has reached it", async () => {
+  vi.useFakeTimers();
+  // 02:00 UTC on Nov 7 is still the evening of Nov 6 in Edmonton.
+  vi.setSystemTime(new Date('2026-11-07T02:00:00Z'));
+  const t = convexTest({ schema, modules, transactionLimits: true });
+  const userId = await t.run((ctx) => ctx.db.insert('users', { clerkId: 'evening-watch' }));
+  const user = t.withIdentity({ subject: 'evening-watch' });
+  const itemId = await user.mutation(api.library.items.addItem, {
+    tmdbId: 43,
+    mediaType: 'tv',
+    title: 'Weekly show',
+    status: 'watching',
+  });
+  await putSeason(t, {
+    tmdbId: 43,
+    season: 1,
+    metadataProvider: 'tmdb',
+    orderEpoch: 0,
+    refreshedAt: Date.now(),
+    refreshAfter: Date.now() + 60_000,
+    episodes: [
+      { season: 1, episode: 1, name: 'Last week', airDate: '2026-10-31', providerEpisodeId: 201 },
+      { season: 1, episode: 2, name: 'Tomorrow', airDate: '2026-11-07', providerEpisodeId: 202 },
+    ],
+  });
+  await user.action(api.library.seasonWatched.moveItemToWatched, {
+    itemId,
+    activityDate: '2026-11-06',
+  });
+  // Before hydration, progress already counts the one covered episode (not zero).
+  expect(await user.query(api.library.episodes.listEpisodeProgress, { itemId })).toMatchObject([
+    { season: 1, currentWatchedCount: 1, currentTotal: 2, identityStale: false },
+  ]);
+  const marker = (await t.run((ctx) => ctx.db.get(itemId)))!.seriesWatch!;
+  await t.action(internal.library.seasonWatched.hydrateSeriesWatch, {
+    userId,
+    itemId,
+    generation: marker.generation,
+    token: marker.hydrationToken,
+    attempt: marker.attempts,
+  });
+
+  const episodes = await user.query(api.library.episodes.listEpisodes, { itemId, season: 1 });
+  expect(episodes.map((episode) => [episode.episode, episode.watched])).toEqual([
+    [1, true],
+    [2, false],
+  ]);
+  expect(await user.query(api.library.episodes.listEpisodeProgress, { itemId })).toMatchObject([
+    { season: 1, currentWatchedCount: 1, currentTotal: 2 },
+  ]);
 });

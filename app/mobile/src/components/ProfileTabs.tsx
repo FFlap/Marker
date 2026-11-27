@@ -1,87 +1,27 @@
-import { Text, View } from 'react-native';
-import ChartNoAxesColumn from 'lucide-react-native/icons/chart-no-axes-column';
-import Library from 'lucide-react-native/icons/library';
-import { NativePressable } from '@/components/ui/NativePressable';
-import { colors } from '@/constants/colors';
-import { createAppStyles } from '@/lib/typography';
+import { View } from 'react-native';
+import type { SharedValue } from 'react-native-reanimated';
+import { UnderlineTabs } from '@/components/ui/UnderlineTabs';
 
 export type ProfileTab = 'collection' | 'stats';
 
-const tabs: { value: ProfileTab; label: string }[] = [
+// Text-only, like the Episodes tabs.
+const tabs = [
   { value: 'collection', label: 'Collection' },
   { value: 'stats', label: 'Stats' },
-];
+] as const;
 
 export function ProfileTabs({
   value,
   onChange,
+  position,
 }: {
   value: ProfileTab;
   onChange: (value: ProfileTab) => void;
+  position?: SharedValue<number>;
 }) {
   return (
-    <View accessibilityRole="tablist" style={s.tabs}>
-      {tabs.map((tab) => {
-        const selected = tab.value === value;
-        const Icon = tab.value === 'collection' ? Library : ChartNoAxesColumn;
-        return (
-          <NativePressable
-            key={tab.value}
-            accessibilityRole="tab"
-            accessibilityState={{ selected }}
-            onPress={() => onChange(tab.value)}
-            style={s.tab}
-            pressedStyle={s.pressed}
-          >
-            <View style={s.tabContent}>
-              <Icon
-                size={16}
-                color={selected ? colors.text : colors.muted}
-                strokeWidth={selected ? 2 : 1.7}
-              />
-              <Text style={[s.label, selected && s.labelSelected]}>{tab.label}</Text>
-            </View>
-            {selected && <View style={s.indicator} />}
-          </NativePressable>
-        );
-      })}
+    <View style={{ marginBottom: 24 }}>
+      <UnderlineTabs tabs={tabs} value={value} onChange={onChange} position={position} />
     </View>
   );
 }
-
-const s = createAppStyles(
-  {
-    tabs: {
-      flexDirection: 'row',
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      marginBottom: 32,
-    },
-    tab: {
-      flex: 1,
-      minWidth: 0,
-      minHeight: 52,
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative',
-    },
-    tabContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 7,
-    },
-    label: { color: colors.muted, fontSize: 13, fontWeight: '600' },
-    labelSelected: { color: colors.text, fontWeight: '700' },
-    indicator: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      bottom: -1,
-      height: 2,
-      backgroundColor: colors.text,
-    },
-    pressed: { opacity: 0.62 },
-  },
-  ['label', 'labelSelected'] as const,
-);

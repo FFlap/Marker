@@ -25,6 +25,7 @@ import {
   type AddItemArgs,
   boundedOptional,
   hasTag,
+  MAX_TAGS_PER_ITEM,
   normalizedTagKey,
   normalizeGenres,
   normalizeTags,
@@ -186,6 +187,7 @@ export const updateItem = mutation({
     clearRating: v.optional(v.boolean()),
     tags: v.optional(v.array(v.string())),
     timesWatched: v.optional(v.number()),
+    alsoWatching: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -204,6 +206,13 @@ export const updateItem = mutation({
     const nextTags = args.tags === undefined ? undefined : normalizeTags(args.tags);
     if (nextTags !== undefined) patch.tags = nextTags;
     if (args.timesWatched !== undefined) patch.timesWatched = args.timesWatched;
+    const nextStatus = args.status ?? item.status;
+    // "Also in Watching" only describes a watched show; leaving Watched clears it.
+    if (nextStatus !== 'watched') {
+      if (item.alsoWatching !== undefined) patch.alsoWatching = undefined;
+    } else if (args.alsoWatching !== undefined && item.mediaType === 'tv') {
+      patch.alsoWatching = args.alsoWatching || undefined;
+    }
     if (args.status !== undefined && args.status !== item.status) {
       patch.rank = await rankAtEnd(ctx, userId, args.status);
     }
@@ -239,8 +248,11 @@ export const updateItem = mutation({
         status: args.status,
       });
     await writeActivityEvents(ctx, events);
-    if (item.mediaType === 'tv' && args.status === 'watching' && item.status !== 'watching')
-      await refreshNextEpisode(ctx, item._id);
+    // Up next needs a fresh next episode once the show is followed again.
+    const followed =
+      (args.status === 'watching' && item.status !== 'watching') ||
+      (patch.alsoWatching === true && !item.alsoWatching);
+    if (item.mediaType === 'tv' && followed) await refreshNextEpisode(ctx, item._id);
   },
 });
 
@@ -249,16 +261,55 @@ export const addTagToItems = mutation({
     itemIds: v.array(v.id('items')),
     tag: v.string(),
   },
-  returns: v.object({ updated: v.number() }),
+  // `full`: titles already at the tag limit, skipped so the rest of the batch still saves.
+  returns: v.object({ updated: v.number(), full: v.array(v.string()) }),
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     if (args.itemIds.length > 100) throw new Error('Add tags to at most 100 titles at a time');
     const [tag] = normalizeTags([args.tag]);
     const uniqueIds = [...new Set(args.itemIds)];
     const items = await Promise.all(uniqueIds.map((itemId) => ownedItem(ctx, itemId, userId)));
+    const full: string[] = [];
     const updates = items.flatMap((item) => {
       if (hasTag(item, normalizedTagKey(tag))) return [];
+      if (item.tags.length >= MAX_TAGS_PER_ITEM) {
+        full.push(item.title);
+        return [];
+      }
       return [{ item, tags: normalizeTags([...item.tags, tag]) }];
+    });
+    if (!updates.length) return { updated: 0, full };
+
+    const updatedAt = Date.now();
+    const collectionDeltas: TagCollectionDeltas = new Map();
+    for (const update of updates) {
+      await ctx.db.patch(update.item._id, { tags: update.tags, updatedAt });
+      await updateProfileStatsForItem(ctx, update.item, { ...update.item, tags: update.tags });
+      await syncItemTagMemberships(ctx, update.item, update.tags, collectionDeltas);
+    }
+    await refreshChangedTagCollections(ctx, collectionDeltas);
+    return { updated: updates.length, full };
+  },
+});
+
+export const removeTagFromItems = mutation({
+  args: {
+    itemIds: v.array(v.id('items')),
+    tag: v.string(),
+  },
+  returns: v.object({ updated: v.number() }),
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    if (args.itemIds.length > 100) throw new Error('Remove tags from at most 100 titles at a time');
+    const [tag] = normalizeTags([args.tag]);
+    const tagKey = normalizedTagKey(tag);
+    const uniqueIds = [...new Set(args.itemIds)];
+    const items = await Promise.all(uniqueIds.map((itemId) => ownedItem(ctx, itemId, userId)));
+    const updates = items.flatMap((item) => {
+      if (!hasTag(item, tagKey)) return [];
+      return [
+        { item, tags: item.tags.filter((candidate) => normalizedTagKey(candidate) !== tagKey) },
+      ];
     });
     if (!updates.length) return { updated: 0 };
 

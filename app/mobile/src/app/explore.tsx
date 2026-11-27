@@ -3,24 +3,44 @@ import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
 import { saveProfile } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import Clock from 'lucide-react-native/icons/clock';
+import X from 'lucide-react-native/icons/x';
+import {
+  readRecentSearches,
+  restoredRecentSearches,
+  withRecentSearch,
+  writeRecentSearches,
+} from '@/lib/recentSearches';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
+import { useAuth } from '@clerk/expo';
+import type { KeyboardAwareScrollViewRef } from 'react-native-keyboard-controller';
 import { router } from 'expo-router';
 import { useMutation, useQuery } from 'convex/react';
 import ChevronRight from 'lucide-react-native/icons/chevron-right';
-import Plus from 'lucide-react-native/icons/plus';
-import Search from 'lucide-react-native/icons/search';
 import TagsIcon from 'lucide-react-native/icons/tags';
 import { api } from '@marker/shared/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { SearchResultsSkeleton } from '@/components/PageSkeletons';
 import { ProfileAvatar } from '@/components/ProfileAvatar';
-import { EmptyState } from '@/components/ui/primitives';
+import {
+  Button,
+  EmptyState,
+  IconButton,
+  SearchField,
+  SectionHeading,
+  TextAction,
+} from '@/components/ui/primitives';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { PosterImage } from '@/components/ui/PosterImage';
 import { useToast } from '@/components/ui/Toast';
+import { SwipeTabsArea } from '@/components/SwipeTabsArea';
+import { SearchFailed } from '@/components/SearchFailed';
+import { useTabScrollMemory } from '@/hooks/use-tab-scroll-memory';
+import { useChipInView } from '@/hooks/use-chip-in-view';
 import { colors } from '@/constants/colors';
+import { radius, typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import type { SearchResult } from '@/types';
 import { useTitleSearch } from '@/hooks/use-title-search';
@@ -44,10 +64,11 @@ type PublicTag = {
 const filters: { value: Filter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'movie', label: 'Movies' },
-  { value: 'tv', label: 'TV Shows' },
+  { value: 'tv', label: 'TV shows' },
   { value: 'people', label: 'People' },
   { value: 'tags', label: 'Tags' },
 ];
+const FILTER_VALUES = filters.map((entry) => entry.value);
 const PREVIEW_RESULT_LIMIT = 3;
 export default function Explore() {
   const runOperation = useOperation();
@@ -56,13 +77,54 @@ export default function Explore() {
   const toast = useToast();
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
+  // "See all" and swiping between chips open each result list at its start.
+  const chipStrip = useChipInView(filter);
+  const tabScroll = useTabScrollMemory<Filter, KeyboardAwareScrollViewRef>(filter, {
+    topInset: CONTENT_TOP,
+    resetKey: query.trim(),
+  });
+  const seeAll = (next: Filter) => {
+    tabScroll.forget(next);
+    setFilter(next);
+  };
+  const [recent, setRecent] = useState<string[]>([]);
+  const recentRef = useRef<string[]>([]);
+  const { userId } = useAuth();
+  useEffect(() => {
+    let live = true;
+    void readRecentSearches(userId).then((saved) => {
+      if (!live) return;
+      recentRef.current = saved;
+      setRecent(saved);
+    });
+    return () => {
+      live = false;
+    };
+  }, [userId]);
+  const saveRecent = (next: string[]) => {
+    recentRef.current = next;
+    setRecent(next);
+    writeRecentSearches(userId, next);
+  };
+  const remember = (value: string) => saveRecent(withRecentSearch(recentRef.current, value));
   const {
     debouncedQuery,
     ready,
     settled,
     results: mediaResults,
     loading: mediaLoading,
-  } = useTitleSearch(query, { enabled: filter !== 'people' && filter !== 'tags' });
+    failed: mediaFailed,
+    retry: retryMedia,
+    hasMore: mediaHasMore,
+    loadingMore: mediaLoadingMore,
+    loadMoreFailed: mediaLoadMoreFailed,
+    loadMore: loadMoreMedia,
+  } = useTitleSearch(query, {
+    enabled: filter !== 'people' && filter !== 'tags',
+    // Movies and TV shows search their own category, so "See all" isn't limited to the
+    // titles that made the mixed first page.
+    type: filter === 'movie' || filter === 'tv' ? filter : undefined,
+  });
   const [pendingPeople, setPendingPeople] = usePendingTasks();
   const library = useQuery(api.library.items.listItems);
   const people = useQuery(
@@ -78,7 +140,11 @@ export default function Explore() {
       : 'skip',
   ) as PublicTag[] | undefined;
 
+  const isSaved = (result: SearchResult) =>
+    !!library?.some((item) => item.tmdbId === result.id && item.mediaType === result.mediaType);
   const openTitle = (result: SearchResult) => {
+    // Opening a result keeps the search in Recent searches.
+    remember(debouncedQuery);
     const existing = library?.find(
       (item) => item.tmdbId === result.id && item.mediaType === result.mediaType,
     );
@@ -129,6 +195,13 @@ export default function Explore() {
   const allPeople = visiblePeople.slice(0, PREVIEW_RESULT_LIMIT);
   const visibleTags = filter === 'all' || filter === 'tags' ? (publicTags ?? []) : [];
   const allTags = visibleTags.slice(0, PREVIEW_RESULT_LIMIT);
+  // Retrying only the title search keeps people and tag results on screen meanwhile.
+  const [retryingMedia, setRetryingMedia] = useState(false);
+  if (retryingMedia && !mediaLoading) setRetryingMedia(false);
+  const retryTitles = () => {
+    setRetryingMedia(true);
+    retryMedia();
+  };
   const loading =
     ready &&
     (!settled ||
@@ -137,7 +210,7 @@ export default function Explore() {
         : filter === 'tags'
           ? publicTags === undefined
           : filter === 'all'
-            ? mediaLoading || people === undefined || publicTags === undefined
+            ? (mediaLoading && !retryingMedia) || people === undefined || publicTags === undefined
             : mediaLoading));
   const hasResults = visibleMedia.length > 0 || visiblePeople.length > 0 || visibleTags.length > 0;
   const searchLabel = 'Search movies, TV shows, people, and tags';
@@ -145,22 +218,35 @@ export default function Explore() {
   return (
     <ScreenView style={s.root}>
       <SecondaryHeader title="Explore" maxWidth={760} />
-      <KeyboardScrollView contentContainerStyle={s.content}>
-        <View style={s.searchField}>
-          <Search size={18} color={colors.muted} strokeWidth={1.7} />
-          <TextInput
-            accessibilityLabel={searchLabel}
-            autoCapitalize="none"
-            autoCorrect={false}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Movies, TV shows, people, or tags"
-            placeholderTextColor={colors.muted}
-            returnKeyType="search"
-            style={s.searchInput}
-          />
-        </View>
-        <View accessibilityRole="tablist" style={s.filters}>
+      <KeyboardScrollView
+        ref={tabScroll.scrollRef}
+        onScroll={tabScroll.onScroll}
+        onScrollBeginDrag={tabScroll.onScrollBeginDrag}
+        onContentSizeChange={tabScroll.onContentSizeChange}
+        scrollEventThrottle={32}
+        contentContainerStyle={s.content}
+      >
+        <SearchField
+          accessibilityLabel={searchLabel}
+          autoCapitalize="none"
+          value={query}
+          onChangeText={setQuery}
+          onSubmitEditing={() => remember(query)}
+          placeholder="Search Marker"
+          containerStyle={s.searchField}
+        />
+        <ScrollView
+          {...chipStrip.stripProps}
+          onLayout={(event) => {
+            tabScroll.onContentLayout(event);
+            chipStrip.stripProps.onLayout(event);
+          }}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          accessibilityRole="tablist"
+          style={s.filtersShell}
+          contentContainerStyle={s.filters}
+        >
           {filters.map((entry) => {
             const selected = filter === entry.value;
             return (
@@ -169,49 +255,144 @@ export default function Explore() {
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
                 onPress={() => setFilter(entry.value)}
+                hitSlop={{ top: 4, bottom: 4 }}
+                onLayout={chipStrip.onChipLayout(entry.value)}
                 style={[s.filter, selected && s.filterSelected]}
               >
                 <Text style={[s.filterText, selected && s.filterTextSelected]}>{entry.label}</Text>
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
-        <View style={s.results}>
+        <SwipeTabsArea tabs={FILTER_VALUES} value={filter} onChange={setFilter} style={s.results}>
           {!ready ? (
-            <EmptyState
-              title="Search all of Marker"
-              detail="Find movies, TV shows, people, or public tags."
-            />
+            recent.length > 0 ? (
+              <View style={s.resultSection}>
+                <SectionHeading
+                  title="Recent searches"
+                  action={
+                    <TextAction
+                      title="Clear"
+                      accessibilityLabel="Clear recent searches"
+                      onPress={() => {
+                        const cleared = recent;
+                        saveRecent([]);
+                        toast.show('Recent searches cleared', {
+                          action: {
+                            label: 'Undo',
+                            onPress: () =>
+                              saveRecent(restoredRecentSearches(recentRef.current, cleared)),
+                          },
+                        });
+                      }}
+                    />
+                  }
+                />
+                {recent.map((entry) => (
+                  <View key={entry} style={s.recentRow}>
+                    <NativePressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Search for ${entry}`}
+                      onPress={() => setQuery(entry)}
+                      style={s.recentOpen}
+                      pressedStyle={s.pressed}
+                    >
+                      <Clock size={17} color={colors.muted} strokeWidth={1.8} />
+                      <Text numberOfLines={1} style={s.recentText}>
+                        {entry}
+                      </Text>
+                    </NativePressable>
+                    <IconButton
+                      icon={X}
+                      size="sm"
+                      color={colors.muted}
+                      accessibilityLabel={`Remove ${entry} from recent searches`}
+                      // The × lines up with "Clear" above it.
+                      style={s.recentRemove}
+                      onPress={() =>
+                        saveRecent(recentRef.current.filter((value) => value !== entry))
+                      }
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={s.idleHint}>Search movies, TV shows, people and public tags.</Text>
+            )
           ) : loading ? (
             <SearchResultsSkeleton />
           ) : !hasResults ? (
-            <EmptyState title="No results" detail="Try a different search." />
+            retryingMedia ? (
+              <SearchResultsSkeleton />
+            ) : mediaFailed ? (
+              <SearchFailed onRetry={retryTitles} />
+            ) : (
+              <EmptyState title="No results" detail="Try a different search." />
+            )
           ) : filter === 'all' ? (
             <>
-              <ResultSection title="Movies" visible={allMovies.length > 0}>
+              {/* People and tags still show when only the title search failed. */}
+              {retryingMedia ? (
+                <SearchResultsSkeleton count={2} />
+              ) : (
+                mediaFailed && <SearchFailed inline onRetry={retryTitles} />
+              )}
+              <ResultSection
+                title="Movies"
+                visible={allMovies.length > 0}
+                // Its own search can find more than the mixed page shows, so always offered.
+                more={() => seeAll('movie')}
+              >
                 {allMovies.map((result) => (
-                  <MediaResult key={`movie-${result.id}`} result={result} onPress={openTitle} />
+                  <MediaResult
+                    key={`movie-${result.id}`}
+                    result={result}
+                    saved={isSaved(result)}
+                    onPress={openTitle}
+                  />
                 ))}
               </ResultSection>
-              <ResultSection title="TV shows" visible={allShows.length > 0}>
+              <ResultSection
+                title="TV shows"
+                visible={allShows.length > 0}
+                more={() => seeAll('tv')}
+              >
                 {allShows.map((result) => (
-                  <MediaResult key={`tv-${result.id}`} result={result} onPress={openTitle} />
+                  <MediaResult
+                    key={`tv-${result.id}`}
+                    result={result}
+                    saved={isSaved(result)}
+                    onPress={openTitle}
+                  />
                 ))}
               </ResultSection>
-              <ResultSection title="People" visible={allPeople.length > 0}>
+              <ResultSection
+                title="People"
+                visible={allPeople.length > 0}
+                more={visiblePeople.length > allPeople.length ? () => seeAll('people') : undefined}
+              >
                 {allPeople.map((person) => (
                   <PersonResult
                     key={person.username}
+                    onOpen={() => remember(debouncedQuery)}
                     person={person}
                     pending={pendingPeople.has(person.username)}
                     onFollow={() => void updateFollow(person)}
                   />
                 ))}
               </ResultSection>
-              <ResultSection title="Tags" visible={allTags.length > 0}>
+              <ResultSection
+                title="Tags"
+                visible={allTags.length > 0}
+                more={visibleTags.length > allTags.length ? () => seeAll('tags') : undefined}
+              >
                 {allTags.map((tag) => (
-                  <PublicTagResult key={tag.tag.toLocaleLowerCase()} tag={tag} />
+                  <PublicTagResult
+                    key={tag.tag.toLocaleLowerCase()}
+                    tag={tag}
+                    onOpen={() => remember(debouncedQuery)}
+                  />
                 ))}
               </ResultSection>
             </>
@@ -219,6 +400,7 @@ export default function Explore() {
             visiblePeople.map((person) => (
               <PersonResult
                 key={person.username}
+                onOpen={() => remember(debouncedQuery)}
                 person={person}
                 pending={pendingPeople.has(person.username)}
                 onFollow={() => void updateFollow(person)}
@@ -226,29 +408,55 @@ export default function Explore() {
             ))
           ) : filter === 'tags' ? (
             visibleTags.map((tag) => (
-              <PublicTagResult key={tag.tag.toLocaleLowerCase()} tag={tag} />
-            ))
-          ) : (
-            visibleMedia.map((result) => (
-              <MediaResult
-                key={`${result.mediaType}-${result.id}`}
-                result={result}
-                onPress={openTitle}
+              <PublicTagResult
+                key={tag.tag.toLocaleLowerCase()}
+                tag={tag}
+                onOpen={() => remember(debouncedQuery)}
               />
             ))
+          ) : (
+            <>
+              {visibleMedia.map((result) => (
+                <MediaResult
+                  key={`${result.mediaType}-${result.id}`}
+                  result={result}
+                  saved={isSaved(result)}
+                  onPress={openTitle}
+                />
+              ))}
+              {/* A category lists every page of its own search, one page at a time. */}
+              {mediaHasMore && (
+                <Button
+                  title={
+                    mediaLoadingMore
+                      ? 'Loading…'
+                      : mediaLoadMoreFailed
+                        ? 'Couldn’t load more · Try again'
+                        : 'Load more'
+                  }
+                  variant="secondary"
+                  disabled={mediaLoadingMore}
+                  onPress={loadMoreMedia}
+                  style={s.loadMore}
+                />
+              )}
+            </>
           )}
-        </View>
+        </SwipeTabsArea>
       </KeyboardScrollView>
     </ScreenView>
   );
 }
 
-function PublicTagResult({ tag }: { tag: PublicTag }) {
+function PublicTagResult({ tag, onOpen }: { tag: PublicTag; onOpen: () => void }) {
   return (
     <NativePressable
       accessibilityRole="button"
       accessibilityLabel={`Explore ${tag.tag} tag`}
-      onPress={() => router.push({ pathname: '/tag/[tag]', params: { tag: tag.tag } })}
+      onPress={() => {
+        onOpen();
+        router.push({ pathname: '/tag/[tag]', params: { tag: tag.tag } });
+      }}
       style={s.tagResult}
       pressedStyle={s.pressed}
     >
@@ -277,7 +485,13 @@ function PublicTagResult({ tag }: { tag: PublicTag }) {
           {tag.contributorCount} {tag.contributorCount === 1 ? 'person' : 'people'}
         </Text>
       </View>
-      <ChevronRight size={17} color={colors.muted} strokeWidth={1.7} />
+      <ChevronRight
+        size={17}
+        color={colors.muted}
+        strokeWidth={1.7}
+        // The glyph's own padding: end it on the 20dp gutter like the text above.
+        style={ROW_CHEVRON}
+      />
     </NativePressable>
   );
 }
@@ -285,16 +499,29 @@ function PublicTagResult({ tag }: { tag: PublicTag }) {
 function ResultSection({
   title,
   visible,
+  more,
   children,
 }: {
   title: string;
   visible: boolean;
+  more?: () => void;
   children: React.ReactNode;
 }) {
   if (!visible) return null;
   return (
     <View style={s.resultSection}>
-      <Text style={s.sectionTitle}>{title}</Text>
+      <SectionHeading
+        title={title}
+        action={
+          more ? (
+            <TextAction
+              title="See all"
+              accessibilityLabel={`See all ${title.toLocaleLowerCase()}`}
+              onPress={more}
+            />
+          ) : undefined
+        }
+      />
       {children}
     </View>
   );
@@ -302,15 +529,25 @@ function ResultSection({
 
 function MediaResult({
   result,
+  saved,
   onPress,
 }: {
   result: SearchResult;
+  saved: boolean;
   onPress: (result: SearchResult) => void;
 }) {
   return (
     <NativePressable
       accessibilityRole="button"
-      accessibilityLabel={`View ${result.title}`}
+      // The year and kind tell same-named titles apart, as the row shows.
+      accessibilityLabel={[
+        `View ${result.title}`,
+        result.releaseDate?.slice(0, 4),
+        result.mediaType === 'movie' ? 'movie' : 'TV show',
+        saved && 'in your library',
+      ]
+        .filter(Boolean)
+        .join(', ')}
       onPress={() => onPress(result)}
       style={s.mediaResult}
       pressedStyle={s.pressed}
@@ -320,24 +557,31 @@ function MediaResult({
         <Text numberOfLines={2} style={s.resultTitle}>
           {result.title}
         </Text>
-        <Text style={s.resultMeta}>
-          {result.releaseDate?.slice(0, 4) || '—'} ·{' '}
-          {result.mediaType === 'movie' ? 'Movie' : 'TV Show'}
-        </Text>
+        {(!!result.releaseDate || saved) && (
+          <Text style={s.resultMeta}>
+            {[result.releaseDate?.slice(0, 4), saved && 'In library'].filter(Boolean).join(' · ')}
+          </Text>
+        )}
       </View>
-      <View style={s.addIcon}>
-        <Plus size={18} color={colors.bg} strokeWidth={2} />
-      </View>
+      <ChevronRight
+        size={18}
+        color={colors.muted}
+        strokeWidth={1.8}
+        // The glyph's own padding: end it on the 20dp gutter like the text above.
+        style={ROW_CHEVRON}
+      />
     </NativePressable>
   );
 }
 
 function PersonResult({
   person,
+  onOpen,
   pending,
   onFollow,
 }: {
   person: Person;
+  onOpen: () => void;
   pending: boolean;
   onFollow: () => void;
 }) {
@@ -354,7 +598,10 @@ function PersonResult({
       <NativePressable
         accessibilityRole="button"
         accessibilityLabel={`Open @${person.username}`}
-        onPress={() => router.push(`/u/${person.username}`)}
+        onPress={() => {
+          onOpen();
+          router.push(`/u/${person.username}`);
+        }}
         style={s.personIdentity}
         pressedStyle={s.pressed}
       >
@@ -366,7 +613,16 @@ function PersonResult({
             · {person.isPublic ? 'Public' : 'Private'}
           </Text>
         </View>
-        <ChevronRight size={17} color={colors.muted} strokeWidth={1.7} />
+        {/* With a Follow button at the end of the row, the row needs no chevron. */}
+        {person.relationship === 'self' && (
+          <ChevronRight
+            size={17}
+            color={colors.muted}
+            strokeWidth={1.7}
+            // The glyph's own padding: end it on the 20dp gutter like the text above.
+            style={ROW_CHEVRON}
+          />
+        )}
       </NativePressable>
       {person.relationship !== 'self' && (
         <NativePressable
@@ -391,50 +647,36 @@ function PersonResult({
   );
 }
 
+// Room for the bar floating over the scroll view.
+const CONTENT_TOP = 92;
+
+const ROW_CHEVRON = { marginRight: -5 };
+
 const s = createAppStyles(
   {
     root: { flex: 1, backgroundColor: colors.bg },
+    loadMore: { alignSelf: 'center', marginTop: 16 },
     content: {
       width: '100%',
       maxWidth: 760,
       alignSelf: 'center',
       paddingHorizontal: 20,
-      paddingTop: 104,
+      paddingTop: CONTENT_TOP,
       paddingBottom: 72,
     },
-    searchField: {
-      height: 54,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 14,
-      backgroundColor: colors.surface,
-      paddingLeft: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    searchInput: {
-      flex: 1,
-      height: 52,
-      borderWidth: 0,
-      backgroundColor: 'transparent',
-      color: colors.text,
-      paddingHorizontal: 14,
-      fontSize: 15,
-    },
+    searchField: { flex: 0 },
     tagResult: {
-      minHeight: 88,
+      minHeight: 84,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 14,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 10,
+      paddingVertical: 8,
     },
     tagPosters: { width: 92, height: 68, flexDirection: 'row', alignItems: 'center' },
     tagPoster: {
       width: 42,
       height: 63,
-      borderRadius: 7,
+      borderRadius: radius.xs,
       borderWidth: 2,
       borderColor: colors.bg,
     },
@@ -446,53 +688,50 @@ const s = createAppStyles(
       alignItems: 'center',
       justifyContent: 'center',
     },
-    filters: {
-      flexDirection: 'row',
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      marginTop: 18,
-    },
+    // 4dp above and below the 36dp chips gives each a 44dp touch area inside the strip.
+    filtersShell: { marginTop: 10, marginBottom: -4, marginHorizontal: -20 },
+    filters: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingVertical: 4 },
     filter: {
-      minHeight: 46,
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderBottomWidth: 2,
-      borderBottomColor: 'transparent',
-    },
-    filterSelected: { borderBottomColor: colors.text },
-    filterText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
-    filterTextSelected: { color: colors.text },
-    results: { minHeight: 320, paddingTop: 12 },
-    resultSection: { marginTop: 10 },
-    sectionTitle: { color: colors.text, fontSize: 13, fontWeight: '700', marginBottom: 4 },
-    mediaResult: {
-      minHeight: 114,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 15,
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 12,
-    },
-    poster: { width: 58, height: 87, borderRadius: 8 },
-    resultCopy: { flex: 1, minWidth: 0 },
-    resultTitle: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: '700' },
-    resultMeta: { color: colors.muted, fontSize: 10, lineHeight: 15, marginTop: 5 },
-    addIcon: {
-      width: 36,
       height: 36,
-      borderRadius: 18,
-      backgroundColor: colors.text,
+      paddingHorizontal: 13,
+      borderRadius: radius.pill,
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: colors.surface,
     },
-    personResult: {
-      minHeight: 78,
+    filterSelected: { backgroundColor: colors.text },
+    filterText: { color: colors.secondary, fontSize: 13, fontWeight: '600' },
+    filterTextSelected: { color: colors.bg },
+    results: { paddingTop: 8 },
+    resultSection: { marginTop: 20, gap: 4 },
+    idleHint: { ...typeRamp.meta, textAlign: 'center', marginTop: 24 },
+    recentRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 4 },
+    recentRemove: { marginRight: -8 },
+    recentOpen: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 48,
       flexDirection: 'row',
       alignItems: 'center',
-      borderBottomWidth: 1,
-      borderColor: colors.border,
+      gap: 12,
+      borderRadius: radius.md,
+    },
+    recentText: { ...typeRamp.rowTitle, flex: 1, fontWeight: '500' },
+    mediaResult: {
+      minHeight: 96,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      paddingVertical: 8,
+    },
+    poster: { width: 52, height: 78, borderRadius: radius.xs },
+    resultCopy: { flex: 1, minWidth: 0, gap: 3 },
+    resultTitle: { ...typeRamp.rowTitle },
+    resultMeta: { ...typeRamp.meta },
+    personResult: {
+      minHeight: 72,
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: 10,
     },
     personIdentity: {
@@ -503,31 +742,30 @@ const s = createAppStyles(
       alignItems: 'center',
       gap: 13,
     },
-    personName: { color: colors.text, fontSize: 15, fontWeight: '700' },
+    personName: { ...typeRamp.rowTitle },
     followButton: {
-      minWidth: 82,
-      minHeight: 38,
-      paddingHorizontal: 12,
-      borderRadius: 19,
-      borderWidth: 1,
-      borderColor: colors.border,
+      minWidth: 88,
+      height: 36,
+      paddingHorizontal: 14,
+      borderRadius: radius.pill,
+      backgroundColor: colors.elevated,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    followButtonPrimary: { backgroundColor: colors.text, borderColor: colors.text },
-    followText: { color: colors.text, fontSize: 10, fontWeight: '700' },
+    followButtonPrimary: { backgroundColor: colors.text },
+    followText: { color: colors.text, fontSize: 13, fontWeight: '600' },
     followTextPrimary: { color: colors.bg },
     pressed: { opacity: 0.62 },
   },
   [
-    'searchInput',
     'filterText',
     'filterTextSelected',
-    'sectionTitle',
     'resultTitle',
     'resultMeta',
     'personName',
     'followText',
     'followTextPrimary',
+    'recentText',
+    'idleHint',
   ] as const,
 );

@@ -1,50 +1,70 @@
 import { usePendingTasks } from '@/hooks/use-pending-tasks';
+import { useSharedValue } from 'react-native-reanimated';
 import { ScreenView } from '@/components/ScreenLayout';
 import * as Effect from 'effect/Effect';
-import { saveLibrary, touchMetadata } from '@marker/shared/clientEffects';
+import { saveLibrary } from '@marker/shared/clientEffects';
 import { useOperation } from '@/hooks/use-operation';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useMutation, useQuery } from 'convex/react';
-import Check from 'lucide-react-native/icons/check';
-import EllipsisVertical from 'lucide-react-native/icons/ellipsis-vertical';
+import ChevronRight from 'lucide-react-native/icons/chevron-right';
 import Star from 'lucide-react-native/icons/star';
 import { api } from '@marker/shared/api';
 import { EpisodePageSkeleton } from '@/components/PageSkeletons';
 import { NativePressable } from '@/components/ui/NativePressable';
 import type { FunctionReturnType } from 'convex/server';
-import { Button, EmptyState } from '@/components/ui/primitives';
-import { RatingControl, TagEditor } from '@/components/ui/library-controls';
+import { EmptyState, SectionHeading } from '@/components/ui/primitives';
+import { EpisodeEditSheet } from '@/features/title/components/EpisodeEditSheet';
 import { useToast } from '@/components/ui/Toast';
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
+import { useWatchingRefresh } from '@/hooks/use-watching-refresh';
 import {
   EpisodeFiltersDrawer,
   type ShowFilter,
 } from '@/features/episodes/components/EpisodeFiltersDrawer';
 import { colors } from '@/constants/colors';
+import { radius } from '@/constants/theme';
+import { SwipePages } from '@/components/SwipePages';
+import { useTabScrollMemory } from '@/hooks/use-tab-scroll-memory';
+import { UnderlineTabs } from '@/components/ui/UnderlineTabs';
 import { createAppStyles } from '@/lib/typography';
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary';
 import { MobileNav } from '@/components/MobileNav';
 import { TabHeader } from '@/components/TabHeader';
 import { localDateKey, useLocalToday } from '@/hooks/use-local-today';
+import { displayEpisodeName } from '@/lib/text';
 
-type EpisodeHubItem = FunctionReturnType<typeof api.episodeHub.overview>['watching'][number];
+type EpisodeHubOverview = FunctionReturnType<typeof api.episodeHub.overview>;
+type EpisodeHubItem =
+  EpisodeHubOverview['watching'][number] | EpisodeHubOverview['favorites'][number];
 
 type EpisodeTab = 'watching' | 'favorites';
+type EpisodeFilters = {
+  search: string;
+  showFilter: ShowFilter;
+  minimumRating: number;
+  tagFilter: string;
+};
+const NO_FILTERS: EpisodeFilters = {
+  search: '',
+  showFilter: 'all',
+  minimumRating: 0,
+  tagFilter: 'all',
+};
 type EpisodeEditor = {
   savedRating?: number;
   savedTags: string[];
+  savedTimes: number;
   ratingVersion: number;
   tagsVersion: number;
+  timesVersion: number;
 };
 const EMPTY_EPISODES: EpisodeHubItem[] = [];
+
+const EPISODE_TABS = [
+  { value: 'watching', label: 'Watching' },
+  { value: 'favorites', label: 'Favorites' },
+] as const;
 
 export default function EpisodesScreen() {
   return (
@@ -59,20 +79,24 @@ function Episodes() {
   const today = useLocalToday();
   const overview = useQuery(api.episodeHub.overview, { today });
   const setEpisode = useMutation(api.library.episodes.setEpisodeState);
-  const refreshWatching = useMutation(api.episodeHub.refreshWatching);
   const toast = useToast();
-  useEffect(() => {
-    void runOperation(
-      touchMetadata(() => refreshWatching({})),
-      { failure: () => toast.show('Couldn’t refresh your episodes') },
-    );
-  }, [refreshWatching, toast, runOperation]);
+  const refreshFailed = useCallback(() => toast.show('Couldn’t refresh your episodes'), [toast]);
+  useWatchingRefresh({ enabled: true, onFailure: refreshFailed });
   const [tab, setTab] = useState<EpisodeTab>('watching');
-  const [search, setSearch] = useState('');
-  const [showFilter, setShowFilter] = useState<ShowFilter>('all');
-  const [minimumRating, setMinimumRating] = useState(0);
-  const [tagFilter, setTagFilter] = useState('all');
-  const [expanded, setExpanded] = useState<string>();
+  const tabScroll = useTabScrollMemory(tab, { topInset: CONTENT_TOP });
+  const pagerPosition = useSharedValue(0);
+  // Each tab keeps its own search and filters, so swiping across and back loses nothing.
+  const [tabFilters, setTabFilters] = useState<Record<EpisodeTab, EpisodeFilters>>({
+    watching: NO_FILTERS,
+    favorites: NO_FILTERS,
+  });
+  const { search, showFilter, minimumRating, tagFilter } = tabFilters[tab];
+  const patchFilters = (patch: Partial<EpisodeFilters>) =>
+    setTabFilters((current) => ({ ...current, [tab]: { ...current[tab], ...patch } }));
+  const setSearch = (value: string) => patchFilters({ search: value });
+  const setShowFilter = (value: ShowFilter) => patchFilters({ showFilter: value });
+  const setMinimumRating = (value: number) => patchFilters({ minimumRating: value });
+  const setTagFilter = (value: string) => patchFilters({ tagFilter: value });
   const [editing, setEditing] = useState<EpisodeHubItem>();
   const [pending, setPending] = usePendingTasks();
   const episodeMutationQueues = useRef(
@@ -80,8 +104,9 @@ function Episodes() {
   );
   const [draftRating, setDraftRating] = useState<number>();
   const [draftTags, setDraftTags] = useState<string[]>([]);
+  const [draftTimes, setDraftTimes] = useState(1);
+  const [editingWatched, setEditingWatched] = useState(false);
   const editor = useRef<EpisodeEditor | undefined>(undefined);
-  const episodes = overview?.[tab] ?? EMPTY_EPISODES;
   const favoriteTags = useMemo(
     () =>
       [
@@ -93,37 +118,63 @@ function Episodes() {
       ].sort((left, right) => left.localeCompare(right)),
     [overview],
   );
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLocaleLowerCase();
-    return episodes.filter(
-      (episode) =>
-        (!needle ||
-          episode.title.toLocaleLowerCase().includes(needle) ||
-          episode.name.toLocaleLowerCase().includes(needle)) &&
-        (showFilter === 'all' || (showFilter === 'anime' ? episode.isAnime : !episode.isAnime)) &&
-        (tab !== 'favorites' || (episode.rating ?? 0) >= minimumRating) &&
-        (tab !== 'favorites' ||
-          tagFilter === 'all' ||
-          episode.tags.some((tag) => tag.toLocaleLowerCase() === tagFilter)),
+  const filteredPages = useMemo(() => {
+    const filterPage = (page: EpisodeTab) => {
+      const {
+        search: query,
+        showFilter: shows,
+        minimumRating: rating,
+        tagFilter: tag,
+      } = tabFilters[page];
+      const needle = query.trim().toLocaleLowerCase();
+      return (overview?.[page] ?? EMPTY_EPISODES).filter(
+        (episode) =>
+          (!needle ||
+            episode.title.toLocaleLowerCase().includes(needle) ||
+            episode.name.toLocaleLowerCase().includes(needle)) &&
+          (shows === 'all' || (shows === 'anime' ? episode.isAnime : !episode.isAnime)) &&
+          (page !== 'favorites' || (episode.rating ?? 0) >= rating) &&
+          (page !== 'favorites' ||
+            tag === 'all' ||
+            episode.tags.some((entry) => entry.toLocaleLowerCase() === tag)),
+      );
+    };
+    return { watching: filterPage('watching'), favorites: filterPage('favorites') };
+  }, [overview, tabFilters]);
+  const narrowedPage = (page: EpisodeTab) => {
+    const filters = tabFilters[page];
+    return (
+      !!filters.search ||
+      filters.showFilter !== 'all' ||
+      (page === 'favorites' && (filters.minimumRating > 0 || filters.tagFilter !== 'all'))
     );
-  }, [episodes, minimumRating, search, showFilter, tab, tagFilter]);
-  const filterActive =
-    showFilter !== 'all' || (tab === 'favorites' && (minimumRating > 0 || tagFilter !== 'all'));
+  };
 
-  const openEpisode = (episode: EpisodeHubItem) => {
+  const openEpisode = (episode: EpisodeHubItem, watched = tab === 'favorites') => {
+    const times = ('timesWatched' in episode ? episode.timesWatched : undefined) ?? 1;
     editor.current = {
       savedRating: episode.rating,
       savedTags: episode.tags,
+      savedTimes: times,
       ratingVersion: 0,
       tagsVersion: 0,
+      timesVersion: 0,
     };
     setEditing(episode);
+    setEditingWatched(watched);
     setDraftRating(episode.rating);
     setDraftTags(episode.tags);
+    setDraftTimes(times);
   };
   const updateEpisode = async (
     episode: EpisodeHubItem,
-    patch: { watched?: boolean; rating?: number; clearRating?: boolean; tags?: string[] },
+    patch: {
+      watched?: boolean;
+      timesWatched?: number;
+      rating?: number;
+      clearRating?: boolean;
+      tags?: string[];
+    },
     handlers: { success?: () => void; failure?: () => void } = {},
   ) => {
     const key = `${episode.itemId}:${episode.season}:${episode.episode}`;
@@ -171,6 +222,45 @@ function Episodes() {
     await request;
   };
 
+  // Ticks made while the Undo toast is showing join it, so one Undo covers them all. The
+  // batch ends with that toast: dismissed, timed out, used, or replaced by another message.
+  const undoBatch = useRef<EpisodeHubItem[]>([]);
+  const markWatched = (episode: EpisodeHubItem) =>
+    void updateEpisode(
+      episode,
+      { watched: true },
+      {
+        success: () => {
+          const batch = undoBatch.current;
+          batch.push(episode);
+          const ticked = [...batch];
+          toast.show(
+            ticked.length === 1
+              ? `${episode.title} · S${episode.season} E${episode.episode} marked watched`
+              : `${ticked.length} episodes marked watched`,
+            {
+              key: 'episode-undo',
+              onHide: () => {
+                if (undoBatch.current === batch) undoBatch.current = [];
+              },
+              action: {
+                label: 'Undo',
+                onPress: () => {
+                  for (const entry of ticked) void updateEpisode(entry, { watched: false });
+                },
+              },
+            },
+          );
+        },
+      },
+    );
+
+  const { height: windowHeight } = useWindowDimensions();
+  const selectTab = (value: 'watching' | 'favorites') => {
+    if (value === tab) return;
+    setTab(value);
+  };
+
   return (
     <ScreenView style={s.root}>
       <View style={s.toolbar}>
@@ -185,7 +275,6 @@ function Episodes() {
           trailing={
             <EpisodeFiltersDrawer
               tab={tab}
-              active={filterActive}
               showFilter={showFilter}
               minimumRating={minimumRating}
               tagFilter={tagFilter}
@@ -198,230 +287,248 @@ function Episodes() {
         />
       </View>
 
-      <ScrollView contentContainerStyle={s.content}>
-        <View accessibilityRole="tablist" style={s.tabs}>
-          {(['watching', 'favorites'] as const).map((value) => (
-            <Pressable
-              key={value}
-              accessibilityRole="tab"
-              accessibilityLabel={value === 'watching' ? 'Watching' : 'Favorites'}
-              accessibilityState={{ selected: tab === value }}
-              onPress={() => {
-                setTab(value);
-                setSearch('');
-                setShowFilter('all');
-                setMinimumRating(0);
-                setTagFilter('all');
-                setExpanded(undefined);
-              }}
-              style={[s.tab, tab === value && s.tabActive]}
-            >
-              <Text style={[s.tabText, tab === value && s.tabTextActive]}>
-                {value === 'watching' ? 'Watching' : 'Favorites'}
-              </Text>
-            </Pressable>
-          ))}
+      <ScrollView
+        ref={tabScroll.scrollRef}
+        onScroll={tabScroll.onScroll}
+        onScrollBeginDrag={tabScroll.onScrollBeginDrag}
+        onContentSizeChange={tabScroll.onContentSizeChange}
+        scrollEventThrottle={32}
+        contentContainerStyle={s.content}
+      >
+        <View style={s.tabs} onLayout={tabScroll.onContentLayout}>
+          <UnderlineTabs
+            tabs={EPISODE_TABS}
+            value={tab}
+            onChange={selectTab}
+            position={pagerPosition}
+          />
         </View>
 
-        {overview === undefined ? (
-          <EpisodePageSkeleton />
-        ) : filtered.length ? (
-          <View style={s.list}>
-            {filtered.map((episode) => {
-              const key = `${episode.itemId}:${episode.season}:${episode.episode}`;
-              const isExpanded = expanded === key;
-              return (
-                <View key={key} style={s.episodeCard}>
-                  <View style={s.episodeRow}>
-                    <View style={s.artwork}>
-                      {episode.imageUrl ? (
-                        <Image
-                          source={episode.imageUrl}
-                          accessibilityLabel={`${episode.name} artwork`}
-                          contentFit="cover"
-                          style={s.image}
-                        />
-                      ) : (
-                        <View style={s.imageFallback} />
-                      )}
-                    </View>
-                    <NativePressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`View ${episode.title}, episode ${episode.episode}`}
-                      accessibilityState={{ expanded: isExpanded }}
-                      onPress={() => setExpanded(isExpanded ? undefined : key)}
-                      style={s.copy}
-                    >
-                      <View style={s.showHeader}>
-                        <Text numberOfLines={1} style={s.showTitle}>
-                          {episode.title}
-                        </Text>
-                        {tab === 'favorites' && episode.rating !== undefined && (
-                          <View
-                            accessibilityLabel={`Rated ${episode.rating} out of 5 stars`}
-                            style={s.inlineRating}
+        <SwipePages
+          onSwipeStart={tabScroll.onSwipeStart}
+          gutter={20}
+          position={pagerPosition}
+          index={tab === 'watching' ? 0 : 1}
+          onIndexChange={(index) => selectTab(index === 0 ? 'watching' : 'favorites')}
+          minHeight={Math.max(360, windowHeight - 260)}
+        >
+          {(['watching', 'favorites'] as const).map((page) => {
+            const list = filteredPages[page];
+            const narrowed = narrowedPage(page);
+            return (
+              <View key={page} style={s.page}>
+                {page === 'watching' && overview !== undefined && list.length > 0 && (
+                  <SectionHeading title="Up next" count={list.length} style={s.upNext} />
+                )}
+                {overview === undefined ? (
+                  <EpisodePageSkeleton heading={page === 'watching'} />
+                ) : list.length ? (
+                  <View style={s.list}>
+                    {list.map((episode) => {
+                      const key = `${episode.itemId}:${episode.season}:${episode.episode}`;
+                      return (
+                        <View key={key} style={s.episodeRow}>
+                          <NativePressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`View ${episode.title}, season ${episode.season} episode ${episode.episode}, ${displayEpisodeName(episode.name)}`}
+                            accessibilityHint="Shows the synopsis, rating, tags and watch count"
+                            accessibilityState={{ disabled: pending.has(key) }}
+                            disabled={pending.has(key)}
+                            onPress={() => openEpisode(episode)}
+                            style={s.rowOpen}
+                            pressedStyle={s.rowPressed}
                           >
-                            <Star size={11} color={colors.muted} fill={colors.muted} />
-                            <Text style={s.metaText}>{episode.rating.toFixed(1)}</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text numberOfLines={2} style={s.episodeTitle}>
-                        {episode.name}
-                      </Text>
-                      {!!episode.overview && !isExpanded && (
-                        <Text numberOfLines={2} style={s.episodeOverview}>
-                          {episode.overview}
-                        </Text>
-                      )}
-                    </NativePressable>
-                    <NativePressable
-                      accessibilityRole={tab === 'watching' ? 'checkbox' : 'button'}
-                      accessibilityLabel={
-                        tab === 'watching'
-                          ? `Mark ${episode.title} episode ${episode.episode} watched`
-                          : `${episode.title} episode ${episode.episode} options`
-                      }
-                      accessibilityState={
-                        tab === 'watching'
-                          ? { checked: false, disabled: pending.has(key) }
-                          : { disabled: pending.has(key) }
-                      }
-                      disabled={pending.has(key)}
-                      onPress={() => {
-                        if (tab === 'watching') {
-                          void updateEpisode(episode, { watched: true });
-                        } else {
-                          openEpisode(episode);
-                        }
-                      }}
-                      hitSlop={8}
-                      style={s.check}
-                      pressedStyle={s.pressed}
-                    >
-                      {tab === 'watching' ? (
-                        <Check size={17} color={colors.text} strokeWidth={2} />
-                      ) : (
-                        <EllipsisVertical size={15} color={colors.muted} strokeWidth={1.8} />
-                      )}
-                    </NativePressable>
+                            <View style={s.artwork}>
+                              {episode.imageUrl ? (
+                                <Image
+                                  source={episode.imageUrl}
+                                  accessibilityLabel={`${episode.name} artwork`}
+                                  contentFit="cover"
+                                  style={s.image}
+                                />
+                              ) : (
+                                // No still: the episode number, like title pages.
+                                <View style={s.imageFallback}>
+                                  <Text style={s.imageFallbackNumber}>
+                                    {episode.episode.toString().padStart(2, '0')}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                            {/* The synopsis lives in the episode sheet, like on series pages. */}
+                            <View style={s.copy}>
+                              {/* The show name truncates; the episode number always shows. */}
+                              <View style={s.showLine}>
+                                <Text numberOfLines={1} style={[s.showTitle, s.showName]}>
+                                  {episode.title}
+                                </Text>
+                                <Text style={s.showTitle}>
+                                  {' · '}
+                                  {/* Quiet, like the episode code on title pages: the names lead. */}
+                                  <Text style={s.episodeNumber}>
+                                    {`S${episode.season} E${episode.episode}`}
+                                  </Text>
+                                </Text>
+                              </View>
+                              <Text numberOfLines={3} style={s.episodeTitle}>
+                                {displayEpisodeName(episode.name)}
+                              </Text>
+                            </View>
+                            {/* The row opens the episode's details; the circle only ticks it. */}
+                            <ChevronRight
+                              size={16}
+                              color={colors.muted}
+                              strokeWidth={2}
+                              style={s.chevron}
+                            />
+                          </NativePressable>
+                          {page === 'watching' ? (
+                            <NativePressable
+                              accessibilityRole="checkbox"
+                              accessibilityLabel={`Mark ${episode.title} season ${episode.season} episode ${episode.episode} watched`}
+                              accessibilityState={{ checked: false, disabled: pending.has(key) }}
+                              disabled={pending.has(key)}
+                              onPress={() => markWatched(episode)}
+                              hitSlop={8}
+                              style={s.check}
+                              pressedStyle={s.pressed}
+                            ></NativePressable>
+                          ) : (
+                            episode.rating !== undefined && (
+                              <View
+                                accessibilityLabel={`Rated ${episode.rating} out of 5 stars`}
+                                style={s.ratingPill}
+                              >
+                                <Star size={12} color={colors.text} fill={colors.text} />
+                                <Text style={s.ratingText}>{episode.rating.toFixed(1)}</Text>
+                              </View>
+                            )
+                          )}
+                        </View>
+                      );
+                    })}
                   </View>
-                  {isExpanded && (
-                    <View style={s.episodeDetails}>
-                      {!!episode.overview && <Text style={s.fullOverview}>{episode.overview}</Text>}
-                      <View style={s.episodeFacts}>
-                        <Text style={s.episodeFact}>
-                          EP {episode.episode.toString().padStart(2, '0')}
-                        </Text>
-                        {!!episode.runtime && (
-                          <Text style={s.episodeFact}>{episode.runtime} min</Text>
-                        )}
-                        {!!episode.airDate && (
-                          <Text style={s.episodeFact}>Aired {episode.airDate}</Text>
-                        )}
-                      </View>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        ) : (
-          <EmptyState
-            title={tab === 'watching' ? 'Nothing queued' : 'No favorite episodes yet'}
-            detail={
-              search || filterActive
-                ? 'Try clearing your search or filters.'
-                : tab === 'watching'
-                  ? 'Move a series into Watching to track its next episode here.'
-                  : 'Rate watched episodes and your highest scores will appear here.'
-            }
-          />
-        )}
+                ) : (
+                  <EmptyState
+                    title={
+                      narrowed
+                        ? 'No matching episodes'
+                        : page === 'watching'
+                          ? 'Nothing queued'
+                          : 'No favorite episodes yet'
+                    }
+                    detail={
+                      narrowed
+                        ? 'Try clearing your search or filters.'
+                        : page === 'watching'
+                          ? 'New episodes from the shows you’re watching will appear here.'
+                          : 'Rate watched episodes and your highest scores will appear here.'
+                    }
+                  />
+                )}
+              </View>
+            );
+          })}
+        </SwipePages>
       </ScrollView>
 
-      <Drawer
-        open={editing !== undefined}
-        onOpenChange={(open) => {
-          if (!open) {
-            editor.current = undefined;
-            setEditing(undefined);
-          }
-        }}
-      >
-        {editing && (
-          <DrawerContent className="max-w-lg">
-            <DrawerHeader className="sr-only">
-              <DrawerTitle>Episode options</DrawerTitle>
-            </DrawerHeader>
-            <RatingControl
-              value={draftRating}
-              onChange={(rating) => {
-                const current = editor.current;
-                if (!current) return;
-                const version = ++current.ratingVersion;
-                setDraftRating(rating);
-                void updateEpisode(
-                  editing,
-                  rating === undefined ? { clearRating: true } : { rating },
-                  {
-                    success: () => {
-                      current.savedRating = rating;
-                    },
-                    failure: () => {
-                      if (editor.current === current && current.ratingVersion === version) {
-                        setDraftRating(current.savedRating);
-                      }
-                    },
-                  },
-                );
-              }}
-            />
-            <TagEditor
-              tags={draftTags}
-              suggestions={favoriteTags}
-              onChange={(tags) => {
-                const current = editor.current;
-                if (!current) return;
-                const version = ++current.tagsVersion;
-                setDraftTags(tags);
-                void updateEpisode(
-                  editing,
-                  { tags },
-                  {
-                    success: () => {
-                      current.savedTags = tags;
-                    },
-                    failure: () => {
-                      if (editor.current === current && current.tagsVersion === version) {
-                        setDraftTags(current.savedTags);
-                      }
-                    },
-                  },
-                );
-              }}
-            />
-            <View style={s.editorFooter}>
-              <DrawerClose asChild>
-                <Button title="Done" onPress={() => undefined} />
-              </DrawerClose>
-              {tab === 'favorites' && (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => void updateEpisode(editing, { watched: false })}
-                  style={s.textAction}
-                >
-                  <Text style={s.textActionLabel}>Mark episode unwatched</Text>
-                </Pressable>
-              )}
-            </View>
-          </DrawerContent>
-        )}
-      </Drawer>
+      {editing && (
+        <EpisodeEditSheet
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              editor.current = undefined;
+              setEditing(undefined);
+            }
+          }}
+          episode={{ ...editing, showTitle: editing.title }}
+          watched={editingWatched}
+          pending={pending.has(`${editing.itemId}:${editing.season}:${editing.episode}`)}
+          draft={{ rating: draftRating, tags: draftTags, timesWatched: draftTimes }}
+          tagSuggestions={favoriteTags}
+          onToggleWatched={() => {
+            const current = editor.current;
+            const next = !editingWatched;
+            setEditingWatched(next);
+            void updateEpisode(
+              editing,
+              { watched: next },
+              {
+                // Only roll back the sheet that made this change.
+                failure: () => {
+                  if (editor.current === current) setEditingWatched(!next);
+                },
+              },
+            );
+          }}
+          onTimesWatchedChange={(timesWatched) => {
+            const current = editor.current;
+            if (!current) return;
+            const version = ++current.timesVersion;
+            setDraftTimes(timesWatched);
+            void updateEpisode(
+              editing,
+              { timesWatched },
+              {
+                success: () => {
+                  current.savedTimes = timesWatched;
+                },
+                failure: () => {
+                  if (editor.current === current && current.timesVersion === version)
+                    setDraftTimes(current.savedTimes);
+                },
+              },
+            );
+          }}
+          onRatingChange={(rating) => {
+            const current = editor.current;
+            if (!current) return;
+            const version = ++current.ratingVersion;
+            setDraftRating(rating);
+            void updateEpisode(editing, rating === undefined ? { clearRating: true } : { rating }, {
+              success: () => {
+                current.savedRating = rating;
+              },
+              failure: () => {
+                if (editor.current === current && current.ratingVersion === version) {
+                  setDraftRating(current.savedRating);
+                }
+              },
+            });
+          }}
+          onTagsChange={(tags) => {
+            const current = editor.current;
+            if (!current) return;
+            const version = ++current.tagsVersion;
+            setDraftTags(tags);
+            void updateEpisode(
+              editing,
+              { tags },
+              {
+                success: () => {
+                  current.savedTags = tags;
+                },
+                failure: () => {
+                  if (editor.current === current && current.tagsVersion === version) {
+                    setDraftTags(current.savedTags);
+                  }
+                },
+              },
+            );
+          }}
+        />
+      )}
       <MobileNav current="episodes" />
     </ScreenView>
   );
 }
+
+// Room for the bar floating over the scroll view.
+const CONTENT_TOP = 76;
+
+/** The episode still's height, which the row's other parts centre on. */
+const STILL_HEIGHT = 54;
+const ROW_PADDING = 10;
 
 const s = createAppStyles(
   {
@@ -439,94 +546,83 @@ const s = createAppStyles(
       maxWidth: 940,
       alignSelf: 'center',
       paddingHorizontal: 20,
-      paddingTop: 76,
+      paddingTop: CONTENT_TOP,
       paddingBottom: 128,
       minHeight: '100%',
     },
-    tabs: {
-      flexDirection: 'row',
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      marginBottom: 8,
-      width: '100%',
-    },
-    tab: {
-      flex: 1,
-      minHeight: 56,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    tabActive: { borderBottomWidth: 2, borderColor: colors.text },
-    tabText: { color: colors.muted, fontSize: 13, fontWeight: '700' },
-    tabTextActive: { color: colors.text },
-    list: { gap: 0 },
-    episodeCard: {
-      borderBottomWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 14,
-    },
+    tabs: { marginTop: 4, marginBottom: 8, width: '100%' },
+    page: {},
+    upNext: { marginBottom: 4 },
+    list: { gap: 2 },
+    // Everything lines up on the still: a long title wraps downward from its top instead of
+    // pushing the show line above it, and the chevron and check stay centred on it.
     episodeRow: {
-      minHeight: 78,
+      minHeight: 76,
       flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
+      alignItems: 'flex-start',
+      gap: 10,
     },
+    rowOpen: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      paddingVertical: ROW_PADDING,
+      borderRadius: radius.md,
+    },
+    rowPressed: { opacity: 0.7 },
     artwork: {
-      width: 112,
-      height: 64,
-      borderRadius: 10,
+      width: 96,
+      height: STILL_HEIGHT,
+      borderRadius: radius.xs,
       overflow: 'hidden',
       backgroundColor: colors.surface,
     },
     image: { width: '100%', height: '100%' },
-    imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    copy: { flex: 1, minWidth: 0, minHeight: 64, justifyContent: 'center' },
-    showHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-    showTitle: {
-      flexShrink: 1,
-      minWidth: 0,
+    imageFallbackNumber: {
       color: colors.muted,
-      fontSize: 10,
+      fontSize: 16,
       fontWeight: '700',
-      letterSpacing: 0.7,
+      fontVariant: ['tabular-nums'],
     },
-    episodeTitle: { color: colors.text, fontSize: 14, lineHeight: 18, fontWeight: '600' },
-    episodeOverview: { color: colors.muted, fontSize: 11, lineHeight: 15, marginTop: 4 },
-    metaText: { color: colors.muted, fontSize: 9 },
-    inlineRating: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    copy: { flex: 1, minWidth: 0, minHeight: STILL_HEIGHT, justifyContent: 'center', gap: 3 },
+    chevron: { marginTop: (STILL_HEIGHT - 16) / 2 },
+    showTitle: { color: colors.secondary, fontSize: 12, fontWeight: '600' },
+    showLine: { flexDirection: 'row', minWidth: 0 },
+    showName: { flexShrink: 1 },
+    // The show name is what a mixed list is scanned by; the episode code follows it quietly.
+    episodeNumber: { color: colors.muted, fontWeight: '600' },
+    episodeTitle: { color: colors.text, fontSize: 15, lineHeight: 19, fontWeight: '600' },
     check: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
+      marginTop: ROW_PADDING + (STILL_HEIGHT - 32) / 2,
+      width: 32,
+      height: 32,
+      borderRadius: radius.pill,
+      borderWidth: 1.5,
+      borderColor: colors.control,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    pressed: { opacity: 0.62 },
-    episodeDetails: {
-      backgroundColor: colors.surface,
-      borderRadius: 12,
-      padding: 16,
-      gap: 10,
-      marginTop: 10,
+    pressed: { backgroundColor: colors.elevated },
+    ratingPill: {
+      marginTop: ROW_PADDING + (STILL_HEIGHT - 28) / 2,
+      height: 28,
+      paddingHorizontal: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.elevated,
     },
-    fullOverview: { color: colors.text, fontSize: 13, lineHeight: 20 },
-    episodeFacts: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
-    episodeFact: { color: colors.muted, fontSize: 11 },
-    editorFooter: { gap: 8, marginTop: 4 },
-    textAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-    textActionLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
+
+    ratingText: {
+      color: colors.text,
+      fontSize: 12,
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
+    },
   },
-  [
-    'tabText',
-    'tabTextActive',
-    'showTitle',
-    'episodeTitle',
-    'episodeOverview',
-    'metaText',
-    'fullOverview',
-    'episodeFact',
-    'textActionLabel',
-  ] as const,
+  ['showTitle', 'episodeNumber', 'episodeTitle', 'ratingText', 'imageFallbackNumber'] as const,
 );

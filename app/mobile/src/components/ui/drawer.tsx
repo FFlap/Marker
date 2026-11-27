@@ -6,6 +6,7 @@ import * as React from 'react';
 import {
   Platform,
   Pressable,
+  type ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
@@ -23,8 +24,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { KeyboardScrollView } from '@/components/ui/KeyboardScrollView';
 import { FullWindowOverlay as RNFullWindowOverlay } from 'react-native-screens';
+import { radius, typeRamp } from '@/constants/theme';
+import { createAppStyles } from '@/lib/typography';
 
 const DrawerTrigger = DialogPrimitive.Trigger;
 const DrawerClose = DialogPrimitive.Close;
@@ -40,10 +44,41 @@ const dismissVelocity = 850;
 
 type DrawerMotionContextValue = {
   interactive: boolean;
+  /** False while the sheet must stay open, such as during a save. */
+  dismissible: boolean;
   progress: SharedValue<number>;
 };
 
 const DrawerMotionContext = React.createContext<DrawerMotionContextValue | null>(null);
+
+/**
+ * A list with its own scroll view inside a sheet reports its offset here, so dragging down
+ * scrolls that list back up instead of closing the sheet (see `useDrawerInnerScroll`).
+ */
+const DrawerInnerScrollContext = React.createContext<SharedValue<number> | null>(null);
+
+/** A scroll view nested in a sheet's content; dragging down scrolls it before the sheet. */
+function DrawerScrollView({
+  ref,
+  ...props
+}: Omit<React.ComponentProps<typeof Animated.ScrollView>, 'ref'> & {
+  ref?: React.Ref<ScrollView>;
+}) {
+  const innerOffset = React.useContext(DrawerInnerScrollContext);
+  React.useEffect(() => () => innerOffset?.set(0), [innerOffset]);
+  const onScroll = useAnimatedScrollHandler((event) => {
+    innerOffset?.set(Math.max(0, event.contentOffset.y));
+  });
+  return (
+    <Animated.ScrollView
+      // Reanimated's scroll view is a plain ScrollView underneath.
+      ref={ref as React.Ref<never>}
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+      {...props}
+    />
+  );
+}
 
 function useDrawerMotion() {
   const context = React.useContext(DrawerMotionContext);
@@ -57,8 +92,12 @@ function Drawer({
   open: openProp,
   defaultOpen = false,
   onOpenChange,
+  dismissible = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+}: React.ComponentProps<typeof DialogPrimitive.Root> & {
+  /** When false, swipes, the backdrop and Back don't close the sheet. */
+  dismissible?: boolean;
+}) {
   const isControlled = openProp !== undefined;
   const requestedOpen = isControlled ? openProp : defaultOpen;
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -70,6 +109,13 @@ function Drawer({
   const progress = useSharedValue(0);
   const effectiveRequestedOpen = isControlled ? Boolean(openProp) : uncontrolledOpen;
   const previousOpen = React.useRef(false);
+  // When a parent closes a controlled drawer directly, keep it mounted for the exit animation.
+  const [lingering, setLingering] = React.useState(false);
+  const [lastRequestedOpen, setLastRequestedOpen] = React.useState(effectiveRequestedOpen);
+  if (lastRequestedOpen !== effectiveRequestedOpen) {
+    setLastRequestedOpen(effectiveRequestedOpen);
+    setLingering(!effectiveRequestedOpen && isControlled && presence.state !== 'closing');
+  }
 
   const clearCloseTimer = React.useCallback(() => {
     if (closeTimer.current) {
@@ -92,6 +138,11 @@ function Drawer({
   }, [effectiveRequestedOpen, progress]);
 
   React.useEffect(() => clearCloseTimer, [clearCloseTimer]);
+  React.useEffect(() => {
+    if (!lingering) return;
+    const timer = setTimeout(() => setLingering(false), exitDuration);
+    return () => clearTimeout(timer);
+  }, [lingering]);
 
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen) {
@@ -101,6 +152,7 @@ function Drawer({
       onOpenChange?.(true);
       return;
     }
+    if (!dismissible) return;
     clearCloseTimer();
     setPresence((current) =>
       transitionPresence(
@@ -125,10 +177,10 @@ function Drawer({
 
   return (
     <DrawerMotionContext.Provider
-      value={{ interactive: effectiveRequestedOpen && !closing, progress }}
+      value={{ interactive: effectiveRequestedOpen && !closing, dismissible, progress }}
     >
       <DialogPrimitive.Root
-        open={effectiveRequestedOpen}
+        open={effectiveRequestedOpen || lingering}
         onOpenChange={handleOpenChange}
         {...props}
       />
@@ -153,7 +205,8 @@ const DrawerSheet = React.forwardRef<
   React.ComponentProps<typeof View> & { grabber?: React.ReactNode }
 >(function DrawerSheet({ children, grabber, onLayout, ...props }, ref) {
   const { height: windowHeight } = useWindowDimensions();
-  const { interactive, progress } = useDrawerMotion();
+  const { interactive: open, dismissible, progress } = useDrawerMotion();
+  const interactive = open && dismissible;
   const { onOpenChange } = DialogPrimitive.useRootContext();
   const sheetHeight = useSharedValue(windowHeight);
   const dragStart = useSharedValue(1);
@@ -162,9 +215,19 @@ const DrawerSheet = React.forwardRef<
   const touchX = useSharedValue(0);
   const touchY = useSharedValue(0);
   const { bottom: bottomInset } = useSafeAreaInsets();
+  const contentHeight = useSharedValue(0);
+  const viewportHeight = useSharedValue(0);
+  const innerOffset = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollOffset.set(Math.max(0, event.contentOffset.y));
   });
+  // A taller sheet fades out above the system gesture bar until it is scrolled to the end,
+  // so nothing sits under the bar at rest.
+  const fadeStyle = useAnimatedStyle(() => ({
+    opacity:
+      contentHeight.get() - viewportHeight.get() - scrollOffset.get() > bottomInset + 4 ? 1 : 0,
+  }));
+  const fadeHeight = bottomInset + 28;
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - progress.get()) * sheetHeight.get() }],
   }));
@@ -246,13 +309,13 @@ const DrawerSheet = React.forwardRef<
           const dx = event.allTouches[0].absoluteX - touchX.get();
           const dy = event.allTouches[0].absoluteY - touchY.get();
           // Let the content scroll normally unless pulling down from its top.
-          if (scrollOffset.get() > 1 || dy < -4 || Math.abs(dx) > 16) {
+          if (scrollOffset.get() > 1 || innerOffset.get() > 1 || dy < -4 || Math.abs(dx) > 16) {
             manager.fail();
           } else if (dy > 4 && dy > Math.abs(dx)) {
             manager.activate();
           }
         }),
-    [createDragGesture, dragging, scrollOffset, touchX, touchY],
+    [createDragGesture, dragging, innerOffset, scrollOffset, touchX, touchY],
   );
   const scrollGesture = React.useMemo(
     () => Gesture.Native().requireExternalGestureToFail(bodyGesture),
@@ -283,11 +346,37 @@ const DrawerSheet = React.forwardRef<
               showsVerticalScrollIndicator={false}
               onScroll={onScroll}
               scrollEventThrottle={16}
-              contentContainerStyle={styles.content}
+              onLayout={(event) => viewportHeight.set(event.nativeEvent.layout.height)}
+              onContentSizeChange={(_, height) => contentHeight.set(height)}
+              // Clear the system gesture bar or navigation buttons below the last control.
+              contentContainerStyle={[styles.content, { paddingBottom: 28 + bottomInset }]}
             >
-              <View className="gap-6">{children}</View>
+              <DrawerInnerScrollContext.Provider value={innerOffset}>
+                <View className="gap-5">{children}</View>
+              </DrawerInnerScrollContext.Provider>
             </KeyboardScrollView>
           </GestureDetector>
+          {bottomInset > 0 && (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.bottomFade, { height: fadeHeight }, fadeStyle]}
+            >
+              <Svg width="100%" height={fadeHeight}>
+                <Defs>
+                  <LinearGradient id="sheetFade" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={colors.bg} stopOpacity={0} />
+                    <Stop
+                      offset={String(28 / fadeHeight)}
+                      stopColor={colors.bg}
+                      stopOpacity={0.92}
+                    />
+                    <Stop offset="1" stopColor={colors.bg} stopOpacity={1} />
+                  </LinearGradient>
+                </Defs>
+                <Rect width="100%" height={fadeHeight} fill="url(#sheetFade)" />
+              </Svg>
+            </Animated.View>
+          )}
         </Animated.View>
       </GestureDetector>
     </Animated.View>
@@ -311,7 +400,14 @@ function DrawerOverlay({
         style={styles.overlay}
       >
         <DrawerBackdropTint />
-        <Pressable onPress={() => undefined} style={styles.sheetPressGuard}>
+        {/* Only keeps taps on the sheet from reaching the backdrop; screen readers go straight
+            to the controls inside. */}
+        <Pressable
+          accessible={false}
+          importantForAccessibility="no"
+          onPress={() => undefined}
+          style={styles.sheetPressGuard}
+        >
           {children}
         </Pressable>
       </DialogPrimitive.Overlay>
@@ -329,6 +425,8 @@ function DrawerContent(props: DrawerContentProps) {
   return open || props.forceMount ? <MountedDrawerContent {...props} /> : null;
 }
 
+let contentMounts = 0;
+
 function MountedDrawerContent({
   className,
   portalHost,
@@ -337,7 +435,11 @@ function MountedDrawerContent({
   ...props
 }: DrawerContentProps) {
   const motion = useDrawerMotion();
+  const { onOpenChange } = DialogPrimitive.useRootContext();
   const { height: windowHeight } = useWindowDimensions();
+  // The portal host keeps content state by portal name, which is the same for a sheet
+  // remounted in the same place. A per-mount key gives each opening fresh content state.
+  const [mountKey] = React.useState(() => ++contentMounts);
   const contentChildren = React.Children.toArray(children);
   const header =
     contentChildren[0] &&
@@ -349,21 +451,33 @@ function MountedDrawerContent({
 
   return (
     <DialogPrimitive.Portal hostName={portalHost}>
-      <DrawerMotionContext.Provider value={motion}>
+      <DrawerMotionContext.Provider key={mountKey} value={motion}>
         <DrawerOverlay>
           <DialogPrimitive.Content asChild {...props}>
             <DrawerSheet
               accessibilityViewIsModal
               className={cn(
-                'bg-background border-border z-50 flex w-full overflow-hidden rounded-t-[28px] rounded-b-none border-t p-0 shadow-lg shadow-black/10',
+                // The top corners come from styles.sheet (radius.sheet).
+                'bg-background border-border z-50 flex w-full overflow-hidden rounded-b-none border-t p-0 shadow-lg shadow-black/10',
                 className,
-                'mx-0 max-w-none gap-0 rounded-t-[28px] rounded-b-none border-x-0 border-b-0 p-0',
+                'mx-0 max-w-none gap-0 rounded-b-none border-x-0 border-b-0 p-0',
               )}
               style={[{ maxHeight: windowHeight * 0.92 }, style]}
               grabber={
                 <>
-                  <View pointerEvents="none" style={styles.handleArea}>
-                    <View style={styles.handle} />
+                  {/* Tapping the grabber closes the sheet too, and screen readers reach it as
+                      a labelled button (they can't drag). A drag still belongs to the sheet. */}
+                  <View style={styles.handleArea}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Close"
+                      accessible={motion.dismissible}
+                      disabled={!motion.dismissible}
+                      onPress={() => onOpenChange(false)}
+                      style={styles.handleTarget}
+                    >
+                      <View style={styles.handle} />
+                    </Pressable>
                   </View>
                   {header}
                 </>
@@ -380,7 +494,7 @@ function MountedDrawerContent({
 
 function DrawerHeader({ className, children, ...props }: ViewProps) {
   return (
-    <View className={cn('h-14 w-full justify-center px-5', className)} {...props}>
+    <View className={cn('h-9 w-full justify-center px-5', className)} {...props}>
       <View pointerEvents="none" style={styles.headerTitle}>
         {children}
       </View>
@@ -388,16 +502,34 @@ function DrawerHeader({ className, children, ...props }: ViewProps) {
   );
 }
 
-function DrawerTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+/** Every sheet title uses the one sheet-title style. */
+function DrawerTitle({
+  className,
+  style,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
     <DialogPrimitive.Title
-      className={cn('text-foreground text-center text-base font-semibold leading-none', className)}
+      className={cn('text-center', className)}
+      style={[titleStyles.title, style]}
       {...props}
     />
   );
 }
 
-export { Drawer, DrawerClose, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger };
+const titleStyles = createAppStyles({ title: { ...typeRamp.sheetTitle, textAlign: 'center' } }, [
+  'title',
+] as const);
+
+export {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+  DrawerScrollView,
+};
 
 const styles = StyleSheet.create({
   sheetPressGuard: { width: '100%' },
@@ -411,7 +543,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   backdropTint: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: colors.scrim,
   },
   sheet: {
     zIndex: 50,
@@ -420,11 +552,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
     borderTopWidth: 1,
     borderColor: colors.border,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
   },
+  // A full 44dp touch target (Android won't take touches outside the parent), balanced by a
+  // shorter header so a sheet's title and content sit where they did.
   handleArea: {
-    height: 24,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handleTarget: {
+    width: 96,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -432,12 +572,13 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#3A3A3D',
+    backgroundColor: colors.control,
   },
   headerTitle: {
     alignItems: 'center',
   },
   scrollBody: { flexShrink: 1 },
+  bottomFade: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   content: {
     paddingHorizontal: 24,
     paddingTop: 8,

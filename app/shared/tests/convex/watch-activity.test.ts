@@ -73,6 +73,126 @@ describe('watch activity', () => {
     expect(resolveActivityDate('2026-10-08', now)).toBe('2026-10-10');
   });
 
+  it('marks only aired episodes when a season with a listed future episode is marked watched', async () => {
+    const { t, asUser, itemId } = await setup();
+    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await putSeason(t, {
+      tmdbId: 209867,
+      season: 1,
+      metadataProvider: 'tmdb',
+      episodes: [
+        { season: 1, episode: 1, name: 'Aired', airDate: '2026-01-01' },
+        { season: 1, episode: 2, name: 'Next week', airDate: future },
+      ],
+      orderEpoch: 0,
+      refreshedAt: Date.now(),
+      refreshAfter: Date.now() + 60_000,
+    });
+
+    await asUser.action(api.library.seasonWatched.setSeasonWatched, { itemId, season: 1 });
+
+    const episodes = await t.run((ctx) => ctx.db.query('episodes').collect());
+    expect(episodes.find((episode) => episode.episode === 1)?.watched).toBe(true);
+    // Next week's episode stays unwatched, so Up next offers it when it airs.
+    expect(episodes.find((episode) => episode.episode === 2)?.watched ?? false).toBe(false);
+  });
+
+  it('judges "aired" by the viewer\'s local date, not UTC, when marking a season', async () => {
+    const { t, asUser, itemId } = await setup();
+    // 03:00 UTC on Jan 2 is still Jan 1 in the viewer's (e.g. Edmonton's) evening.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-02T03:00:00Z'));
+    await putSeason(t, {
+      tmdbId: 209867,
+      season: 1,
+      metadataProvider: 'tmdb',
+      episodes: [
+        { season: 1, episode: 1, name: 'Tonight', airDate: '2026-01-01' },
+        { season: 1, episode: 2, name: 'Tomorrow', airDate: '2026-01-02' },
+      ],
+      orderEpoch: 0,
+      refreshedAt: Date.now(),
+      refreshAfter: Date.now() + 60_000,
+    });
+
+    await asUser.action(api.library.seasonWatched.setSeasonWatched, {
+      itemId,
+      season: 1,
+      activityDate: '2026-01-01',
+    });
+
+    const episodes = await t.run((ctx) => ctx.db.query('episodes').collect());
+    expect(episodes.find((episode) => episode.episode === 1)?.watched).toBe(true);
+    expect(episodes.find((episode) => episode.episode === 2)?.watched ?? false).toBe(false);
+  });
+
+  it('counts the episodes a season still has to air, across all of its chunks', async () => {
+    const { t, asUser, itemId } = await setup();
+    // 130 episodes span two chunks; the last three are dated after the viewer's day.
+    await putSeason(t, {
+      tmdbId: 209867,
+      season: 1,
+      metadataProvider: 'tmdb',
+      episodes: Array.from({ length: 130 }, (_, index) => ({
+        season: 1,
+        episode: index + 1,
+        name: `Episode ${index + 1}`,
+        airDate: index < 127 ? '2026-01-01' : '2026-03-01',
+      })),
+      orderEpoch: 0,
+      refreshedAt: Date.now(),
+      refreshAfter: Date.now() + 60_000,
+    });
+    await asUser.mutation(api.library.episodes.setEpisodeState, {
+      itemId,
+      season: 1,
+      episode: 130,
+      watched: true,
+    });
+
+    expect(
+      await asUser.query(api.library.episodes.getSeasonUpcoming, {
+        itemId,
+        season: 1,
+        today: '2026-02-01',
+      }),
+    ).toEqual({ upcoming: 3, watchedUpcoming: 1 });
+    expect(
+      await asUser.query(api.library.episodes.getSeasonUpcoming, {
+        itemId,
+        season: 1,
+        today: '2026-03-01',
+      }),
+    ).toEqual({ upcoming: 0, watchedUpcoming: 0 });
+  });
+
+  it('finds a not-yet-aired episode in an earlier chunk than an aired or undated one', async () => {
+    const { t, asUser, itemId } = await setup();
+    // Episode 120 (end of the first chunk) is dated after the viewer's day; 121 is undated.
+    await putSeason(t, {
+      tmdbId: 209867,
+      season: 1,
+      metadataProvider: 'tmdb',
+      episodes: Array.from({ length: 121 }, (_, index) => ({
+        season: 1,
+        episode: index + 1,
+        name: `Episode ${index + 1}`,
+        ...(index < 119 && { airDate: '2026-01-01' }),
+        ...(index === 119 && { airDate: '2026-03-01' }),
+      })),
+      orderEpoch: 0,
+      refreshedAt: Date.now(),
+      refreshAfter: Date.now() + 60_000,
+    });
+    expect(
+      await asUser.query(api.library.episodes.getSeasonUpcoming, {
+        itemId,
+        season: 1,
+        today: '2026-02-01',
+      }),
+    ).toEqual({ upcoming: 1, watchedUpcoming: 0 });
+  });
+
   it('logs newly watched bulk episodes and reverses their original days on bulk unmark', async () => {
     const { t, asUser, itemId } = await setup();
     await putSeason(t, {

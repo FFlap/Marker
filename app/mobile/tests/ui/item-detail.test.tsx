@@ -12,7 +12,7 @@ const mockMoveItemToWatched = jest.fn().mockResolvedValue(undefined);
 const mockLoadMore = jest.fn();
 let itemView: any;
 let mockSeasonView: any;
-let savedEpisodes: any[] = [];
+let savedEpisodes: any[] | undefined = [];
 let episodeProgressOverride: any[] | undefined;
 let queryShouldThrow = false;
 let mockLoadedSeasonPages: Record<number, number> = {};
@@ -60,17 +60,22 @@ const seasonTwo = {
   episodes: [{ season: 2, episode: 1, name: 'Cut Man' }],
 };
 
+let mockSettings: { airingInWatching: boolean } | undefined;
+let mockSavedLoading = false;
+let mockSeasonUpcoming: { upcoming: number; watchedUpcoming: number } | null | undefined;
 const mockUseQuery = jest.fn((ref: string, args?: any) => {
   if (queryShouldThrow) throw new Error('query failed');
   if (ref === 'getItemView') return itemView;
   if (ref === 'getTitleRequestState') return itemView?.requestState?.title;
   if (ref === 'getSeasonRequestState') return mockSeasonView?.[args?.season]?.requestState;
-  if (ref === 'listEpisodes') return savedEpisodes;
+  // A longer page count loads like a new query: nothing until its result arrives.
+  if (ref === 'listEpisodes')
+    return mockSavedLoading && args?.pageCount > 1 ? undefined : savedEpisodes;
   if (ref === 'listEpisodeProgress')
     return (
       episodeProgressOverride ??
       Object.values(
-        savedEpisodes.reduce<
+        (savedEpisodes ?? []).reduce<
           Record<number, { season: number; watchedCount: number; total: number }>
         >((summaries, episode) => {
           const summary = summaries[episode.season] ?? {
@@ -91,6 +96,8 @@ const mockUseQuery = jest.fn((ref: string, args?: any) => {
       }))
     );
   if (ref === 'listItems') return [itemView?.item ?? item];
+  if (ref === 'getSettings') return mockSettings;
+  if (ref === 'getSeasonUpcoming') return mockSeasonUpcoming;
   return undefined;
 });
 
@@ -142,6 +149,7 @@ jest.mock('convex/react', () => ({
 }));
 jest.mock('@marker/shared/api', () => ({
   api: {
+    settings: { getSettings: 'getSettings' },
     library: {
       items: {
         listItems: 'listItems',
@@ -152,6 +160,7 @@ jest.mock('@marker/shared/api', () => ({
       episodes: {
         listEpisodes: 'listEpisodes',
         listEpisodeProgress: 'listEpisodeProgress',
+        getSeasonUpcoming: 'getSeasonUpcoming',
         setEpisodeState: 'setEpisodeState',
       },
       seasonWatched: {
@@ -222,6 +231,7 @@ jest.mock('../../src/components/ui/drawer', () => {
     DrawerHeader: container,
     DrawerTitle: label,
     DrawerTrigger: Trigger,
+    DrawerScrollView: require('react-native').ScrollView,
   };
 });
 
@@ -240,6 +250,9 @@ describe('item detail metadata subscriptions', () => {
     mockLoadedSeasonPages = {};
     mockLoadMore.mockClear();
     mockUseQuery.mockClear();
+    mockSettings = undefined;
+    mockSeasonUpcoming = { upcoming: 0, watchedUpcoming: 0 };
+    mockSavedLoading = false;
     mockTouchItemView.mockClear();
     mockTouchTitle.mockClear();
     mockUpdateItem.mockClear();
@@ -259,13 +272,14 @@ describe('item detail metadata subscriptions', () => {
   it('cancels removal without changing the entry', async () => {
     const user = userEvent.setup();
     const view = await renderScreen();
-    await user.press(view.getByRole('button', { name: 'Update Entry' }));
+    await user.press(view.getByRole('button', { name: 'Edit entry' }));
     await user.press(view.getByRole('button', { name: 'Remove from library' }));
     expect(view.getByText('Remove title?')).toBeTruthy();
     expect(mockRemoveItem).not.toHaveBeenCalled();
     await user.press(view.getByRole('button', { name: 'Cancel' }));
     expect(view.queryByText('Remove title?')).toBeNull();
-    expect(view.getByText('Edit entry')).toBeTruthy();
+    // The sheet title is still showing alongside the docked button.
+    expect(view.getAllByText('Edit entry')).toHaveLength(2);
     expect(mockRemoveItem).not.toHaveBeenCalled();
     expect(mockUpdateItem).not.toHaveBeenCalled();
   });
@@ -281,7 +295,7 @@ describe('item detail metadata subscriptions', () => {
     );
     const user = userEvent.setup();
     const view = await renderScreen();
-    await user.press(view.getByRole('button', { name: 'Update Entry' }));
+    await user.press(view.getByRole('button', { name: 'Edit entry' }));
     await user.press(view.getByRole('button', { name: 'Remove from library' }));
     await user.press(view.getByRole('button', { name: 'Remove' }));
     await waitFor(() =>
@@ -340,13 +354,13 @@ describe('item detail metadata subscriptions', () => {
   it('uses the server-side whole-show action when the entry status becomes Watched', async () => {
     const view = await renderScreen();
     const user = userEvent.setup();
-    await user.press(view.getByText('Update Entry'));
+    await user.press(view.getByText('Edit entry'));
     expect(view.queryByLabelText('Increase times watched')).toBeNull();
     const watchedLabels = view.getAllByText('Watched', { exact: true });
-    expect(watchedLabels.length).toBeGreaterThan(1);
+    expect(watchedLabels.length).toBeGreaterThan(0);
     await user.press(watchedLabels[watchedLabels.length - 1]);
     expect(
-      view.getByText('Marking this show as Watched will mark every episode as watched.'),
+      view.getByText('Marking this show as Watched will mark all released episodes as watched.'),
     ).toBeTruthy();
     await user.press(view.getByLabelText('Increase times watched'));
     await user.press(view.getByRole('button', { name: 'Dismiss drawer' }));
@@ -364,10 +378,50 @@ describe('item detail metadata subscriptions', () => {
     expect(mockUpdateItem).toHaveBeenCalledWith(
       expect.objectContaining({ itemId: 'item', timesWatched: 2 }),
     );
-    await user.press(view.getByText('Update Entry'));
+    await user.press(view.getByText('Edit entry'));
     expect(view.queryByLabelText('Increase times watched')).toBeNull();
     await user.press(view.getByRole('button', { name: 'Dismiss drawer' }));
     expect(mockUpdateItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an already-watched show in place when only its details change', async () => {
+    itemView = {
+      item: { ...item, status: 'watched', timesWatched: 1 },
+      title,
+      requestState: { title: { state: 'succeeded' } },
+    };
+    // With the automatic setting off, a watched show can be kept in Watching by hand.
+    mockSettings = { airingInWatching: false };
+    const view = await renderScreen();
+    const user = userEvent.setup();
+    await user.press(view.getByText('Edit entry'));
+    await user.press(view.getByRole('switch', { name: 'Also in Watching' }));
+    await user.press(view.getByLabelText('Rate 4 stars'));
+    await user.press(view.getByRole('button', { name: 'Dismiss drawer' }));
+
+    await waitFor(() =>
+      expect(mockUpdateItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          itemId: 'item',
+          status: 'watched',
+          rating: 4,
+          alsoWatching: true,
+        }),
+      ),
+    );
+    expect(mockMoveItemToWatched).not.toHaveBeenCalled();
+  });
+
+  it('hides "Also in Watching" while new episodes decide it automatically', async () => {
+    itemView = {
+      item: { ...item, status: 'watched', timesWatched: 1 },
+      title,
+      requestState: { title: { state: 'succeeded' } },
+    };
+    const view = await renderScreen();
+    const user = userEvent.setup();
+    await user.press(view.getByText('Edit entry'));
+    expect(view.queryByRole('switch', { name: 'Also in Watching' })).toBeNull();
   });
 
   it('touches the selected season and forces refresh from pull-to-refresh', async () => {
@@ -425,7 +479,7 @@ describe('item detail metadata subscriptions', () => {
     };
     mockSeasonView = { 1: { season: seasonOne, requestState: { state: 'failed' } } };
     const view = await renderScreen();
-    expect(view.getAllByText('couldn’t update — pull to retry')).toHaveLength(2);
+    expect(view.getAllByText('Couldn’t update. Pull to retry.')).toHaveLength(2);
     expect(view.queryByText('Title details couldn’t be loaded.')).toBeNull();
   });
 
@@ -478,6 +532,81 @@ describe('item detail metadata subscriptions', () => {
     expect(view.getByLabelText('Loading')).toBeTruthy();
   });
 
+  it('asks before marking a whole season unwatched', async () => {
+    episodeProgressOverride = [
+      {
+        season: 1,
+        watchedCount: 1,
+        total: 1,
+        currentWatchedCount: 1,
+        currentTotal: 1,
+        identityStale: false,
+      },
+    ];
+    const view = await renderScreen();
+    const user = userEvent.setup();
+    await user.press(view.getByText('Mark season unwatched'));
+    expect(view.getByText('Mark season unwatched?')).toBeTruthy();
+    expect(mockSetSeasonWatched).not.toHaveBeenCalled();
+    await user.press(view.getByRole('button', { name: 'Mark unwatched' }));
+    await waitFor(() =>
+      expect(mockSetSeasonWatched).toHaveBeenCalledWith(
+        expect.objectContaining({ season: 1, watched: false }),
+      ),
+    );
+  });
+
+  it('judges an airing season by its whole-season aired count, not the loaded episodes', async () => {
+    // Two listed episodes; the server reports one still to air and the aired one is watched.
+    mockSeasonView = {
+      1: {
+        season: {
+          ...seasonOne,
+          episodes: [...seasonOne.episodes, { season: 1, episode: 2, name: 'Next week' }],
+        },
+        requestState: { state: 'succeeded' },
+      },
+    };
+    mockSeasonUpcoming = { upcoming: 1, watchedUpcoming: 0 };
+    episodeProgressOverride = [
+      {
+        season: 1,
+        watchedCount: 1,
+        total: 1,
+        currentWatchedCount: 1,
+        currentTotal: 2,
+        identityStale: false,
+      },
+    ];
+    const view = await renderScreen();
+    const user = userEvent.setup();
+    await user.press(view.getByText('Mark season unwatched'));
+    expect(
+      view.getByText('The watched episode in Season 1 will be marked unwatched.'),
+    ).toBeTruthy();
+  });
+
+  it('opens an episode for editing only once its saved state has loaded', async () => {
+    savedEpisodes = undefined;
+    const view = await renderScreen();
+    expect(view.getByLabelText(/^Episode 1, .+, options$/)).toBeDisabled();
+    // Its circle can't tell watched from unwatched yet, so screen readers skip it for now.
+    expect(view.queryByRole('checkbox', { name: /^Mark episode 1 / })).toBeNull();
+  });
+
+  it('holds back the season action until its counts arrive', async () => {
+    mockSeasonUpcoming = undefined;
+    const view = await renderScreen();
+    expect(view.queryByRole('button', { name: 'Mark season watched' })).toBeNull();
+  });
+
+  it('has nothing to mark while none of an airing season has aired', async () => {
+    mockSeasonUpcoming = { upcoming: 1, watchedUpcoming: 0 };
+    const view = await renderScreen();
+    expect(view.getByText('No episodes aired yet')).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'No episodes aired yet' })).toBeNull();
+  });
+
   it('derives season progress and mark-watched state from current identity counts', async () => {
     episodeProgressOverride = [
       {
@@ -492,7 +621,7 @@ describe('item detail metadata subscriptions', () => {
     const view = await renderScreen();
     expect(view.getByText('0 / 1 watched')).toBeTruthy();
     const user = userEvent.setup();
-    await user.press(view.getByText('Mark watched'));
+    await user.press(view.getByText('Mark season watched'));
     await waitFor(() =>
       expect(mockSetSeasonWatched).toHaveBeenCalledWith({
         activityDate: localDateKey(),
@@ -511,7 +640,7 @@ describe('item detail metadata subscriptions', () => {
     );
     const view = await renderScreen();
     const user = userEvent.setup();
-    await user.press(view.getByText('Mark watched'));
+    await user.press(view.getByText('Mark season watched'));
     await waitFor(() => expect(view.getByText('Season data changed — refreshing')).toBeTruthy());
     expect(mockTouchItemView).toHaveBeenLastCalledWith({
       itemId: 'item',
@@ -538,7 +667,7 @@ describe('item detail metadata subscriptions', () => {
     });
   });
 
-  it('changes an unwatched episode checkbox into an options button after watching', async () => {
+  it('toggles watched from the check and edits the episode from its row', async () => {
     mockSeasonView[1] = {
       ...mockSeasonView[1],
       season: {
@@ -548,11 +677,7 @@ describe('item detail metadata subscriptions', () => {
     };
     const view = await renderScreen();
     const user = userEvent.setup();
-    const watchButton = view.getByLabelText('Mark episode 1 watched');
-    expect(watchButton.props.accessibilityHint).toBe(
-      'Opens episode options after marking it watched',
-    );
-    await user.press(watchButton);
+    await user.press(view.getByLabelText('Mark episode 1 watched'));
     expect(mockSetEpisodeState).toHaveBeenCalledWith(
       expect.objectContaining({
         itemId: 'item',
@@ -560,14 +685,32 @@ describe('item detail metadata subscriptions', () => {
         episode: 1,
         watched: true,
         activityDate: localDateKey(),
-        overview: 'x'.repeat(400),
+        overview: `${'x'.repeat(399)}…`,
       }),
     );
-    expect(view.getByText('Edit episode 1')).toBeTruthy();
-    let resolveRating!: () => void;
-    mockSetEpisodeState.mockImplementationOnce(
-      () => new Promise<void>((resolve) => (resolveRating = resolve)),
+    expect(view.queryByRole('switch', { name: 'Watched' })).toBeNull();
+
+    savedEpisodes = [{ season: 1, episode: 1, watched: true, tags: [] }];
+    await act(async () =>
+      view.rerender(
+        <ToastProvider>
+          <ItemDetail />
+        </ToastProvider>,
+      ),
     );
+    expect(view.getByLabelText('Mark episode 1 unwatched')).toBeTruthy();
+    await user.press(view.getByLabelText(/^Episode 1, .+, options$/));
+    expect(view.getByRole('switch', { name: 'Watched' }).props.accessibilityState.checked).toBe(
+      true,
+    );
+    let resolveFirst!: () => void;
+    let resolveRating!: () => void;
+    mockSetEpisodeState
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (resolveFirst = resolve)))
+      .mockImplementationOnce(() => new Promise<void>((resolve) => (resolveRating = resolve)));
+    // A second tap on the same star takes off half a star.
+    await user.press(view.getByLabelText('Rate 4 stars'));
+    // The selected star now says what it sets: half a star less.
     await user.press(view.getByLabelText('Rate 3.5 stars'));
     expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
       itemId: 'item',
@@ -579,7 +722,17 @@ describe('item detail metadata subscriptions', () => {
       '3.5 out of 5 stars',
     );
     savedEpisodes = [{ season: 1, episode: 1, watched: true, rating: 3.5, tags: [] }];
-    await act(async () => resolveRating());
+    await act(async () => {
+      resolveFirst();
+      resolveRating();
+    });
+    await user.press(view.getByLabelText('Increase times watched'));
+    expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
+      itemId: 'item',
+      season: 1,
+      episode: 1,
+      timesWatched: 2,
+    });
     await user.press(view.getByLabelText('Clear rating'));
     expect(mockSetEpisodeState).toHaveBeenLastCalledWith({
       itemId: 'item',
@@ -587,16 +740,6 @@ describe('item detail metadata subscriptions', () => {
       episode: 1,
       clearRating: true,
     });
-
-    savedEpisodes = [{ season: 1, episode: 1, watched: true, tags: [] }];
-    await act(async () =>
-      view.rerender(
-        <ToastProvider>
-          <ItemDetail />
-        </ToastProvider>,
-      ),
-    );
-    expect(view.getByLabelText('Episode 1 options')).toBeTruthy();
   });
 
   describe('optimistic episode fields', () => {
@@ -727,14 +870,14 @@ describe('item detail metadata subscriptions', () => {
       await publish(4);
       await act(async () => requests[0].resolve());
       await publish(3, ['external']);
-      expect(card().props.draft).toEqual({ rating: 3, tags: ['favorite'] });
+      expect(card().props.draft).toEqual({ rating: 3, tags: ['favorite'], timesWatched: 1 });
       await fail(1);
-      expect(card().props.draft).toEqual({ rating: 3, tags: ['external'] });
+      expect(card().props.draft).toEqual({ rating: 3, tags: ['external'], timesWatched: 1 });
       await patch('tags', ['new']);
       await publish(3, ['new']);
       await act(async () => requests[2].resolve());
       await publish(1, ['remote']);
-      expect(card().props.draft).toEqual({ rating: 1, tags: ['remote'] });
+      expect(card().props.draft).toEqual({ rating: 1, tags: ['remote'], timesWatched: 1 });
     });
 
     it('retains drafts across season switches and reconciles on returning', async () => {
@@ -827,16 +970,15 @@ describe('item detail metadata subscriptions', () => {
     mockSetEpisodeState.mockImplementation(() => new Promise(() => undefined));
     const view = await renderScreen();
     const user = userEvent.setup();
-    await user.press(view.getByLabelText('Episode 1 options'));
+    await user.press(view.getByLabelText(/^Episode 1, .+, options$/));
     await user.press(view.getByLabelText('Rate 4 stars'));
-    await user.press(view.getByRole('button', { name: 'Mark episode unwatched' }));
+    await user.press(view.getByRole('switch', { name: 'Watched' }));
     expect(view.getByLabelText('Current rating').props.accessibilityValue.text).toBe(
       '4 out of 5 stars',
     );
-    expect(
-      view.getByRole('button', { name: 'Mark episode unwatched' }).props.accessibilityState
-        .disabled,
-    ).toBe(true);
+    expect(view.getByRole('switch', { name: 'Watched' }).props.accessibilityState.disabled).toBe(
+      true,
+    );
 
     mockParams = { id: 'item-b' };
     itemView = {
@@ -854,13 +996,40 @@ describe('item detail metadata subscriptions', () => {
       ),
     );
 
-    expect(view.getByText('1.5')).toBeTruthy();
-    await user.press(view.getByLabelText('Episode 1 options'));
-    expect(
-      view.getByRole('button', { name: 'Mark episode unwatched' }).props.accessibilityState
-        .disabled,
-    ).toBe(false);
+    expect(view.getByText('★ 1.5')).toBeTruthy();
+    await user.press(view.getByLabelText(/^Episode 1, .+, options$/));
+    expect(view.getByRole('switch', { name: 'Watched' }).props.accessibilityState.disabled).toBe(
+      false,
+    );
     expect(view.getByLabelText('Current rating').props.accessibilityValue.text).toBe('Not rated');
+  });
+
+  it('keeps loaded episodes ticked while the next page of saved state loads', async () => {
+    mockSeasonView[1] = {
+      ...mockSeasonView[1],
+      season: {
+        ...mockSeasonView[1].season,
+        episodes: Array.from({ length: 121 }, (_, index) => ({
+          season: 1,
+          episode: index + 1,
+          name: `Episode ${index + 1}`,
+        })),
+      },
+    };
+    savedEpisodes = [{ season: 1, episode: 1, watched: true, tags: [] }];
+    mockSavedLoading = true;
+    const view = await renderScreen();
+    const user = userEvent.setup();
+    await user.press(view.getByText('Load more episodes'));
+    await act(async () =>
+      view.rerender(
+        <ToastProvider>
+          <ItemDetail />
+        </ToastProvider>,
+      ),
+    );
+    const first = view.getByRole('checkbox', { name: 'Mark episode 1 unwatched' });
+    expect(first.props.accessibilityState).toMatchObject({ checked: true, disabled: false });
   });
 
   it('renders the first season page and loads more episodes', async () => {

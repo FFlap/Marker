@@ -6,6 +6,8 @@ import { currentSeasonPages } from '@/features/title/seasonPages';
 // Fetch complete 120-episode pages, but mount rows in small batches so title
 // metadata and the first screen do not wait for offscreen artwork and layouts.
 export const SEASON_EPISODE_RENDER_BATCH = 12;
+/** Episodes in each season page (one stored chunk). */
+export const SEASON_PAGE_SIZE = 120;
 
 export function useSeasonView(args: { tmdbId: number; season: number } | undefined) {
   const season = args?.season;

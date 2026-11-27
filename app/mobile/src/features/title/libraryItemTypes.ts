@@ -6,7 +6,7 @@ type SeasonPage = FunctionReturnType<
 >['page'][number];
 export type Episode = SeasonPage['episodes'][number];
 export type SeasonRow = Omit<SeasonPage, 'episodes' | 'chunkIndex'>;
-export type EpisodeDraft = { rating?: number; tags: string[] };
+export type EpisodeDraft = { rating?: number; tags: string[]; timesWatched: number };
 
 export const sameValue = (left: unknown, right: unknown) =>
   Array.isArray(left) && Array.isArray(right)

@@ -244,8 +244,8 @@ describe('secondary mobile pages', () => {
       '2026-09-01',
       '2026-10-01',
     ]);
-    expect(view.getByLabelText('Previous month')).toBeDisabled();
-    await fireEvent.press(view.getByLabelText('Previous month'));
+    // There is no earlier month to show, so the control is not offered.
+    expect(view.queryByLabelText('Previous month')).toBeNull();
     expect(mockUpcoming).toHaveBeenCalledTimes(2);
   });
 

@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '@marker/shared/api';
 import { NativePressable } from '@/components/ui/NativePressable';
 import { colors } from '@/constants/colors';
+import { radius, typeRamp } from '@/constants/theme';
 import { createAppStyles } from '@/lib/typography';
 import { ProfileAvatar } from './ProfileAvatar';
 
@@ -251,6 +252,9 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
           <Animated.View
             testID="account-menu-panel"
             accessibilityViewIsModal
+            // Claim touches on empty panel space so the overlay's drag-to-close capture
+            // can take over from anywhere on the panel, not only from its controls.
+            onStartShouldSetResponder={() => true}
             style={[
               s.drawer,
               {
@@ -281,9 +285,11 @@ export const AppDrawer = forwardRef<AppDrawerHandle, { current?: Destination }>(
                   avatarUrl={profile?.avatarUrl}
                   size={48}
                 />
-                <View>
-                  <Text style={s.name}>@{profile?.username ?? 'profile'}</Text>
-                  <Text style={s.eyebrow}>View Profile</Text>
+                <View style={s.identityCopy}>
+                  <Text numberOfLines={1} style={s.name}>
+                    @{profile?.username ?? 'profile'}
+                  </Text>
+                  <Text style={s.eyebrow}>View profile</Text>
                 </View>
               </NativePressable>
             </View>
@@ -350,20 +356,16 @@ const s = createAppStyles(
       alignItems: 'center',
       paddingBottom: 28,
     },
-    identity: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    eyebrow: {
-      color: colors.muted,
-      fontSize: 10,
-      fontWeight: '600',
-      letterSpacing: 0.2,
-      marginTop: 4,
-    },
+    identity: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 },
+    // Long usernames end with "…" instead of running off the drawer.
+    identityCopy: { flex: 1, minWidth: 0 },
+    eyebrow: { ...typeRamp.meta, marginTop: 2 },
     name: { color: colors.text, fontSize: 17, fontWeight: '700' },
     navigation: { flex: 1, gap: 8 },
     settingsItem: { marginTop: 'auto' },
     menuItem: {
       minHeight: 52,
-      borderRadius: 12,
+      borderRadius: radius.md,
       paddingHorizontal: 16,
       flexDirection: 'row',
       alignItems: 'center',

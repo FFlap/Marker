@@ -1,6 +1,6 @@
 import { ConvexError } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { isEpisodeReleased } from '../episodeAvailability';
+import { isEpisodeReleasedOn } from '../episodeAvailability';
 
 export type SeriesWatch = NonNullable<Doc<'items'>['seriesWatch']>;
 type Episode = {
@@ -20,15 +20,21 @@ export function assertSeriesWatchGeneration(item: Doc<'items'>, generation?: str
     });
 }
 
+/**
+ * Whether an episode had been released when the show was marked watched: by the viewer's local
+ * day of the declaration (as "Mark season watched" judges it), so tomorrow's episode isn't
+ * swallowed on an evening west of UTC.
+ */
+export const releasedByDeclaration = (watch: SeriesWatch, episode: Episode) =>
+  isEpisodeReleasedOn(
+    { ...episode, name: episode.name ?? `Episode ${episode.episode}` },
+    watch.activityDate,
+  );
+
 // These records come from the canonical released-episode catalog. An undated
 // canonical episode is already known released; a dated episode still respects the cutoff.
 export const seriesWatchIncludes = (watch: SeriesWatch | undefined, episode: Episode) =>
-  !!watch &&
-  (!episode.airDate ||
-    isEpisodeReleased(
-      { ...episode, name: episode.name ?? `Episode ${episode.episode}` },
-      watch.watchedAt,
-    ));
+  !!watch && (!episode.airDate || releasedByDeclaration(watch, episode));
 
 const matchesIdentity = (
   saved: Doc<'episodes'>,

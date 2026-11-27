@@ -59,7 +59,7 @@ export function ProfileFavorites({
   const [pickerType, setPickerType] = useState<FavoriteSection>();
   const eligible = useQuery(
     api.profileFavorites.eligible,
-    !interactive || !pickerType ? "skip" : {},
+    !interactive || !pickerType ? "skip" : { section: pickerType },
   );
   const addFavorite = useMutation(api.profileFavorites.add);
   const removeFavorite = useMutation(api.profileFavorites.remove);
