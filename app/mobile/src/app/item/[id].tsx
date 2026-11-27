@@ -52,6 +52,7 @@ import {
   type SeasonRow,
 } from '@/features/title/libraryItemTypes';
 import { clipSynopsis, displayGenres } from '@/lib/text';
+import { useStartupQuery } from '@/hooks/useStartupQuery';
 type PendingEpisodeDraft = {
   [Field in keyof EpisodeDraft]?: { version: number; value: EpisodeDraft[Field] };
 };
@@ -124,7 +125,7 @@ function ItemDetailRoute({ itemId }: { itemId: Id<'items'> }) {
   const [removeOpen, setRemoveOpen] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
   // "Also in Watching" is chosen by hand only when the automatic setting is off.
-  const settings = useQuery(api.settings.getSettings);
+  const settings = useStartupQuery(api.settings.getSettings);
   const today = useLocalToday();
   const seasonUpcoming = useQuery(
     episodeApi.getSeasonUpcoming,

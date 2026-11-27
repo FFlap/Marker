@@ -94,15 +94,18 @@ export function EpisodeEditSheet({
               )}
             </View>
             <View style={s.heroCopy}>
+              {/* "S1 E2" names an episode the same way everywhere outside its season; like the
+                  rows it opens from, the show name leads and the code and runtime stay quiet. */}
               <Text numberOfLines={1} style={s.kicker}>
-                {/* "S1 E2" names an episode the same way everywhere outside its season. */}
-                {[
-                  episode.showTitle,
-                  `S${episode.season} E${episode.episode}`,
-                  episode.runtime ? `${episode.runtime} min` : undefined,
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
+                {episode.showTitle ? `${episode.showTitle} · ` : ''}
+                <Text style={s.kickerQuiet}>
+                  {[
+                    `S${episode.season} E${episode.episode}`,
+                    episode.runtime ? `${episode.runtime} min` : undefined,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Text>
               </Text>
               <Text accessibilityRole="header" style={s.title}>
                 {episode.name ? displayEpisodeName(episode.name) : `Episode ${episode.episode}`}
@@ -195,6 +198,7 @@ const s = createAppStyles(
     fallbackNumber: { color: colors.faint, fontSize: 24, fontWeight: '800' },
     heroCopy: { flex: 1, minWidth: 0, gap: 4 },
     kicker: { color: colors.secondary, fontSize: 12, fontWeight: '600' },
+    kickerQuiet: { color: colors.muted },
     title: { ...typeRamp.sheetTitle },
     about: { gap: 6 },
     overview: { ...typeRamp.body },
@@ -205,5 +209,5 @@ const s = createAppStyles(
     // Same right inset as the switch row above, so the controls end on one line.
     stepper: { paddingHorizontal: 16, paddingVertical: 6 },
   },
-  ['fallbackNumber', 'kicker', 'title', 'overview', 'fact'] as const,
+  ['fallbackNumber', 'kicker', 'kickerQuiet', 'title', 'overview', 'fact'] as const,
 );

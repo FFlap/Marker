@@ -4,7 +4,6 @@ import Columns2 from 'lucide-react-native/icons/columns-2';
 import Grid3x3 from 'lucide-react-native/icons/grid-3x3';
 import Rows2 from 'lucide-react-native/icons/rows-2';
 import List from 'lucide-react-native/icons/list';
-import { useQuery } from 'convex/react';
 import { api } from '@marker/shared/api';
 import { SecondaryHeader } from '@/components/BackButton';
 import { LayoutPreview } from '@/components/LayoutPreview';
@@ -16,6 +15,7 @@ import { typeRamp } from '@/constants/theme';
 import { useSettings } from '@/hooks/use-settings';
 import type { GridColumns, ListColumns, ListTextSize } from '@/lib/displayPreferences';
 import { createAppStyles } from '@/lib/typography';
+import { useStartupQuery } from '@/hooks/useStartupQuery';
 
 const TEXT_SIZES: ListTextSize[] = ['small', 'medium', 'large'];
 const TEXT_SIZE_LABELS: Record<ListTextSize, string> = {
@@ -53,7 +53,8 @@ const listColumns = [
 
 export default function AppearanceSettings() {
   const { current, loaded, pending, update } = useSettings();
-  const items = useQuery(api.library.items.listItems);
+  // Through the startup data, like the settings, so the preview has your titles at once.
+  const items = useStartupQuery(api.library.items.listItems);
   const watched = items
     ?.filter((item) => item.status === 'watched')
     .sort((left, right) => left.rank - right.rank);
